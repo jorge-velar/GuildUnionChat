@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="GUILDUNION_TOGGLE" header="GUILDUNION" category="ADDONS">
+		GuildUnion_Toggle()
+	</Binding>
+</Bindings>

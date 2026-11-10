@@ -1,0 +1,52 @@
+## Interface: 120105, 11509, 16001
+## Title: |cff33ff99Guild Union Reduce|r
+## Notes: Joins several guilds into one community (up to 20 guilds): shared guild chat, protected channel and member panel.
+## Notes-esES: Une varias hermandades en una comunidad: chat de hermandad compartido, canal protegido con lista blanca y panel con todos los miembros.
+## Notes-esMX: Une varias hermandades en una comunidad: chat de hermandad compartido, canal protegido con lista blanca y panel con todos los miembros.
+## Author: Sadance
+## X-Copyright: Copyright (c) 2026 Sadance
+## X-License: MIT
+## IconTexture: Interface\Icons\INV_Shirt_GuildTabard_01
+## Version: 5.4.12
+## X-Reduce-Version: 1.1.0
+## SavedVariables: GuildUnionDB
+## SavedVariablesPerCharacter: GuildUnionCharDB
+
+Libs\LibStub.lua
+
+Core.lua
+Perf.lua
+LocaleEN.lua
+Popup.lua
+Orders.lua
+Config.lua
+Roster.lua
+Channel.lua
+Comm.lua
+Lists.lua
+Presence.lua
+ChanPresence.lua
+Ranks.lua
+Audit.lua
+Pinned.lua
+ChatTabs.lua
+Test.lua
+Guard.lua
+GuardKeeper.lua
+Social.lua
+History.lua
+Channels.lua
+Community.lua
+NoteConfig.lua
+EmotePack.lua
+Echo.lua
+ErrorShare.lua
+MassLogin.lua
+TestLog.lua
+MemGuard.lua
+Combat.lua
+UI.lua
+UIWindows.lua
+UIStubs.lua
+Minimap.lua
+BlizzTab.lua

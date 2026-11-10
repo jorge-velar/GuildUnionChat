@@ -1,0 +1,7 @@
+Librerías incluidas en Guild Union
+==================================
+
+LibStub
+  Dominio público (WowAce).
+
+(Las librerías del mapa, HereBeDragons y CallbackHandler, están guardadas aparte junto al mapa.)

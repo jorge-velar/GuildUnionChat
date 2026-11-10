@@ -1,0 +1,10 @@
+# Archivos del sistema y temporales
+Thumbs.db
+desktop.ini
+.DS_Store
+*.zip
+__pycache__/
+
+# Banco de pruebas: resultados de cada ejecución y argumentos de la última
+Bench/resultados/
+Bench/simulador/GUBench/args.lua

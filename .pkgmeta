@@ -1,0 +1,7 @@
+# Configuración para empaquetar y publicar en CurseForge / Wago
+package-as: GuildUnion
+
+ignore:
+  - Tools
+  - Bench
+  - .gitignore
