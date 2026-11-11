@@ -8,3 +8,6 @@ __pycache__/
 # Banco de pruebas: resultados de cada ejecución y argumentos de la última
 Bench/resultados/
 Bench/simulador/GUBench/args.lua
+
+# Carpeta temporal del empaquetado (release.yml)
+.release/

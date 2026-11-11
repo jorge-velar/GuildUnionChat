@@ -1,0 +1,29 @@
+# Comprobación de Guild Union en cada push y pull request (sin tests: solo luacheck)
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  luacheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar luacheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua-check
+
+      - name: luacheck (solo avisos, no bloquea)
+        # luacheck sale con 1 si hay avisos y con 2 si hay errores de sintaxis:
+        # los errores sí paran el pipeline, los avisos no.
+        run: |
+          set +e
+          luacheck . -q --formatter=plain
+          code=$?
+          [ "$code" -ge 2 ] && exit 1 || exit 0
