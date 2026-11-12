@@ -1,7 +1,7 @@
 # Al subir una etiqueta v5.4.13 (por ejemplo): comprueba que la versión del .toc coincide
 # y publica GuildUnion-5.4.13.zip como Release de GitHub.
 # El zip lleva la carpeta GuildUnion/ con el addon, sin lo que .pkgmeta ignora (Tools, Bench...)
-# ni los archivos del repositorio (.github, .luacheckrc...).
+# ni los archivos del repositorio (.github, .claude, .luacheckrc...).
 name: Release
 
 on:
@@ -34,7 +34,7 @@ jobs:
         run: |
           mkdir -p .release/GuildUnion
           git ls-files -z \
-            | grep -zv -E '^(\.github/|Tools/|Bench/|\.gitignore$|\.gitattributes$|\.pkgmeta$|\.luacheckrc$)' \
+            | grep -zv -E '^(\.github/|\.claude/|Tools/|Bench/|\.gitignore$|\.gitattributes$|\.pkgmeta$|\.luacheckrc$)' \
             | xargs -0 cp --parents -t .release/GuildUnion
           cd .release
           zip -r -9 "../GuildUnion-${{ steps.ver.outputs.version }}.zip" GuildUnion
