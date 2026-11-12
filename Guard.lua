@@ -76,7 +76,7 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
         if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld() end) end
     end
     if kind == "main" then
-        -- quiénes son moderadores (para las espadas rojas y para saludarlos)
+        -- quiénes son moderadores (para saludarlos)
         self.chanMods, self.chanModList = mods, modList
         self.chanIAmMod = iAmMod
         self.chanMembersSeen = seen

@@ -469,18 +469,37 @@ HU:OnStart(function()
     end
 end)
 
--- maestro: corona; oficiales: dos espadas cruzadas; moderadores del canal: las espadas en rojo [+ARCHITECTURE.md]
+-- maestro: corona; admin: dos espadas cruzadas en rojo; oficial: las espadas normales [+ARCHITECTURE.md]
 HU.ICON_GM = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:15:15:0:-1|t"
 HU.ICON_OFFICER = "|TInterface\\CharacterFrame\\UI-StateIcon:16:16:0:-1:64:64:34:62:2:30|t"
-HU.ICON_MOD = "|TInterface\\CharacterFrame\\UI-StateIcon:16:16:0:-1:64:64:34:62:2:30:255:70:60|t"
-HU.MOD_COLOR = { 1, 0.27, 0.24 }
-HU.SWORDS_COORDS = { 34 / 64, 62 / 64, 2 / 64, 30 / 64 }
+HU.ICON_ADMIN = "|TInterface\\CharacterFrame\\UI-StateIcon:16:16:0:-1:64:64:34:62:2:30:255:70:60|t"
+HU.ADMIN_COLOR = { 1, 0.27, 0.24 }
 
 function HU:RoleIcon(role)
     if role == "gm" then return self.ICON_GM end
-    if role == "mod" then return self.ICON_MOD end
+    if role == "admin" then return self.ICON_ADMIN end
     if role == "officer" then return self.ICON_OFFICER end
     return ""
+end
+
+-- Admin: el rango de oficial más alto bajo el maestro, solo si la hermandad tiene más de un rango de
+-- oficial (con uno solo, todos son oficiales sin más) (Jorge, 12/11: «gm, admin, ofi»)
+function HU:IsAdminRank(tag, rankIndex)
+    if not rankIndex or self:RankRole(tag, rankIndex) ~= "officer" then return false end
+    local max = self:OfficerMax(tag)
+    if max then return max >= 2 and rankIndex == 1 end
+    local set = self:OfficerRanksOf(tag)
+    if not set then return false end
+    local first, n
+    n = 0
+    for idx, on in pairs(set) do
+        local i = tonumber(idx)
+        if i and on then
+            n = n + 1
+            if not first or i < first then first = i end
+        end
+    end
+    return n >= 2 and rankIndex == first
 end
 
 -- ¿Es moderador del canal del chat unido? (lo dice su addon al saludar, o lo veo en el canal)
@@ -494,10 +513,11 @@ function HU:IsChannelMod(name)
     return p and p.mod and true or false
 end
 
--- "gm", "mod" (oficial y moderador del canal), "officer" o nil, para un jugador concreto
-function HU:RoleOf(name, tag, rankIndex)
+-- "gm", "admin", "officer" o nil, para un jugador concreto (solo para pintar: lo que puede hacer cada
+-- uno lo sigue diciendo RankRole, que no distingue admin de oficial)
+function HU:RoleOf(_, tag, rankIndex)
     local role = self:RankRole(tag, rankIndex)
-    if role ~= "gm" and name and self:IsChannelMod(name) then return "mod" end
+    if role == "officer" and self:IsAdminRank(tag, rankIndex) then return "admin" end
     return role
 end
 

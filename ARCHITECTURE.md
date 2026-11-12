@@ -158,7 +158,12 @@ Un rango sin la casilla Oficial (p. ej. «Castigado») nunca cuenta, esté donde
 Pendiente de ver en el juego: si un raso puede leer `GuildControlGetRankFlags` (si no, usa lo
 guardado o el rango 1).
 
-maestro: corona; oficiales: dos espadas cruzadas; moderadores del canal: las espadas en rojo
+maestro: corona; admin: dos espadas cruzadas en rojo; oficial: las espadas normales. Admin es el
+rango de oficial más alto bajo el maestro, y solo cuando la hermandad tiene más de un rango de
+oficial (`HU:IsAdminRank`; con `GU:r:ETIQ:N`, el rango 1 si N ≥ 2). Es solo para pintar
+(`HU:RoleOf` devuelve "admin"): los permisos siguen saliendo de `HU:RankRole`, que no los distingue.
+Hasta la copia 75 el rojo marcaba a los moderadores del canal; se quitó (Jorge, 12/11). Se pinta en
+dos sitios: la línea del chat (`FormatLineParts`) y la lista de oficiales conectados (BlizzTab.lua)
 (un poco más grandes y bajadas 1 px, para que queden centradas con el texto; las espadas se
 recortan un poco para que no se vea el borde de la imagen)
 

@@ -258,11 +258,13 @@ local function RefreshOfficers()
             local c = e.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[e.class]
             local hex = c and string.format("%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255) or "ffffff"
             row.name:SetText("|cff" .. hex .. HU:Nice(e.name) .. "|r")
-            -- (corona para el maestro, espadas para los oficiales; la etiqueta de la hermandad, corta)
+            -- (corona para el maestro, espadas rojas para el admin y normales para el oficial)
             if e.ri == 0 then
                 row.icon:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon"); row.icon:SetTexCoord(0, 1, 0, 1)
+                row.icon:SetVertexColor(1, 1, 1)
             else
                 row.icon:SetTexture("Interface\\CharacterFrame\\UI-StateIcon"); row.icon:SetTexCoord(34 / 64, 62 / 64, 2 / 64, 30 / 64)
+                if HU:IsAdminRank(e.tag, e.ri) then row.icon:SetVertexColor(unpack(HU.ADMIN_COLOR)) else row.icon:SetVertexColor(1, 1, 1) end
             end
             -- (la etiqueta; si mi hermandad aún no tiene, su nombre)
             local gtxt = e.tag or (IsInGuild() and GetGuildInfo("player")) or ""
@@ -322,6 +324,7 @@ local function AttachBlizz()
     panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 28)
     -- (DIALOG: la ventana de hermandad ya va en HIGH y su chat quedaba por encima)
     panel:SetFrameStrata("DIALOG")
+    panel:SetToplevel(true)
     panel.where = "blizz"
     if main then main:Hide() end
 end
@@ -1088,7 +1091,7 @@ function HU:OpenMainWindow()
             insets = { left = 3, right = 3, top = 3, bottom = 3 } })
         main:SetBackdropColor(0.04, 0.04, 0.05, 0.97)
         tinsert(UISpecialFrames, "GuildUnionMain")
-        local close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
+        local close = HU.CloseButton(main)
         close:SetPoint("TOPRIGHT", -2, -2)
         close:SetFrameLevel(main:GetFrameLevel() + 20)
         local head = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1103,6 +1106,8 @@ function HU:OpenMainWindow()
     panel:SetPoint("TOPLEFT", main, "TOPLEFT", 4, -28)   -- (arriba queda la barra con el título y la X)
     panel:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, 4)
     panel:SetFrameStrata("DIALOG")
+    -- (sin «toplevel» aquí: al pulsar el panel el juego lo subía por encima de la X de la ventana)
+    panel:SetToplevel(false)
     panel.where = "own"
     if tab then tab:SetChecked(false) end
     main:Show()
@@ -1156,7 +1161,7 @@ function HU:ShowGuildsWindow()
         local title = gw:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("TOPLEFT", 14, -12)
         title:SetText(L("Gestión de hermandades"))
-        local close = CreateFrame("Button", nil, gw, "UIPanelCloseButton")
+        local close = HU.CloseButton(gw)
         close:SetPoint("TOPRIGHT", -2, -2)
         gw.who = gw:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         gw.who:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)

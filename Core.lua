@@ -197,6 +197,14 @@ function HU.NewTicker(delay, fn, n)
     return C_Timer.NewTicker(delay, function(t) HU:SafeCall("ticker", fn, t) end, n)
 end
 
+-- La X de nuestras ventanas. La plantilla del juego cierra con HideUIPanel, que pasa por su gestor
+-- de ventanas: desde un addon puede no hacer nada (en combate lo bloquea). Aquí, Hide() directo.
+function HU.CloseButton(frame)
+    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    close:SetScript("OnClick", function() frame:Hide() end)
+    return close
+end
+
 -- Si el juego bloquea algo que intenta el addon, se guarda en /gu errores (qué función era)
 for _, ev in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
     HU:On(ev, function(addon, func)

@@ -60,7 +60,7 @@ local function Build()
         insets = { left = 3, right = 3, top = 3, bottom = 3 } })
     w:SetBackdropColor(0.05, 0.05, 0.08, 0.97)
     tinsert(UISpecialFrames, "GuildUnionWizard")
-    local close = CreateFrame("Button", nil, w, "UIPanelCloseButton")
+    local close = HU.CloseButton(w)
     close:SetPoint("TOPRIGHT", -2, -2)
 
     w.head = w:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
