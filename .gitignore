@@ -11,3 +11,6 @@ Bench/simulador/GUBench/args.lua
 
 # Carpeta temporal del empaquetado (release.yml)
 .release/
+
+# Ajustes personales de Claude Code (permisos de este equipo)
+.claude/settings.local.json
