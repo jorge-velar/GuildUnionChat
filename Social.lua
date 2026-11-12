@@ -475,14 +475,14 @@ function HU:SetMute(name, seconds, reason)
             local cur = HU.db.mutes[k]
             if cur and cur.t == stamp then
                 ChannelMuteCall(full, false); HU:Changed("members")
-                if HU.OfferRestoreRank and not HU:IsMuted(full) then HU:OfferRestoreRank(full) end
+                if HU.OfferRestoreRank and not HU:IsMuted(full) then HU:OfferRestoreRank(full, true) end
             end
         end)
     end
     -- rango de castigo (si la hermandad tiene uno llamado "Castigado")
     HU.After(0.06, function()
         if m.u == -1 then
-            if HU.OfferRestoreRank and not HU:IsMuted(full) then HU:OfferRestoreRank(full) end
+            if HU.OfferRestoreRank and not HU:IsMuted(full) then HU:OfferRestoreRank(full, true) end
         elseif HU.OfferPunish then
             HU:OfferPunish(full)
         end
@@ -893,6 +893,16 @@ local function HLSourceOK(self, sender)
 end
 function HU:NoteHistoryAsked() hqSeenT = GetTime() end
 
+-- Pide a mi hermandad lo que se escribió desde `since`. Al entrar al juego y al salir de un campo de
+-- batalla o una arena, donde el addon no puede leer el chat (Combat.lua)
+function HU:AskMissedChat(since)
+    since = tonumber(since)
+    if not since or not self.myTag or not IsInGuild() then return false end
+    self:NoteHistoryAsked()
+    self:Send(table.concat({ "HQ", math.floor(since), self:CanOfficer() and "1" or "0" }, "~"), "GUILD")
+    return true
+end
+
 local function HLLine(e)
     local head = table.concat({ "HL", e.t, e.k or "main", e.tag or "", e.a or "" }, "~") .. "~"
     return head .. HU.Utf8Cut((e.m or ""):gsub("[\r\n]", " "), 255 - #head)
@@ -995,6 +1005,8 @@ HU.comm.HL = function(self, sender, f, dist)
         return
     end
     if dist == "GUILD" then lastHeard = GetTime() end
+    -- (para saber si alguien ha contestado a mi petición: Combat.lua repite una vez si no)
+    self.hlHeard = (self.hlHeard or 0) + 1
     local t, k, tag, a = HU.NetT(f[1]), f[2], f[3], f[4]
     if not t or not a or a == "" then return end
     if k ~= "main" and k ~= "lfg" and k ~= "off" then return end
@@ -1048,7 +1060,7 @@ function HU:ShowLate(n)
                 fr:AddMessage(L("|cff9a8f78— Mientras no estabas (") .. n .. ") —|r")
             end
             local r, g, b = self:KindColor(e.k)
-            fr:AddMessage("|cff9a8f78" .. date("%H:%M", e.t) .. "|r " .. self:FormatLine(e.k, e.tag, e.a, self:HighlightMentions(e.m or "")), r, g, b)
+            fr:AddMessage("|cff9a8f78" .. date("%H:%M", e.t) .. "|r " .. self:FormatLine(e.k, e.tag, e.a, self:HighlightMentions(e.m or "", e.a, e.tag)), r, g, b)
         end
     end
     if self.UI and self.UI.FillChat then self.UI:FillChat() end
@@ -1080,7 +1092,7 @@ function HU:RestoreChat()
             if e.sys then
                 fr:AddMessage("|cff9a8f78" .. HU.SafeDate("%d/%m %H:%M", e.t) .. "|r |cffffd100" .. (e.m or "") .. "|r")
             else
-                fr:AddMessage("|cff9a8f78" .. HU.SafeDate("%d/%m %H:%M", e.t) .. "|r " .. self:FormatLine(e.k, e.tag, e.a or "?", self:HighlightMentions(e.m or "")), r * 0.8, g * 0.8, b * 0.8)
+                fr:AddMessage("|cff9a8f78" .. HU.SafeDate("%d/%m %H:%M", e.t) .. "|r " .. self:FormatLine(e.k, e.tag, e.a or "?", self:HighlightMentions(e.m or "", e.a, e.tag)), r * 0.8, g * 0.8, b * 0.8)
             end
         end
     end
@@ -1118,10 +1130,7 @@ HU:OnStart(function()
     HU.NewTicker(120, function() HU:UpdateMyProfile() end)
     -- lo escrito mientras no estabas (si hace más de un minuto)
     HU.After(25, function()
-        if since and time() - since > 60 and HU.myTag and IsInGuild() then
-            HU:NoteHistoryAsked()
-            HU:Send(table.concat({ "HQ", since, HU:CanOfficer() and "1" or "0" }, "~"), "GUILD")
-        end
+        if since and time() - since > 60 then HU:AskMissedChat(since) end
     end)
     -- el enlace repasa con las otras hermandades los silencios y vetos de la suya cada 5 min. Con [+ARCHITECTURE.md]
     local resync = {} -- [etiqueta] = { sig, peer, t }

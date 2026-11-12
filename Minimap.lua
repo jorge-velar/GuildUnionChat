@@ -1,136 +1,69 @@
--- Guild Union - botón del minimapa
+-- Guild Union - botón del minimapa (LibDBIcon: como el de casi todos los addons, así las «bolsas» de
+-- botones como MinimapButtonButton lo recogen). Clic izquierdo: la ventana propia de GuildUnion (no es
+-- la de hermandad de Blizzard, así que no la «contamina»); derecho: Gestión de hermandades.
 local _, HU = ...
 local L = HU.L
 
-local button
-local atan2 = math.atan2 or function(y, x) return math.atan(y, x) end
+local LibStub = _G.LibStub
+local NAME = "GuildUnion"
+local registered = false
 
-local function UpdatePosition()
-    local angle = math.rad(HU.db.minimapAngle or 200)
-    local radius = (Minimap:GetWidth() / 2) + 10
-    button:ClearAllPoints()
-    button:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
-end
-
-local function OnDragUpdate()
-    local mx, my = Minimap:GetCenter()
-    local px, py = GetCursorPosition()
-    local scale = Minimap:GetEffectiveScale()
-    px, py = px / scale, py / scale
-    HU.db.minimapAngle = math.deg(atan2(py - my, px - mx)) % 360
-    UpdatePosition()
-end
-
-local function ShowTooltip(self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-    GameTooltip:AddLine(HU:Title(), 0.2, 1, 0.6)
+local function ShowTooltip(tt)
+    tt:AddLine(HU:Title(), 0.2, 1, 0.6)
     if HU.cfg and HU.cfg.ok then
-        GameTooltip:AddLine(L("Canal: ") .. (HU:IsJoined("main") and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r")), 1, 1, 1)
-        local on = HU.rosterOnline or 0
-        for tag, r in pairs(HU.remoteRoster) do
-            if HU.cfg.byTag[tag] then on = on + (r.online or 0) end
-        end
-        if not HU.CHAT_ONLY then GameTooltip:AddLine(L("Conectados en total: ") .. on, 1, 1, 1) end
+        tt:AddLine(L("Canal: ") .. (HU:IsJoined("main") and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r")), 1, 1, 1)
         if HU.intruders and #HU.intruders > 0 then
-            GameTooltip:AddLine(L("Intrusos: ") .. #HU.intruders, 1, 0.3, 0.3)
+            tt:AddLine(L("Intrusos: ") .. #HU.intruders, 1, 0.3, 0.3)
         end
     else
-        GameTooltip:AddLine(L("Sin configurar (/gu config)"), 1, 0.5, 0)
+        tt:AddLine(L("Sin configurar (/gu config)"), 1, 0.5, 0)
     end
-    GameTooltip:Show()
+    tt:AddLine(" ")
+    tt:AddLine(L("Clic izquierdo: abrir GuildUnion"), 0.8, 0.8, 0.8)
+    tt:AddLine(L("Clic derecho: Gestión de hermandades"), 0.8, 0.8, 0.8)
 end
 
-local function Create()
-    if button or not Minimap then return end
-    -- (botón seguro: el clic izquierdo pulsa el botón de Hermandad del juego, que abre la ventana sin
-    -- «contaminarla». Si la abría nuestro código, el juego bloqueaba luego cambiar rangos y notas)
-    -- (los atributos solo se pueden poner fuera de combate)
-    if InCombatLockdown and InCombatLockdown() then HU.minimapPending = true return end
-    button = CreateFrame("Button", "HermandadUnidaMinimapButton", Minimap, "SecureActionButtonTemplate")
-    button:SetSize(31, 31)
-    button:SetFrameStrata("MEDIUM")
-    button:SetFrameLevel(8)
-    -- (arriba y abajo: el juego decide con «ActionButtonUseKeyDown» en cuál de los dos actúa)
-    button:RegisterForClicks("LeftButtonUp", "LeftButtonDown", "RightButtonUp")
-    button:RegisterForDrag("LeftButton")
-    local micro = _G.GuildMicroButton
-    if micro then
-        button:SetAttribute("type1", "click")
-        button:SetAttribute("clickbutton1", micro)
-    end
-    button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-
-    local bg = button:CreateTexture(nil, "BACKGROUND")
-    bg:SetSize(20, 20)
-    bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-    bg:SetPoint("TOPLEFT", 7, -5)
-
-    local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(17, 17)
-    icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    icon:SetPoint("TOPLEFT", 7, -6)
-
-    local border = button:CreateTexture(nil, "OVERLAY")
-    border:SetSize(53, 53)
-    border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    border:SetPoint("TOPLEFT")
-
-    -- (antes del clic: que al abrirse la ventana salga nuestra pestaña; BlizzTab.lua, HU:WantsTab)
-    local wasOpen = false
-    button:HookScript("OnMouseDown", function(_, which)
-        if which ~= "LeftButton" then return end
-        HU.tabWantedT = GetTime()
-        wasOpen = _G.CommunitiesFrame and _G.CommunitiesFrame:IsShown() or false
-    end)
-    -- (después del clic. Izquierdo: SIEMPRE el panel de GuildUnion; si la ventana estaba cerrada la abre
-    -- el botón de Hermandad del juego y la pestaña sale sola; si ya estaba abierta, el botón no la cierra
-    -- (UpdateMinimapClick) y aquí se abre el panel. Derecho: abre o cierra solo nuestra pestaña.
-    -- Nunca se abre la ventana desde nuestro código)
-    button:HookScript("OnClick", function(_, which)
-        if which == "RightButton" or not micro then
-            if HU.OpenReduce then HU:OpenReduce() end
-        elseif wasOpen and HU.ShowReducePanel then
-            HU:ShowReducePanel()
-        end
-    end)
-    button:SetScript("OnDragStart", function(self)
-        -- (en combate no se puede mover un botón seguro)
-        if InCombatLockdown and InCombatLockdown() then return end
-        self:SetScript("OnUpdate", OnDragUpdate)
-        GameTooltip:Hide()
-    end)
-    button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-    button:SetScript("OnEnter", ShowTooltip)
-    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    UpdatePosition()
+local function OnClick(_, button)
+    if button == "RightButton" and HU.ShowGuildsWindow and HU:CanPin() then return HU:ShowGuildsWindow() end
+    if HU.OpenMainWindow then HU:OpenMainWindow() end
 end
 
+local function Register()
+    if registered then return true end
+    local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
+    local icon = LibStub and LibStub("LibDBIcon-1.0", true)
+    if not (LDB and icon) then return false end
+    -- (la posición la guarda LibDBIcon aquí; la de antes, en grados, se aprovecha)
+    HU.db.minimapIcon = HU.db.minimapIcon or { hide = HU.db.minimapHidden and true or nil, minimapPos = HU.db.minimapAngle }
+    local obj = LDB:NewDataObject(NAME, {
+        type = "launcher",
+        text = "GuildUnion",
+        icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01",
+        OnClick = OnClick,
+        OnTooltipShow = ShowTooltip,
+    })
+    icon:Register(NAME, obj, HU.db.minimapIcon)
+    registered = true
+    return true
+end
+
+-- /gu minimapa on|off (y lo de siempre: db.minimapHidden)
 function HU:ShowMinimapButton(show)
     self.db.minimapHidden = not show
-    if show then
-        Create()
-        if button then button:Show() end
-    elseif button then
-        button:Hide()
-    end
+    if not Register() then return end
+    self.db.minimapIcon.hide = (not show) or nil
+    local icon = LibStub("LibDBIcon-1.0")
+    if show then icon:Show(NAME) else icon:Hide(NAME) end
 end
 
+-- (en cuanto carga el addon, no al entrar al juego: las «bolsas» de botones recogen los que ya existen
+-- cuando miran, y al entrar ya era tarde)
+local ADDON = ...
+HU:On("ADDON_LOADED", function(name)
+    if name ~= ADDON or not HU.db then return end
+    Register()
+    if HU.db.minimapHidden then HU:ShowMinimapButton(false) end
+end)
 HU:OnStart(function()
-    if not HU.db.minimapHidden then HU:ShowMinimapButton(true) end
+    if Register() and HU.db.minimapHidden then HU:ShowMinimapButton(false) end
 end)
-HU:On("PLAYER_REGEN_ENABLED", function()
-    if HU.minimapPending and not HU.db.minimapHidden then HU.minimapPending = nil; HU:ShowMinimapButton(true) end
-    if HU.minimapClickPending then HU.minimapClickPending = nil; HU:UpdateMinimapClick() end
-end)
-
--- Con la ventana de hermandad abierta, el clic izquierdo no pulsa el botón de Hermandad (la cerraría):
--- solo abre nuestro panel. Con ella cerrada, sí (la abre el juego, sin contaminarla). Lo llama BlizzTab.lua
--- al abrirse y cerrarse la ventana. (Los atributos de un botón seguro solo cambian fuera de combate)
-function HU:UpdateMinimapClick()
-    if not (button and _G.GuildMicroButton) then return end
-    if InCombatLockdown and InCombatLockdown() then HU.minimapClickPending = true return end
-    local open = _G.CommunitiesFrame and _G.CommunitiesFrame:IsShown()
-    button:SetAttribute("type1", (not open) and "click" or nil)
-end

@@ -166,13 +166,34 @@ function HU:OurChannelKind(localID, chanName)
         name = n
     end
     if not name then return true end
-    -- (el juego puede dar el nombre como «7. MiCanal»: se quita el número)
+    -- (el juego puede dar el nombre como «7. Canal»: se quita el número)
     name = name:lower():gsub("^%d+%.%s*", "")
     for kind, c in pairs(self.chan) do
         if c.name and c.name:lower() == name then return kind end
     end
     -- (número dado pero de un canal que no es nuestro, y el nombre tampoco: no es nuestro)
     return nil
+end
+
+-- ¿Se puede intentar entrar a un canal ahora? En un campo de batalla o una arena (y desde que se
+-- acepta la partida) el juego lo bloquea, y cada intento bloqueado cuenta para su aviso de
+-- «tus addons están dando muchos problemas» [+ARCHITECTURE.md]
+local PVP_ZONE = { pvp = true, arena = true }
+local JOIN_BLOCKED_WAIT = 60
+function HU:CanJoinNow()
+    if self:IsChatLockedDown() then return false end
+    if IsInInstance then
+        local inInst, kind = IsInInstance()
+        if inInst and PVP_ZONE[kind] then return false end
+    end
+    if GetBattlefieldStatus then
+        local n = (GetMaxBattlefieldID and tonumber(GetMaxBattlefieldID())) or 3
+        for i = 1, n do
+            local ok, status = pcall(GetBattlefieldStatus, i)
+            if ok and not HU.Secret(status) and status == "active" then return false end
+        end
+    end
+    return true
 end
 
 function HU:EnsureJoined(kind)
@@ -188,6 +209,8 @@ function HU:EnsureJoined(kind)
     end
     c.joined = false
     local now = GetTime()
+    if c.blockedT and now - c.blockedT < JOIN_BLOCKED_WAIT then return end
+    if not self:CanJoinNow() then return end
     -- (los primeros 20 s tras entrar se reintenta cada segundo: el chat tiene que ir enseguida)
     -- (y en ese rato la espera larga no crece: si no, al acabar se esperaban 5 minutos)
     local fast = now - (HU.loginT or -1e9) < 20
@@ -197,8 +220,26 @@ function HU:EnsureJoined(kind)
     if not fast then c.backoff = math.min((c.backoff or 5) * 2, 300) end
     self:Debug("Uniéndose a", c.name)
     local join = JoinTemporaryChannel or (C_ChatInfo and C_ChatInfo.JoinTemporaryChannel)
-    if join then pcall(join, c.name, c.pass) end
+    if not join then return end
+    -- (bloqueado donde no se esperaba: nada de reintentos seguidos, se espera un minuto)
+    HU.expectBlock, HU.joinBlockedNow = "join", nil
+    pcall(join, c.name, c.pass)
+    HU.expectBlock = nil
+    if HU.joinBlockedNow then c.blockedT = now end
 end
+
+-- Al cambiar de zona (salir de la partida): se vuelve a mirar enseguida, sin esperar al ciclo
+local function RejoinSoon()
+    HU.After(2, function()
+        if not HU.ready then return end
+        for kind, c in pairs(HU.chan) do
+            c.lastTry, c.blockedT = nil, nil
+            HU:EnsureJoined(kind)
+        end
+    end)
+end
+HU:On("PLAYER_ENTERING_WORLD", RejoinSoon)
+HU:On("ZONE_CHANGED_NEW_AREA", RejoinSoon)
 
 -- ¿Es un canal del juego? («General - Elwynn», «Comercio (Servicios) - Ventormenta»...)
 local function IsGameChannel(fullName)
@@ -207,32 +248,43 @@ local function IsGameChannel(fullName)
     return HU.GAME_CHANNELS[n] == true
 end
 
--- El juego da a cada canal el primer número libre (/4, /5...). Para no quitarle el sitio [+ARCHITECTURE.md]
-local moved = {}
-function HU:MoveChannelHigh(name)
-    local fn = C_ChatInfo and C_ChatInfo.SwapChatChannelsByChannelIndex
-    local id = name and GetChannelName(name)
-    if not fn or not id or id == 0 or id >= 7 then return end
-    local m = moved[name:lower()]
-    if m and (m.n >= 2 or GetTime() - m.t < 60) then return end
-    local target
-    for j = (MAX_WOW_CHAT_CHANNELS or 10), id + 1, -1 do
-        local other = GetChannelName(j)
-        if not other or other == 0 then target = j; break end
-    end
-    if not target or not pcall(fn, id, target) then return end
-    moved[name:lower()] = { n = (m and m.n or 0) + 1, t = GetTime() }
-    -- Si el nuestro se había colado delante de los del juego (PC lento, entrar dentro de una [+ARCHITECTURE.md]
-    HU.After(0.3, function()
-        local now = GetChannelName(id)
-        if now and now ~= 0 then return end -- (el nuestro no se movió: no hay hueco)
-        for i = id + 1, (MAX_WOW_CHAT_CHANNELS or 10) do
-            local other, otherName = GetChannelName(i)
-            if not other or other == 0 or not IsGameChannel(otherName) then break end
-            if not pcall(fn, i, i - 1) then break end
+-- Si el nuestro está delante de un canal del juego, se cambian de sitio (uno cada vez). [+ARCHITECTURE.md]
+-- Solo funciona desde algo que hace el jugador: clic, Intro (probado por Jorge el 10/11)
+local function MisplacedChannel()
+    for _, c in pairs(HU.chan or {}) do
+        local id = c.name and GetChannelName(c.name)
+        if id and id > 0 then
+            for g = id + 1, (MAX_WOW_CHAT_CHANNELS or 10) do
+                local other, otherName = GetChannelName(g)
+                if other and other > 0 and IsGameChannel(otherName) then return id, g end
+            end
         end
-    end)
+    end
 end
+
+local orderFrame = CreateFrame("Frame")
+local orderT = -1
+-- Los clics solo se escuchan mientras el orden está mal
+function HU:WatchChannelOrder()
+    if MisplacedChannel() then orderFrame:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    else orderFrame:UnregisterEvent("GLOBAL_MOUSE_DOWN") end
+end
+function HU:FixChannelOrder()
+    local fn = C_ChatInfo and C_ChatInfo.SwapChatChannelsByChannelIndex
+    local now = GetTime()
+    if not fn or now - orderT < 0.5 then return end
+    local id, g = MisplacedChannel()
+    if not id then return end
+    orderT = now
+    pcall(fn, id, g)
+    HU.After(0.5, function() HU:WatchChannelOrder() end)
+end
+orderFrame:SetScript("OnEvent", function(_, event)
+    if event == "GLOBAL_MOUSE_DOWN" then HU:SafeCall("orden de canales", HU.FixChannelOrder, HU)
+    else HU:SafeCall("orden de canales", HU.WatchChannelOrder, HU) end
+end)
+orderFrame:RegisterEvent("CHANNEL_UI_UPDATE")
+orderFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 
 function HU:HideChannel(name)
     if self.db and self.db.showChannel then return end
@@ -277,11 +329,7 @@ HU:OnStart(function()
     local function TryStart()
         if AnyGameChannel() or GetTime() - t0 >= START_WAIT then
             Start()
-            -- (el juego vuelve a meter solo en los canales de antes al entrar, y el nuestro puede
-            -- haber entrado delante de General: se pasa al final, detrás de los del juego)
-            HU.After(1, function()
-                for _, c in pairs(HU.chan) do if c.name then HU:MoveChannelHigh(c.name) end end
-            end)
+            HU.After(2, function() HU:WatchChannelOrder() end)
             return
         end
         HU.After(0.5, TryStart)
@@ -327,7 +375,6 @@ HU:On("CHAT_MSG_CHANNEL_NOTICE", function(notice, _, _, fullName, _, _, _, _, ba
         c.joined, c.backoff = true, nil
         HU.After(0.5, function() HU:HideChannel(c.name) end)
         HU:Debug("Conectado al canal", c.name, kind)
-        HU.After(1, function() HU:MoveChannelHigh(c.name) end)
         if kind == "main" and HU.OnMainJoined then HU:OnMainJoined() end
     elseif notice == "YOU_LEFT" then
         c.joined = false
@@ -875,7 +922,9 @@ end
 -- ¿El juego ha bloqueado que el addon escriba en el canal? (lo mira Forward; ver TextChatOK)
 for _, ev in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
     HU:On(ev, function(addon)
-        if addon == ADDON_NAME and HU.expectBlock == "chat" then HU.chatBlockedNow = true end
+        if addon ~= ADDON_NAME then return end
+        if HU.expectBlock == "chat" then HU.chatBlockedNow = true
+        elseif HU.expectBlock == "join" then HU.joinBlockedNow = true end
     end)
 end
 -- (versiones de antes guardaban el bloqueo para siempre, en toda la cuenta: se borra)
@@ -955,14 +1004,72 @@ function HU.ClassRGB(class)
     return nil
 end
 
--- (si no se sabe la clase, el nombre sale en naranja; Jorge, 08/11)
-local function ClassColored(name, guid, tag)
-    if guid and GetPlayerInfoByGUID then
-        local _, class = GetPlayerInfoByGUID(guid)
-        local r, g, b = HU.ClassRGB(class)
-        if r then
-            return "|cff" .. string.format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255)) .. name .. "|r", class
+-- Clase por nombre sacada de las listas que ya tiene el addon (se rehace como mucho cada 30 s)
+local classByKey, classByKeyT = {}, -999
+function HU:ClassOfName(name)
+    if not name then return nil end
+    local now = GetTime()
+    if now - classByKeyT > 30 then
+        classByKey, classByKeyT = {}, now
+        for i = 1, (GetNumGuildMembers and GetNumGuildMembers() or 0) do
+            local n, _, _, _, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
+            if n and class then classByKey[self:Key(n) or ""] = class end
         end
+        for _, r in pairs(self.remoteRoster or {}) do
+            for _, m in ipairs(r.members or {}) do
+                if m.name and m.class then classByKey[self:Key(m.name) or ""] = m.class end
+            end
+        end
+    end
+    return classByKey[self:Key(name) or ""]
+end
+
+-- Memoria de clases: la clase de cada nombre se apunta la primera vez que se sabe y se guarda entre
+-- sesiones, para que el mismo jugador no cambie de color según por dónde llegue su mensaje [+ARCHITECTURE.md]
+local MEMO_GEN = 1500
+local memoCount
+local function RememberClass(key, class)
+    local db, idx = HU.db, HU.CLASS_INDEX and HU.CLASS_INDEX[class or ""]
+    if not (db and key and key ~= "" and idx) then return end
+    local cur = db.classMemo
+    if type(cur) ~= "table" then cur = {}; db.classMemo = cur; memoCount = 0 end
+    if cur[key] == idx then return end
+    if not memoCount then
+        memoCount = 0
+        for _ in pairs(cur) do memoCount = memoCount + 1 end
+    end
+    if cur[key] == nil then
+        -- (llena: pasa a ser la vieja y se empieza otra; lo que se vuelva a usar de la vieja se rescata)
+        if memoCount >= MEMO_GEN then
+            cur, memoCount = {}, 0
+            db.classMemoOld, db.classMemo = db.classMemo, cur
+        end
+        memoCount = memoCount + 1
+    end
+    cur[key] = idx
+end
+local function RecallClass(key)
+    local db = HU.db
+    if not (db and key) then return nil end
+    local cur, old = db.classMemo, db.classMemoOld
+    local idx = type(cur) == "table" and cur[key] or nil
+    if not idx and type(old) == "table" and old[key] then
+        idx = old[key]
+        RememberClass(key, HU.CLASSES[idx])
+    end
+    return idx and HU.CLASSES[idx] or nil
+end
+
+-- (si no se sabe la clase, el nombre sale en naranja; Jorge, 08/11)
+local function ClassColored(name, guid, tag, author)
+    local class
+    if guid and GetPlayerInfoByGUID then class = select(2, GetPlayerInfoByGUID(guid)) end
+    if not class then class = HU:ClassOfName(author or name) end
+    local key = HU:Key(author or name)
+    if class then RememberClass(key, class) else class = RecallClass(key) end
+    local r, g, b = HU.ClassRGB(class)
+    if r then
+        return "|cff" .. string.format("%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255)) .. name .. "|r", class
     end
     if tag then return "|cffff9933" .. name .. "|r", nil end
     return name, nil
@@ -991,22 +1098,25 @@ function HU:SendLFG(msg)
     self:AddHistory("lfg", self.myTag, self:Me(), msg)
 end
 
-function HU:FormatLine(kind, tag, author, msg, guid)
-    local head, body, chatType = self:FormatLineParts(kind, tag, author, msg, guid)
+function HU:FormatLine(kind, tag, author, msg, guid, mark)
+    local head, body, chatType = self:FormatLineParts(kind, tag, author, msg, guid, nil, nil, mark)
     return head .. body, chatType
 end
 
 -- Igual, pero por separado: la cabecera (canal, hermandad, nombre) y el mensaje [+ARCHITECTURE.md]
 local KIND_SHORT = { main = "H", off = "O", lfg = "BG" }
-function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind)
+-- (mark: lo que va justo delante de la etiqueta, p. ej. la exclamación de una mención; mismo sitio
+-- que en las líneas de mi hermandad, que pinta el juego)
+function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mark)
     local chatType = (kind == "off") and "OFFICER" or "GUILD"
+    mark = mark or ""
     if compact then
         local name = self:Nice(author)
         if self.EchoStarName then name = self:EchoStarName(author, name) end
         local rTag, rIdx = self:RankInfoOf(author)
         local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
-        local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag) .. "]|h"
-        local tagText = (self.db.showTag and tag) and ("|cff" .. self:GuildColorHex(tag) .. "<" .. tag .. ">|r ") or ""
+        local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
+        local tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
         local label = ""
         if showKind then
             local s = KIND_SHORT[kind] or (HU.IsExtra(kind) and HU.Utf8Cut(HU.ExtraName(kind) or "?", 4)) or "?"
@@ -1016,11 +1126,11 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind)
     end
     local short = self:Nice(author)
     if self.EchoStarName then short = self:EchoStarName(author, short) end
-    local colored = ClassColored(short, guid, tag)
+    local colored = ClassColored(short, guid, tag, author)
     local rTag, rIdx = self:RankInfoOf(author)
     local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
     local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. colored .. "]|h"
-    local tagText = (self.db.showTag and tag) and ("|cff" .. self:GuildColorHex(tag) .. "<" .. tag .. ">|r ") or ""
+    local tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
     local pattern = (kind == "off") and CHAT_OFFICER_GET or CHAT_GUILD_GET
     local head
     if kind == "lfg" then
@@ -1149,50 +1259,225 @@ end
 ---------------------------------------------------------------------------
 local function IsWordByte(b) return b and (b >= 48 and b <= 57 or b >= 65 and b <= 90 or b >= 97 and b <= 122 or b >= 128) end
 
--- ¿Este mensaje me menciona? (@MiNombre, sin importar mayúsculas)
-function HU:MentionsMe(msg)
+-- @everyone (o @todos): aviso a toda la comunidad. Solo cuenta si lo escribe alguien con rango de
+-- mando (maestro, oficial...: los mismos que pueden destacar un mensaje); de cualquier otro es texto
+HU.EVERYONE = { everyone = true, todos = true }
+HU.EVERYONE_COLOR = "|cffff4040"
+-- Lo que va delante de la línea según el tipo de mención: exclamación si es a mí, altavoz si es a todos
+HU.MENTION_MARK = {
+    me = "|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t ",
+    all = "|A:voicechat-icon-speaker:14:14|a ",
+}
+function HU:MentionsEveryone(msg, author, tag)
+    if type(msg) ~= "string" or not author or not msg:find("@", 1, true) then return false end
+    local hit = false
+    for word in msg:gmatch("@(%a+)") do
+        if HU.EVERYONE[word:lower()] then hit = true break end
+    end
+    if not hit then return false end
+    if author:lower() == (self:MeKey() or "") then return self:CanPin() and true or false end
+    return self:TrustedOfficer(author, tag) == true
+end
+
+-- ¿Este mensaje me menciona? Devuelve "all" (un @everyone que vale), "me" (a mí) o false.
+-- A mí, solo con nombre y apellido (@Nombre Apellido o @Nombre-Apellido: con el nombre solo avisaba
+-- a todos los que se llaman igual. Jorge, 10/11), sin importar mayúsculas ni acentos (@nazo vale
+-- para «Ñazo»). author y tag: quién lo escribe, para saber si su @everyone vale
+function HU:MentionsMe(msg, author, tag)
     if type(msg) ~= "string" or not msg:find("@", 1, true) then return false end
-    local low = msg:lower()
-    local forms = { "@" .. self:Short(self:Me() or ""):lower() }
-    forms[#forms + 1] = "@" .. self:Nice(self:Me() or ""):lower()
-    forms[#forms + 1] = "@" .. (self:Short(self:Me() or ""):match("^[^%-]+") or ""):lower()
+    if author and self:MentionsEveryone(msg, author, tag) then return "all" end
+    local low = HU.Fold(msg)
+    local forms = { "@" .. HU.Fold(self:Short(self:Me() or "")) }
+    forms[#forms + 1] = "@" .. HU.Fold(self:Nice(self:Me() or ""))
     for _, me in ipairs(forms) do
         local i = 1
         while #me > 1 do
             local a, b = low:find(me, i, true)
             if not a then break end
-            if not IsWordByte(low:byte(b + 1)) and low:sub(b + 1, b + 1) ~= "-" then return true end
+            if not IsWordByte(low:byte(b + 1)) and low:sub(b + 1, b + 1) ~= "-" then return "me" end
             i = b + 1
         end
     end
     return false
 end
 
--- Colorea las menciones: la mía en naranja, las demás en azul claro
-function HU:HighlightMentions(msg)
+-- Colorea las menciones con nombre y apellido («@Unmercy Sadance» o «@Unmercy-Sadance»): la mía en
+-- naranja, la de otro de la comunidad en azul claro. Con el nombre solo, no es mención: se deja igual
+function HU:HighlightMentions(msg, author, tag)
     if type(msg) ~= "string" or not msg:find("@", 1, true) then return msg end
-    local me = self:Short(self:Me() or ""):lower()
-    local first = me:match("^[^%-]+") or me
-    return (msg:gsub("@([^%s@|,%.:;!%?]+)", function(name)
-        local n = name:lower()
-        if n == me or n == first then return "|cffff9a1f@" .. name .. "|r" end
-        return "|cff7fd4ff@" .. name .. "|r"
+    local me = HU.Fold(self:Short(self:Me() or ""))
+    if author and self:MentionsEveryone(msg, author, tag) then
+        msg = msg:gsub("@(%a+)", function(word)
+            if HU.EVERYONE[word:lower()] then return HU.EVERYONE_COLOR .. "@" .. word .. "|r" end
+        end)
+    end
+    return (msg:gsub("@([^%s@|,%.:;!%?]+)(%s*)([^%s@|,%.:;!%?]*)", function(name, sp, nxt)
+        local full, used
+        if name:find("-", 1, true) then full, used = name, "@" .. name
+        elseif sp ~= "" and nxt ~= "" then full, used = name .. "-" .. nxt, "@" .. name .. sp .. nxt end
+        if not full then return nil end
+        local rest = (used == "@" .. name) and (sp .. nxt) or ""
+        if HU.Fold(full) == me then return "|cffff9a1f" .. used .. "|r" .. rest end
+        if (self.InAnyGuild and self:InAnyGuild(full)) or HU.SpokeLately(full) then return "|cff7fd4ff" .. used .. "|r" .. rest end
+        return nil
     end))
 end
 
+-- Quién ha hablado hace poco por el chat unido. Las listas completas de las otras hermandades no
+-- viajan, así que a un miembro normal de otra hermandad solo se le conoce por haberle leído
+do
+    local SEEN_TTL, SEEN_MAX = 3600, 400
+    local seen, names, count = {}, {}, 0
+    function HU.NoteSpeaker(author)
+        if not author or HU.Secret(author) then return end
+        local full = HU:Short(author)
+        local k = HU.Fold(full)
+        local now = GetTime()
+        if not seen[k] then
+            count = count + 1
+            if count > SEEN_MAX then
+                for name, t in pairs(seen) do
+                    if now - t > SEEN_TTL then seen[name], names[name] = nil, nil count = count - 1 end
+                end
+            end
+        end
+        seen[k], names[k] = now, full
+    end
+    -- (para rellenar menciones: fn(nombre completo) por cada uno que aún cuenta)
+    function HU.EachRecentSpeaker(fn)
+        local now = GetTime()
+        for k, t in pairs(seen) do
+            if now - t < SEEN_TTL then fn(names[k]) end
+        end
+    end
+    function HU.SpokeLately(full)
+        local t = seen[HU.Fold(full)]
+        return t ~= nil and GetTime() - t < SEEN_TTL
+    end
+end
+
+-- ¿Tiene el addon este compañero de mi hermandad? Sí, si ha saludado (HU.guildPeers) o se le ha
+-- visto en el canal unido, donde solo entra quien lo tiene (HU.chanSeen, que rellena cada lectura
+-- del canal). Si no consta, se pide una lectura del canal (a trozos, como mucho cada 2 min) y la
+-- respuesta vale para su siguiente línea
+HU.NO_ADDON_HEX = "808080"
+HU.addonAskT = -999
+function HU:MateHasAddon(full)
+    local k = full and full:lower()
+    if not k then return false end
+    if k == self:MeKey() or (self.guildPeers and self.guildPeers[k]) then return true end
+    local seen = self.chanSeen and self.chanSeen[k]
+    if seen and GetTime() - seen < 7200 then return true end
+    if self.GetChannelMembersAsync and GetTime() - HU.addonAskT > 120 then
+        HU.addonAskT = GetTime()
+        self:GetChannelMembersAsync("main", function() end)
+    end
+    return false
+end
+
+-- La etiqueta <ETIQ> del chat, con su color y un espacio detrás. Es un enlace de addon
+-- (|Haddon:GuildUnion:tag:ETIQ:x|h, x = 1 tiene el addon, 0 no, vacío no se dice): al pasar el ratón
+-- sale un recuadro con el nombre de la hermandad y cuánta gente tiene. [+ARCHITECTURE.md]
+function HU:TagText(tag, hex, addon)
+    hex = hex or self:GuildColorHex(tag)
+    if tag:find("[|:]") then return "|cff" .. hex .. "<" .. tag .. ">|r " end
+    local flag = (addon == true and "1") or (addon == false and "0") or ""
+    return "|cff" .. hex .. "|Haddon:GuildUnion:tag:" .. tag .. ":" .. flag .. "|h<" .. tag .. ">|h|r "
+end
+
+do
+    local shown = false
+    local function OnTagEnter(_, frame, link)
+        if type(link) ~= "string" or HU.Secret(link) then return end
+        local tag, addon = link:match("^addon:GuildUnion:tag:([^:]+):(%d?)")
+        if not tag or not GameTooltip then return end
+        GameTooltip:SetOwner(frame, "ANCHOR_CURSOR")
+        GameTooltip:AddLine(HU:GuildName(tag), 1, 0.82, 0)
+        -- (mi hermandad: lo que dice el juego ahora; las otras: lo que vino con su última lista)
+        -- (sin «conectados»: de las otras hermandades solo viaja la lista corta, y ese número eran
+        -- los de esa lista, no los conectados de verdad: «1000 (5 online)». Jorge, 12/11)
+        local total, age
+        if tag == HU.myTag then
+            total = HU.rosterTotal
+        else
+            local r = HU.remoteRoster and HU.remoteRoster[tag]
+            if r then total, age = tonumber(r.total), r.updated and (GetTime() - r.updated) end
+        end
+        if total and total > 0 then
+            GameTooltip:AddLine(string.format(L("Miembros: %d"), total), 1, 1, 1)
+        else
+            GameTooltip:AddLine(L("Miembros: sin datos todavía"), 0.6, 0.6, 0.6)
+            age = nil
+        end
+        if addon == "1" then GameTooltip:AddLine(L("Tiene Guild Union"), 0.3, 1, 0.3)
+        elseif addon == "0" then GameTooltip:AddLine(L("No tiene Guild Union"), 0.6, 0.6, 0.6) end
+        -- (abajo del todo, en gris: de cuándo son los números de otra hermandad. Jorge, 12/11)
+        if age then
+            local mins = math.floor(age / 60)
+            GameTooltip:AddLine(mins < 1 and L("Actualizado: ahora mismo") or string.format(L("Actualizado: hace %d min"), mins), 0.6, 0.6, 0.6)
+        end
+        GameTooltip:Show()
+        shown = true
+    end
+    local function OnTagLeave()
+        if shown then
+            shown = false
+            GameTooltip:Hide()
+        end
+    end
+    -- (los dos avisos los da el juego para cualquier enlace del chat)
+    if EventRegistry and EventRegistry.RegisterCallback then
+        EventRegistry:RegisterCallback("ChatFrame.OnHyperlinkEnter", function(...) HU:SafeCall("etiqueta", OnTagEnter, ...) end, HU)
+        EventRegistry:RegisterCallback("ChatFrame.OnHyperlinkLeave", OnTagLeave, HU)
+    end
+end
+
+-- Etiqueta de mi hermandad en mis líneas de /g y /o (en gris si el autor no tiene el addon), y
+-- delante la marca de mención si la hay. El juego pinta delante del nombre lo que haya en
+-- CHAT_FLAG_<marca> (como hace con <AFK>); solo se pone si la línea no trae otra marca
+HU.flagNames, HU.flagCount = {}, 0
+local function OwnTagFlag(flag, msg, author)
+    if flag ~= "" or not HU.db then return flag end
+    local full = author and HU:FullName(author)
+    local tag = ""
+    if HU.db.showTag and HU.myTag then
+        local has = HU:MateHasAddon(full)
+        tag = HU:TagText(HU.myTag, not has and HU.NO_ADDON_HEX or nil, has)
+    end
+    local mentioned = full and full:lower() ~= (HU:MeKey() or "") and HU:MentionsMe(msg, full, HU.myTag)
+    if not mentioned and tag == "" then return flag end
+    -- (una marca por cada texto distinto: así una línea que el juego pinte más tarde no coge el de otra)
+    local text = (HU.MENTION_MARK[mentioned] or "") .. tag
+    local name = HU.flagNames[text]
+    if not name then
+        HU.flagCount = HU.flagCount + 1
+        name = "GU" .. HU.flagCount
+        HU.flagNames[text] = name
+        _G["CHAT_FLAG_" .. name] = text
+    end
+    return name
+end
+
+-- (kind: lo que devolvió MentionsMe; un @everyone suena como mucho una vez cada EVERYONE_GAP s,
+-- por si alguien abusa)
 local lastPing = 0
-function HU:PingMention(author)
+HU.EVERYONE_GAP, HU.everyoneT = 30, -999
+function HU:PingMention(_, kind)
     local now = GetTime()
     if now - lastPing < 2 then return end
+    if kind == "all" then
+        if now - HU.everyoneT < HU.EVERYONE_GAP then return end
+        HU.everyoneT = now
+    end
     lastPing = now
     if PlaySound then pcall(PlaySound, (SOUNDKIT and SOUNDKIT.TELL_MESSAGE) or 3081) end
     if FlashClientIcon then pcall(FlashClientIcon) end
 end
 
 -- /g y /o normales: resaltar las menciones también ahí
-local function MentionFilter(_, _, msg, ...)
-    if type(msg) == "string" then
-        return false, HU:Emotes(HU:HighlightMentions(msg)), ...
+local function MentionFilter(_, _, msg, author, lang, chan, target, flag, ...)
+    if type(msg) == "string" and not HU.Secret(msg) then
+        return false, HU:Emotes(HU:HighlightMentions(msg, HU:FullName(author), HU.myTag)), author, lang, chan, target, OwnTagFlag(flag, msg, author), ...
     end
     return false
 end
@@ -1200,12 +1485,10 @@ AddFilter("CHAT_MSG_GUILD", MentionFilter)
 AddFilter("CHAT_MSG_OFFICER", MentionFilter)
 
 function HU:Display(kind, tag, author, msg, guid)
-    local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg)
-    local line = self:FormatLine(kind, tag, author, self:HighlightMentions(msg), guid)
-    if mentioned then
-        line = "|TInterface\\GossipFrame\\AvailableQuestIcon:14:14|t " .. line
-        self:PingMention(author)
-    end
+    HU.NoteSpeaker(author)
+    local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg, author, tag)
+    local line = self:FormatLine(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, HU.MENTION_MARK[mentioned])
+    if mentioned then self:PingMention(author, mentioned) end
     local r, g, b = self:KindColor(kind)
     for _, f in ipairs(self:FramesFor(kind)) do
         f:AddMessage(line, r, g, b)
@@ -1319,7 +1602,8 @@ function HU:OnUnionChat(kind, text, author, guid, via)
         end
         local inner, im = HU:EchoUnwrap(tag, author, msg)
         if not inner or inner:lower() == HU:MeKey() then return end
-        author, msg, sub, via = inner, im, "", "e"
+        -- (el identificador es de quien lo reenvía, no del autor: con él salía con la clase del otro)
+        author, msg, sub, via, guid = inner, im, "", "e", nil
         text = "[" .. tag .. "] " .. im
     end
     msg = HU.SafeText(msg, true)
@@ -1464,7 +1748,8 @@ end)
 
 local function NativeMention(text, author)
     author = HU:FullName(author)
-    if author and author:lower() ~= HU:MeKey() and HU:MentionsMe(text) then HU:PingMention(author) end
+    local mentioned = author and author:lower() ~= HU:MeKey() and HU:MentionsMe(text, author, HU.myTag)
+    if mentioned then HU:PingMention(author, mentioned) end
 end
 HU:On("CHAT_MSG_GUILD", function(text, author)
     if HU.IsEchoLine and HU:IsEchoLine(text, author) then return end

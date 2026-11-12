@@ -138,6 +138,26 @@ y entonces es lo único que queda; si aún no lo dice, solo la de menos de 7 dí
 
 ### línea 359 · `HU.ICON_GM = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:15:15:0:-1|t"`
 
+### Quién es oficial: por permisos (ReduceClean-40)
+
+`HU:RankRole(tag, rango)`: el rango 0 es el maestro. Para los demás, en este orden:
+1. Línea `GU:r:ETIQ:N` en la Información (a mano): oficiales del 1 al N. Si está, manda.
+2. Rangos con permiso de oficial (`HU:OfficerRanksOf`):
+   * **mi hermandad:** los rangos con la casilla «Oficial» marcada en Control de hermandad
+     (`C_GuildInfo.GuildControlGetRankFlags(rango + 1)[22]`; el 22 es la casilla `OfficerCheckbox`
+     de `Blizzard_GuildControlUI`). Se lee como mucho cada 30 s y al llegar `GUILD_RANKS_UPDATE`;
+     se guarda (`db.myOfficerRanks`) por si un día no se puede leer.
+   * **otras hermandades:** no se pueden ver sus permisos. Su enlace los manda detrás de los
+     nombres de los rangos: `RN~ETIQ~nombres~1,2` («0» = solo el maestro; vacío = no se saben). Valen
+     lo mismo que los rangos de su lista, que trae el mismo enlace (mismas reglas: `REMOTE_DATA`,
+     `TAG_FIELD`). Se guardan (`db.officerRanks`). Llegan con la lista entera: si una hermandad
+     cambia los permisos, las demás lo ven en la siguiente lista entera.
+3. Sin saberlo (versión vieja que no los manda, o permisos sin leer): como antes, solo el rango 1.
+Un rango sin la casilla Oficial (p. ej. «Castigado») nunca cuenta, esté donde esté.
+`HU:OfficerRanksNote()`: la línea del asistente (paso 8) con los rangos que cuentan.
+Pendiente de ver en el juego: si un raso puede leer `GuildControlGetRankFlags` (si no, usa lo
+guardado o el rango 1).
+
 maestro: corona; oficiales: dos espadas cruzadas; moderadores del canal: las espadas en rojo
 (un poco más grandes y bajadas 1 px, para que queden centradas con el texto; las espadas se
 recortan un poco para que no se vea el borde de la imagen)
@@ -148,6 +168,19 @@ Pone la corona o las espadas en una textura (las filas de la lista)
 Rango de alguien a partir de las listas que tenemos
 (cada línea del chat lo pide para el icono, y con una lista de otra hermandad sin índice se
 recorrían sus 1.000 miembros uno a uno: una sola línea llegaba a 3 ms. Se recuerda 5 s)
+
+### (57) `local function Doubt(self, sig)`
+
+Un oficial de WLP vio en rojo «Falta al menos una línea GU:g» y «Tu hermandad no aparece» justo tras
+cambiar de zona, con la Información de hermandad bien escrita (11/11). El juego puede dar la Información
+vacía o a medias un momento; fuera de los primeros 45 s tras entrar eso se tomaba por bueno, y si quedaba
+alguna línea suelta de la comunidad (la del título, de las notas repartidas) salía el error.
+Ahora, si ya había una configuración buena y la lectura nueva la deja sin hermandades o sin la mía, no se
+aplica: se pide la lista de hermandad al servidor (`RequestRoster`) y se vuelve a mirar. Solo se cree si
+han pasado `DOUBT_MIN` s **y** el servidor ha entregado la lista otra vez (`rosterVersion` ha subido) y la
+lectura sigue igual; o a los `DOUBT_MAX` s, por si el servidor no contesta. Mientras, sigue valiendo la
+configuración anterior. Si el maestro quita de verdad la hermandad de la comunidad, se nota unos 25 s
+más tarde que antes.
 
 ## Channel.lua
 
@@ -197,18 +230,29 @@ que ordena canales lo vuelve a mover, no nos lo quitamos el uno al otro sin para
 
 ### línea 245 · `HU.After(0.3, function()`
 
-Si el nuestro se había colado delante de los del juego (PC lento, entrar dentro de una
-mazmorra...), estos se corrieron un número (General al /2, Comercio al /3...) y el juego no
-los devuelve solos. Los del juego que van detrás del hueco bajan uno, en orden, hasta el
-primer hueco o el primer canal que no es del juego (nuestro, de otro addon o personal: esos
-no se tocan).
-(un momento después, por si el juego tarda en dar los números nuevos)
+(hasta la 35; sustituido por `HU:FixChannelOrder`, ver más abajo)
 
 ### línea 283 · `HU:OnStart(function()`
 
-Al entrar: medio segundo después ya se entra al canal (con la configuración guardada si la de
-la hermandad aún no ha llegado). Antes se esperaban 10 s para no quitarle el /1 al General;
-ahora, si el nuestro se cuela delante, MoveChannelHigh devuelve los del juego a su sitio.
+Al entrar: se espera a que el juego meta sus canales (como mucho 15 s) y se entra al nuestro (con
+la configuración guardada si la de la hermandad aún no ha llegado).
+
+### Orden de los canales: `HU:FixChannelOrder` (ReduceClean-36)
+
+Si el nuestro está delante de un canal del juego (General, Comercio…), se cambia de sitio con el
+primero de ellos que va detrás (`C_ChatInfo.SwapChatChannelsByChannelIndex`). Un cambio cada vez
+y como mucho uno cada 0,5 s; en el caso normal (nuestro /1, General /2) basta uno.
+- **Solo funciona desde algo que hace el jugador.** Comprobado por Jorge el 10/11: desde un
+  temporizador no hace nada (ni da error); con `/run` directo sí. Por eso se llama desde
+  `GLOBAL_MOUSE_DOWN` (cualquier clic) y al abrir el chat con Intro (`ChatTabs.lua`, gancho a
+  `ChatFrameUtil.OpenChat`).
+- Los clics **solo se escuchan mientras el orden está mal** (`HU:WatchChannelOrder`, marco
+  propio `orderFrame`): se mira cuando el juego avisa de cambios en los canales
+  (`CHANNEL_UI_UPDATE`, `CHAT_MSG_CHANNEL_NOTICE`) y medio segundo después de cada cambio de
+  sitio; con el orden bien, se deja de escuchar `GLOBAL_MOUSE_DOWN`.
+- Hasta la 35, `MoveChannelHigh` lo intentaba 1 s después de entrar o de unirse al canal: en el
+  juego no hacía nada, y el nuestro se quedaba con el /1 si entraba cuando no estaba el General
+  (mazmorra, cambio de carril…). El juego recuerda ese orden al volver a entrar.
 
 ### línea 352 · `local needsT, needsV = -999, false`
 
@@ -453,6 +497,8 @@ un rato (resta 40). Devuelve si lo está y cuánto resta.
 (el AFK automático del juego salta a los 5 min sin moverse: con 150 el enlace cambiaba cada vez
 que un oficial se quedaba quieto y volvía al moverse, y cada cambio era una lista nueva para las
 otras hermandades. Con 40, otro oficial le releva; un raso no)
+(desde la 39, `UnitIsAFK` e `IsResting` pasan por `HU.SafeBool`: en combate o mazmorra el juego
+puede darlos como valor secreto y usarlos directamente daba error cada 15 s; secreto = «no»)
 
 ### línea 567 · `if IsResting and IsResting() then`
 
@@ -1331,6 +1377,20 @@ Rango "Castigado": al silenciar o vetar a alguien de tu hermandad, se le puede b
 rango (que no tiene permiso para hablar en el chat de hermandad: así el juego tampoco le
 deja escribir). Al acabar, se le devuelve su rango. Cada cambio es un clic en un botón del
 juego (/gdemote, /gpromote): un addon no puede cambiar rangos por su cuenta.
+- Bajar: ventana `GU_PUNISH` justo después de silenciar (solo a quien silencia, si puede degradar y
+  el silenciado es de su hermandad). Devolver: ventana `GU_UNPUNISH` cuando acaba el tiempo (si sigue
+  conectado), al quitar el silencio, o 20 s después de entrar si acabó estando fuera.
+- Castigo repartido (ReduceClean-38): al pulsar Bajar, quien castiga manda `KS~nombre~rango de
+  antes~quién~t` por el canal oculto de su hermandad (solo GUILD; lo acepta quien ve que lo manda un
+  oficial). Al pulsar Devolver se manda con rango -1: los demás lo borran y se les cierra la ventana.
+  Cada 30 s (y 20 s después de entrar) cada oficial mira los castigos con el silencio ya acabado
+  (los silencios llegan a todos, MU): «¿Devolverle su rango?» le sale a quien castigó; si ese no
+  está conectado, a cualquier oficial que pueda ascender. Si se pulsa «Ahora no», vuelve a salir a
+  los 10 min. Al quitar el silencio o al acabarse estando conectado, a quien castigó le sale ya.
+- Sin rango de castigo (ReduceClean-37): ventana `GU_NOPUNISH` («crea un rango Castigado sin
+  permiso para hablar»), con las mismas condiciones que `GU_PUNISH`. Nombres que valen:
+  castigado, castigada, castigados, punished. El addon no puede comprobar los permisos del rango
+  (`GuildControlGetRankFlags` no existe en Forever).
 
 ## Audit.lua
 
@@ -1381,6 +1441,22 @@ Crea en el chat del juego las pestañas:
 "Buscar grupo"  los mensajes de Buscar grupo de todas las hermandades
 "Oficiales"     chat de oficiales unido (solo si puedes verlo)
 Se crean una vez; si las cierras, se pueden volver a crear desde el panel o con /gu pestañas.
+
+### Cada pestaña escribe en lo suyo (ReduceClean-35)
+
+- Se aplica al abrir el chat (gancho a `ChatFrameUtil.OpenChat`, solo sin texto) y al hacer clic
+  izquierdo en la pestaña (gancho a `FCF_Tab_OnClick`). Cambia el tipo y el «pegajoso» del cuadro de
+  esa ventana: Hermandad → GUILD, Oficiales → OFFICER. No toca nada si el tipo actual no es el
+  pegajoso (contestando un susurro, etc.).
+- Buscar grupo no es un tipo de chat del juego. El cuadro queda en SAY con la marca `eb.guLFG`, y un
+  gancho a `UpdateHeader` pinta encima la cabecera «Buscar grupo:» (naranja, mismos márgenes que
+  Blizzard). Al enviar, el evento `ChatFrame.OnEditBoxPreSendText` (Blizzard lo deja para que los
+  addons toquen el texto; llega tras procesar los comandos /) **vacía primero el cuadro** y luego
+  manda el texto con `HU:SendLFG`. Así, si algo falla, no sale nada por /decir. Se apunta en el
+  historial de flechas como `/buscargrupo texto`.
+- La marca se quita si el tipo deja de ser SAY o si el jugador escribe un comando de chat
+  (`/g`, `/s`, `/w`, `/1`…; gancho a `HandleChatType`).
+- Antes (hasta la 34) se escribía «/buscargrupo » en el cuadro y se veía «Say: /buscargrupo».
 
 ## Test.lua
 
@@ -1649,6 +1725,23 @@ chat: van a la ventana de órdenes (Orders.lua). Antes el addon los escribía en
 al abrirla tú, y eso en Forever contamina esos comandos y el juego los bloquea hasta /reload.
 
 ## History.lua
+
+### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)
+
+`HU.QuerySpans(mensaje, búsqueda)` da los trozos (bytes) donde está lo buscado, sin mirar mayúsculas
+ni acentos (`HU.Fold` letra a letra) y saltando los códigos del juego del mensaje (`|c`, `|cn…:`,
+`|H…|h`, `|T…|t`, `|A…|a`). `Line` devuelve `{ texto, bytes antes del mensaje, mensaje }` y `Show`
+pone detrás de cada trozo un fondo azul de «texto seleccionado» (`MarkRow`, con
+`CalculateScreenAreaFromCharacterSpan`, lo mismo que usa el chat de Blizzard al seleccionar con el
+ratón; índices en bytes del texto entero, el final sin incluir). Todo con `pcall`: si fallase, la
+línea sale sin marcar. (La 46 lo pintaba de naranja; Jorge lo quería como seleccionado.)
+Al llegar más resultados de la misma búsqueda la lista ya no vuelve arriba (`W.keepScroll`); sí con
+una búsqueda nueva.
+**48:** viendo el contexto («[ver]»), lo que sigue llegando se guarda pero no se pinta (`W.inContext`):
+antes te devolvía a la lista. Al volver, la lista queda donde la dejaste (`W.listScroll`).
+El historial guarda y compara con la hora del servidor (`HU.StampNow`), no con la del PC de cada
+oficial: con relojes distintos, los mensajes de varios oficiales salían desordenados. Lo guardado
+antes sigue con la hora del PC de quien lo guardó.
 
 ### línea 6 · `local MAX_BYTES = 8 * 1024 * 1024`
 
@@ -2006,10 +2099,124 @@ siguiente suyo. Al acabar (DisplayChat), los que queden. No se rehace nada suyo:
 
 Buscador de personajes en la pestaña de miembros de Blizzard, junto a su filtro (como el de
 GuildManagement): busca en mi hermandad y en los oficiales conectados de las otras. La lista de
-Blizzard no se filtra (tocar sus datos bloquea sus botones): como mucho se lleva hasta él
+Blizzard no se filtra (tocar sus datos bloquea sus botones).
 
-### línea 462 · `local found = box.FindElementDataByPredicate and select(2, pcall(box.FindElementDataByPred`
+### El buscador no mueve la lista de Blizzard (ReduceClean-39)
+
+Hasta la 38 el buscador desplazaba la lista de miembros de Blizzard hasta la persona
+(`ScrollToElementDataByPredicate`). Al desplazarla, Blizzard prepara las filas nuevas dentro de esa
+llamada; si la llamada viene del addon, esas filas (y el `memberInfo` de cada una) quedan
+contaminadas, y lo que el jugador haga luego con ese miembro en su ventana lo bloquea el juego:
+cambiar el rango (`SetGuildRankOrder`), guardar la nota (`SetNote`), «Copiar nombre»
+(`CopyToClipboard`). Informes de Jorge del 10/11 con la 37.
+Ahora `ScrollTo` solo **mira**: busca la fila entre las que se ven (`FindFrameByPredicate`) y le pone
+encima un resaltado nuestro (pegado a la fila, no dentro de ella). Durante 20 s lo vuelve a buscar
+cada 0,25 s, así que si bajas con la rueda la marca te sigue. Si está en la lista pero no se ve,
+lo dice una vez en el chat.
+**49:** en la lista estrecha de la vista del chat el aviso es solo la flecha; en la ancha de Miembros,
+flecha y texto, y mientras dura la marca cada fila que se ve lleva su **número de posición** a la
+derecha (Blizzard no los pone y el «183 de 690» no servía de nada). Se leen las filas
+(`GetFrames`, `FindFrameElementDataIndex`) y los números son nuestros, pegados a cada fila.
+**43:** el aviso ya no parpadea: recuadro fijo con el borde de las fichas del juego, flecha dorada y
+el nombre en dorado. Al borrar lo escrito en el buscador (X, Escape o borrar) se quitan el aviso y
+la marca (`ClearMark`).
+**45:** elegir a alguien de otra hermandad (Intro o clic) ya no abre un susurro: se dice de qué
+hermandad es (`Pick`). Susurrar sigue en el clic derecho. La marca y el aviso ya no duran 20 s:
+siguen mientras no cambies lo escrito en el buscador (se miran cada 0,25 s, solo con la ventana
+abierta); al escribir otra cosa, borrarlo o esconderse el buscador, `ClearMark`.
+**44:** el buscador sale en la vista de miembros y en la del chat; no en Información ni con nuestra
+pestaña abierta (se miraba `IsShown` de la casilla, que sigue «puesta» aunque su lista esté
+escondida; ahora `IsVisible`, y se recoloca al cambiar de vista y al abrir o cerrar nuestra pestaña,
+`HU.SyncCharSearch`).
+**42:** si está en la lista pero no se ve, una flecha parpadeando en el borde de la lista (abajo o
+arriba, hacia donde está) con «Nombre: más abajo · 37 de 120». Solo lecturas de la lista
+(`FindElementDataIndexByPredicate`, `GetDataIndexBegin/End`, `GetDataProviderSize`). Al aparecer
+su fila, la flecha se quita y la fila se resalta. Probado con la 41 (10/11): mover la lista desde el
+addon bloquea rango y «Copiar nombre» aunque luego la muevas tú; por eso no se mueve nunca.
+
+### línea 676 · `local found = box.FindElementDataByPredicate and select(2, pcall(box.FindElementDataByPred`
 
 (desconectado y la lista no enseña desconectados: no se marca la casilla desde el addon —eso
 contaminaría la lista y bloquearía sus botones—; se hace brillar para que la marques tú, y
-al marcarla te lleva a él solo)
+al marcarla se marca a la persona)
+
+### Clic derecho en la lista de Blizzard (ReduceClean-39)
+
+`Menu.ModifyMenu("MENU_UNIT_COMMUNITIES_GUILD_MEMBER", …)`: la vía de Blizzard para que los addons
+añadan opciones a sus menús. Blizzard llama a lo nuestro aparte (`securecallfunction`), después de
+montar lo suyo, así que sus opciones no se contaminan. Solo para oficiales (`HU:CanPin`) y no sobre
+uno mismo: «Silenciar 10 min», «Quitar silencio», «Buscar lo que ha dicho» (lo mismo que el menú
+de nuestra lista, `PlayerMenu`).
+
+
+## Mention.lua
+
+### línea 1 · `local _, HU = ...`
+
+Rellenar el nombre de una mención con Tab. Pieza suelta: si falla o se quita del `.toc`, lo demás sigue igual.
+  * Solo mira la caja de escribir del juego cuando se habla por hermandad u oficiales y el texto no
+    empieza por «/» (el juego revisa los textos con «/» cada vez que cambian; ahí no se escribe nada).
+  * Al cambiar el texto busca el último «@» antes del cursor y lo que va detrás (2 letras o más, como
+    mucho un espacio). Con eso arma la lista: mi hermandad (`HU.roster`), lo que se sabe de las otras
+    (`HU.remoteRoster`) y quien ha hablado en la última hora (`HU.EachRecentSpeaker`, Channel.lua).
+    Sin mayúsculas ni acentos; primero los conectados.
+  * Encima de la caja sale una franja con los tres primeros. No es una lista que se pulse: solo avisa.
+  * Tab pone el nombre completo («@Nombre Apellido »). Otro Tab sin tocar nada cambia al siguiente.
+  * El Tab entra por `ChatEdit_CustomTabPressed`, el enganche que deja el juego para los addons (lo
+    llama con securecall). Si otro addon lo tenía puesto, se le llama cuando aquí no hay nada que rellenar.
+
+## ChatTabs.lua · Chattynator
+
+Chattynator (addon de chat de otro autor, con versión para Forever) esconde las ventanas y pestañas de
+chat del juego y pone las suyas. Leído en su versión 234:
+  * Los mensajes normales los pinta copiando el mecanismo del juego: pasa los filtros y usa
+    `CHAT_FLAG_<marca>`, así que la etiqueta propia, las marcas de mención y los emoticonos funcionan.
+  * De lo que escriben los addons solo recoge `DEFAULT_CHAT_FRAME:AddMessage`. Lo escrito en otra
+    ventana del juego (la pestaña «Buscar grupo») no se ve.
+  * Usa la caja de escribir del juego (`ChatFrame1EditBox`): el Tab de menciones y `/glf` funcionan.
+Por eso, con Chattynator cargado (`HU.UsingChattynator`), `HU:FramesFor` devuelve solo la ventana
+principal para todos los tipos, y no se crean las pestañas propias. No se usa su
+`AddMessageToWindowAndTab`: marca el mensaje para una sola pestaña y, si el jugador no tiene activados
+ahí los mensajes de addon, no lo vería en ningún sitio.
+
+## Channel.lua · la etiqueta como enlace
+
+`HU:TagText(tag, hex, addon)` pinta `<ETIQ>` como enlace de addon (`|Haddon:GuildUnion:tag:ETIQ:x|h`).
+El juego avisa de cualquier enlace del chat con `ChatFrame.OnHyperlinkEnter` y `OnHyperlinkLeave`
+(EventRegistry); ahí se enseña un recuadro con el nombre de la hermandad, miembros y conectados
+(de `HU.rosterTotal/rosterOnline` en la mía; de `remoteRoster[tag].total/.online/.updated` en las
+otras, con «hace X min») y, en las líneas propias, si el autor tiene el addon. El clic no hace nada.
+## Channel.lua · no entrar al canal donde el juego lo bloquea
+
+En un campo de batalla o una arena el juego bloquea `JoinTemporaryChannel` (ADDON_ACTION_BLOCKED), y
+al entrar al juego `EnsureJoined` lo intentaba una vez por segundo durante 20 s: tantos bloqueos
+seguidos sacan el aviso del juego «tus addons están dando muchos problemas» (visto el 12/11).
+
+- `HU:CanJoinNow()` dice si se puede intentar: no con el chat bloqueado (`IsChatLockedDown`), no en
+  zona `pvp`/`arena` (`IsInInstance`) y no con una partida en estado `active` (`GetBattlefieldStatus`:
+  desde que se acepta, antes de la pantalla de carga). `EnsureJoined` no intenta nada mientras tanto.
+- Las mazmorras y bandas no se cortan por zona: ahí solo manda `IsChatLockedDown`, para no dejar sin
+  chat a quien entra al juego dentro de una.
+- Red de seguridad: el intento se marca con `HU.expectBlock = "join"`; si aun así sale bloqueado,
+  ese canal espera 60 s (`c.blockedT`) en vez de reintentar cada segundo.
+- Al cambiar de zona (`PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`) se vuelve a mirar a los 2 s,
+  para entrar al canal nada más salir de la partida.
+
+## Channel.lua · memoria de clases
+
+El color del nombre en el chat unido sale de la clase, y la clase se buscaba en cada mensaje: por el
+identificador del mensaje (`GetPlayerInfoByGUID`), en la lista de mi hermandad o en la lista corta de
+las otras (`HU:ClassOfName`). Si ninguna la daba, naranja; el mismo jugador cambiaba de color según
+por dónde llegara su mensaje.
+
+- `RememberClass` / `RecallClass` (locales, junto a `ClassColored`): cuando se sabe la clase se apunta
+  en `db.classMemo` (`[nombre en minúsculas] = número de clase`, de la cuenta) y, cuando no se sabe, se
+  usa la apuntada. Lo que llega con identificador manda y corrige lo apuntado.
+- Tope: dos tandas de `MEMO_GEN` nombres (`classMemo` y `classMemoOld`). Al llenarse la actual pasa a
+  vieja y se tira la vieja anterior; lo que se vuelve a usar de la vieja se rescata a la actual.
+- Los repasos del historial no traen identificador: usan la memoria, nunca la escriben mal.
+- Fallo arreglado de paso: en el eco (`[ETIQ:E]`, lo de alguien sin addon que reenvía su enlace)
+  `OnUnionChat` cambiaba el autor pero dejaba el identificador de quien reenvía, y el nombre salía con
+  la clase del que reenviaba. Ahora el eco va sin identificador.
+- Límite: de quien nunca se ha sabido la clase (miembro sin addon de otra hermandad que no está en la
+  lista corta) sigue saliendo naranja. Arreglarlo es mandar la clase dentro del eco: comunicación.

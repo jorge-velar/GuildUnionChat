@@ -1,7 +1,10 @@
 -- Guild Union - modo combate: en combate dentro de una banda o mazmorra el addon solo muestra y manda [+ARCHITECTURE.md]
 local _, HU = ...
 
-local INSTANCE_KINDS = { party = true, raid = true }
+-- (campos de batalla y arenas también: ahí el juego bloquea los envíos en combate y, sin este modo, la
+-- cola se llenaba de saludos que caducaban y se perdía el contacto con las otras hermandades. 11/11)
+local INSTANCE_KINDS = { party = true, raid = true, pvp = true, arena = true }
+local PVP_KINDS = { pvp = true, arena = true }
 local CEDE_PENALTY = 150         -- (lo mismo que resta Busy() en banda: Comm.lua)
 local CEDE_IN_DUNGEON = true     -- (en banda ya lo resta Busy(); esto lo añade en mazmorra)
 local DRAIN_MS = 0.8             -- trabajo por fotograma al salir de combate
@@ -165,10 +168,20 @@ local function Replay(e)
 end
 
 local holdDropped = 0
+-- Volver a saludar: mi hermandad y, si soy el enlace, las otras. Como mucho una vez cada 20 s.
+local helloT = -999
+local function HelloAgain()
+    if GetTime() - helloT < 20 or not HU.myTag or not HU.HelloCycle then return end
+    helloT = GetTime()
+    HU:SafeCall("combate", HU.HelloCycle, HU)
+    if HU.AnnounceRelay then HU.After(1.5, function() HU:AnnounceRelay(true) end) end
+end
 local function CatchUp()
     -- (tras un combate largo o si se tiró algo: se piden a mi hermandad todas las listas de una vez; [+ARCHITECTURE.md]
     local long = diag.holdT and diag.releaseT and diag.releaseT - diag.holdT > 60
     if not (long or diag.dropped > holdDropped) then return end
+    -- (y se saluda ya: los saludos de mientras tanto no salieron, y sin ellos nadie me contesta)
+    HelloAgain()
     if HU.OtherTags and HU.myTag and HU.AskGuildForMissing then
         HU.rosterNeed = HU.rosterNeed or {}
         for _, tag in ipairs(HU:OtherTags()) do HU.rosterNeed[tag] = true end
@@ -244,11 +257,18 @@ end
 local function Update()
     if enc and GetTime() - encT > ENC_MAX then enc = false end
     local locked = InCombatLockdown and InCombatLockdown() or false
+    -- (en un campo de batalla el bloqueo del chat puede durar algo más que el combate)
+    if not locked and PVP_KINDS[instKind] and HU.IsChatLockedDown then locked = HU:IsChatLockedDown() end
     local now = inInst and (regen or enc or locked) or false
     if now == hold then return end
     hold = now
     if hold then
         diag.holds, diag.holdT = diag.holds + 1, GetTime()
+        if PVP_KINDS[instKind] and not HU.pvpLockTold then
+            -- (una vez por sesión: si no, quien no lo sabe cree que el addon se ha roto)
+            HU.pvpLockTold = true
+            HU:Print(HU.L("En combate dentro de un campo de batalla o una arena el juego bloquea el chat unido: no ves a las otras hermandades ni les llega lo que escribes. Vuelve solo al acabar el combate."))
+        end
         holdDropped = diag.dropped
         if not trickling then trickling = true; HU.After(TRICKLE_EVERY, Trickle) end
     else
@@ -259,11 +279,27 @@ end
 ---------------------------------------------------------------------------
 -- Ceder el papel de enlace o ayudante en una instancia
 ---------------------------------------------------------------------------
+-- En cola de un campo de batalla o una arena (o con la partida lista para entrar): se cede ya, cuando
+-- todavía se puede avisar. Al entrar puede ser tarde: el juego bloquea los envíos (Jorge, 11/11)
+local queued = false
+local function InPvpQueue()
+    if not GetBattlefieldStatus then return false end
+    local n = (GetMaxBattlefieldID and tonumber(GetMaxBattlefieldID())) or 3
+    for i = 1, n do
+        local ok, status = pcall(GetBattlefieldStatus, i)
+        -- («active» también: entre aceptar la partida y terminar de cargarla aún no cuenta como instancia)
+        if ok and not HU.Secret(status) and (status == "queued" or status == "confirm" or status == "active") then return true end
+    end
+    return false
+end
+
 local origScore = HU.RelayScore
 if origScore then
     HU.RelayScore = function(self)
         local s = origScore(self)
         if CEDE_IN_DUNGEON and inInst and instKind == "party" then s = s - CEDE_PENALTY end
+        -- (dentro de la partida ya lo resta Busy(), en Comm.lua: aquí solo mientras se espera fuera)
+        if queued and not inInst then s = s - CEDE_PENALTY end
         return s
     end
 end
@@ -280,6 +316,20 @@ local function CedeNow()
         if HU.myTag and IsInGuild() then HU:Send(HU:HelloText("HI"), "GUILD", nil, true) end
     end)
 end
+
+local function CheckQueue()
+    local now = InPvpQueue()
+    if now == queued then return end
+    queued = now
+    if queued then
+        if not inInst then CedeNow() end
+    elseif HU.myTag and HU.RelayScore then
+        -- (ha salido de la cola sin entrar: la puntuación vuelve a la suya; se dirá en el saludo siguiente)
+        HU.myAdvScore = HU:RelayScore()
+        if HU.ForgetRelayMemo then HU.ForgetRelayMemo() end
+    end
+end
+function HU:InPvpQueue() return queued end
 
 local function InHelpers(k)
     for _, n in ipairs(HU.advertisedHelpers or {}) do if HU:Key(n) == k then return true end end
@@ -326,15 +376,45 @@ end
 -- Eventos
 ---------------------------------------------------------------------------
 local function CheckInstance()
-    local was = inInst
+    local was, wasKind = inInst, instKind
     local i, kind = false, nil
     if IsInInstance then i, kind = IsInInstance() end
     inInst = (i and INSTANCE_KINDS[kind]) and true or false
     instKind = inInst and kind or nil
     if inInst and not was then CedeNow() end
+    -- (la hora a la que empezó la partida, para pedir al salir el chat que no se ha podido leer. Se
+    -- guarda: un /reload dentro no la pierde ni la pone a cero)
+    if inInst and PVP_KINDS[instKind] and HU.db and not HU.db.pvpSince then
+        HU.db.pvpSince = HU.StampNow() - 30
+    end
     Update()
+    -- (al salir de un campo de batalla o una arena: ponerse al día enseguida, sin esperar al ciclo)
+    if was and not inInst and PVP_KINDS[wasKind] then
+        local since = HU.db and HU.db.pvpSince
+        if HU.db then HU.db.pvpSince = nil end
+        HU.After(3, function()
+            if hold then return end
+            if since and HU.AskMissedChat then
+                local heard = HU.hlHeard or 0
+                HU:AskMissedChat(since)
+                -- (contesta uno solo de mi hermandad; si justo ese está en otra partida no llega nada:
+                -- se repite una vez, cuando ya puede contestar otro)
+                HU.After(150, function()
+                    if not hold and (HU.hlHeard or 0) == heard then HU:AskMissedChat(since) end
+                end)
+            end
+            HelloAgain()
+            if HU.OtherTags and HU.myTag and HU.AskGuildForMissing then
+                HU.rosterNeed = HU.rosterNeed or {}
+                for _, tag in ipairs(HU:OtherTags()) do HU.rosterNeed[tag] = true end
+                HU:SafeCall("combate", HU.AskGuildForMissing, HU)
+            end
+        end)
+    end
 end
 
+HU:On("UPDATE_BATTLEFIELD_STATUS", CheckQueue)
+HU:On("PLAYER_ENTERING_WORLD", CheckQueue)
 HU:On("PLAYER_ENTERING_WORLD", CheckInstance)
 HU:On("ZONE_CHANGED_NEW_AREA", CheckInstance)
 HU:On("PLAYER_REGEN_DISABLED", function() regen = true; Update() end)
@@ -344,6 +424,9 @@ HU:On("ENCOUNTER_START", function() enc, encT = true, GetTime(); Update() end)
 HU:On("ENCOUNTER_END", function() enc = false; Update() end)
 HU:OnStart(function()
     CheckInstance()
+    -- (entro fuera de una partida con la hora de una vieja guardada, p. ej. tras caerse el juego dentro:
+    -- ya se pide lo de «mientras no estabas» al arrancar, Social.lua)
+    if not (inInst and PVP_KINDS[instKind]) and HU.db then HU.db.pvpSince = nil end
     -- (red de seguridad: si se pierde el aviso de fin de combate, no se queda en pausa)
     HU.NewTicker(5, function()
         if not hold then return end

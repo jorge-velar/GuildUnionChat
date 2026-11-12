@@ -34,7 +34,8 @@ function HU:Display(kind, tag, author, msg, guid)
     origDisplay(self, kind, tag, author, msg, guid)
     if kind ~= "main" or not tag or tag == self.myTag then return end
     -- (sin «[Guild]» delante: en esta ventana las líneas de Blizzard tampoco lo llevan)
-    local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg), guid, true)
+    local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg, author, tag)
+    local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, true, nil, HU.MENTION_MARK[mentioned])
     local line = head .. body
     local r, g, b = self:KindColor(kind)
     recent[#recent + 1] = { line, r, g, b, t = (GetServerTime and GetServerTime()) or time() }
@@ -171,6 +172,22 @@ local function PlayerMenu(owner, e)
     end)
 end
 
+-- Clic derecho en la lista de miembros de Blizzard: las opciones de oficial de GuildUnion, al final
+local function AddToGuildMemberMenu(_, root, ctx)
+    local name = ctx and ctx.name
+    if type(name) ~= "string" or (issecretvalue and issecretvalue(name)) or ctx.isSelf or not HU:CanPin() then return end
+    root:CreateDivider()
+    root:CreateTitle("GuildUnion")
+    root:CreateButton(L("Silenciar 10 min"), function() HU:SetMute(name, 600, L("desde el menú")) end)
+    root:CreateButton(L("Quitar silencio"), function() HU:SetMute(name, -1) end)
+    root:CreateButton(L("Buscar lo que ha dicho"), function() HU:HistSearch(name, nil) end)
+end
+HU:OnStart(function()
+    if Menu and Menu.ModifyMenu then
+        Menu.ModifyMenu("MENU_UNIT_COMMUNITIES_GUILD_MEMBER", function(...) HU:SafeCall("menú de miembro", AddToGuildMemberMenu, ...) end)
+    end
+end)
+
 local function Header(parent, text, anchor, y)
     local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     h:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, y or -14)
@@ -266,7 +283,8 @@ local function RefreshStatus()
     if not panel then return end
     local chan = HU.IsJoined and HU:IsJoined("main")
     local relay = (HU.IsRelay and HU:IsRelay()) and L("tú") or (HU.RelayName and HU:RelayName()) or "?"
-    local n = #HU:OtherTags()
+    -- (cuenta también la mía: con WLP, WLP2 y WLP3 son 3, no 2. Jorge, 12/11)
+    local n = #HU:OtherTags() + (HU.myTag and 1 or 0)
     panel.status:SetText(
         L("Canal: ") .. (chan and "|cff44ff44" .. L("conectado") .. "|r" or "|cffff4444" .. L("sin conectar") .. "|r")
         .. "    " .. L("Enlace: ") .. "|cffffffff" .. HU:Nice(relay) .. "|r"
@@ -275,23 +293,55 @@ local function RefreshStatus()
     for _, f in ipairs(panel.officerOnly) do f:SetShown(officer) end
     panel.ecoBtn:SetShown(HU:IsMaster())
     panel.ecoBtn:SetText((HU.cfg and HU.cfg.echo) and L("Eco: quitar") or L("Eco: poner"))
+    if panel.createBtn then
+        local has = HU.myTag ~= nil
+        panel.createBtn:SetText(has and L("Invitar a la comunidad") or L("Crear comunidad"))
+        panel.createBtn:SetShown(has and HU:CanInvite() or (not has and IsInGuild() and HU:IsMaster()))
+        panel.manageBtn:SetShown(has and officer)
+    end
+end
+
+-- El panel es uno solo y vive en dos sitios (Jorge, 10/11): en la pestaña de la ventana de hermandad
+-- de Blizzard (J) o en la ventana propia de GuildUnion (minimapa, /gu). La propia no es de Blizzard:
+-- abrirla no «contamina» nada, así que cambiar rangos y notas sigue funcionando
+local main
+local function AttachBlizz()
+    local f = Win()
+    if not (panel and f and f.Chat) or panel.where == "blizz" then return end
+    panel:SetParent(f)
+    panel:ClearAllPoints()
+    -- (tapa toda la zona de contenido: chat y lista de miembros de la derecha; y también la franja
+    -- de arriba, la de los desplegables, el buscador y «N/M conectados»: lo que hay en ella depende
+    -- de la pestaña de la que se venga y se quedaba a la vista, cada vez distinto. Jorge, 12/11.
+    -- La barra del título, con la X, mide HEADER_TOP y no se tapa)
+    local HEADER_TOP = 24
+    local up = 6
+    local top, chatTop = f:GetTop(), f.Chat:GetTop()
+    if top and chatTop then up = math.max(6, math.min(80, (top - HEADER_TOP) - chatTop)) end
+    panel:SetPoint("TOPLEFT", f.Chat, "TOPLEFT", -6, up)
+    panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 28)
+    -- (DIALOG: la ventana de hermandad ya va en HIGH y su chat quedaba por encima)
+    panel:SetFrameStrata("DIALOG")
+    panel.where = "blizz"
+    if main then main:Hide() end
 end
 
 local function ShowPanel(on)
     if not panel then return end
+    -- (lo que cierra la pestaña de Blizzard no cierra la ventana propia)
+    if not on and panel.where == "own" then
+        if tab then tab:SetChecked(false) end
+        return
+    end
+    if on then AttachBlizz() end
     panel:SetShown(on)
-    tab:SetChecked(on)
+    if tab then tab:SetChecked(on) end
+    if HU.SyncCharSearch then HU.SyncCharSearch() end
     if on then RefreshStatus(); RefreshOfficers() end
 end
 
-local function BuildPanel(f)
-    panel = CreateFrame("Frame", "GuildUnionReducePanel", f, "InsetFrameTemplate")
-    -- (tapa toda la zona de contenido: chat y lista de miembros de la derecha. Por encima de todo lo
-    -- de la ventana —su texto del chat se pintaba encima— y con fondo opaco)
-    panel:SetPoint("TOPLEFT", f.Chat, "TOPLEFT", -6, 6)
-    panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 28)
-    -- (DIALOG: la ventana de hermandad ya va en HIGH y su chat quedaba por encima)
-    panel:SetFrameStrata("DIALOG")
+local function BuildPanel()
+    panel = CreateFrame("Frame", "GuildUnionReducePanel", UIParent, "InsetFrameTemplate")
     panel:SetToplevel(true)
     panel:EnableMouse(true)
     panel:Hide()
@@ -303,7 +353,8 @@ local function BuildPanel(f)
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 14, -12)
-    title:SetText("GuildUnion Reduce" .. (HU.REDUCE_VERSION and (" " .. HU.REDUCE_VERSION) or ""))
+    -- (el nombre y la versión de verdad, la misma que CurseForge y /gu errores: Jorge, 10/11)
+    title:SetText(HU.ADDON_TITLE .. " " .. tostring(HU.version))
     panel.status = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     panel.status:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
     panel.status:SetPoint("RIGHT", panel, "RIGHT", -14, 0)
@@ -320,14 +371,15 @@ local function BuildPanel(f)
     local qText = Box(panel, 160, h1)
     local b1 = Button(panel, L("Buscar"), 70, qText)
     b1:SetScript("OnClick", function() HU:HistSearch(nil, qText:GetText()) end)
-    qText:SetScript("OnEnterPressed", function(s) s:ClearFocus(); HU:HistSearch(nil, s:GetText()) end)
+    -- (Intro = pulsar «Buscar»: lo mismo, por el mismo botón)
+    qText:SetScript("OnEnterPressed", function(s) s:ClearFocus(); b1:Click() end)
 
     local h2 = Header(panel, L("Buscar jugador"), qText, -12)
     h2:SetPoint("TOPLEFT", qText, "BOTTOMLEFT", -6, -12)
     local qName = Box(panel, 160, h2)
     local b2 = Button(panel, L("Buscar"), 70, qName)
     b2:SetScript("OnClick", function() HU:HistSearch(qName:GetText(), nil) end)
-    qName:SetScript("OnEnterPressed", function(s) s:ClearFocus(); HU:HistSearch(s:GetText(), nil) end)
+    qName:SetScript("OnEnterPressed", function(s) s:ClearFocus(); b2:Click() end)
 
     local h3 = Header(panel, L("Silenciar"), qName, -12)
     h3:SetPoint("TOPLEFT", qName, "BOTTOMLEFT", -6, -12)
@@ -356,7 +408,7 @@ local function BuildPanel(f)
     end)
     local bUnmute = Button(panel, L("Quitar"), 80, bMute)
     bUnmute:SetScript("OnClick", function() HU:SetMute(mName:GetText(), -1) end)
-    HU:NameSuggest(qName)
+    HU:NameSuggest(qName, function(s) s:ClearFocus(); b2:Click() end)
     HU:NameSuggest(mName)
     for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute }) do
         panel.officerOnly[#panel.officerOnly + 1] = w
@@ -375,12 +427,33 @@ local function BuildPanel(f)
         if HU.EchoCommand then HU:EchoCommand((HU.cfg and HU.cfg.echo) and "off" or "on") end
         RefreshStatus()
     end)
+    -- Comunidad (arriba a la derecha): «Crear comunidad» sin comunidad (el maestro), «Invitar a la
+    -- comunidad» con ella (principal y gestores), y «Gestionar comunidad» (oficiales)
+    panel.manageBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    panel.manageBtn:SetSize(150, 22); panel.manageBtn:SetText(L("Gestionar comunidad"))
+    panel.manageBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -14, -10)
+    panel.manageBtn:SetScript("OnClick", function() if HU.ShowGuildsWindow then HU:ShowGuildsWindow() end end)
+    panel.createBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    panel.createBtn:SetSize(170, 22)
+    panel.createBtn:SetPoint("RIGHT", panel.manageBtn, "LEFT", -6, 0)
+    panel.createBtn:SetScript("OnClick", function() if HU.OpenWizard then HU:OpenWizard() end end)
 
     -- Columna derecha: oficiales de las otras hermandades
     local h5 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     -- (debajo de la línea de estado, que ocupa todo el ancho: antes se pisaban)
     h5:SetPoint("TOPLEFT", panel, "TOP", 10, -70)
     h5:SetText(L("Oficiales conectados"))
+    -- Emoticonos sí/no (para todos), a la derecha del título
+    local bEmotes = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    bEmotes:SetSize(130, 22)
+    bEmotes:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -30, -64)
+    local function EmotesText() bEmotes:SetText(HU.db.emotesOff and L("Emoticonos: no") or L("Emoticonos: sí")) end
+    bEmotes:SetScript("OnClick", function()
+        HU.db.emotesOff = not HU.db.emotesOff or nil
+        EmotesText()
+    end)
+    bEmotes:SetScript("OnShow", EmotesText)
+    EmotesText()
     -- (cabecera de columnas, como la lista de miembros de Blizzard)
     -- (anchos que caben en media ventana: antes «Hermandad» se salía por la derecha)
     local COL_NAME, COL_RANK = 118, 78
@@ -559,6 +632,8 @@ local function SuggFrame()
             local box = sugg.owner
             if box then box:SetText(HU:Nice(self.name)); box:SetCursorPosition(#box:GetText()) end
             sugg:Hide()
+            -- (el cuadro puede pedir hacer algo al elegir, p. ej. buscar ya: «Buscar jugador»)
+            if box and box.guOnPick then box.guOnPick(box) end
         end)
         sugg.rows[i] = b
     end
@@ -592,9 +667,10 @@ local function ShowSuggestions(box)
 end
 
 -- Engancha las sugerencias a un cuadro: aparecen al escribir; clic o Tab para coger una
-function HU:NameSuggest(box)
+function HU:NameSuggest(box, onPick)
     if not box or box.guSuggest then return end
     box.guSuggest = true
+    box.guOnPick = onPick
     local function close() if sugg and sugg.owner == box then sugg:Hide() end end
     box:HookScript("OnTextChanged", function(_, user) if user then ShowSuggestions(box) end end)
     box:HookScript("OnTabPressed", function()
@@ -609,12 +685,26 @@ function HU:NameSuggest(box)
     box:HookScript("OnHide", close)
 end
 
--- lleva la lista de Blizzard hasta ese miembro (si se ve en ella), sin tocar sus datos
+-- Marca a ese miembro en la lista de Blizzard SIN moverla: solo mira (ver ARCHITECTURE.md, «El buscador
+-- no mueve la lista de Blizzard»)
+local offFlash
+-- Quita la marca y el aviso (al borrar lo escrito en el buscador)
+local function ClearMark()
+    local hl, arrow = _G.GuildUnionReduceHL, _G.GuildUnionReduceArrow
+    if hl then
+        if hl.ticker then hl.ticker:Cancel(); hl.ticker = nil end
+        hl:Hide()
+    end
+    if arrow then arrow:Hide() end
+    if _G.GuildUnionReduceNums then _G.GuildUnionReduceNums:Hide() end
+    if offFlash then offFlash:Hide() end
+    HU.pendingFind = nil
+end
 local ScrollTo
 ScrollTo = function(name)
     local f = Win()
     local box = f and f.MemberList and f.MemberList.ScrollBox
-    if not (box and box.ScrollToElementDataByPredicate) then return end
+    if not box then return end
     local k = HU:Key(name)
     local function IsHim(data)
         local info = type(data) == "table" and data.memberInfo
@@ -625,47 +715,169 @@ ScrollTo = function(name)
     local chk = f.MemberList.ShowOfflineButton
     if not found and chk and chk:IsShown() and not chk:GetChecked() then
         HU.pendingFind = name
-        if not chk.guFlash then
-            chk.guFlash = chk:CreateTexture(nil, "OVERLAY")
-            chk.guFlash:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-            chk.guFlash:SetBlendMode("ADD")
-            chk.guFlash:SetAllPoints()
+        if not offFlash then
+            offFlash = chk:CreateTexture(nil, "OVERLAY")
+            offFlash:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+            offFlash:SetBlendMode("ADD")
+            offFlash:SetAllPoints()
             chk:HookScript("OnClick", function(s)
-                if s.guFlash then s.guFlash:Hide() end
+                offFlash:Hide()
                 local who = HU.pendingFind
                 HU.pendingFind = nil
                 if who and s:GetChecked() then HU.After(0.3, function() ScrollTo(who) end) end
             end)
         end
-        chk.guFlash:Show()
-        HU:Print(HU:Nice(name) .. L(" está desconectado: marca «Show Offline Members» (brilla) y te llevo a él."))
+        offFlash:Show()
+        HU:Print(HU:Nice(name) .. L(" está desconectado: marca «Show Offline Members» (brilla) y te lo marco."))
         return
     end
-    pcall(box.ScrollToElementDataByPredicate, box, IsHim, ScrollBoxConstants and ScrollBoxConstants.AlignCenter or 0.5)
-    -- (su fila se resalta unos segundos, como seleccionada. No se usa la selección de Blizzard: si
-    -- la pone un addon, sus botones de ascender o expulsar quedan bloqueados)
-    HU.After(0.05, function()
-        if not box.FindFrameByPredicate then return end
-        local ok, row = pcall(box.FindFrameByPredicate, box, function(fr, data) return IsHim(data or (fr and fr.GetElementData and fr:GetElementData())) end)
-        if not ok or not row then return end
-        local hl = _G.GuildUnionReduceHL
-        if not hl then
-            hl = CreateFrame("Frame", "GuildUnionReduceHL", f)
-            local t = hl:CreateTexture(nil, "OVERLAY")
-            t:SetAllPoints(); t:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight"); t:SetBlendMode("ADD")
-            t:SetVertexColor(1, 0.85, 0.2, 0.9)
+    -- (su fila se resalta, como seleccionada, mientras siga escrito lo que buscaste. No se usa la
+    -- selección de Blizzard: si la pone un addon, sus botones de ascender o expulsar quedan bloqueados)
+    local hl = _G.GuildUnionReduceHL
+    if not hl then
+        hl = CreateFrame("Frame", "GuildUnionReduceHL", f)
+        local t = hl:CreateTexture(nil, "OVERLAY")
+        t:SetAllPoints(); t:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight"); t:SetBlendMode("ADD")
+        t:SetVertexColor(1, 0.85, 0.2, 0.9)
+    end
+    -- aviso fijo en el borde de la lista hacia donde está, con su posición (solo se lee la lista, no se
+    -- mueve). Con el borde de las fichas del juego, sin parpadear
+    local arrow = _G.GuildUnionReduceArrow
+    if not arrow then
+        arrow = CreateFrame("Frame", "GuildUnionReduceArrow", f, "BackdropTemplate")
+        arrow:SetSize(240, 28)
+        arrow:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        arrow:SetBackdropColor(0.05, 0.05, 0.07, 0.92)
+        arrow:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+        arrow.icon = arrow:CreateTexture(nil, "OVERLAY")
+        arrow.icon:SetSize(16, 16); arrow.icon:SetPoint("LEFT", 9, 0)
+        arrow.text = arrow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        arrow.text:SetPoint("LEFT", arrow.icon, "RIGHT", 6, 0)
+    end
+    -- (la lista estrecha de la vista del chat: solo la flecha; la ancha de Miembros: flecha y texto)
+    local function Wide() return (box:GetWidth() or 0) >= 300 end
+    local function ShowArrow(down, pos, total)
+        arrow:ClearAllPoints()
+        if down then
+            arrow:SetPoint("BOTTOM", box, "BOTTOM", 0, 6)
+            arrow.icon:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
+        else
+            arrow:SetPoint("TOP", box, "TOP", 0, -6)
+            arrow.icon:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
         end
-        hl:SetParent(row)
+        -- (sin borde dorado: con él parecía un botón, y pulsarlo no puede hacer nada sin bloquear la
+        -- lista. Solo un fondo oscuro suave con el texto, o la flecha sola en la lista estrecha)
+        arrow:SetBackdropBorderColor(0, 0, 0, 0)
+        if Wide() then
+            arrow.text:SetText(string.format(L("%s: %s · %d de %d"), "|cffffd100" .. HU:Nice(name) .. "|r",
+                down and L("más abajo") or L("más arriba"), pos, total))
+            arrow.text:Show()
+            arrow.icon:SetSize(16, 16)
+            arrow:SetBackdropColor(0, 0, 0, 0.6)
+            arrow:SetWidth(36 + arrow.text:GetStringWidth())
+        else
+            arrow.text:Hide()
+            arrow.icon:SetSize(22, 22)
+            arrow:SetBackdropColor(0, 0, 0, 0)
+            arrow:SetWidth(34)
+        end
+        arrow:EnableMouse(false)
+        arrow:SetFrameStrata(box:GetFrameStrata())
+        arrow:SetFrameLevel(box:GetFrameLevel() + 20)
+        arrow:Show()
+    end
+    local function HideArrow() arrow:Hide() end
+    -- (dónde está en la lista y qué parte se ve: lecturas, sin tocar nada)
+    local function Where()
+        if not (box.FindElementDataIndexByPredicate and box.GetDataIndexBegin and box.GetDataIndexEnd) then return nil end
+        local ok, idx = pcall(box.FindElementDataIndexByPredicate, box, IsHim)
+        if not ok or not idx then return nil end
+        local ok2, first = pcall(box.GetDataIndexBegin, box)
+        local ok3, last = pcall(box.GetDataIndexEnd, box)
+        local ok4, total = pcall(box.GetDataProviderSize, box)
+        if not (ok2 and ok3 and first and last) then return nil end
+        return idx, idx > last, (ok4 and total) or last
+    end
+
+    -- números de posición en las filas que se ven (solo en la lista ancha de Miembros), para que el
+    -- «183 de 690» del aviso sirva de algo: Blizzard no los pone. Solo se leen las filas
+    local nums = _G.GuildUnionReduceNums
+    if not nums then
+        nums = CreateFrame("Frame", "GuildUnionReduceNums", f)
+        nums.fs = {}
+    end
+    local function ShowNumbers()
+        local n = 0
+        if Wide() and box.GetFrames and box.FindFrameElementDataIndex then
+            local ok, frames = pcall(box.GetFrames, box)
+            for _, fr in ipairs(ok and type(frames) == "table" and frames or {}) do
+                local ok2, idx = pcall(box.FindFrameElementDataIndex, box, fr)
+                if ok2 and idx and fr:IsVisible() then
+                    n = n + 1
+                    local fs = nums.fs[n]
+                    if not fs then
+                        fs = nums:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                        fs:SetJustifyH("RIGHT")
+                        nums.fs[n] = fs
+                    end
+                    fs:ClearAllPoints()
+                    fs:SetPoint("RIGHT", fr, "RIGHT", -8, 0)
+                    fs:SetText(idx)
+                    fs:Show()
+                end
+            end
+        end
+        for i = n + 1, #nums.fs do nums.fs[i]:Hide() end
+        nums:SetFrameStrata(box:GetFrameStrata())
+        nums:SetFrameLevel(box:GetFrameLevel() + 15)
+        nums:SetShown(n > 0)
+    end
+
+    if hl.ticker then hl.ticker:Cancel() end
+    local told = false
+    local function Mark()
+        ShowNumbers()
+        local ok, row = false, nil
+        if f:IsShown() and box.FindFrameByPredicate then
+            ok, row = pcall(box.FindFrameByPredicate, box, function(fr, data) return IsHim(data or (fr and fr.GetElementData and fr:GetElementData())) end)
+        end
+        if not (ok and row) then
+            hl:Hide()
+            local pos, down, total
+            if f:IsShown() then pos, down, total = Where() end
+            if pos then
+                ShowArrow(down, pos, total)
+            else
+                HideArrow()
+                if found and not told and f:IsShown() then
+                    told = true
+                    HU:Print(HU:Nice(name) .. L(" está en la lista pero no se ve: baja con la rueda y lo verás marcado."))
+                end
+            end
+            return
+        end
+        HideArrow()
+        -- (pegado a su fila, sin meterse dentro de ella: las filas son de Blizzard)
         hl:ClearAllPoints(); hl:SetAllPoints(row)
+        hl:SetFrameStrata(row:GetFrameStrata())
         hl:SetFrameLevel(row:GetFrameLevel() + 5)
         hl:Show()
-        hl.token = (hl.token or 0) + 1
-        local mine = hl.token
-        HU.After(6, function() if hl.token == mine then hl:Hide() end end)
-    end)
+    end
+    Mark()
+    -- (mientras su nombre siga en el buscador: lo quita ClearMark al borrarlo, al esconderse el
+    -- buscador o al buscar a otro)
+    hl.ticker = HU.NewTicker(0.25, function() if f:IsShown() then Mark() end end)
 end
 
 local search
+-- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
+-- dónde es (antes se abría un susurro con él: Jorge, 10/11). Para susurrar, el clic derecho
+local function Pick(e)
+    if e.own then return ScrollTo(e.name) end
+    HU:Print(string.format(L("%s es de %s: no sale en esta lista. Clic derecho en su nombre para susurrarle."),
+        HU:Nice(e.name), "|cff" .. HU:GuildColorHex(e.tag) .. HU:GuildName(e.tag) .. "|r"))
+end
 local function BuildCharSearch(f)
     local ml = f.MemberList
     local anchor = ml and ml.ShowOfflineButton
@@ -699,14 +911,14 @@ local function BuildCharSearch(f)
             if not s.e then return end
             if button == "RightButton" then return PlayerMenu(s, s.e) end
             pop:Hide(); box:ClearFocus()
-            if s.e.own then ScrollTo(s.e.name) else Whisper(s.e.name) end
+            Pick(s.e)
         end)
         pop.rows[i] = r
     end
     pop.more = pop:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     local function Fill()
         local list = FindChars(box:GetText())
-        if HU.Trim(box:GetText() or "") == "" then return pop:Hide() end
+        if HU.Trim(box:GetText() or "") == "" then ClearMark(); return pop:Hide() end
         local shown = math.min(#list, 10)
         for i, r in ipairs(pop.rows) do
             local e = list[i]
@@ -735,7 +947,8 @@ local function BuildCharSearch(f)
         end
         pop:Show()
     end
-    box:HookScript("OnTextChanged", Fill)
+    -- (si cambias lo escrito, la marca del que buscaste antes se quita)
+    box:HookScript("OnTextChanged", function(_, user) if user then ClearMark() end; Fill() end)
     -- (al empezar a buscar se pide la lista de la hermandad al juego, por si estaba vieja o vacía)
     box:HookScript("OnEditFocusGained", function()
         if C_GuildInfo and C_GuildInfo.GuildRoster then pcall(C_GuildInfo.GuildRoster) end
@@ -747,27 +960,32 @@ local function BuildCharSearch(f)
     box:SetScript("OnEnterPressed", function(s)
         local first = FindChars(s:GetText())[1]
         pop:Hide(); s:ClearFocus()
-        if first then if first.own then ScrollTo(first.name) else Whisper(first.name) end end
+        if first then Pick(first) end
     end)
-    -- (en las dos vistas: en la de miembros, a la derecha de «Mostrar desconectados»; en la del
-    -- chat, a la derecha del desplegable «Guild». Se recoloca al cambiar de vista)
+    -- (en la vista de miembros, a la derecha de «Mostrar desconectados»; en la del chat, a la derecha
+    -- del desplegable «Guild». No sale en Información ni en nuestra pestaña: Jorge, 10/11. IsVisible
+    -- y no IsShown: la casilla sigue «puesta» aunque su lista esté escondida)
     local dd = f.StreamDropdown
     local function Sync()
         box:ClearAllPoints()
-        if anchor:IsShown() then
+        local ours = panel and panel.where == "blizz" and panel:IsShown()
+        if not ours and anchor:IsVisible() then
             box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -24, 30)
             box:Show()
-        elseif dd and dd:IsShown() then
+        elseif not ours and dd and dd:IsVisible() then
             box:SetPoint("LEFT", dd, "RIGHT", 16, 0)
             box:Show()
         else
             box:Hide()
+            ClearMark()
         end
     end
-    for _, w in ipairs({ anchor, dd }) do
-        if w then w:HookScript("OnShow", Sync); w:HookScript("OnHide", Sync) end
+    HU.SyncCharSearch = function() HU.After(0, Sync) end
+    for _, w in ipairs({ anchor, ml, dd }) do
+        if w then w:HookScript("OnShow", HU.SyncCharSearch); w:HookScript("OnHide", HU.SyncCharSearch) end
     end
-    f:HookScript("OnShow", function() HU.After(0, Sync) end)
+    if f.SetDisplayMode then hooksecurefunc(f, "SetDisplayMode", HU.SyncCharSearch) end
+    f:HookScript("OnShow", HU.SyncCharSearch)
     Sync()
 end
 
@@ -791,10 +1009,10 @@ local function Setup()
     -- (nuestro clic: no llama a SetDisplayMode de Blizzard)
     tab:SetScript("OnClick", function()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        ShowPanel(not (panel and panel:IsShown()))
+        ShowPanel(not (panel and panel.where == "blizz" and panel:IsShown()))
     end)
     -- (cada parte por separado: si una falla, las demás siguen y el fallo queda en /gu errores)
-    HU:SafeCall("pestaña", BuildPanel, f)
+    if not panel then HU:SafeCall("pestaña", BuildPanel) end
     HU:SafeCall("buscador", BuildCharSearch, f)
     -- (al pulsar una pestaña suya o cambiar de vista, se cierra la nuestra)
     hooksecurefunc(f, "SetDisplayMode", function() ShowPanel(false) end)
@@ -848,11 +1066,164 @@ function HU:OpenReduce()
     -- (abierta: nuestra pestaña se abre y se cierra, sin tocar la ventana)
     if f and f:IsShown() then
         Setup(); SyncTab()
-        if tab and tab:IsShown() then ShowPanel(not (panel and panel:IsShown())) end
-        return
+        if tab and tab:IsShown() then ShowPanel(not (panel and panel.where == "blizz" and panel:IsShown())) return end
     end
-    self:Print(L("Pulsa J (o el botón de Hermandad) para abrir la ventana de hermandad; la pestaña GuildUnion está a la derecha."))
+    -- (cerrada: la ventana propia de GuildUnion)
+    self:OpenMainWindow()
 end
+
+-- Ventana propia de GuildUnion: el mismo panel, fuera de la ventana de Blizzard (minimapa y /gu)
+function HU:OpenMainWindow()
+    if main and main:IsShown() and panel and panel.where == "own" then main:Hide() return end
+    if not main then
+        main = CreateFrame("Frame", "GuildUnionMain", UIParent, "BackdropTemplate")
+        main:SetSize(700, 454)
+        main:SetPoint("CENTER")
+        -- (sin «toplevel»: al pulsarla el juego la subía por encima de su propio panel y lo tapaba)
+        main:SetFrameStrata("DIALOG")
+        main:SetMovable(true); main:EnableMouse(true); main:RegisterForDrag("LeftButton")
+        main:SetScript("OnDragStart", main.StartMoving)
+        main:SetScript("OnDragStop", main.StopMovingOrSizing)
+        main:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        main:SetBackdropColor(0.04, 0.04, 0.05, 0.97)
+        tinsert(UISpecialFrames, "GuildUnionMain")
+        local close = CreateFrame("Button", nil, main, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -2, -2)
+        close:SetFrameLevel(main:GetFrameLevel() + 20)
+        local head = main:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        head:SetPoint("TOPLEFT", 12, -9)
+        head:SetText("GuildUnion")
+        main:SetScript("OnHide", function() if panel and panel.where == "own" then panel:Hide() end end)
+        main:Hide()
+    end
+    if not panel then BuildPanel() end
+    panel:SetParent(main)
+    panel:ClearAllPoints()
+    panel:SetPoint("TOPLEFT", main, "TOPLEFT", 4, -28)   -- (arriba queda la barra con el título y la X)
+    panel:SetPoint("BOTTOMRIGHT", main, "BOTTOMRIGHT", -4, 4)
+    panel:SetFrameStrata("DIALOG")
+    panel.where = "own"
+    if tab then tab:SetChecked(false) end
+    main:Show()
+    panel:Show()
+    -- (el panel siempre encima del fondo de la ventana; se pone después de enseñarla)
+    panel:SetFrameLevel(main:GetFrameLevel() + 2)
+    RefreshStatus(); RefreshOfficers()
+end
+---------------------------------------------------------------------------
+-- Gestión de hermandades (Jorge, 10/11): quién es la principal, quiénes son los gestores, invitar y
+-- quitar hermandades. Invitan el maestro de la principal y los gestores; nombra gestores el maestro.
+---------------------------------------------------------------------------
+local gw
+local function GuildsText()
+    local lines = {}
+    local principal = HU:PrincipalTag()
+    for _, g in ipairs((HU.cfg and HU.cfg.guilds) or {}) do
+        local mark = (g.tag == principal) and ("  |cffffd100" .. L("(principal)") .. "|r") or ""
+        local how = g.net and ("  |cff808080" .. L("(por invitación)") .. "|r") or ""
+        lines[#lines + 1] = "|cff" .. HU:GuildColorHex(g.tag) .. "<" .. g.tag .. ">|r  " .. g.name .. mark .. how
+    end
+    return #lines > 0 and table.concat(lines, "\n") or L("Sin configurar.")
+end
+local function RefreshGuildsWindow()
+    if not (gw and gw:IsShown()) then return end
+    local list = HU:Managers()
+    gw.guilds:SetText(GuildsText())
+    gw.managers:SetText(L("Gestores: ") .. (#list > 0 and ("|cffffffff" .. table.concat(list, ", ") .. "|r") or ("|cff808080" .. L("ninguno") .. "|r")))
+    local canInvite, isBoss = HU:CanInvite(), HU:IsPrincipalMaster()
+    for _, w in ipairs(gw.inviteParts) do w:SetShown(canInvite) end
+    for _, w in ipairs(gw.bossParts) do w:SetShown(isBoss) end
+    gw.status:SetText(HU.inviteStatus or "")
+    gw.who:SetText(isBoss and L("Eres el maestro de la hermandad principal: invitas y nombras gestores.")
+        or canInvite and L("Eres gestor: puedes invitar y quitar hermandades.")
+        or L("Solo el maestro de la hermandad principal y sus gestores pueden invitar hermandades."))
+end
+function HU:ShowGuildsWindow()
+    if not gw then
+        gw = CreateFrame("Frame", "GuildUnionGuildsFrame", UIParent, "BackdropTemplate")
+        gw:SetSize(460, 420)
+        gw:SetPoint("CENTER")
+        -- (por encima de la ventana de GuildUnion y de la de hermandad, que van en DIALOG)
+        gw:SetFrameStrata("FULLSCREEN_DIALOG")
+        gw:SetMovable(true); gw:EnableMouse(true); gw:RegisterForDrag("LeftButton")
+        gw:SetScript("OnDragStart", gw.StartMoving)
+        gw:SetScript("OnDragStop", gw.StopMovingOrSizing)
+        gw:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        gw:SetBackdropColor(0.05, 0.05, 0.08, 0.96)
+        tinsert(UISpecialFrames, "GuildUnionGuildsFrame")
+        local title = gw:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        title:SetPoint("TOPLEFT", 14, -12)
+        title:SetText(L("Gestión de hermandades"))
+        local close = CreateFrame("Button", nil, gw, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -2, -2)
+        gw.who = gw:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        gw.who:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+        gw.who:SetWidth(430); gw.who:SetJustifyH("LEFT")
+        local hG = Header(gw, L("Hermandades de la comunidad"), gw.who, -12)
+        gw.guilds = gw:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        gw.guilds:SetPoint("TOPLEFT", hG, "BOTTOMLEFT", 4, -6)
+        gw.guilds:SetWidth(420); gw.guilds:SetJustifyH("LEFT")
+        gw.managers = gw:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        gw.managers:SetPoint("TOPLEFT", gw.guilds, "BOTTOMLEFT", -4, -10)
+        gw.managers:SetWidth(430); gw.managers:SetJustifyH("LEFT")
+
+        -- Invitar (y quitar) — maestro de la principal y gestores
+        local hI = Header(gw, L("Invitar una hermandad"), gw.managers, -14)
+        local note = gw:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        note:SetPoint("TOPLEFT", hI, "BOTTOMLEFT", 0, -2)
+        note:SetText(L("Al maestro (u oficial que pueda editar la Información) de esa hermandad, y su etiqueta"))
+        local who = Box(gw, 170, note, 6, -6)
+        local tagBox = CreateFrame("EditBox", nil, gw, "InputBoxTemplate")
+        tagBox:SetSize(60, 20); tagBox:SetAutoFocus(false); tagBox:SetMaxLetters(6)
+        tagBox:SetPoint("LEFT", who, "RIGHT", 12, 0)
+        tagBox:SetScript("OnEscapePressed", tagBox.ClearFocus)
+        local bInv = Button(gw, L("Invitar"), 80, tagBox, 10)
+        bInv:SetScript("OnClick", function()
+            local ok, why = HU:InviteGuild(who:GetText(), tagBox:GetText())
+            if not ok and why then HU.inviteStatus = "|cffff6060" .. why .. "|r" end
+            RefreshGuildsWindow()
+        end)
+        gw.status = gw:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        gw.status:SetPoint("TOPLEFT", who, "BOTTOMLEFT", -6, -6)
+        gw.status:SetWidth(430); gw.status:SetJustifyH("LEFT")
+        local hR = gw:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        hR:SetPoint("TOPLEFT", gw.status, "BOTTOMLEFT", 0, -10)
+        hR:SetText(L("Quitar una hermandad añadida por invitación (etiqueta):"))
+        local remBox = Box(gw, 60, hR, 6, -6)
+        remBox:SetMaxLetters(6)
+        local bRem = Button(gw, L("Quitar"), 80, remBox, 10)
+        bRem:SetScript("OnClick", function()
+            local ok, why = HU:RemoveNetGuild(remBox:GetText())
+            HU.inviteStatus = ok and (L("Hermandad quitada de la comunidad: <") .. remBox:GetText():upper() .. ">") or ("|cffff6060" .. (why or "?") .. "|r")
+            RefreshGuildsWindow()
+        end)
+        gw.inviteParts = { hI, note, who, tagBox, bInv, gw.status, hR, remBox, bRem }
+
+        -- Gestores — solo el maestro de la principal
+        local hM = Header(gw, L("Gestores (pueden invitar)"), remBox, -16)
+        hM:SetPoint("TOPLEFT", remBox, "BOTTOMLEFT", -6, -16)
+        local mBox = Box(gw, 170, hM, 6, -6)
+        if HU.NameSuggest then HU:NameSuggest(mBox) end
+        local bAdd = Button(gw, L("Nombrar"), 80, mBox, 10)
+        local bDel = Button(gw, L("Quitar"), 80, bAdd, 6)
+        local function Set(add)
+            local ok, why = HU:SetManager(mBox:GetText(), add)
+            HU.inviteStatus = ok and ((add and L("Gestor añadido: ") or L("Gestor quitado: ")) .. HU:Short(HU:FullName(mBox:GetText()) or mBox:GetText()))
+                or ("|cffff6060" .. (why or "?") .. "|r")
+            RefreshGuildsWindow()
+        end
+        bAdd:SetScript("OnClick", function() Set(true) end)
+        bDel:SetScript("OnClick", function() Set(false) end)
+        gw.bossParts = { hM, mBox, bAdd, bDel }
+        gw:SetScript("OnShow", RefreshGuildsWindow)
+        gw:Hide()
+    end
+    if gw:IsShown() then gw:Hide() else gw:Show(); gw:Raise() end
+end
+if HU.UI then HU.UI.UpdateGuildsWindow = function() HU:SafeCall("hermandades", RefreshGuildsWindow) end end
+
 -- Con la ventana ya abierta, el panel de GuildUnion (sin cerrarlo si ya está): clic izquierdo del minimapa
 function HU:ShowReducePanel()
     local f = Win()

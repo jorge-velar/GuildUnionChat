@@ -54,7 +54,9 @@ HU.version = (GetMeta and GetMeta(ADDON_NAME, "Version")) or "5.2.1"
 HU.REDUCE_VERSION = GetMeta and GetMeta(ADDON_NAME, "X-Reduce-Version") or nil
 -- La versión más vieja que sigue funcionando con esta (va en el saludo). La sube ADMIN en cada versión
 -- importante: quien tenga una más vieja recibe el aviso de «actualización IMPORTANTE» (Popup.lua)
-HU.MIN_VERSION = HU.version
+-- (fija en la de CurseForge mientras la nueva no esté allí: si no, a todos los de la 5.4.11 les salía
+-- «actualiza» sin tener de dónde. Jorge, 10/11. Se sube cuando CurseForge tenga la nueva)
+HU.MIN_VERSION = "5.4.11"
 HU.PREFIX = "HU20"
 
 ---------------------------------------------------------------------------
@@ -403,11 +405,18 @@ end
 -- Midnight: el juego no deja mandar mensajes de chat ni de addon en algunas mazmorras y [+ARCHITECTURE.md]
 function HU:SimpleMode() return false end
 
+-- Dato del juego que puede llegar secreto (combate, jefe, mítica+): secreto → el valor que se pida
+function HU.SafeBool(v, ifSecret)
+    if issecretvalue and issecretvalue(v) then return ifSecret end
+    return v and true or false
+end
+
 function HU:IsChatLockedDown()
     local fn = C_ChatInfo and C_ChatInfo.InChatMessagingLockdown
     if not fn then return false end
     local ok, locked = pcall(fn)
-    return ok and locked == true
+    -- (si no se puede saber, se da por bloqueado: mejor esperar que intentar mandar)
+    return ok and HU.SafeBool(locked, true) or false
 end
 
 -- Un momento (time()) que viene de otro addon: número de verdad y razonable, o nil
@@ -536,13 +545,13 @@ end
 -- Base de datos
 ---------------------------------------------------------------------------
 -- (lo que se guarda por personaje y no para toda la cuenta)
-HU.PER_CHAR = { history = true, pinned = true, myRole = true, lastSeen = true, netChan = true,
-    netCfg = true, infoBackup = true, noteChanSeen = true, joinedChans = true, extraChans = true, chatTab = true,
+HU.PER_CHAR = { history = true, pinned = true, myRole = true, lastSeen = true, pvpSince = true, netChan = true,
+    chatShow = true, netCfg = true, infoBackup = true, noteChanSeen = true, joinedChans = true, extraChans = true, chatTab = true,
     -- (eran de la cuenta y los heredaba un personaje de otra comunidad: un carril, unas listas o unas
     -- hermandades añadidas que no eran las suyas)
     chanLane = true, netGuilds = true, proposals = true, guildColors = true, customEmotes = true, lists = true,
     rankCache = true, offline = true, offlineT = true, peers = true, chatTabsMade = true, rosterCache = true, remoteRanks = true,
-    quickCfg = true }
+    quickCfg = true, managers = true, officerRanks = true, myOfficerRanks = true }
 
 local DEFAULTS = {
     showTag = true,       -- mostrar <ETIQUETA> en los mensajes de otras hermandades
@@ -646,7 +655,7 @@ local HELP = HU.LT({
     "|cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia",
     "|cffffd100/gu config|r  explica cómo configurar las hermandades",
     "|cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)",
-    "|cffffd100/buscargrupo mensaje|r  escribe en Buscar grupo (lo ven todas las hermandades)",
+    "|cffffd100/glf mensaje|r  escribe en Buscar grupo (lo ven todas las hermandades)",
     "|cffffd100/gu pestañas|r  crea las pestañas Hermandad, Buscar grupo y Oficiales en el chat",
     "|cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)",
     "|cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)",
@@ -670,6 +679,10 @@ local HELP = HU.LT({
     "|cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento",
     "|cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)",
     "|cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)",
+    "|cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)",
+    "|cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)",
+    "|cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)",
+    "|cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve",
     "|cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña",
 })
 
@@ -692,6 +705,41 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     if cmd == "perf" and HU.PerfCommand then return HU:PerfCommand(arg) end
     if (cmd == "notacanal" or cmd == "channelnote") and HU.ShowChannelNoteLine then return HU:ShowChannelNoteLine() end
     if (cmd == "pasarcanal" or cmd == "sendchannel") and HU.PassChannelTo then return HU:PassChannelTo(rawArg) end
+    -- gestión de hermandades: principal, gestores e invitaciones (Community.lua)
+    if cmd == "invitar" or cmd == "invite" then
+        local who, tag = rawArg:match("^(.-)%s+(%S+)$")
+        if not who or who == "" then return HU:Print(L("Uso: /gu invitar Nombre del maestro (u oficial) ETIQ")) end
+        local ok, why = HU:InviteGuild(who, tag)
+        if not ok and why then HU:Print("|cffff6060" .. why .. "|r") end
+        return
+    end
+    if cmd == "gestor" or cmd == "manager" then
+        local add, who = true, rawArg
+        local q = rawArg:match("^[Qq]uitar%s+(.+)$") or rawArg:match("^[Rr]emove%s+(.+)$")
+        if q then add, who = false, q end
+        if HU.Trim(who) == "" then return HU:Print(L("Uso: /gu gestor Nombre  ·  /gu gestor quitar Nombre")) end
+        local ok, why = HU:SetManager(who, add)
+        if ok then HU:Print((add and L("Gestor añadido: ") or L("Gestor quitado: ")) .. HU:Short(HU:FullName(who) or who))
+        elseif why then HU:Print("|cffff6060" .. why .. "|r") end
+        return
+    end
+    if cmd == "gestores" or cmd == "managers" then
+        local list = HU:Managers()
+        HU:Print(L("Hermandad principal: ") .. (HU:PrincipalTag() and ("<" .. HU:PrincipalTag() .. ">") or "?")
+            .. L("  ·  Gestores: ") .. (#list > 0 and table.concat(list, ", ") or L("ninguno")))
+        return
+    end
+    if cmd == "quitarhermandad" or cmd == "removeguild" then
+        local ok, why = HU:RemoveNetGuild(rawArg)
+        if ok then HU:Print(L("Hermandad quitada de la comunidad: <") .. HU.Trim(rawArg):upper() .. ">")
+        elseif why then HU:Print("|cffff6060" .. why .. "|r") end
+        return
+    end
+    if (cmd == "hermandades" or cmd == "guilds") and HU.ShowGuildsWindow then return HU:ShowGuildsWindow() end
+    -- asistente «Crear comunidad» (y modo prueba, que no toca nada: /gu asistente prueba)
+    if (cmd == "asistente" or cmd == "wizard" or cmd == "crear" or cmd == "create") and HU.OpenWizard then
+        return HU:OpenWizard(arg == "prueba" or arg == "test")
+    end
     if (cmd == "eco" or cmd == "echo") and HU.EchoCommand then return HU:EchoCommand(arg) end
     -- (la ventana de hermandad del juego: por si la J abre GuildUnion; ahí se edita la Información)
     if cmd == "hermandad" or cmd == "guild" then
@@ -928,11 +976,14 @@ end
 
 -- /buscargrupo mensaje : escribe en "Buscar grupo" de todas las hermandades
 -- (sin /bg: es el chat de campo de batalla del juego)
-SLASH_WELOVEPVPLFG1 = "/buscargrupo"
-SlashCmdList.WELOVEPVPLFG = function(input)
+-- /glf es el corto (Jorge, 12/11); /glf a secas deja la caja escribiendo en Buscar grupo
+SLASH_WELOVEPVPLFG1 = "/glf"
+SLASH_WELOVEPVPLFG2 = "/buscargrupo"
+SlashCmdList.WELOVEPVPLFG = function(input, editBox)
     input = HU.Trim(input or "")
     if input == "" then
-        HU:Print(L("Uso: /buscargrupo mensaje   (ej.: /buscargrupo LFM Scholomance, falta sanador)"))
+        if editBox and HU.SetLFGMode and HU:SetLFGMode(editBox) then return end
+        HU:Print(L("Uso: /glf mensaje   (ej.: /glf LFM Scholomance, falta sanador)"))
         return
     end
     HU:SendLFG(input)

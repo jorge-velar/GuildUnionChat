@@ -1,7 +1,10 @@
 Librerías incluidas en Guild Union
 ==================================
 
-LibStub
-  Dominio público (WowAce).
+LibStub              – WowAce (dominio público).
+CallbackHandler-1.0  – Ace3 / WowAce.
+LibDataBroker-1.1    – WowAce.
+LibDBIcon-1.0        – CurseForge (libdbicon-1-0), botón del minimapa.
 
-(Las librerías del mapa, HereBeDragons y CallbackHandler, están guardadas aparte junto al mapa.)
+Se incluyen tal cual, como en la mayoría de addons; cada una conserva su propia licencia
+(ver la página de cada librería en CurseForge / WowAce).

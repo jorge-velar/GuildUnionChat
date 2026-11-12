@@ -183,7 +183,9 @@ local NEVER_EXPIRE = { MU = true, MZ = true, BN = true }
 local LATEST_WINS = { HI = true, HR = true, HY = true, RA = true, LN = true }
 local pending = {} -- [orden, vía, destino] = el que espera, de los de LATEST_WINS
 -- lo que se ha perdido, para /gu cola y el banco
-HU.qStats = { expired = {}, dropped = {}, replaced = 0, offline = 0, lockdown = 0 }
+HU.qStats = { expired = {}, dropped = {}, replaced = 0, offline = 0, lockdown = 0, skipped = 0 }
+-- (en HU y no como variable del archivo: este archivo ya ronda el tope de 200 variables de Lua)
+HU.SKIP_LOCKED = { HI = true, HR = true, HY = true, RA = true, LP = true, PL = true, PH = true, LN = true }
 local function Count(t, cmd) t[cmd or "?"] = (t[cmd or "?"] or 0) + 1 end
 local function TTL(cmd) if NEVER_EXPIRE[cmd] then return nil end return QUEUE_TTL[cmd] or QUEUE_TTL_DEFAULT end
 
@@ -301,6 +303,12 @@ end
 function HU:Send(msg, dist, target, urgent, slow, fast)
     if #msg > 255 then msg = HU.Utf8Cut(msg, 255) end
     local cmd = msg:sub(1, 2)
+    -- (con el chat bloqueado por el juego, los saludos y presentaciones no se guardan: caducan a los 60 s
+    -- y solo llenaban la cola. Al acabar el bloqueo se saluda de nuevo: Combat.lua)
+    if HU.SKIP_LOCKED[cmd] and self:IsChatLockedDown() then
+        self.qStats.skipped = (self.qStats.skipped or 0) + 1
+        return false
+    end
     local isBulk = BFAST_CMDS[cmd] or BULK_CMDS[cmd] or BMID_CMDS[cmd] or BLOW_CMDS[cmd]
     local q = (BFAST_CMDS[cmd] and bfast) or (BULK_CMDS[cmd] and bulk) or (BMID_CMDS[cmd] and bmid) or (BLOW_CMDS[cmd] and blow)
         or (CHAT_CMDS[cmd] and qChat) or (MID_CMDS[cmd] and mid) or (LOW_CMDS[cmd] and low) or queue
@@ -528,7 +536,7 @@ local function Busy()
         local inInst, kind = IsInInstance()
         if inInst and (kind == "raid" or kind == "pvp" or kind == "arena") then return true, BUSY_PENALTY end
     end
-    if UnitIsAFK and UnitIsAFK("player") then
+    if UnitIsAFK and HU.SafeBool(UnitIsAFK("player"), false) then
         afkSince = afkSince or GetTime()
         if GetTime() - afkSince >= AFK_AFTER then return true, AFK_PENALTY end
     else
@@ -565,7 +573,7 @@ function HU:RelayScore()
     local busy, penalty = Busy()
     if busy then s = s - penalty end
     -- en zona de descanso (ciudad, posada) se sale del juego al momento y no da tiempo a pasar el puesto: [+ARCHITECTURE.md]
-    if IsResting and IsResting() then
+    if IsResting and HU.SafeBool(IsResting(), false) then
         self.restSince = self.restSince or GetTime()
         if GetTime() - self.restSince >= 60 then s = s - 20 end
     else
@@ -724,7 +732,7 @@ function HU:HelloText(cmd)
         local changed = table.concat(self.advertisedHelpers or {}, ",") ~= table.concat(helpers, ",")
         if changed then self.helpersChangedT = GetTime() end
         self.advertisedHelpers = helpers
-        if changed and self:LaunchPhase() and self.PresenceSchedule then HU.After(0, function() HU:PresenceSchedule() end) end
+        if changed and self.PresenceSchedule then HU.After(0, function() HU:PresenceSchedule() end) end
         -- (y a mi hermandad enseguida, no en el saludo de dentro de 2-5 minutos: los ayudantes van en [+ARCHITECTURE.md]
         if changed and cmd ~= "HR" then self:HelpersChangedHello() end
     end
@@ -1480,7 +1488,7 @@ local function OnHello(sender, f, dist, isReply)
             HU.relayHelpers = { list = list, t = GetTime(), relay = sender }
             -- (fase de lanzamiento: el enlace y sus ayudantes van en las listas; si cambian, el cambio
             -- sale en unos segundos y no en la vuelta de cada 2 minutos)
-            if HU:LaunchPhase() and HU.PresenceSchedule and (not old or old.relay ~= sender or table.concat(old.list, ",") ~= f[5]) then
+            if HU.PresenceSchedule and (not old or old.relay ~= sender or table.concat(old.list, ",") ~= f[5]) then
                 HU:PresenceSchedule()
             end
         end
@@ -1797,7 +1805,7 @@ function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
             r.annMiss = (r.annMiss or 0) + 1
             if r.annMiss >= 2 and self.NeedRoster then self:NeedRoster(tag) end
             -- (fase de lanzamiento: la lista son unos nombres; si no cuadra dos veces, se le pide [+ARCHITECTURE.md]
-            if r.annMiss >= 2 and self:LaunchPhase() and self.ResponsibleFor and self:ResponsibleFor(tag)
+            if r.annMiss >= 2 and self.ResponsibleFor and self:ResponsibleFor(tag)
                 and (not r.rfAskT or GetTime() - r.rfAskT > 60) then
                 r.rfAskT = GetTime()
                 self:Whisper(author, "RF~" .. (self.myTag or "") .. "~1", true)
@@ -2005,7 +2013,7 @@ end
 HU.comm.PR = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     for tag in (f[1] or ""):gmatch("%w+") do
-        local p = self:LaunchPhase() and self:KnownRelay(tag) or (not self:LaunchPhase() and self:BestPeer(tag))
+        local p = self:KnownRelay(tag)
         -- en hermandades grandes contestan solo unos pocos (al azar), no todos
         if p and math.random() <= math.min(1, 8 / math.max(1, HU:PeerCount())) then
             HU.After(0.5 + math.random() * 4, function()
@@ -2061,7 +2069,6 @@ local reCache = {}
 -- Fase de lanzamiento: además del maestro y los oficiales, el enlace y sus ayudantes (son los que
 -- susurran a las otras hermandades, y solo se acepta a quien está en sus listas)
 local function SharedExtra(self)
-    if not self:LaunchPhase() then return nil, "" end
     local relay, list
     if self:IsRelay() then
         relay, list = self:Me(), self.advertisedHelpers
@@ -2299,7 +2306,7 @@ local function PushRoster(name, tries)
     HU:SendRosterTo(name)
 end
 function HU:OnContactJoined(author)
-    if not self:LaunchPhase() or not self.myTag then return end
+    if not self.myTag then return end
     local name = author and self:FullName(author)
     if not name then return end
     local k = name:lower()
@@ -2322,28 +2329,25 @@ local rfAsked = {}
 local rfRetry = {}
 function HU:AskMissingRosters()
     if not self.myTag then return end
-    -- (en cada hermandad lo pide solo quien se encarga de esa otra hermandad;
-    -- la lista entera llega por GUILD y les sirve a todos)
-    local pooled = self:IsRelay() or (self.relayHelpers and GetTime() - self.relayHelpers.t < 700)
+    -- (la lista son unos pocos nombres: quien no la tiene la pide él mismo)
     -- (una hermandad por fotograma: buscar el contacto de todas las que faltan seguido llegaba a 4 ms)
     local n = 0
     for _, tag in ipairs(self:OtherTags()) do
         if not self.remoteRoster[tag] then
             n = n + 1
-            HU.After(0.02 * (n - 1), function() HU:AskMissingRosterTag(tag, pooled) end)
+            HU.After(0.02 * (n - 1), function() HU:AskMissingRosterTag(tag) end)
         end
     end
 end
-function HU:AskMissingRosterTag(tag, pooled)
+function HU:AskMissingRosterTag(tag)
     if not self.myTag then return end
     local now = GetTime()
     do
         local p = not self.remoteRoster[tag] and self:BestPeer(tag)
         -- (fase de lanzamiento: la lista son unos pocos nombres; quien no la tiene la pide él mismo.
         -- El enlace que volvía de una desconexión se quedaba sin la de alguna hermandad)
-        if p and pooled and not self:ResponsibleFor(tag) and not self:LaunchPhase() then p = nil end
         -- (quien vuelve de una desconexión ha perdido los contactos y el "mejor" puede ser cualquiera [+ARCHITECTURE.md]
-        if p and self:LaunchPhase() and not p.relay then
+        if p and not p.relay then
             rfRetry[tag] = (rfRetry[tag] or 0) + 1
             if rfRetry[tag] <= 4 then
                 self:AskPeers({ tag })
@@ -2448,10 +2452,6 @@ function HU:AskGuildForMissing()
             r[#r + 1] = tag
             nqAsked["R" .. tag] = now
         end
-        if not self:BigCommunity() and (not self.whitelist[tag] or (self.listNeed and self.listNeed[tag])) and not Recent("W" .. tag) and (nqTry < 3 or not nqAsked["W" .. tag] or now - nqAsked["W" .. tag] > 600) then
-            w[#w + 1] = tag
-            nqAsked["W" .. tag] = now
-        end
     end
     if #r == 0 and #w == 0 then return end
     lastNQ = GetTime()
@@ -2500,7 +2500,7 @@ function HU:SendStoredRoster(tag, force)
     if seen and seen.sig == mySig and now - seen.t < listSeen.GAP and seen.t >= (listSeen.need or 0) then return end
     if force and listSeen.force[tag] and now - listSeen.force[tag] < listSeen.GAP then return end
     -- (la misma lista entera, como mucho cada 10 minutos: los cambios ya llegan al momento. [+ARCHITECTURE.md]
-    local gap = self:LaunchPhase() and 10 or 600
+    local gap = 10
     if not force and rbInGuild[tag] and GetTime() - rbInGuild[tag] < gap then return end
     -- (se apunta como mandada solo aquí, cuando de verdad sale)
     if force then listSeen.force[tag] = now end
@@ -2555,7 +2555,7 @@ function HU:WelcomeGuildmate()
             if not (last and last >= now) then
                 -- (fuera de la fase de lanzamiento la lista es de todos los conectados, cientos de nombres:
                 -- entonces, como mucho cada 5 minutos)
-                local gap = self:LaunchPhase() and WELCOME_GAP or 300
+                local gap = WELCOME_GAP
                 local at = math.max(now + WELCOME_DELAY, (last or -999) + gap)
                 welcomeAt[tag] = at
                 HU.After(at - now + math.random() * 0.5, function() HU:SendStoredRoster(tag, true) end)
@@ -2873,7 +2873,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
         local short = raw .. "~0~~" .. fwdFlag
         -- (la lista de lanzamiento, 1-3 trozos, también al momento: es la que llega cuando cambia
         -- quién manda los cambios)
-        local fast = (nparts <= 3 and self:LaunchPhase() and not self:SimpleMode()) or nil
+        local fast = (nparts <= 3 and not self:SimpleMode()) or nil
         if #full <= 250 then self:Send(full, "GUILD", nil, nil, nil, fast)
         elseif #short <= 250 then self:Send(short, "GUILD", nil, nil, nil, fast)
         elseif fwdFlag == "c" then self:Send(raw, "GUILD", nil, nil, nil, fast) end
@@ -2888,7 +2888,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
         partial[pkey] = pt
         for k, v in pairs(partial) do if GetTime() - (v.last or v.t or 0) > 600 then partial[k] = nil end end
         -- (si a los 40 s sigue a medias, se ha perdido algún trozo: se pide a [+ARCHITECTURE.md]
-        local quietMax = HU:LaunchPhase() and 15 or 120
+        local quietMax = 15
         local function check()
             if partial[pkey] ~= pt then return end
             -- (con las colas cargadas los trozos pueden tardar: 2 minutos sin ninguno)
@@ -3172,7 +3172,7 @@ HU.comm.RF = function(self, sender, f, dist)
     if not (self:HandlesTag(tag) or self:IsRelay()) then return end
     local st = rosterState[tag]
     -- (RF~etiq~1: «me ha llegado otra lista distinta de la tuya, confírmamela»: vale a los 5 s)
-    local gap = (f[2] == "1") and 5 or (self:LaunchPhase() and 30 or 120)
+    local gap = (f[2] == "1") and 5 or 30
     -- (dentro del freno no se descarta: se manda cuando acabe, UNA sola vez por hermandad, al último que [+ARCHITECTURE.md]
     if st and GetTime() - st.fullT < gap then
         local pend = rfLater[tag]
@@ -3580,6 +3580,8 @@ local plSent = {}
 local modHello = {}
 function HU:HelloCycle()
     if not self.myTag or not IsInGuild() then return end
+    -- (con el chat bloqueado no sale nada: se saluda al acabar. Combat.lua)
+    if self:IsChatLockedDown() then return end
     self:Send(self:HelloText("HI"), "GUILD")
     -- (lo demás, en el fotograma siguiente: montar el saludo ya cuesta ~3 ms)
     HU.After(0, function() HU:HelloCycleExpire() end)
@@ -3645,7 +3647,7 @@ function HU:RelayHelloRest(members, now, hi)
                 self:Whisper(p.name, hi)
             end
             -- (a los demás, solo un enlace que lo haya dicho él mismo)
-            local rp = self:LaunchPhase() and self:KnownRelay(tag) or (not self:LaunchPhase() and p)
+            local rp = self:KnownRelay(tag)
             if rp then shared[#shared + 1] = tag .. ":" .. rp.name end
         else
             missing[#missing + 1] = tag
@@ -3740,6 +3742,7 @@ end
 -- 30 minutos y, entre medias, cada 2 minutos solo los cambios (quién entra, sale o cambia)
 function HU:RosterCycle()
     if not self.myTag or not self:IsJoined("main") or not self:RosterSlot() then return end
+    if self:IsChatLockedDown() then return end
     -- si aún estoy mandando lo anterior, espero (con hermandades enormes son cientos de mensajes)
     if #bulk > 150 then return end -- (las listas de conectados van en su propia cola)
     -- (una hermandad por fotograma, como PresenceFlush: todas seguidas pasaban de 1,85 ms)
@@ -3759,7 +3762,7 @@ function HU:RosterCycleTag(tag)
     local st = rosterState[tag]
     -- (fase de lanzamiento: la lista entera son 2 mensajes; cada 5 min, por si algún cambio
     -- se perdió por el camino. Con la lista de todos, cada 30 min)
-    if not st or now - st.fullT >= (self:LaunchPhase() and 300 or 1800) then
+    if not st or now - st.fullT >= 300 then
         p.sentRoster = now
         self:SendRosterTo(p.name)
     elseif now - st.t >= 120 then
@@ -3855,7 +3858,7 @@ HU:OnStart(function()
     end)
     for _, d in ipairs({ 100, 180, 260 }) do HU.After(d, function() HU:AskMissingRosters() end) end
     -- (fase de lanzamiento: antes, por si la hermandad no se la ha pasado)
-    for _, d in ipairs({ 30, 60 }) do HU.After(d, function() if HU:LaunchPhase() then HU:AskMissingRosters() end end) end
+    for _, d in ipairs({ 30, 60 }) do HU.After(d, function() HU:AskMissingRosters() end) end
     HU.NewTicker(300, function() HU:AskGuildForMissing(); HU:AskMissingRosters() end)
     -- (cada 15 s, no 60: así la lista sale poco después de conocer al enlace de otra hermandad; los
     -- cambios siguen saliendo cada 2 minutos)

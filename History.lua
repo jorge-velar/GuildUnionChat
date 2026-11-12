@@ -156,7 +156,7 @@ local function MaxBytes() return IAmOfficer() and MAX_BYTES or MEMBER_BYTES end
 
 -- Lo que ocupa una comunidad en memoria: lo guardado y lo de más del día abierto (hoy)
 local function Cost(c)
-    local d = c.days[DayKey(time())]
+    local d = c.days[DayKey(HU.StampNow())]
     return (c.bytes or 0) + ((d and d.lines) and #d.lines * LINE_RAM or 0)
 end
 
@@ -283,11 +283,11 @@ function HU:HistPrune()
     if not s then return end
     local mine = CommunityKey()
     if not mine then return end -- (aún no sé de qué comunidad soy ni mi rango: no se borra nada)
-    local today = DayKey(time())
+    local today = DayKey(HU.StampNow())
     for key, c in pairs(s) do
         local keepDays, cap = DAYS, OTHER_BYTES
         if key == mine then keepDays, cap = KeepDays(), MaxBytes() end
-        local oldest = DayKey(time() - keepDays * 86400)
+        local oldest = DayKey(HU.StampNow() - keepDays * 86400)
         local bytes = 0
         for k, d in pairs(c.days) do
             if k < oldest then c.days[k] = nil
@@ -352,7 +352,7 @@ function HU:HistRecord(kind, tag, author, msg)
     if not IAmOfficer() and code == "o" then return end
     local c = Community(true)
     if not c then return end
-    local now = time()
+    local now = HU.StampNow()
     local dk = DayKey(now)
     local day = c.days[dk]
     if not day then
@@ -385,7 +385,7 @@ function HU:HistInsert(e)
     if not self:HistEnabled() or not e or not e.a or not e.m or not e.t then return false end
     local code = KIND_CODE[e.k or "main"]
     if not code or code == "o" then return false end
-    if e.t < time() - KeepDays() * 86400 or e.t > time() + 300 then return false end
+    if e.t < HU.StampNow() - KeepDays() * 86400 or e.t > HU.StampNow() + 300 then return false end
     local c = Community(true)
     if not c then return false end
     local dk = DayKey(e.t)
@@ -1167,7 +1167,7 @@ function HU:HistStartSync(force, want, skip)
     if want then
         for _, p in ipairs(peers) do if p:lower() == want:lower() then peer = p break end end
     end
-    local now = time()
+    local now = HU.StampNow()
     local from = now - (memberDays and MEMBER_DAYS or DAYS) * 86400
     -- (si ya no cabe más, solo desde el día más viejo que guardo: lo de antes se borraría enseguida)
     local c = Community(false)
@@ -1302,11 +1302,64 @@ local function NameColored(name)
     return "|cff" .. hex .. HU:Nice(name) .. "|r"
 end
 
-local function Line(e, focus)
+-- Dónde está lo buscado en un trozo de texto sin códigos (sin mirar mayúsculas ni acentos): añade a
+-- out los pares { primer byte, último byte } en el texto original, sumándoles base
+local function SpansPlain(s, q, base, out)
+    local starts, folded, fpos = {}, {}, {}
+    local bpos, pos = 1, 1
+    for c in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        starts[#starts + 1] = bpos
+        fpos[#fpos + 1] = pos
+        local f = HU.Fold(c)
+        folded[#folded + 1] = f
+        pos = pos + #f
+        bpos = bpos + #c
+    end
+    starts[#starts + 1] = bpos
+    local F = table.concat(folded)
+    local byF = {}
+    for i, p in ipairs(fpos) do byF[p] = i end
+    byF[#F + 1] = #fpos + 1
+    local from = 1
+    while true do
+        local a, b = F:find(q, from, true)
+        if not a then break end
+        local ci, cj = byF[a], byF[b + 1]
+        if ci and cj then out[#out + 1] = { base + starts[ci], base + starts[cj] - 1 } end
+        from = b + 1
+    end
+end
+
+-- Igual, en un mensaje que puede llevar códigos del juego (colores, enlaces, iconos): esos se saltan
+function HU.QuerySpans(text, query)
+    local out = {}
+    local q = query and HU.Fold(HU.Trim(query)) or ""
+    if q == "" or type(text) ~= "string" then return out end
+    local pos = 1
+    while pos <= #text do
+        local a = text:find("|", pos, true)
+        if not a then SpansPlain(text:sub(pos), q, pos - 1, out); break end
+        if a > pos then SpansPlain(text:sub(pos, a - 1), q, pos - 1, out) end
+        local nxt = text:sub(a + 1, a + 1)
+        local e
+        if nxt == "c" and text:sub(a + 2, a + 2) == "n" then e = text:find(":", a + 3, true)
+        elseif nxt == "c" then e = a + 9
+        elseif nxt == "H" then e = select(2, text:find("|h", a + 2, true))
+        elseif nxt == "T" then e = select(2, text:find("|t", a + 2, true))
+        elseif nxt == "A" then e = select(2, text:find("|a", a + 2, true))
+        else e = a + 1 end
+        pos = (e or #text) + 1
+    end
+    return out
+end
+
+-- Una línea de la lista: { texto, bytes antes del mensaje, mensaje } (lo buscado se marca en Show)
+local function Line(e, focus, before)
     local when = HU.SafeDate("%d/%m %H:%M", e.t)
     local tag = e.tag and ("<" .. e.tag .. "> ") or ""
     local where = (e.k == "off" and L("[Oficiales] ")) or (e.k == "lfg" and L("[Buscar grupo] ")) or ""
-    return (focus and "|cffffffff" or "|cff999999") .. when .. "|r " .. where .. tag .. NameColored(e.a) .. ": " .. e.m
+    local head = (before or "") .. (focus and "|cffffffff" or "|cff999999") .. when .. "|r " .. where .. tag .. NameColored(e.a) .. ": "
+    return { head .. e.m, #head, e.m }
 end
 
 local LIST_W, ROW_GAP = 580, 1
@@ -1317,7 +1370,7 @@ local function Row(i)
     r:SetHyperlinksEnabled(true)
     r:SetScript("OnHyperlinkClick", function(_, link)
         local what = link:match("^guhist:(.+)$")
-        if what == "back" then Render()
+        if what == "back" then HU.HistBack()
         elseif what then OpenContext(tonumber(what)) end
     end)
     r.hl = r:CreateTexture(nil, "BACKGROUND")
@@ -1329,13 +1382,41 @@ local function Row(i)
     r.text:SetWidth(LIST_W)
     r.text:SetJustifyH("LEFT")
     r.text:SetWordWrap(true)
+    r.marks = {}
     W.rows[i] = r
     return r
 end
 
+-- Fondo de «texto seleccionado» detrás de lo buscado (como al seleccionar con el ratón en el chat:
+-- CalculateScreenAreaFromCharacterSpan, lo mismo que usa el chat de Blizzard)
+local function MarkRow(r, spans)
+    for _, t in ipairs(r.marks) do t:Hide() end
+    if not (spans and #spans > 0 and r.text.CalculateScreenAreaFromCharacterSpan) then return end
+    local n = 0
+    for _, sp in ipairs(spans) do
+        local ok, areas = pcall(r.text.CalculateScreenAreaFromCharacterSpan, r.text, sp[1], sp[2] + 1)
+        if ok and type(areas) == "table" then
+            for _, a in ipairs(areas) do
+                n = n + 1
+                local t = r.marks[n]
+                if not t then
+                    t = r:CreateTexture(nil, "ARTWORK")
+                    t:SetColorTexture(0.2, 0.45, 1, 0.55)
+                    r.marks[n] = t
+                end
+                t:ClearAllPoints()
+                t:SetPoint("BOTTOMLEFT", r.text, "BOTTOMLEFT", a.left, a.bottom)
+                t:SetPoint("TOPRIGHT", r.text, "BOTTOMLEFT", a.left + a.width, a.bottom + a.height)
+                t:Show()
+            end
+        end
+    end
+end
+
 -- Pinta la lista de arriba abajo; focus = número de la línea a remarcar y dejar en el centro
-local function Show(lines, header, focus)
+local function Show(lines, header, focus, keep)
     local all = {}
+    local was = keep and W.scroll:GetVerticalScroll() or nil
     if header then all[1] = "|cffffd100" .. header .. "|r" end
     local first = #all
     for _, l in ipairs(lines) do all[#all + 1] = l end
@@ -1345,9 +1426,20 @@ local function Show(lines, header, focus)
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", 0, -y)
         r:SetWidth(LIST_W)
-        r.text:SetText(l)
+        -- (una línea de mensaje es { texto, bytes antes del mensaje, mensaje }; lo demás, texto)
+        local text, spans = l, nil
+        if type(l) == "table" then
+            text = l[1]
+            local ok, s = pcall(HU.QuerySpans, l[3], W.query)
+            if ok then
+                spans = s
+                for _, sp in ipairs(spans) do sp[1], sp[2] = sp[1] + l[2], sp[2] + l[2] end
+            end
+        end
+        r.text:SetText(text)
         local h = math.max(14, r.text:GetStringHeight() or 14)
         r:SetHeight(h)
+        pcall(MarkRow, r, spans)
         local isFocus = focus ~= nil and i == focus + first
         r.hl:SetShown(isFocus)
         if isFocus then focusY, focusH = y, h end
@@ -1359,10 +1451,24 @@ local function Show(lines, header, focus)
     W.scroll:UpdateScrollChildRect()
     local view = W.scroll:GetHeight() or 0
     local maxS = math.max(0, y - view)
-    W.scroll:SetVerticalScroll(focusY and math.min(maxS, math.max(0, focusY + focusH / 2 - view / 2)) or 0)
+    -- (keep: llegan más resultados de la misma búsqueda; la lista se queda donde estabas)
+    -- (la línea elegida, a un tercio de arriba: antes en el centro, y Jorge la quería más arriba)
+    local to = focusY and math.min(maxS, math.max(0, focusY + focusH / 2 - view / 3)) or (was and math.min(maxS, was)) or 0
+    W.scroll:SetVerticalScroll(to)
+end
+
+-- Del contexto a la lista, justo donde la dejaste (botón «Volver» o el enlace de arriba)
+function HU.HistBack()
+    if not (W and W.inContext) then return end
+    W.keepScroll, W.inContext = false, false
+    Render()
+    if W.listScroll then W.scroll:SetVerticalScroll(math.min(W.listScroll, W.scroll:GetVerticalScrollRange() or 0)) end
 end
 
 Render = function()
+    -- (viendo el contexto de un mensaje: lo que siga llegando se guarda y se pinta al volver)
+    if W.inContext then return end
+    if W.backBtn then W.backBtn:Hide() end
     RefreshClasses()
     local rows = {}
     local all = {}
@@ -1372,25 +1478,30 @@ Render = function()
     W.shown = all
     for i, e in ipairs(all) do
         local src = e.day and "" or ("|cff66bbff" .. L(" (de otro oficial)") .. "|r")
-        rows[#rows + 1] = Line(e) .. src .. "  |cff44ff44|Hguhist:" .. i .. "|h[" .. L("ver") .. "]|h|r"
+        local l = Line(e)
+        l[1] = l[1] .. src .. "  |cff44ff44|Hguhist:" .. i .. "|h[" .. L("ver") .. "]|h|r"
+        rows[#rows + 1] = l
     end
     local head = string.format(L("%d mensajes"), #all) .. (W.waitingRemote and L(" · preguntando a otros oficiales...") or "")
     if #all == 0 and not W.waitingRemote then head = L("No hay mensajes con esa búsqueda.") end
-    Show(rows, head)
+    Show(rows, head, nil, W.keepScroll)
+    W.keepScroll = true
 end
 
 OpenContext = function(i)
     local e = W.shown and W.shown[i]
     if not e then return end
+    W.listScroll = W.scroll:GetVerticalScroll()
+    W.inContext = true
+    if W.backBtn then W.backBtn:Show() end
     local function show(lines)
         if not W:IsShown() then return end
         RefreshClasses()
         local rows, focus = {}, nil
         for _, x in ipairs(lines or {}) do
             local isFocus = not focus and (x.focus or (x.t == e.t and x.a == e.a))
-            local l = Line(x, isFocus)
-            if isFocus then l = "|cff44ff44»|r " .. l; focus = #rows + 1 end
-            rows[#rows + 1] = l
+            rows[#rows + 1] = Line(x, isFocus, isFocus and "|cff44ff44»|r " or nil)
+            if isFocus then focus = #rows end
         end
         if #rows == 0 then rows[1] = L("No se ha podido traer el contexto (el oficial que lo tenía ya no contesta).") end
         Show(rows, L("Contexto  ") .. "|cff44ff44|Hguhist:back|h[" .. L("« volver") .. "]|h|r", focus)
@@ -1408,8 +1519,10 @@ function HU:HistSearch(name, text)
     self:HistWindow(true)
     W.nameBox:SetText(name or "")
     W.textBox:SetText(text or "")
+    W.query = text
+    W.keepScroll, W.inContext = false, false
     W.localRes, W.remoteRes, W.waitingRemote = nil, nil, true
-    local since = time() - DAYS * 86400
+    local since = HU.StampNow() - DAYS * 86400
     local opts = { name = name, text = text, since = since }
     Show({}, L("Buscando..."))
     self:HistSearchLocal(opts, function(res) W.localRes = res; Render() end)
@@ -1429,7 +1542,8 @@ function HU:HistWindow(show)
         W = CreateFrame("Frame", "GuildUnionHistoryFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
         W:SetSize(640, 420)
         W:SetPoint("CENTER")
-        W:SetFrameStrata("HIGH")
+        -- (por encima de la ventana propia de GuildUnion, que va en DIALOG: en HIGH salía detrás)
+        W:SetFrameStrata("FULLSCREEN_DIALOG")
         W:SetMovable(true)
         W:EnableMouse(true)
         W:RegisterForDrag("LeftButton")
@@ -1465,6 +1579,14 @@ function HU:HistWindow(show)
         go:SetPoint("TOPRIGHT", -14, -32)
         go:SetText(L("Buscar"))
         go:SetScript("OnClick", function() HU:HistSearch(HU.Trim(W.nameBox:GetText()), HU.Trim(W.textBox:GetText())) end)
+        -- («Volver», arriba en el centro: solo viendo el contexto de un mensaje)
+        local back = CreateFrame("Button", nil, W, "UIPanelButtonTemplate")
+        back:SetSize(100, 20)
+        back:SetPoint("TOP", 0, -6)
+        back:SetText(L("« Volver"))
+        back:SetScript("OnClick", function() HU.HistBack() end)
+        back:Hide()
+        W.backBtn = back
         -- (lista normal que empieza arriba, con barra; antes era la pieza del chat, que llena desde abajo)
         local sf = CreateFrame("ScrollFrame", "GuildUnionHistoryScroll", W, "UIPanelScrollFrameTemplate")
         sf:SetPoint("TOPLEFT", 14, -64)
@@ -1473,7 +1595,8 @@ function HU:HistWindow(show)
         content:SetSize(LIST_W, 1)
         sf:SetScrollChild(content)
         W.scroll, W.content, W.rows = sf, content, {}
-        if HU.NameSuggest then HU:NameSuggest(W.nameBox) end
+        -- (elegir un nombre de las sugerencias ya busca, como Intro)
+        if HU.NameSuggest then HU:NameSuggest(W.nameBox, function(s) s:ClearFocus(); go:Click() end) end
         W:Hide()
     end
     if show == nil then show = not W:IsShown() end
