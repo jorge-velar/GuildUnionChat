@@ -2225,3 +2225,31 @@ por dónde llegara su mensaje.
   la clase del que reenviaba. Ahora el eco va sin identificador.
 - Límite: de quien nunca se ha sabido la clase (miembro sin addon de otra hermandad que no está en la
   lista corta) sigue saliendo naranja. Arreglarlo es mandar la clase dentro del eco: comunicación.
+
+## Core.lua · filtros del chat y valores secretos (campos de batalla)
+
+Error visto el 12/11 (BugSack, con rastro): `attempt to perform string conversion on a secret string
+value (execution tainted by 'GuildUnion')` en `ChatHistory_GetToken`, llamado desde
+`MessageEventHandler` (ChatFrameOverrides.lua:683) con `chatType="GUILD"` y `chanSender=<secret>`.
+
+Qué pasa: el juego solo llama a los filtros de addons si el **texto** se puede leer
+(`canaccessvalue(...)` mira el primer dato). Hay momentos en que el texto de `/g` se lee pero el
+identificador de quien escribe (`arg12`) es secreto. `MentionFilter` devolvía todos los datos del
+mensaje, también ese; al volver de un addon quedan manchados y el juego falla al usarlos
+(`strlower` de un secreto) y la línea no se pinta. El rastro del 12/11 fue **en una mazmorra**
+(Jorge); no se sabe cuándo exactamente sella el juego el identificador (¿en combate?): a Jorge en
+mazmorra no le salió y a otro sí.
+
+Dos defensas:
+- `HU.AddChatFilter`: si **cualquier** dato del mensaje es secreto (`AnySecret`), el filtro contesta
+  solo `false` y no devuelve datos. Antes miraba solo texto y nombre. Es la defensa principal: va
+  mensaje a mensaje y vale en cualquier sitio, mazmorras incluidas. Indicio de que basta: el filtro
+  de silenciados de `/g` lleva semanas contestando solo `true`/`false` sin que saliera este error.
+- `HU.AddChatFilter(event, fn, true)` + `HU:SyncChatFilters()`: los filtros de `CHAT_MSG_GUILD` y
+  `CHAT_MSG_OFFICER` (menciones, etiqueta propia, silenciados y líneas del eco) se quitan dentro de
+  `pvp`/`arena` y se vuelven a poner al salir. Por si con contestar `false` el juego ya da el
+  mensaje por manchado (sin comprobar). Los del canal (`HideFilter`) y el de avisos del sistema se
+  quedan: sin ellos se verían las líneas crudas del canal.
+
+Coste dentro de la partida: en `/g` no hay etiqueta ni menciones ni emoticonos, se ven las líneas
+del eco tal cual y los silenciados. Sin probar en el juego.

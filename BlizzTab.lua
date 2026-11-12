@@ -998,6 +998,15 @@ local function SyncTab()
     -- (solo con la hermandad elegida: va debajo de su pestaña de Información)
     -- (ya no depende de que la configuración esté leída: al entrar tarda y la pestaña se quedaba escondida)
     local show = f.GuildInfoTab and f.GuildInfoTab:IsShown()
+    -- (debajo de la última pestaña del juego que esté a la vista: la de preferencias de juego de la
+    -- hermandad va justo debajo de la de Información, y la nuestra la tapaba. Jorge, 13/11)
+    local prefs = f.GuildPreferredPlaySettingsTab
+    local anchor = (prefs and prefs:IsShown()) and prefs or f.GuildInfoTab
+    if anchor and tab.anchoredTo ~= anchor then
+        tab.anchoredTo = anchor
+        tab:ClearAllPoints()
+        tab:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -20)
+    end
     tab:SetShown(show and true or false)
     if not show then ShowPanel(false) end
 end
@@ -1007,6 +1016,7 @@ local function Setup()
     if tab or not f or not f.GuildInfoTab then return end
     tab = CreateFrame("CheckButton", "GuildUnionReduceTab", f, "CommunitiesFrameTabTemplate")
     tab:SetPoint("TOPLEFT", f.GuildInfoTab, "BOTTOMLEFT", 0, -20)
+    tab.anchoredTo = f.GuildInfoTab
     tab.Icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
     tab.tooltip = "GuildUnion"
     -- (nuestro clic: no llama a SetDisplayMode de Blizzard)
@@ -1019,7 +1029,7 @@ local function Setup()
     HU:SafeCall("buscador", BuildCharSearch, f)
     -- (al pulsar una pestaña suya o cambiar de vista, se cierra la nuestra)
     hooksecurefunc(f, "SetDisplayMode", function() ShowPanel(false) end)
-    for _, key in ipairs({ "ChatTab", "RosterTab", "GuildBenefitsTab", "GuildInfoTab" }) do
+    for _, key in ipairs({ "ChatTab", "RosterTab", "GuildBenefitsTab", "GuildInfoTab", "GuildPreferredPlaySettingsTab" }) do
         if f[key] then f[key]:HookScript("OnClick", function() ShowPanel(false) end) end
     end
     if f.UpdateCommunitiesTabs then hooksecurefunc(f, "UpdateCommunitiesTabs", SyncTab) end

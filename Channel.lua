@@ -19,7 +19,7 @@ local function RawSend(msg, chatType, lang, target)
     return ok
 end
 
-local function AddFilter(event, fn) HU.AddChatFilter(event, fn) end
+local function AddFilter(event, fn, offInPvp) HU.AddChatFilter(event, fn, offInPvp) end
 
 local function RemoveChannelFromFrame(frame, name)
     if ChatFrame_RemoveChannel then
@@ -240,6 +240,9 @@ local function RejoinSoon()
 end
 HU:On("PLAYER_ENTERING_WORLD", RejoinSoon)
 HU:On("ZONE_CHANGED_NEW_AREA", RejoinSoon)
+-- (y los filtros del chat de hermandad, fuera mientras dure la partida: Core.lua, SyncChatFilters)
+HU:On("PLAYER_ENTERING_WORLD", function() HU:SyncChatFilters() end)
+HU:On("ZONE_CHANGED_NEW_AREA", function() HU:SyncChatFilters() end)
 
 -- ¿Es un canal del juego? («General - Elwynn», «Comercio (Servicios) - Ventormenta»...)
 local function IsGameChannel(fullName)
@@ -1445,9 +1448,16 @@ local function OwnTagFlag(flag, msg, author)
         tag = HU:TagText(HU.myTag, not has and HU.NO_ADDON_HEX or nil, has)
     end
     local mentioned = full and full:lower() ~= (HU:MeKey() or "") and HU:MentionsMe(msg, full, HU.myTag)
-    if not mentioned and tag == "" then return flag end
+    -- (corona o espadas, como en las líneas de las otras hermandades: sin esto los de mi hermandad,
+    -- y yo mismo, salíamos sin icono. Jorge, 12/11)
+    local icon = ""
+    if full and HU.myTag then
+        local rTag, rIdx = HU:RankInfoOf(full)
+        icon = HU:RoleIcon(HU:RoleOf(full, rTag or HU.myTag, rIdx))
+    end
+    if not mentioned and tag == "" and icon == "" then return flag end
     -- (una marca por cada texto distinto: así una línea que el juego pinte más tarde no coge el de otra)
-    local text = (HU.MENTION_MARK[mentioned] or "") .. tag
+    local text = (HU.MENTION_MARK[mentioned] or "") .. tag .. icon
     local name = HU.flagNames[text]
     if not name then
         HU.flagCount = HU.flagCount + 1
@@ -1481,8 +1491,8 @@ local function MentionFilter(_, _, msg, author, lang, chan, target, flag, ...)
     end
     return false
 end
-AddFilter("CHAT_MSG_GUILD", MentionFilter)
-AddFilter("CHAT_MSG_OFFICER", MentionFilter)
+AddFilter("CHAT_MSG_GUILD", MentionFilter, true)
+AddFilter("CHAT_MSG_OFFICER", MentionFilter, true)
 
 function HU:Display(kind, tag, author, msg, guid)
     HU.NoteSpeaker(author)
@@ -1765,7 +1775,7 @@ AddFilter("CHAT_MSG_GUILD", function(_, _, msg, author, _, _, _, _, _, _, _, _, 
     if full and full:lower() == HU:MeKey() and HU:IsOwnHidden(msg) then return true end
     if HU.IsMuted and full and full:lower() ~= HU:MeKey() and HU:IsMuted(full) then return true end
     return false
-end)
+end, true)
 
 HU:On("CHAT_MSG_GUILD", function(text, author, _, _, _, _, _, _, _, _, lineID, guid)
     -- (línea del eco: ni al historial ni otra vez a las demás; si la escribió otro enlace, no la repito)

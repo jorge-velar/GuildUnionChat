@@ -171,21 +171,61 @@ end)
 
 -- Filtro del chat del juego (con nombre nuevo o viejo según la versión) que nunca toca
 -- mensajes secretos y no rompe el chat si falla
-function HU.AddChatFilter(event, fn)
-    local function safe(frame, ev, msg, author, ...)
-        if issecretvalue and (issecretvalue(msg) or issecretvalue(author)) then return false end
+local function AnySecret(...)
+    if not issecretvalue then return false end
+    for i = 1, select("#", ...) do
+        if issecretvalue((select(i, ...))) then return true end
+    end
+    return false
+end
+
+-- (offInPvp: el filtro se quita dentro de campos de batalla y arenas; ver HU:SyncChatFilters) [+ARCHITECTURE.md]
+HU.chatFilters = {}
+local function SetChatFilter(e, on)
+    if e.on == on then return end
+    local f
+    if on then
+        f = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
+    else
+        f = ChatFrame_RemoveMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter)
+    end
+    if f then f(e.event, e.fn); e.on = on end
+end
+
+function HU.AddChatFilter(event, fn, offInPvp)
+    local function safe(frame, ev, ...)
+        -- (CUALQUIER dato secreto, no solo el texto o el nombre: en un campo de batalla el texto se
+        -- lee pero el identificador de quien escribe es secreto. Si el filtro devuelve los datos, el
+        -- juego los da por manchados y falla al pintar la línea; se contesta «nada» y no se toca)
+        if AnySecret(...) then return false end
         -- (se devuelven TODOS los datos del mensaje: si se recortan, el chat normal lo oculta)
-        local r = { pcall(fn, frame, ev, msg, author, ...) }
+        local r = { pcall(fn, frame, ev, ...) }
         if not r[1] then
             if HU.RecordError then HU:RecordError(r[2], "filter " .. tostring(ev)) end
             return false
         end
-        return unpack(r, 2, select("#", ...) + 4)
+        return unpack(r, 2, select("#", ...) + 2)
     end
-    if ChatFrame_AddMessageEventFilter then
-        ChatFrame_AddMessageEventFilter(event, safe)
-    elseif ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter then
-        ChatFrameUtil.AddMessageEventFilter(event, safe)
+    local e = { event = event, fn = safe, offInPvp = offInPvp and true or false, on = false }
+    HU.chatFilters[#HU.chatFilters + 1] = e
+    SetChatFilter(e, true)
+end
+
+-- Dentro de un campo de batalla o una arena los filtros marcados se quitan: con solo pasar por un
+-- addon, el juego ya no se fía del mensaje y da error al pintarlo si lleva algo secreto
+function HU:SyncChatFilters()
+    local pvp = false
+    if IsInInstance then
+        local inInst, kind = IsInInstance()
+        pvp = (inInst and (kind == "pvp" or kind == "arena")) and true or false
+    end
+    -- (se quitan y se ponen todos a la vez y en su orden, para que entre ellos no cambie)
+    for _, e in ipairs(HU.chatFilters) do
+        if e.offInPvp then SetChatFilter(e, false) end
+    end
+    if pvp then return end
+    for _, e in ipairs(HU.chatFilters) do
+        if e.offInPvp then SetChatFilter(e, true) end
     end
 end
 
