@@ -4,4 +4,5 @@ package-as: GuildUnion
 ignore:
   - Tools
   - Bench
+  - docs
   - .gitignore

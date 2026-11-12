@@ -8,7 +8,7 @@
 std = "lua51"
 max_line_length = false      -- hay líneas largas a propósito
 unused_args = false          -- los manejadores de eventos reciben muchos argumentos que no usan
-exclude_files = { "Libs/**", "Tools/**", ".git/**", ".claude/**" }
+exclude_files = { "Libs/**", "Tools/**", "docs/**", ".git/**", ".claude/**" }
 
 -- Lo que el addon escribe en las variables globales (a propósito)
 globals = {
