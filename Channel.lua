@@ -1525,10 +1525,6 @@ end
 
 local function MentionFilter(frame, event, msg, author, lang, chan, target, flag, ...)
     if type(msg) ~= "string" or HU.Secret(msg) then return false end
-    -- (línea con un enlace de profesión: no se toca, la pinta el juego tal cual, sin etiqueta. Abrir
-    -- una profesión ajena es una acción protegida y, en una línea que ha pasado por el addon, el clic
-    -- no hacía nada. Sin confirmar que sea la causa: Jorge, 13/11) [+ARCHITECTURE.md]
-    if msg:find("|Htrade:", 1, true) then return false end
     if HU.selfPaint then
         -- (sin configurar no hay etiqueta que poner: la pinta el juego tal cual)
         if not (HU.myTag and HU.db and type(author) == "string" and frame and frame.AddMessage) then return false end

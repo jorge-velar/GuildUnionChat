@@ -1455,11 +1455,11 @@ Se crean una vez; si las cierras, se pueden volver a crear desde el panel o con 
   5.4.31 (copia 85) daba 16× «string conversion on a secret string value (tainted by GuildUnion)» y
   el chat no se veía. Era el «modo 3» de la prueba (copia 86); el rastro y los modos `/gu bg` se
   han quitado. Sin confirmación escrita de Jorge de que el modo 3 se viera bien en la partida.
-- Las líneas de `/g` y `/o` con un enlace de profesión (`|Htrade:`) no se tocan: `MentionFilter`
-  contesta `false` y las pinta el juego sin etiqueta. Motivo: el enlace no se podía pulsar. Hipótesis
-  sin comprobar: abrir una profesión ajena es una acción protegida y, si el texto de la línea viene de
-  un addon, el clic no hace nada (un enlace de objeto solo abre un recuadro y por eso sí va). En las
-  líneas de OTRAS hermandades, que pinta siempre el addon, el enlace de profesión seguirá sin abrirse.
+- Enlaces de profesión (`|Htrade:`) que no se abren al pulsarlos: NO es por cómo pinta el addon. La
+  copia 88 dejaba esas líneas sin tocar (las pintaba el juego, sin etiqueta) y tampoco se abrían; a
+  quien pone el enlace sí se le abre el suyo. Lo que encaja es que Forever no deja abrir la profesión
+  de otro jugador desde el chat. La 89 quita aquel cambio: esas líneas vuelven a llevar etiqueta.
+  Falta, para cerrarlo del todo, la prueba con Guild Union desactivado.
 - Lo de la 87, que sigue igual:
 
 **ReduceClean-87 (prueba 2 de campos de batalla, 13/11): el addon ya no crea pestañas ni toca la caja
