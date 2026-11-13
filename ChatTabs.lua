@@ -6,7 +6,6 @@ local L = HU.L
 
 local TABS = HU.LT({
     { key = "main", name = "Hermandad",    groups = { "GUILD", "GUILD_ACHIEVEMENT" } },
-    { key = "lfg",  name = "Buscar grupo", groups = {} },
     { key = "off",  name = "Oficiales",    groups = { "OFFICER" }, officer = true },
 })
 
@@ -34,7 +33,7 @@ local function ClearGroups(f)
 end
 
 -- por si se cambió de idioma después de crear las pestañas: se buscan con los dos nombres
-local OTHER_NAMES = { main = { "Hermandad", "Guild" }, lfg = { "Buscar grupo", "Looking for group" }, off = { "Oficiales", "Officers" } }
+local OTHER_NAMES = { main = { "Hermandad", "Guild" }, off = { "Oficiales", "Officers" } }
 local function FindTab(t)
     local f = FindWindow(t.name)
     if f then return f end
@@ -104,22 +103,18 @@ local framesCache, framesT = {}, {}
 local function FramesForUncached(self, kind)
     local out, used = {}, {}
     local function add(f) if f and not used[f] then used[f] = true; out[#out + 1] = f end end
-    local mainTab, lfgTab, offTab = self:ChatTabFrame("main"), self:ChatTabFrame("lfg"), self:ChatTabFrame("off")
+    local mainTab, offTab = self:ChatTabFrame("main"), self:ChatTabFrame("off")
     local wantType = (kind == "off") and "OFFICER" or "GUILD"
-    if kind == "lfg" then
-        add(lfgTab)
-        if not self.db.showLFG then return out end
-    end
     for i = 1, (NUM_CHAT_WINDOWS or 10) do
         local f = Frame(i)
-        if f and f.messageTypeList and not (kind == "lfg" and (f == mainTab or f == offTab)) then
+        if f and f.messageTypeList then
             for _, t in pairs(f.messageTypeList) do
                 if t == wantType then add(f); break end
             end
         end
     end
     if kind == "main" then add(mainTab) elseif kind == "off" then add(offTab) end
-    if #out == 0 and kind ~= "lfg" then add(DEFAULT_CHAT_FRAME) end
+    if #out == 0 then add(DEFAULT_CHAT_FRAME) end
     return out
 end
 
@@ -146,7 +141,7 @@ end
 local chattyFrames
 function HU:FramesFor(kind)
     -- (con Chattynator, todo a la ventana principal: es la única que recoge. Lo que se escribiera en
-    -- otra pestaña del juego, como la de Buscar grupo, no se vería)
+    -- otra pestaña del juego no se vería)
     if HU.UsingChattynator() then
         if not chattyFrames or chattyFrames[1] ~= DEFAULT_CHAT_FRAME then chattyFrames = { DEFAULT_CHAT_FRAME } end
         return chattyFrames
@@ -189,7 +184,6 @@ local function TabMenu(owner, root)
     end
     item("main", L("Otras hermandades"))
     if HU.offCfg and HU:CanOfficer() then item("off", L("Oficiales de la comunidad")) end
-    if not HU.LFGEnabled or HU:LFGEnabled() then item("lfg", L("Buscar grupo")) end
     for _, x in ipairs(HU.ExtraChannels and HU:ExtraChannels() or {}) do
         item("x:" .. x.name, x.name)
     end
@@ -200,11 +194,9 @@ end
 
 ---------------------------------------------------------------------------
 -- Cada pestaña escribe en lo suyo (Jorge, 10/11): al abrir el chat (Intro) y al hacer clic en la pestaña.
--- Hermandad → /g, Oficiales → /o, Buscar grupo → cabecera «Buscar grupo:» y lo escrito va por SendLFG.
--- [+ARCHITECTURE.md]
+-- Hermandad → /g, Oficiales → /o. [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
-local TAB_TYPE = { main = "GUILD", lfg = "SAY", off = "OFFICER" }
-local LFG_COLOR = { r = 1, g = 0.62, b = 0.28 }
+local TAB_TYPE = { main = "GUILD", off = "OFFICER" }
 
 local function SelectedChatFrame()
     if GENERAL_CHAT_DOCK and FCFDock_GetSelectedWindow then return FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK) end
@@ -218,90 +210,17 @@ local function TabKeyOf(frame)
     end
 end
 
--- Cabecera «Buscar grupo:» encima de la que pone Blizzard (mismos márgenes que su UpdateHeader)
-local function PaintLFGHeader(eb)
-    if not eb.guLFG then return end
-    if eb:GetChatType() ~= "SAY" then eb.guLFG = nil; return end
-    local header = _G[eb:GetName() .. "Header"]
-    local suffix = _G[eb:GetName() .. "HeaderSuffix"]
-    if not header then return end
-    header:SetWidth(0)
-    header:SetText(L("Buscar grupo") .. ": ")
-    header:SetTextColor(LFG_COLOR.r, LFG_COLOR.g, LFG_COLOR.b)
-    if suffix then suffix:Hide() end
-    local langWidth = eb.UpdateLanguageHeader and eb:UpdateLanguageHeader() or 0
-    eb:SetTextInsets(15 + header:GetWidth() + langWidth, 13, 0, 0)
-    eb:SetTextColor(LFG_COLOR.r, LFG_COLOR.g, LFG_COLOR.b)
-    if eb.SetFocusRegionVertexColors then eb:SetFocusRegionVertexColors(LFG_COLOR) end
-end
-
--- Si el jugador elige otro chat a mano (/g, /s, /w, /1...), deja de ser Buscar grupo
-local function OnHandleChatType(eb, _, command)
-    if not (eb.guLFG and command) then return end
-    if command:match("^/%d+$") or (hash_ChatTypeInfoList and hash_ChatTypeInfoList[command]) then
-        eb.guLFG = nil
-        eb:UpdateHeader()
-    end
-end
-
-local function HookBox(eb)
-    if eb.guHooked then return end
-    eb.guHooked = true
-    hooksecurefunc(eb, "UpdateHeader", function(self) HU:SafeCall("pestañas de chat", PaintLFGHeader, self) end)
-    hooksecurefunc(eb, "HandleChatType", function(self, msg, command)
-        HU:SafeCall("pestañas de chat", OnHandleChatType, self, msg, command)
-    end)
-end
-
 local function ApplyTab(eb, frame)
     if not (eb and eb.GetChatType and frame) then return end
-    HookBox(eb)
     -- (respondiendo un susurro u otro tipo puesto a propósito: el tipo ya no es el «pegajoso»)
     if eb:GetChatType() ~= eb:GetStickyType() then return end
-    local key = TabKeyOf(frame)
-    local wasLFG = eb.guLFG
-    eb.guLFG = (key == "lfg") or nil
-    local chatType = TAB_TYPE[key]
+    local chatType = TAB_TYPE[TabKeyOf(frame)]
     if chatType and eb:GetChatType() ~= chatType then
         eb:SetChatType(chatType)
         eb:SetStickyType(chatType)
         eb:UpdateHeader()
-    elseif eb.guLFG or wasLFG then
-        eb:UpdateHeader()
     end
 end
-
--- /glf a secas: la caja queda escribiendo en Buscar grupo, esté en la pestaña que esté
-function HU:SetLFGMode(eb)
-    if not (eb and eb.GetChatType and eb.SetChatType) then return false end
-    if self.LFGEnabled and not self:LFGEnabled() then return false end
-    HookBox(eb)
-    eb.guLFG = true
-    eb:SetChatType("SAY")
-    eb:SetStickyType("SAY")
-    eb:UpdateHeader()
-    return true
-end
-
--- «/glf» y espacio, como «/g» y espacio: cambia la caja a Buscar grupo sin pulsar Intro (Jorge, 12/11).
--- (el texto se vacía después de que el juego haya revisado «/glf »; con la caja vacía ya no revisa nada)
-local LFG_PREFIX = { ["/glf "] = true, ["/buscargrupo "] = true }
-local function OnLFGTyped(eb, userInput)
-    if not userInput then return end
-    local text = eb:GetText()
-    if type(text) ~= "string" or HU.Secret(text) or not LFG_PREFIX[text:lower()] then return end
-    if HU:SetLFGMode(eb) then eb:SetText("") end
-end
-HU:OnStart(function()
-    for i = 1, (NUM_CHAT_WINDOWS or 10) do
-        local eb = _G["ChatFrame" .. i .. "EditBox"]
-        if eb and eb.HookScript then
-            eb:HookScript("OnTextChanged", function(self, userInput)
-                HU:SafeCall("pestañas de chat", OnLFGTyped, self, userInput)
-            end)
-        end
-    end
-end)
 
 local function StickyTab(text)
     -- (pulsar Intro lo hace el jugador: aquí el juego deja cambiar los canales de sitio)
@@ -326,17 +245,4 @@ if FCF_Tab_OnClick and FCF_GetChatFrameByID then
         HU.tabApplied = f
         HU:SafeCall("pestañas de chat", ApplyTab, f and f.editBox, f)
     end)
-end
-
--- Al enviar con la cabecera «Buscar grupo:»: primero se vacía el cuadro (si algo falla, no sale por /decir)
-local function OnPreSend(_, eb)
-    if not (eb and eb.guLFG and eb:GetChatType() == "SAY") then return end
-    local text = HU.Trim(eb:GetText())
-    eb:SetText("")
-    if text == "" then return end
-    if eb.AddHistoryLine then eb:AddHistoryLine("/glf " .. text) end
-    HU:SafeCall("buscar grupo", HU.SendLFG, HU, text)
-end
-if EventRegistry and EventRegistry.RegisterCallback then
-    EventRegistry:RegisterCallback("ChatFrame.OnEditBoxPreSendText", OnPreSend, HU)
 end

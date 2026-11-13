@@ -74,12 +74,6 @@ end
 HU:OnStart(function()
     HU.NewTicker(300, function()
         if not HU.myTag or not HU:IsRelay() then return end
-        if HU.db.lfgState then
-            for _, tag in ipairs(HU:OtherTags()) do
-                local peer = HU:BestPeer(tag)
-                if peer then HU:ShareLFGState(peer.name) end
-            end
-        end
         for _, x in pairs(HU.db.extraChans) do
             for _, tag in ipairs(HU:OtherTags()) do
                 local peer = HU:SafePeer(tag)
@@ -88,47 +82,6 @@ HU:OnStart(function()
         end
     end)
 end)
-
----------------------------------------------------------------------------
--- "Buscar Grupo": va dentro del canal de hermandad, pero los oficiales lo pueden quitar
---   LG~1|0~autor~etiq~t      1 = quitado, 0 = activo
----------------------------------------------------------------------------
-function HU:LFGEnabled()
-    local s = self.db.lfgState
-    return not (s and s.off)
-end
-
-local function LGMsg(st) return table.concat({ "LG", st.off and "1" or "0", st.by or "", st.tag or "", st.t or 0 }, "~") end
-
-function HU:ShareLFGState(target)
-    local st = self.db.lfgState
-    if not st then return end
-    if target then return self:Whisper(target, LGMsg(st)) end
-    if self.myTag and IsInGuild() then self:Send(LGMsg(st), "GUILD") end
-    for _, tag in ipairs(self:OtherTags()) do
-        local peer = self:BestPeer(tag)
-        if peer then self:Whisper(peer.name, LGMsg(st)) end
-    end
-end
-
-HU.comm.LG = function(self, sender, f, dist, raw)
-    local off, by, tag, t = f[1] == "1", f[2], f[3], HU.NetT(f[4])
-    if not t then return end
-    if not self:CheckOfficerFirm(by ~= "" and by or sender, tag, function() HU.comm.LG(self, sender, f, dist, raw) end, sender, dist) then return end
-    local cur = self.db.lfgState
-    if cur and (cur.t or 0) >= t then return end
-    self.db.lfgState = { off = off or nil, by = by, tag = (tag ~= "" and tag) or nil, t = t }
-    if dist == "WHISPER" then self:Send(raw, "GUILD") end
-    self:Print(L("Canal Buscar Grupo ") .. (off and "quitado" or "activado") .. " (" .. self:Short(by) .. ")")
-    self:Changed("channel")
-    if self.UI and self.UI.RefreshChatTabs then self.UI:RefreshChatTabs() end
-end
-
-local origPQ2 = HU.comm.PQ
-HU.comm.PQ = function(self, sender, ...)
-    if origPQ2 then origPQ2(self, sender, ...) end
-    if self:IsRelay() and self.db.lfgState then self:ShareLFGState(sender) end
-end
 
 ---------------------------------------------------------------------------
 -- Canal y contraseña desde la nota de oficial [+ARCHITECTURE.md]

@@ -357,10 +357,10 @@ Retail: lo que se escribe en el chat de la ventana de la hermandad del juego (Co
 pasa por SendChatMessage. Se trata igual que el /g: pasa a las demás hermandades y, si estás
 silenciado o vetado, no le llega a nadie con el addon (en el chat normal).
 
-### línea 1056 · `local KIND_SHORT = { main = "H", off = "O", lfg = "BG" }`
+### línea 1056 · `local KIND_SHORT = { main = "H", off = "O" }`
 
 Igual, pero por separado: la cabecera (canal, hermandad, nombre) y el mensaje
-compact (chat del panel): sin el reino, y el canal en corto ([H], [O], [BG]) o sin él
+compact (chat del panel): sin el reino, y el canal en corto ([H], [O]) o sin él
 (showKind = false en las pestañas de un solo chat, donde ya se sabe cuál es)
 
 ### línea 1122 · `local customByCode, customMaxLen, customFirstPat`
@@ -1443,9 +1443,15 @@ PQ                           alguien que acaba de entrar pide el mensaje fijado
 
 Crea en el chat del juego las pestañas:
 "Hermandad"     chat de hermandad + lo que llega de las otras hermandades
-"Buscar grupo"  los mensajes de Buscar grupo de todas las hermandades
 "Oficiales"     chat de oficiales unido (solo si puedes verlo)
 Se crean una vez; si las cierras, se pueden volver a crear desde el panel o con /gu pestañas.
+
+«Buscar grupo» se quitó entero en la ReduceClean-85 (Jorge, 13/11: no se usaba): fuera la pestaña,
+`/glf` y `/buscargrupo`, `HU:SendLFG`, el modo de la caja de escribir (`eb.guLFG`) y el interruptor de
+oficiales (`LG`, `db.lfgState`). Lo que mande una versión vieja con la marca `[ETIQ:B]` se descarta
+en `HU:OnUnionChat`, y un `LG` que llegue no tiene quien lo atienda (Comm lo ignora). El addon no
+cierra la pestaña «Buscar grupo» que ya tenga alguien creada: la cierra él a mano. El historial
+guardado conserva sus líneas viejas de ese tipo (`lfg` en History.lua y Social.lua).
 
 ### Cada pestaña escribe en lo suyo (ReduceClean-35)
 
@@ -1453,15 +1459,6 @@ Se crean una vez; si las cierras, se pueden volver a crear desde el panel o con 
   izquierdo en la pestaña (gancho a `FCF_Tab_OnClick`). Cambia el tipo y el «pegajoso» del cuadro de
   esa ventana: Hermandad → GUILD, Oficiales → OFFICER. No toca nada si el tipo actual no es el
   pegajoso (contestando un susurro, etc.).
-- Buscar grupo no es un tipo de chat del juego. El cuadro queda en SAY con la marca `eb.guLFG`, y un
-  gancho a `UpdateHeader` pinta encima la cabecera «Buscar grupo:» (naranja, mismos márgenes que
-  Blizzard). Al enviar, el evento `ChatFrame.OnEditBoxPreSendText` (Blizzard lo deja para que los
-  addons toquen el texto; llega tras procesar los comandos /) **vacía primero el cuadro** y luego
-  manda el texto con `HU:SendLFG`. Así, si algo falla, no sale nada por /decir. Se apunta en el
-  historial de flechas como `/buscargrupo texto`.
-- La marca se quita si el tipo deja de ser SAY o si el jugador escribe un comando de chat
-  (`/g`, `/s`, `/w`, `/1`…; gancho a `HandleChatType`).
-- Antes (hasta la 34) se escribía «/buscargrupo » en el cuadro y se veía «Say: /buscargrupo».
 
 ## Test.lua
 
@@ -2240,16 +2237,36 @@ mensaje, también ese; al volver de un addon quedan manchados y el juego falla a
 (Jorge); no se sabe cuándo exactamente sella el juego el identificador (¿en combate?): a Jorge en
 mazmorra no le salió y a otro sí.
 
-Dos defensas:
+Dos defensas (la segunda, cambiada en la copia 84):
 - `HU.AddChatFilter`: si **cualquier** dato del mensaje es secreto (`AnySecret`), el filtro contesta
   solo `false` y no devuelve datos. Antes miraba solo texto y nombre. Es la defensa principal: va
   mensaje a mensaje y vale en cualquier sitio, mazmorras incluidas. Indicio de que basta: el filtro
   de silenciados de `/g` lleva semanas contestando solo `true`/`false` sin que saliera este error.
-- `HU.AddChatFilter(event, fn, true)` + `HU:SyncChatFilters()`: los filtros de `CHAT_MSG_GUILD` y
-  `CHAT_MSG_OFFICER` (menciones, etiqueta propia, silenciados y líneas del eco) se quitan dentro de
-  `pvp`/`arena` y se vuelven a poner al salir. Por si con contestar `false` el juego ya da el
-  mensaje por manchado (sin comprobar). Los del canal (`HideFilter`) y el de avisos del sistema se
-  quedan: sin ellos se verían las líneas crudas del canal.
+- `HU.selfPaint` (copia 84, 5.4.31; sustituye al quitar y poner filtros de la 5.4.30, que no
+  arreglaba nada). Rastro del 13/11 con la 5.4.30: `HistoryKeeper.lua:9: attempted to index a table
+  that cannot be accessed while tainted (execution tainted by 'GuildUnion')`, desde
+  `MessageEventHandler:682`, `chatType="GUILD"`, `accessIDs=<forbidden table>`.
+  - Por qué: la tabla `accessIDs` del juego usa como clave un texto con el identificador de quien
+    escribe. En cuanto el juego guarda una clave secreta (cualquier línea de jugador en una partida),
+    la tabla queda prohibida para ejecución manchada **hasta el `/reload`**. `MentionFilter` devuelve
+    la línea cambiada (texto, marca con etiqueta e icono): eso mancha la ejecución de esa línea, el
+    juego falla al consultar la tabla y **no la pinta**. Un filtro que solo contesta `true`/`false`
+    no mancha (visto con la copia 82).
+  - Síntoma: tras una partida no se ven las líneas de `/g` y `/o` de la propia hermandad; sí `/s`,
+    `/group` y las de las otras hermandades (esas las pinta el addon con `AddMessage`).
+  - Arreglo: `HU.selfPaint` se enciende al entrar a una partida (`HU:InPvpNow`) o al ver cualquier
+    dato secreto en una línea de chat (un marco aparte en Channel.lua mira todos los datos de los
+    chats de jugadores; `AnySecret` en los filtros también lo enciende) y no se apaga hasta el
+    `/reload`. Con él encendido `MentionFilter` contesta `true` (descartar) y pinta la línea él mismo
+    en esa ventana (`PaintOwnLine`, con `FormatLineParts` como las de las otras hermandades). Antes
+    de pintar pregunta a `HU:GuildLineHidden` (eco, silenciados, líneas propias ocultas), porque al
+    descartar ya no se llama al filtro siguiente.
+  - Diferencias de la línea pintada por el addon frente a la del juego: el enlace del nombre no
+    lleva el número de línea (no sirve para denunciar esa línea desde el menú), no sale la marca
+    `<AFK>`/`<DND>`, y otros addons que filtren `/g` después de nosotros no la ven. La hora sí se pone
+    si el jugador la tiene activada.
+  - Sin configurar (`HU.myTag` vacío) no se pinta nada propio: contesta `false` y la pinta el juego.
+  - Sin probar en el juego.
 
-Coste dentro de la partida: en `/g` no hay etiqueta ni menciones ni emoticonos, se ven las líneas
-del eco tal cual y los silenciados. Sin probar en el juego.
+Otro aviso parecido visto la misma noche, `tainted by 'TradeSkillMaster'` al escribir, no es
+nuestro (ese addon sustituye `HandleModifiedItemClick` y `ChatEdit_InsertLink`).

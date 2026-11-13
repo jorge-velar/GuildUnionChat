@@ -7,7 +7,7 @@
 ## X-Copyright: Copyright (c) 2026 Sadance
 ## X-License: MIT
 ## IconTexture: Interface\Icons\INV_Shirt_GuildTabard_01
-## Version: 5.4.30
+## Version: 5.4.31
 ## X-Reduce-Version: 1.1.0
 ## SavedVariables: GuildUnionDB
 ## SavedVariablesPerCharacter: GuildUnionCharDB

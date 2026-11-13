@@ -179,25 +179,14 @@ local function AnySecret(...)
     return false
 end
 
--- (offInPvp: el filtro se quita dentro de campos de batalla y arenas; ver HU:SyncChatFilters) [+ARCHITECTURE.md]
-HU.chatFilters = {}
-local function SetChatFilter(e, on)
-    if e.on == on then return end
-    local f
-    if on then
-        f = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
-    else
-        f = ChatFrame_RemoveMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter)
-    end
-    if f then f(e.event, e.fn); e.on = on end
-end
-
-function HU.AddChatFilter(event, fn, offInPvp)
+-- (los filtros se ponen una vez al cargar y no se quitan nunca) [+ARCHITECTURE.md]
+function HU.AddChatFilter(event, fn)
     local function safe(frame, ev, ...)
         -- (CUALQUIER dato secreto, no solo el texto o el nombre: en un campo de batalla el texto se
         -- lee pero el identificador de quien escribe es secreto. Si el filtro devuelve los datos, el
         -- juego los da por manchados y falla al pintar la línea; se contesta «nada» y no se toca)
-        if AnySecret(...) then return false end
+        -- (y desde ese momento las líneas de mi hermandad las pinta el addon: HU.selfPaint, Channel.lua)
+        if AnySecret(...) then HU.selfPaint = true return false end
         -- (se devuelven TODOS los datos del mensaje: si se recortan, el chat normal lo oculta)
         local r = { pcall(fn, frame, ev, ...) }
         if not r[1] then
@@ -206,27 +195,8 @@ function HU.AddChatFilter(event, fn, offInPvp)
         end
         return unpack(r, 2, select("#", ...) + 2)
     end
-    local e = { event = event, fn = safe, offInPvp = offInPvp and true or false, on = false }
-    HU.chatFilters[#HU.chatFilters + 1] = e
-    SetChatFilter(e, true)
-end
-
--- Dentro de un campo de batalla o una arena los filtros marcados se quitan: con solo pasar por un
--- addon, el juego ya no se fía del mensaje y da error al pintarlo si lleva algo secreto
-function HU:SyncChatFilters()
-    local pvp = false
-    if IsInInstance then
-        local inInst, kind = IsInInstance()
-        pvp = (inInst and (kind == "pvp" or kind == "arena")) and true or false
-    end
-    -- (se quitan y se ponen todos a la vez y en su orden, para que entre ellos no cambie)
-    for _, e in ipairs(HU.chatFilters) do
-        if e.offInPvp then SetChatFilter(e, false) end
-    end
-    if pvp then return end
-    for _, e in ipairs(HU.chatFilters) do
-        if e.offInPvp then SetChatFilter(e, true) end
-    end
+    local add = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
+    if add then add(event, safe) end
 end
 
 -- Temporizadores que nunca rompen: si la función falla, el error se guarda (como los eventos)
@@ -608,7 +578,6 @@ local DEFAULTS = {
     grace = 120,          -- segundos de margen antes de considerar a alguien intruso
     debug = false,
     showChannel = false,  -- mostrar el canal oculto (depuración)
-    showLFG = false,      -- "Buscar grupo" solo en su pestaña
     audit = {},
     history = {},
     log = {},
@@ -664,7 +633,6 @@ HU:On("ADDON_LOADED", function(name)
     HU:ApplyLanguage(HU.db.lang)
     -- opciones quitadas del panel: se dejan con su valor normal
     if not HU.db.debug then HU.db.showChannel = false end   -- el canal oculto no se ve en el chat
-    HU.db.showLFG = false                                      -- Buscar Grupo solo en su pestaña, nunca en el chat normal
 end)
 
 HU:On("PLAYER_LOGIN", function()
@@ -703,8 +671,7 @@ local HELP = HU.LT({
     "|cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia",
     "|cffffd100/gu config|r  explica cómo configurar las hermandades",
     "|cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)",
-    "|cffffd100/glf mensaje|r  escribe en Buscar grupo (lo ven todas las hermandades)",
-    "|cffffd100/gu pestañas|r  crea las pestañas Hermandad, Buscar grupo y Oficiales en el chat",
+    "|cffffd100/gu pestañas|r  crea las pestañas Hermandad y Oficiales en el chat",
     "|cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)",
     "|cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)",
     "|cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)",
@@ -1020,21 +987,6 @@ function HU:PrintStatus()
                 tag, L(self.RosterStateName(s) or "?"), tag))
         end
     end
-end
-
--- /buscargrupo mensaje : escribe en "Buscar grupo" de todas las hermandades
--- (sin /bg: es el chat de campo de batalla del juego)
--- /glf es el corto (Jorge, 12/11); /glf a secas deja la caja escribiendo en Buscar grupo
-SLASH_WELOVEPVPLFG1 = "/glf"
-SLASH_WELOVEPVPLFG2 = "/buscargrupo"
-SlashCmdList.WELOVEPVPLFG = function(input, editBox)
-    input = HU.Trim(input or "")
-    if input == "" then
-        if editBox and HU.SetLFGMode and HU:SetLFGMode(editBox) then return end
-        HU:Print(L("Uso: /glf mensaje   (ej.: /glf LFM Scholomance, falta sanador)"))
-        return
-    end
-    HU:SendLFG(input)
 end
 
 -- /hg mensaje : escribe en el chat de hermandad unido (útil en modo prueba, donde no hay /g)

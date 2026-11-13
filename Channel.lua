@@ -19,7 +19,7 @@ local function RawSend(msg, chatType, lang, target)
     return ok
 end
 
-local function AddFilter(event, fn, offInPvp) HU.AddChatFilter(event, fn, offInPvp) end
+local function AddFilter(event, fn) HU.AddChatFilter(event, fn) end
 
 local function RemoveChannelFromFrame(frame, name)
     if ChatFrame_RemoveChannel then
@@ -180,20 +180,53 @@ end
 -- «tus addons están dando muchos problemas» [+ARCHITECTURE.md]
 local PVP_ZONE = { pvp = true, arena = true }
 local JOIN_BLOCKED_WAIT = 60
-function HU:CanJoinNow()
-    if self:IsChatLockedDown() then return false end
+-- ¿Dentro de una partida, o ya aceptada (botón «Entrar») aunque siga la pantalla de carga?
+function HU:InPvpNow()
     if IsInInstance then
         local inInst, kind = IsInInstance()
-        if inInst and PVP_ZONE[kind] then return false end
+        if inInst and PVP_ZONE[kind] then return true end
     end
     if GetBattlefieldStatus then
         local n = (GetMaxBattlefieldID and tonumber(GetMaxBattlefieldID())) or 3
         for i = 1, n do
             local ok, status = pcall(GetBattlefieldStatus, i)
-            if ok and not HU.Secret(status) and status == "active" then return false end
+            if ok and not HU.Secret(status) and status == "active" then return true end
         end
     end
-    return true
+    return false
+end
+function HU:CanJoinNow()
+    return not self:IsChatLockedDown() and not self:InPvpNow()
+end
+
+-- HU.selfPaint: desde que el juego ha manejado una línea de chat con datos secretos (partida, o
+-- combate en mazmorra) y hasta el /reload, las líneas de /g y /o de mi hermandad las pinta el addon
+-- en vez del juego (PaintOwnLine, más abajo). Si las devuelve cambiadas un filtro, el juego ya no
+-- las pinta (HistoryKeeper.lua:9, «tainted by GuildUnion»; rastro del 13/11) [+ARCHITECTURE.md]
+HU.selfPaint = false
+local function SyncSelfPaint() if HU:InPvpNow() then HU.selfPaint = true end end
+HU:On("UPDATE_BATTLEFIELD_STATUS", SyncSelfPaint)
+HU:On("PLAYER_ENTERING_WORLD", SyncSelfPaint)
+HU:On("ZONE_CHANGED_NEW_AREA", SyncSelfPaint)
+-- (fuera de una partida: basta una línea de cualquier chat con algo secreto. Se mira aparte porque
+-- el reparto normal de eventos solo mira el texto y el nombre, y lo secreto suele ser el identificador)
+if issecretvalue then
+    local watcher = CreateFrame("Frame")
+    for _, ev in ipairs({ "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE", "CHAT_MSG_TEXT_EMOTE", "CHAT_MSG_PARTY",
+                          "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING",
+                          "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_GUILD",
+                          "CHAT_MSG_OFFICER", "CHAT_MSG_WHISPER", "CHAT_MSG_CHANNEL" }) do
+        pcall(watcher.RegisterEvent, watcher, ev)
+    end
+    watcher:SetScript("OnEvent", function(self, _, ...)
+        for i = 1, select("#", ...) do
+            if issecretvalue((select(i, ...))) then
+                HU.selfPaint = true
+                self:UnregisterAllEvents()
+                return
+            end
+        end
+    end)
 end
 
 function HU:EnsureJoined(kind)
@@ -240,9 +273,6 @@ local function RejoinSoon()
 end
 HU:On("PLAYER_ENTERING_WORLD", RejoinSoon)
 HU:On("ZONE_CHANGED_NEW_AREA", RejoinSoon)
--- (y los filtros del chat de hermandad, fuera mientras dure la partida: Core.lua, SyncChatFilters)
-HU:On("PLAYER_ENTERING_WORLD", function() HU:SyncChatFilters() end)
-HU:On("ZONE_CHANGED_NEW_AREA", function() HU:SyncChatFilters() end)
 
 -- ¿Es un canal del juego? («General - Elwynn», «Comercio (Servicios) - Ventormenta»...)
 local function IsGameChannel(fullName)
@@ -486,9 +516,7 @@ function HU:Forward(kind, msg)
     end
     local sub = ""
     local id = self:ChannelId(kind == "off" and "off" or (HU.IsExtra(kind) and kind or "main"))
-    if kind == "lfg" then
-        sub = ":B"
-    elseif kind == "off" and not id and self:IsTest() then
+    if kind == "off" and not id and self:IsTest() then
         -- en modo prueba no hay canal de oficiales: va por el canal de prueba marcado
         id, sub = self:ChannelId("main"), ":O"
     end
@@ -1086,31 +1114,17 @@ function HU:KindColor(kind)
     return 0.25, 1, 0.25
 end
 
--- Escribir en un canal extra (desde el panel o con /gu c Nombre mensaje)
-function HU:SendLFG(msg)
-    if self.LFGEnabled and not self:LFGEnabled() then
-        return self:Print(L("El canal Buscar Grupo está quitado (lo puede volver a poner un oficial en Oficiales > Canales)."))
-    end
-    if self:IsMuted(self:Me()) then return self:Forward("lfg", msg) end
-    if not self.myTag or not self:IsJoined("main") then
-        self:Print(L("No estás conectado al canal unido."))
-        return
-    end
-    self:Forward("lfg", msg)
-    self:Display("lfg", self.myTag, self:Me(), msg)
-    self:AddHistory("lfg", self.myTag, self:Me(), msg)
-end
-
 function HU:FormatLine(kind, tag, author, msg, guid, mark)
     local head, body, chatType = self:FormatLineParts(kind, tag, author, msg, guid, nil, nil, mark)
     return head .. body, chatType
 end
 
 -- Igual, pero por separado: la cabecera (canal, hermandad, nombre) y el mensaje [+ARCHITECTURE.md]
-local KIND_SHORT = { main = "H", off = "O", lfg = "BG" }
+local KIND_SHORT = { main = "H", off = "O" }
 -- (mark: lo que va justo delante de la etiqueta, p. ej. la exclamación de una mención; mismo sitio
 -- que en las líneas de mi hermandad, que pinta el juego)
-function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mark)
+-- (tagOverride: la etiqueta ya hecha, para mi hermandad, que sale gris si el autor no tiene el addon)
+function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mark, tagOverride)
     local chatType = (kind == "off") and "OFFICER" or "GUILD"
     mark = mark or ""
     if compact then
@@ -1123,7 +1137,7 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
         local label = ""
         if showKind then
             local s = KIND_SHORT[kind] or (HU.IsExtra(kind) and HU.Utf8Cut(HU.ExtraName(kind) or "?", 4)) or "?"
-            label = (kind == "lfg" and "|cffff9e47[" .. s .. "]|r " or ("[" .. s .. "] "))
+            label = "[" .. s .. "] "
         end
         return label .. tagText .. nameLink .. ": ", self:Emotes(msg), chatType
     end
@@ -1133,12 +1147,10 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
     local rTag, rIdx = self:RankInfoOf(author)
     local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
     local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. colored .. "]|h"
-    local tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
+    local tagText = mark .. (tagOverride or ((self.db.showTag and tag) and self:TagText(tag) or ""))
     local pattern = (kind == "off") and CHAT_OFFICER_GET or CHAT_GUILD_GET
     local head
-    if kind == "lfg" then
-        head = "|cffff9e47[Buscar Grupo]|r " .. tagText .. nameLink .. ": "
-    elseif HU.IsExtra(kind) then
+    if HU.IsExtra(kind) then
         head = "[" .. HU.ExtraName(kind) .. "] " .. tagText .. nameLink .. ": "
     elseif pattern then
         head = pattern:format(tagText .. nameLink)
@@ -1485,14 +1497,44 @@ function HU:PingMention(_, kind)
 end
 
 -- /g y /o normales: resaltar las menciones también ahí
-local function MentionFilter(_, _, msg, author, lang, chan, target, flag, ...)
-    if type(msg) == "string" and not HU.Secret(msg) then
-        return false, HU:Emotes(HU:HighlightMentions(msg, HU:FullName(author), HU.myTag)), author, lang, chan, target, OwnTagFlag(flag, msg, author), ...
+-- Con HU.selfPaint: la línea de mi hermandad la pinta el addon en esa ventana, con el mismo formato
+-- que las de las otras hermandades (etiqueta, icono de rango, color de clase, menciones, emoticonos)
+local function PaintOwnLine(frame, kind, msg, author, guid)
+    local full = HU:FullName(author) or author
+    local tagText = ""
+    if HU.db.showTag then
+        local has = HU:MateHasAddon(full)
+        tagText = HU:TagText(HU.myTag, not has and HU.NO_ADDON_HEX or nil, has)
     end
-    return false
+    local mentioned = full:lower() ~= (HU:MeKey() or "") and HU:MentionsMe(msg, full, HU.myTag)
+    local head, body = HU:FormatLineParts(kind, HU.myTag, full, HU:HighlightMentions(msg, full, HU.myTag), guid,
+        nil, nil, HU.MENTION_MARK[mentioned], tagText)
+    local line = head .. body
+    -- (la hora delante, si el jugador la tiene puesta en el chat del juego)
+    local fmt = ChatFrameUtil and ChatFrameUtil.GetTimestampFormat and ChatFrameUtil.GetTimestampFormat()
+    if fmt then
+        local stamp = (TimeUtil and TimeUtil.BetterDate) or date
+        line = stamp(fmt, time()) .. line
+    end
+    local r, g, b = HU:KindColor(kind)
+    frame:AddMessage(line, r, g, b)
 end
-AddFilter("CHAT_MSG_GUILD", MentionFilter, true)
-AddFilter("CHAT_MSG_OFFICER", MentionFilter, true)
+
+local function MentionFilter(frame, event, msg, author, lang, chan, target, flag, ...)
+    if type(msg) ~= "string" or HU.Secret(msg) then return false end
+    if HU.selfPaint then
+        -- (sin configurar no hay etiqueta que poner: la pinta el juego tal cual)
+        if not (HU.myTag and HU.db and type(author) == "string" and frame and frame.AddMessage) then return false end
+        local kind = (event == "CHAT_MSG_OFFICER") and "off" or "main"
+        -- (este filtro va antes que el de silenciados y eco, y al contestar «descartar» aquel ya no opina)
+        if kind == "main" and HU:GuildLineHidden(msg, author) then return true end
+        PaintOwnLine(frame, kind, msg, author, (select(6, ...)))
+        return true
+    end
+    return false, HU:Emotes(HU:HighlightMentions(msg, HU:FullName(author), HU.myTag)), author, lang, chan, target, OwnTagFlag(flag, msg, author), ...
+end
+AddFilter("CHAT_MSG_GUILD", MentionFilter)
+AddFilter("CHAT_MSG_OFFICER", MentionFilter)
 
 function HU:Display(kind, tag, author, msg, guid)
     HU.NoteSpeaker(author)
@@ -1654,8 +1696,7 @@ function HU:OnUnionChat(kind, text, author, guid, via)
     if HU.IsExtra(kind) then
         -- canal extra: se ve tal cual, también lo de tu propia hermandad
     elseif sub == "B" then
-        if not HU:LFGEnabled() then return end
-        kind = "lfg"
+        return -- «Buscar grupo» de una versión vieja: ya no existe, no se muestra
     elseif sub == "O" then
         if not HU:IsTest() then return end
         kind = "off"
@@ -1768,14 +1809,15 @@ end)
 HU:On("CHAT_MSG_OFFICER", function(text, author) NativeMention(text, author) end)
 
 -- los silenciados tampoco se ven en el /g normal (para quien tiene el addon),
-AddFilter("CHAT_MSG_GUILD", function(_, _, msg, author, _, _, _, _, _, _, _, _, lineID)
+function HU:GuildLineHidden(msg, author)
     -- (las líneas del eco: quien tiene el addon ya las ha visto)
     if HU.IsEchoLine and HU:IsEchoLine(msg, author) then return true end
     local full = author and HU:FullName(author)
     if full and full:lower() == HU:MeKey() and HU:IsOwnHidden(msg) then return true end
     if HU.IsMuted and full and full:lower() ~= HU:MeKey() and HU:IsMuted(full) then return true end
     return false
-end, true)
+end
+AddFilter("CHAT_MSG_GUILD", function(_, _, msg, author) return HU:GuildLineHidden(msg, author) end)
 
 HU:On("CHAT_MSG_GUILD", function(text, author, _, _, _, _, _, _, _, _, lineID, guid)
     -- (línea del eco: ni al historial ni otra vez a las demás; si la escribió otro enlace, no la repito)
