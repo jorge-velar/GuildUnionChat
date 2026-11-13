@@ -4,9 +4,11 @@ local L = HU.L
 
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
+-- (copia 87: el addon ya no crea pestañas ni cambia la caja de escribir; solo reconoce por su nombre
+-- las que el jugador tenga, para pintar ahí lo de las otras hermandades) [+ARCHITECTURE.md]
 local TABS = HU.LT({
-    { key = "main", name = "Hermandad",    groups = { "GUILD", "GUILD_ACHIEVEMENT" } },
-    { key = "off",  name = "Oficiales",    groups = { "OFFICER" }, officer = true },
+    { key = "main", name = "Hermandad" },
+    { key = "off",  name = "Oficiales" },
 })
 
 local function Frame(i) return _G["ChatFrame" .. i] end
@@ -18,18 +20,6 @@ local function FindWindow(name)
         if n and n:lower() == name:lower() and (shown or docked) then return Frame(i), i end
     end
     return nil
-end
-
-local function AddGroup(f, g)
-    if ChatFrame_AddMessageGroup then ChatFrame_AddMessageGroup(f, g)
-    elseif f.AddMessageGroup then f:AddMessageGroup(g) end
-end
-
-local function ClearGroups(f)
-    if ChatFrame_RemoveAllMessageGroups then ChatFrame_RemoveAllMessageGroups(f)
-    elseif f.RemoveAllMessageGroups then f:RemoveAllMessageGroups() end
-    if ChatFrame_RemoveAllChannels then pcall(ChatFrame_RemoveAllChannels, f)
-    elseif f.RemoveAllChannels then pcall(f.RemoveAllChannels, f) end
 end
 
 -- por si se cambió de idioma después de crear las pestañas: se buscan con los dos nombres
@@ -55,48 +45,6 @@ function HU.UsingChattynator()
     local c = _G.Chattynator
     return type(c) == "table" and type(c.API) == "table"
 end
-
-function HU:CreateChatTabs(silent)
-    if HU.UsingChattynator() then
-        -- (las pestañas del juego no se ven: no se crean, y no se apunta como hecho por si lo quita)
-        if not silent then
-            self:Print(L("Con Chattynator no hacen falta: los chats de Guild Union salen en su ventana principal. En los ajustes de Chattynator puedes elegir en qué pestañas se ven los mensajes del addon GuildUnion."))
-        end
-        return
-    end
-    if InCombatLockdown and InCombatLockdown() then
-        if not silent then self:Print(L("No se pueden crear pestañas de chat en combate.")) end
-        return
-    end
-    if not FCF_OpenNewWindow then
-        if not silent then self:Print(L("Este cliente no permite crear pestañas de chat desde un addon.")) end
-        return
-    end
-    local made = {}
-    for _, t in ipairs(TABS) do
-        if (not t.officer or self:CanOfficer() or self:IsTest()) and not FindTab(t) then
-            local f = FCF_OpenNewWindow(t.name, true)
-            if not f or type(f) ~= "table" then f = FindWindow(t.name) end
-            if f then
-                ClearGroups(f)
-                for _, g in ipairs(t.groups) do AddGroup(f, g) end
-                made[#made + 1] = t.name
-            end
-        end
-    end
-    self.db.chatTabsMade = true
-    if not silent then
-        if #made > 0 then self:Print(L("Pestañas de chat creadas: ") .. table.concat(made, ", ") .. ".")
-        else self:Print(L("Las pestañas de chat ya existen.")) end
-    end
-end
-
--- La primera vez que se usa el addon, crea las pestañas solas
-HU:OnStart(function()
-    HU.After(12, function()
-        if not HU.db.chatTabsMade and HU.cfg and HU.cfg.ok then HU:CreateChatTabs(HU.UsingChattynator()) end
-    end)
-end)
 
 -- Ventanas donde mostrar cada tipo de mensaje del addon
 local framesCache, framesT = {}, {}
@@ -192,57 +140,9 @@ if Menu and Menu.ModifyMenu then
     Menu.ModifyMenu("MENU_FCF_TAB", function(...) HU:SafeCall("menú de pestaña", TabMenu, ...) end)
 end
 
----------------------------------------------------------------------------
--- Cada pestaña escribe en lo suyo (Jorge, 10/11): al abrir el chat (Intro) y al hacer clic en la pestaña.
--- Hermandad → /g, Oficiales → /o. [+ARCHITECTURE.md]
----------------------------------------------------------------------------
-local TAB_TYPE = { main = "GUILD", off = "OFFICER" }
-
-local function SelectedChatFrame()
-    if GENERAL_CHAT_DOCK and FCFDock_GetSelectedWindow then return FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK) end
-    return SELECTED_CHAT_FRAME
-end
-
-local function TabKeyOf(frame)
-    if not frame then return end
-    for key in pairs(TAB_TYPE) do
-        if frame == HU:ChatTabFrame(key) then return key end
-    end
-end
-
-local function ApplyTab(eb, frame)
-    if not (eb and eb.GetChatType and frame) then return end
-    -- (respondiendo un susurro u otro tipo puesto a propósito: el tipo ya no es el «pegajoso»)
-    if eb:GetChatType() ~= eb:GetStickyType() then return end
-    local chatType = TAB_TYPE[TabKeyOf(frame)]
-    if chatType and eb:GetChatType() ~= chatType then
-        eb:SetChatType(chatType)
-        eb:SetStickyType(chatType)
-        eb:UpdateHeader()
-    end
-end
-
-local function StickyTab(text)
-    -- (pulsar Intro lo hace el jugador: aquí el juego deja cambiar los canales de sitio)
-    if HU.FixChannelOrder then HU:FixChannelOrder() end
-    if text and text ~= "" then return end
-    -- (misma pestaña que la última vez: se respeta lo que el jugador eligiera en ella (/s, /p...).
-    -- Antes cada Intro lo devolvía a /g. Jorge, 12/11. Lo suyo vuelve al hacer clic en la pestaña)
-    local frame = SelectedChatFrame()
-    if frame == HU.tabApplied then return end
-    HU.tabApplied = frame
-    local eb = ChatFrameUtil and ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow()
-    ApplyTab(eb, frame)
-end
+-- Al abrir el chat (pulsar Intro lo hace el jugador): aquí el juego deja cambiar los canales de sitio
 if ChatFrameUtil and ChatFrameUtil.OpenChat then
-    hooksecurefunc(ChatFrameUtil, "OpenChat", function(text) HU:SafeCall("pestañas de chat", StickyTab, text) end)
-end
-
-if FCF_Tab_OnClick and FCF_GetChatFrameByID then
-    hooksecurefunc("FCF_Tab_OnClick", function(tab, button)
-        if button == "RightButton" or button == "MiddleButton" then return end
-        local f = FCF_GetChatFrameByID(tab:GetID())
-        HU.tabApplied = f
-        HU:SafeCall("pestañas de chat", ApplyTab, f and f.editBox, f)
+    hooksecurefunc(ChatFrameUtil, "OpenChat", function()
+        if HU.FixChannelOrder then HU:SafeCall("orden de canales", HU.FixChannelOrder, HU) end
     end)
 end

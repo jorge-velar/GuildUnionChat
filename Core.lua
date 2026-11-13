@@ -179,14 +179,27 @@ local function AnySecret(...)
     return false
 end
 
--- (los filtros se ponen una vez al cargar y no se quitan nunca) [+ARCHITECTURE.md]
+-- Dentro de un campo de batalla o una arena, los filtros de /g y /o se dan de baja: el juego no nos
+-- enseña esas líneas y las pinta él, sin etiqueta. Al salir se vuelven a poner. [+ARCHITECTURE.md]
+local pvpFilters, pvpFiltersOff = {}, false
+function HU:SyncPvpFilters()
+    local off = (HU.InPvpNow and HU:InPvpNow()) and true or false
+    if off == pvpFiltersOff then return end
+    pvpFiltersOff = off
+    local add = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
+    local remove = ChatFrame_RemoveMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter)
+    for _, f in ipairs(pvpFilters) do
+        if off and remove then remove(f[1], f[2]) elseif not off and add then add(f[1], f[2]) end
+    end
+end
+
 function HU.AddChatFilter(event, fn)
     local function safe(frame, ev, ...)
+        if AnySecret(...) then HU.selfPaint = true return false end
         -- (CUALQUIER dato secreto, no solo el texto o el nombre: en un campo de batalla el texto se
         -- lee pero el identificador de quien escribe es secreto. Si el filtro devuelve los datos, el
         -- juego los da por manchados y falla al pintar la línea; se contesta «nada» y no se toca)
         -- (y desde ese momento las líneas de mi hermandad las pinta el addon: HU.selfPaint, Channel.lua)
-        if AnySecret(...) then HU.selfPaint = true return false end
         -- (se devuelven TODOS los datos del mensaje: si se recortan, el chat normal lo oculta)
         local r = { pcall(fn, frame, ev, ...) }
         if not r[1] then
@@ -197,6 +210,7 @@ function HU.AddChatFilter(event, fn)
     end
     local add = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
     if add then add(event, safe) end
+    if event == "CHAT_MSG_GUILD" or event == "CHAT_MSG_OFFICER" then pvpFilters[#pvpFilters + 1] = { event, safe } end
 end
 
 -- Temporizadores que nunca rompen: si la función falla, el error se guarda (como los eventos)
@@ -671,7 +685,6 @@ local HELP = HU.LT({
     "|cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia",
     "|cffffd100/gu config|r  explica cómo configurar las hermandades",
     "|cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)",
-    "|cffffd100/gu pestañas|r  crea las pestañas Hermandad y Oficiales en el chat",
     "|cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)",
     "|cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)",
     "|cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)",
@@ -712,7 +725,7 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     cmd = cmd:lower()
     local arg = rawArg:lower()
     -- comandos en inglés (los de español siguen valiendo)
-    local ALIAS = { tabs = "pestañas", list = "lista", channel = "canal",
+    local ALIAS = { list = "lista", channel = "canal",
         tag = "etiqueta", guard = "guardia", margin = "margen", role = "rol", minimap = "minimapa",
         estado = "status", recargar = "reload", queue = "cola", memory = "memoria",
         search = "buscar", history = "historial", lane = "carril" }
@@ -776,8 +789,6 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     end
     if cmd == "" or cmd == "panel" or cmd == "lista" then
         HU.UI:Toggle()
-    elseif cmd == "pestañas" or cmd == "pestanas" then
-        HU:CreateChatTabs(false)
     elseif cmd == "test" then
         -- franja de prueba del mensaje fijado, solo en mi ventana (no se manda ni se guarda)
         if arg == "off" then

@@ -1446,6 +1446,33 @@ Crea en el chat del juego las pestañas:
 "Oficiales"     chat de oficiales unido (solo si puedes verlo)
 Se crean una vez; si las cierras, se pueden volver a crear desde el panel o con /gu pestañas.
 
+**ReduceClean-88 (13/11): versión para salir, hecha desde la prueba 2.** Tres cosas:
+- Dentro de un campo de batalla o una arena, los filtros de `CHAT_MSG_GUILD` y `CHAT_MSG_OFFICER` se
+  dan de baja (`HU:SyncPvpFilters`, Core.lua; la llama `SyncSelfPaint` de Channel.lua en
+  `UPDATE_BATTLEFIELD_STATUS`, `PLAYER_ENTERING_WORLD` y `ZONE_CHANGED_NEW_AREA`). Ahí las líneas de
+  mi hermandad las pinta el juego, sin etiqueta. Al salir se vuelven a poner y, como `HU.selfPaint`
+  ya está encendido, las pinta el addon. Motivo: con los filtros puestos dentro de la partida la
+  5.4.31 (copia 85) daba 16× «string conversion on a secret string value (tainted by GuildUnion)» y
+  el chat no se veía. Era el «modo 3» de la prueba (copia 86); el rastro y los modos `/gu bg` se
+  han quitado. Sin confirmación escrita de Jorge de que el modo 3 se viera bien en la partida.
+- Las líneas de `/g` y `/o` con un enlace de profesión (`|Htrade:`) no se tocan: `MentionFilter`
+  contesta `false` y las pinta el juego sin etiqueta. Motivo: el enlace no se podía pulsar. Hipótesis
+  sin comprobar: abrir una profesión ajena es una acción protegida y, si el texto de la línea viene de
+  un addon, el clic no hace nada (un enlace de objeto solo abre un recuadro y por eso sí va). En las
+  líneas de OTRAS hermandades, que pinta siempre el addon, el enlace de profesión seguirá sin abrirse.
+- Lo de la 87, que sigue igual:
+
+**ReduceClean-87 (prueba 2 de campos de batalla, 13/11): el addon ya no crea pestañas ni toca la caja
+de escribir.** Fuera `HU:CreateChatTabs` (con `FCF_OpenNewWindow` y el vaciado de grupos), la creación
+sola al configurarse, `/gu pestañas`, el botón «Pestaña del chat GuildUnion» de Oficiales y el cambio
+de tipo de chat al pulsar una pestaña o abrir el chat (`ApplyTab`: `SetChatType`, `SetStickyType`,
+`UpdateHeader`). Motivo: Olympus avisa de que crear o configurar ventanas de chat desde un addon deja
+marcados sus datos, y dentro de una partida la 5.4.31 daba «string conversion on a secret string value
+(tainted by GuildUnion)». Sin confirmar que fuera la causa. Queda: reconocer por su nombre las pestañas
+«Hermandad» y «Oficiales» que el jugador tenga (las recupera el juego al entrar) para pintar ahí lo de
+las otras hermandades, el menú «Guild Union» del clic derecho en una pestaña, y el orden de canales
+al abrir el chat. Lo de abajo sobre crear pestañas y «cada pestaña escribe en lo suyo» ya no vale.
+
 «Buscar grupo» se quitó entero en la ReduceClean-85 (Jorge, 13/11: no se usaba): fuera la pestaña,
 `/glf` y `/buscargrupo`, `HU:SendLFG`, el modo de la caja de escribir (`eb.guLFG`) y el interruptor de
 oficiales (`LG`, `db.lfgState`). Lo que mande una versión vieja con la marca `[ETIQ:B]` se descarta
