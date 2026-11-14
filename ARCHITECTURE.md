@@ -2265,8 +2265,126 @@ mensaje, también ese; al volver de un addon quedan manchados y el juego falla a
 mazmorra no le salió y a otro sí.
 
 Dos defensas (la segunda, cambiada en la copia 84):
+- **Copia 106 (14/11): botón «Registro de invitaciones» en la ventana de hermandad del juego.** Lo
+  crea `Setup` (BlizzTab.lua) como hijo de `CommunitiesFrame.InviteButton` («Invitar miembro»),
+  pegado a su izquierda: se ve y se esconde con él, y `SyncTab` lo esconde si la comunidad elegida
+  no es la hermandad. Abre `HU:ShowInviteLog`. Sustituye al botón «Invitaciones» que la copia 103
+  puso dentro de la ventana de la lista negra; `/gu invitaciones` sigue.
+- **Copia 105 (14/11):** «Oficiales conectados» ordenada por papel (maestro, administrador, oficial)
+  y nombre (`OfficerEntries`, BlizzTab.lua).
+- **Copia 104 (14/11): aviso al invitar a alguien de la lista negra.** Blacklist.lua engancha con
+  `hooksecurefunc` `C_GuildInfo.Invite` (lo que usan `/ginvite`, el menú de clic derecho y el
+  cuadro de invitar del juego) y `GuildInvite` si existe. Va después de la función del juego, así
+  que no la toca ni puede parar la invitación: si el nombre está en `db.bans`, a quien invita le
+  sale un texto rojo en el centro de la pantalla (`UIErrorsFrame`), un sonido y una línea en su
+  chat con quién lo vetó y el motivo. Vale para cualquiera con el addon, no solo oficiales.
+- **Copia 103 (14/11): registro de invitaciones (InviteLog.lua) y armazón común de ventanas de lista
+  (ListWindow.lua).** El juego apunta en su registro de hermandad quién invitó a quién
+  (`GetNumGuildEvents` / `GetGuildEventInfo`, tipo `"invite"`), pero solo conserva las últimas
+  entradas. InviteLog.lua se lo pide (`QueryGuildEventLog`, al entrar, cada 10 min y al abrir la
+  ventana), y al llegar `GUILD_EVENT_LOG_UPDATE` guarda las invitaciones nuevas en
+  `db.inviteLog[nombre de hermandad]` = `{ t, by, who }` (tope 2.000). El juego no da fecha sino
+  «hace cuánto» (años, meses, días, horas): se pasa a hora aproximada y una entrada ya guardada se
+  reconoce por mismo invitador + mismo invitado + hora parecida (margen de 2 h o el 10 % de la
+  antigüedad). No se reparte entre jugadores: cada uno guarda lo que ve su addon. `HU:InvitedBy(nombre)`
+  lo usa el aviso de la lista negra («Lo invitó X»). Ventana `HU:ShowInviteLog` (`/gu invitaciones`
+  y botón «Invitaciones» en la ventana de la lista negra): fecha, quién invitó, a quién (blanco
+  sigue en la hermandad, gris ya no está, rojo en la lista negra) y buscador.
+  ListWindow.lua: `HU.NewListWindow` (ventana movible con título, texto, cabecera de columnas, lista
+  con barra y `win:Fill`), `HU.NewEditBox`, `HU.NewButton`; la usan las dos ventanas, para no repetir.
+- **Copia 102 (14/11): el aviso de la lista negra va al chat de oficiales (/o).** `BlacklistCheck`
+  escribe con `HU.RawSend(…, "OFFICER")` una línea que empieza por `[Guild Union] ` (texto llano, la
+  ven también los oficiales sin addon; no cruza a otras hermandades porque el puente solo reenvía lo
+  que el jugador teclea). Para que no la repitan todos los oficiales con addon: cada uno espera
+  2–12 s al azar y, si mientras ve en /o una línea con esa marca y el nombre, lo da por dicho
+  (`db.blackSaid[k]` = hora); de cada persona se dice como mucho una vez cada 24 h. Si ya se dijo
+  hoy o no se puede escribir en /o (sin permiso, chat bloqueado), se le dice solo a él con
+  `HU:Print`. El botón «Comprobar ahora» nunca escribe en /o. Quitar a alguien de la lista borra su
+  marca de «dicho».
+- **Copia 101 (14/11): cada hermandad coteja solo a sus miembros** (decisión de Jorge; la copia 100
+  miraba también las otras y se deshizo). La lista es común; `HU:BlacklistCheck` cruza `db.bans` solo
+  con `HU.roster`. Botón «Comprobar ahora»: `HU:BlacklistCheck(true)` repasa también a los ya
+  avisados y contesta aunque no haya nadie.
+- **Copia 99 (14/11): lista negra de la comunidad (Blacklist.lua).** No añade datos ni mensajes
+  nuevos: es la lista de vetados que ya existía (`db.bans`, `HU:SetBan`, mensaje `BN`, Social.lua),
+  que se reparte entre hermandades, se entrega a quien entra y se repasa cada 5 min, pero que no
+  tenía ningún botón desde la limpieza. Blacklist.lua pone: (1) la ventana `HU:ShowBlacklist`
+  (botón «Lista negra» en la zona de oficiales de la pestaña, y `/gu listanegra`): lista de vetados
+  con quién lo vetó y el motivo, en rojo el que está ahora en mi hermandad; añadir (con motivo) y
+  quitar, para quien cumple `HU:CanPin` (maestro, administradores y oficiales); (2) el cotejo
+  `HU:BlacklistCheck`: cada 60 s cruza `db.bans` con `HU.roster` (mi hermandad) y avisa una vez por
+  persona y sesión a quien puede actuar. Vetar sigue haciendo lo de siempre: fuera del canal de la
+  comunidad y sus líneas ocultas. Va por nombre de personaje: un personaje secundario no se detecta.
+- **Copia 98 (14/11) = 5.4.32, limpieza antes de subir.** Lo que dicen las notas de más abajo sobre
+  `selfPaint`, `SyncPvpFilters`, `MentionFilter`, `PaintOwnLine`, `OwnTagFlag`, `HideFilter` y el eco
+  es historia: ese código ya no existe. Quitado de Channel.lua (de 1.924 a ~1.720 líneas) y Core.lua;
+  `Echo.lua` fuera del paquete y todas sus llamadas quitadas (una línea `[ETIQ:E]` de una versión
+  vieja se descarta en `OnUnionChat`; `GU:e:` de la Información se sigue leyendo en Config.lua para
+  no tomarlo por una línea desconocida, pero nadie lo usa). Queda un solo filtro de chat, el de
+  `CHAT_MSG_SYSTEM` (Comm.lua, vía `HU.AddChatFilter`).
+  Archivo nuevo **ChatPaint.lua**: el adorno de las líneas de mi hermandad (`DecorateOwnLine` y la
+  sustitución de `AddMessage`), separado de Channel.lua. Lo que estaba repetido entre las líneas de
+  las otras hermandades y las de la mía va ahora en dos funciones de Channel.lua que usan los dos
+  caminos: `HU:NamePrefix` (marca de mención + punto o etiqueta + icono de rango; con `has == false`
+  sale en gris, compañero sin addon) y `HU:GuildColored` (el `[Hermandad]` en color). El manejador
+  de `CHAT_MSG_GUILD` que guarda el historial usa `HU:GuildLineHidden` en vez de repetir sus
+  condiciones. Pendiente para la división grande: Comm.lua (3.876 líneas), Channel.lua, History.lua.
+- **Copias 96–97 (14/11): Ajustes con casillas.** Tres filas bajo «Ajustes» (BlizzTab.lua): Marca
+  (dos redondeles, etiqueta o punto), Hermandad (casilla «En color») y Emoticonos (casilla
+  «Mostrar»), con una raya de división encima.
+- **Copia 95 (14/11): «Formato de texto» en Ajustes.** Dos ajustes por jugador, con un botón cada
+  uno bajo «Ajustes» en la pestaña del addon (BlizzTab.lua): `db.chatMark` (`"dot"` de serie, o
+  `"tag"`) decide si delante del nombre va el punto del color de la hermandad o la etiqueta
+  `<ETIQ>`; `db.chatGuildColor` (apagado de serie) pinta el `[Hermandad]` en el color de la
+  hermandad que habla. Valen igual para las líneas de las otras hermandades (`FormatLineParts`) y
+  para las de la mía (`DecorateOwnLine`, que envuelve en color el enlace `|Hchannel:` que pone el
+  juego). Sustituyen a `chatStyle` y `chatTag` de las copias 92–93; `/gu estilo` desaparece y
+  `/gu etiqueta on/off` cambia `chatMark`.
+- **Copia 94 (14/11, prueba): las líneas de mi hermandad se adornan «en el paso 3».** El fallo del
+  bloqueo del chat venía de intervenir en los filtros (antes de que el juego monte la línea). Ahora
+  el juego recibe, filtra y monta la línea de /g y /o sin nada nuestro por medio, y solo al final,
+  cuando llama a `AddMessage` de la ventana, entra el addon: `WrapFrame` (Channel.lua) sustituye
+  `ChatFrameN.AddMessage` por una función que, si el evento es `CHAT_MSG_GUILD` u `OFFICER`, pasa el
+  texto por `DecorateOwnLine` (dentro de `pcall`) y luego llama a la original. El juego le pasa a
+  `AddMessage` el evento y sus argumentos (`eventArgs`), así que autor y mensaje salen de ahí, sin
+  filtro ni escucha aparte. `DecorateOwnLine` mete delante del primer `|Hplayer:` la marca de
+  mención, el punto (`chatStyle`) o la etiqueta (`chatTag`) y el icono de rango, y pasa el cuerpo
+  por menciones y emoticonos; devuelve `false` para no escribir la línea (`GuildLineHidden`:
+  silenciados y líneas propias ocultas). Con texto, mensaje o autor secretos no toca nada: la línea
+  sale en el formato del juego. Las líneas que pinta el addon (otras hermandades, avisos) no llevan
+  evento y pasan sin tocar. Interruptor: `db.ownPaint` (`/gu pintar on/off`). Riesgo a probar en
+  mazmorra: al sustituir `AddMessage`, lo que el juego ejecuta después en ese mismo manejador
+  (`SetLastTellTarget` en susurros, `FlashTabIfNotShown`) corre marcado por el addon.
+- **Copia 93 (14/11, prueba): punto de color.** `db.chatStyle` elige cómo se distingue la hermandad
+  en las líneas de las otras: `"dot"` (de serie) pone delante del nombre un punto teñido con el color
+  de la hermandad (`HU:DotText`, `Media\dot.tga`, dentro del enlace de la etiqueta para que salga su
+  recuadro al pasar el ratón); `"color"` es lo de la copia 92. `/gu estilo` cambia de uno a otro.
+- **Copia 92 (14/11): color por hermandad en vez de etiqueta.** En `HU:FormatLineParts` (línea del
+  chat del juego, no la compacta de la ventana del addon) el trozo de `CHAT_GUILD_GET` /
+  `CHAT_OFFICER_GET` que va antes del nombre (`[Hermandad]`) se envuelve en el color de la hermandad
+  (`GuildColorHex`) cuando la línea es de otra hermandad. La etiqueta `<ETIQ>` en el chat pasa a
+  depender de `db.chatTag` (apagada de serie; `/gu etiqueta on`); `db.showTag` queda para la ventana
+  del addon. Las líneas de mi hermandad las pinta el juego y no se tocan.
+- **Copia 91 (prueba para verla en el juego, 14/11): sin filtros en los chats de jugadores y sin eco.**
+  Idea tomada de cómo trabaja Olympus (solo filtra mensajes del sistema). `HU.CHAT_FILTERS = false`
+  en Channel.lua hace que `AddFilter` no registre nada: fuera `MentionFilter` (/g y /o: etiqueta,
+  icono de rango, menciones resaltadas, emoticonos, `selfPaint`), el de `GuildLineHidden`
+  (silenciados, líneas propias ocultas, eco) y `HideFilter` (canal de la unión, que ya se quita de
+  las ventanas con `HU:HideChannel`). Queda solo el de `CHAT_MSG_SYSTEM` (Comm.lua). El juego pinta
+  las líneas de mi hermandad tal cual; las de las otras las sigue pintando el addon. `Echo.lua` no
+  se carga (quitado del .toc, guardado en `_quitados/`): todo el que lo llama comprueba antes que
+  exista (`if HU.EchoIncoming then …`), así que el eco queda apagado en las dos direcciones y lo
+  que llegue como `[ETIQ:E]` de versiones anteriores se descarta. El código que queda sin uso
+  (`MentionFilter`, `PaintOwnLine`, `OwnTagFlag`, `selfPaint`, `SyncPvpFilters`, `cfg.echo`,
+  `GU:e:1`) NO se ha borrado todavía: se limpia cuando Jorge dé el visto bueno al aspecto.
+- **Copia 90 (hipótesis, sin probar en el juego):** ante un dato secreto el filtro ya no devuelve
+  nada, ni siquiera `false`. Rastro del 13/11 23:24 en mazmorra con la 5.4.31: `/g` con el
+  identificador secreto y el texto legible → `ChatFrameFilters.lua` sí llama al filtro
+  (`canaccessvalue(...)` deja pasar), nuestro `false` llega manchado a `results[1]`, el juego lo lee
+  y queda «tainted by GuildUnion»; al pintar falla en `HistoryKeeper.lua:35` (`strlower` de un
+  secreto) y la línea no sale. Sin valores devueltos no hay nada manchado que leer.
 - `HU.AddChatFilter`: si **cualquier** dato del mensaje es secreto (`AnySecret`), el filtro contesta
-  solo `false` y no devuelve datos. Antes miraba solo texto y nombre. Es la defensa principal: va
+  solo `false` y no devuelve datos (hasta la copia 89; ver la línea de arriba). Antes miraba solo texto y nombre. Es la defensa principal: va
   mensaje a mensaje y vale en cualquier sitio, mazmorras incluidas. Indicio de que basta: el filtro
   de silenciados de `/g` lleva semanas contestando solo `true`/`false` sin que saliera este error.
 - `HU.selfPaint` (copia 84, 5.4.31; sustituye al quitar y poner filtros de la 5.4.30, que no

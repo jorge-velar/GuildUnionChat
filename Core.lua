@@ -179,27 +179,11 @@ local function AnySecret(...)
     return false
 end
 
--- Dentro de un campo de batalla o una arena, los filtros de /g y /o se dan de baja: el juego no nos
--- enseña esas líneas y las pinta él, sin etiqueta. Al salir se vuelven a poner. [+ARCHITECTURE.md]
-local pvpFilters, pvpFiltersOff = {}, false
-function HU:SyncPvpFilters()
-    local off = (HU.InPvpNow and HU:InPvpNow()) and true or false
-    if off == pvpFiltersOff then return end
-    pvpFiltersOff = off
-    local add = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
-    local remove = ChatFrame_RemoveMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter)
-    for _, f in ipairs(pvpFilters) do
-        if off and remove then remove(f[1], f[2]) elseif not off and add then add(f[1], f[2]) end
-    end
-end
-
+-- (solo se usa para los mensajes del sistema, Comm.lua: en los chats de jugadores no hay filtros,
+-- porque intervenir ahí hacía que el juego no pintara la línea con el chat bloqueado) [+ARCHITECTURE.md]
 function HU.AddChatFilter(event, fn)
     local function safe(frame, ev, ...)
-        if AnySecret(...) then HU.selfPaint = true return false end
-        -- (CUALQUIER dato secreto, no solo el texto o el nombre: en un campo de batalla el texto se
-        -- lee pero el identificador de quien escribe es secreto. Si el filtro devuelve los datos, el
-        -- juego los da por manchados y falla al pintar la línea; se contesta «nada» y no se toca)
-        -- (y desde ese momento las líneas de mi hermandad las pinta el addon: HU.selfPaint, Channel.lua)
+        if AnySecret(...) then return end -- (sin devolver nada, ni `false`)
         -- (se devuelven TODOS los datos del mensaje: si se recortan, el chat normal lo oculta)
         local r = { pcall(fn, frame, ev, ...) }
         if not r[1] then
@@ -210,7 +194,6 @@ function HU.AddChatFilter(event, fn)
     end
     local add = ChatFrame_AddMessageEventFilter or (ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter)
     if add then add(event, safe) end
-    if event == "CHAT_MSG_GUILD" or event == "CHAT_MSG_OFFICER" then pvpFilters[#pvpFilters + 1] = { event, safe } end
 end
 
 -- Temporizadores que nunca rompen: si la función falla, el error se guarda (como los eventos)
@@ -586,7 +569,11 @@ HU.PER_CHAR = { history = true, pinned = true, myRole = true, lastSeen = true, p
     quickCfg = true, managers = true, officerRanks = true, myOfficerRanks = true }
 
 local DEFAULTS = {
-    showTag = true,       -- mostrar <ETIQUETA> en los mensajes de otras hermandades
+    showTag = true,       -- mostrar <ETIQUETA> en la ventana del addon
+    -- Formato de texto del chat (botones de Ajustes) [+ARCHITECTURE.md]
+    chatMark = "dot",     -- delante del nombre: "dot" (punto del color de la hermandad) o "tag" (<ETIQUETA>)
+    chatGuildColor = false, -- [Hermandad] en el color de cada hermandad (false: el color normal del chat)
+    ownPaint = true,      -- adornar las líneas de mi hermandad al escribirlas en la ventana (/gu pintar)
     autoGuard = false,    -- expulsar automáticamente a intrusos
     bans = {},            -- vetados del chat: [clave] = { name, on, by, tag, t }
     grace = 120,          -- segundos de margen antes de considerar a alguien intruso
@@ -690,7 +677,6 @@ local HELP = HU.LT({
     "|cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)",
     "|cffffd100/gu recargar|r  vuelve a leer la configuración",
     "|cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial",
-    "|cffffd100/gu eco on/off|r  maestro: el enlace escribe en el /g el chat de las otras hermandades (para quien no tiene el addon)",
     "|cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego",
     "|cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes",
     "|cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)",
@@ -768,7 +754,6 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     if (cmd == "asistente" or cmd == "wizard" or cmd == "crear" or cmd == "create") and HU.OpenWizard then
         return HU:OpenWizard(arg == "prueba" or arg == "test")
     end
-    if (cmd == "eco" or cmd == "echo") and HU.EchoCommand then return HU:EchoCommand(arg) end
     -- (la ventana de hermandad del juego: por si la J abre GuildUnion; ahí se edita la Información)
     if cmd == "hermandad" or cmd == "guild" then
         -- (no se abre desde el addon: el juego bloquearía luego cambiar rangos y notas; ver BlizzTab.lua)
@@ -834,9 +819,18 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         HU:RequestRoster(true)
         HU:RefreshConfig(true)
         HU:Print(L("Configuración recargada."))
+    elseif cmd == "invitaciones" or cmd == "invites" then
+        if HU.ShowInviteLog then HU:ShowInviteLog() end
+    elseif cmd == "listanegra" or cmd == "blacklist" then
+        if HU.ShowBlacklist then HU:ShowBlacklist() end
+    elseif cmd == "pintar" or cmd == "paint" then
+        -- (copia 94, de prueba: enciende o apaga el adorno de las líneas de mi hermandad)
+        HU.db.ownPaint = onoff(arg, HU.db.ownPaint)
+        HU:Print("Adorno de mi hermandad: " .. (HU.db.ownPaint and "sí" or "no"))
     elseif cmd == "etiqueta" then
-        HU.db.showTag = onoff(arg, HU.db.showTag)
-        HU:Print(L("Etiqueta de hermandad: ") .. (HU.db.showTag and "sí" or "no"))
+        -- (lo mismo que el botón de Ajustes: etiqueta en vez de punto)
+        HU.db.chatMark = onoff(arg, HU.db.chatMark == "tag") and "tag" or "dot"
+        HU:Print(L("Etiqueta de hermandad: ") .. (HU.db.chatMark == "tag" and "sí" or "no"))
     elseif cmd == "guardia" and (arg == "revisar" or arg == "review") then
         HU:GuardReview()
     elseif cmd == "guardia" then

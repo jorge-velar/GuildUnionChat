@@ -235,13 +235,17 @@ local function OfficerEntries(withOwn)
             end
         end
     end
+    -- Primero por rango (maestro, administrador, oficial; el papel, no el número de rango, que cambia
+    -- de una hermandad a otra) y, dentro de cada uno, por orden alfabético (Jorge, 14/11)
+    local ORDER = { gm = 1, admin = 2, officer = 3 }
+    for _, e in ipairs(out) do
+        e.order = ORDER[HU:RoleOf(e.name, e.tag, e.ri)] or 9
+        e.sortName = HU:Nice(e.name):lower()
+    end
     table.sort(out, function(a, b)
-        if a.online ~= b.online then return a.online and true or false end
-        -- (primero los de mi hermandad)
-        if (a.tag == HU.myTag) ~= (b.tag == HU.myTag) then return a.tag == HU.myTag end
-        if a.tag ~= b.tag then return tostring(a.tag) < tostring(b.tag) end
-        if a.ri ~= b.ri then return a.ri < b.ri end
-        return a.name < b.name
+        if a.order ~= b.order then return a.order < b.order end
+        if a.sortName ~= b.sortName then return a.sortName < b.sortName end
+        return tostring(a.tag) < tostring(b.tag)
     end)
     return out
 end
@@ -293,8 +297,6 @@ local function RefreshStatus()
         .. "    " .. L("Hermandades unidas: ") .. "|cffffffff" .. n .. "|r")
     local officer = HU:CanPin()
     for _, f in ipairs(panel.officerOnly) do f:SetShown(officer) end
-    panel.ecoBtn:SetShown(HU:IsMaster())
-    panel.ecoBtn:SetText((HU.cfg and HU.cfg.echo) and L("Eco: quitar") or L("Eco: poner"))
     if panel.createBtn then
         local has = HU.myTag ~= nil
         panel.createBtn:SetText(has and L("Invitar a la comunidad") or L("Crear comunidad"))
@@ -411,23 +413,82 @@ local function BuildPanel()
     end)
     local bUnmute = Button(panel, L("Quitar"), 80, bMute)
     bUnmute:SetScript("OnClick", function() HU:SetMute(mName:GetText(), -1) end)
+    -- (lista negra de la comunidad: su ventana, Blacklist.lua)
+    local bBlack = Button(panel, L("Lista negra"), 90, bUnmute, 6)
+    bBlack:SetScript("OnClick", function() if HU.ShowBlacklist then HU:ShowBlacklist() end end)
     HU:NameSuggest(qName, function(s) s:ClearFocus(); b2:Click() end)
     HU:NameSuggest(mName)
-    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute }) do
+    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute, bBlack }) do
         panel.officerOnly[#panel.officerOnly + 1] = w
     end
 
-    -- Ajustes (para todos) y eco (el maestro)
+    -- Ajustes (para todos)
     local h4 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    h4:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 14, 44)
+    h4:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 14, 92)
     h4:SetText(L("Ajustes"))
-    panel.ecoBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    panel.ecoBtn:SetSize(110, 22); panel.ecoBtn:SetText(L("Eco: poner"))
-    panel.ecoBtn:SetPoint("TOPLEFT", h4, "BOTTOMLEFT", -2, -6)
-    panel.ecoBtn:SetScript("OnClick", function()
-        if HU.EchoCommand then HU:EchoCommand((HU.cfg and HU.cfg.echo) and "off" or "on") end
-        RefreshStatus()
-    end)
+    -- (copia 97: raya de división encima, como la que separa las dos columnas)
+    local setLine = panel:CreateTexture(nil, "ARTWORK")
+    setLine:SetColorTexture(1, 1, 1, 0.08)
+    setLine:SetHeight(1)
+    setLine:SetPoint("LEFT", panel, "BOTTOMLEFT", 14, 114)
+    setLine:SetPoint("RIGHT", panel, "BOTTOM", -10, 114)
+    -- Formato de texto del chat (para todos): punto o etiqueta delante del nombre, y [Hermandad] en
+    -- el color de cada hermandad o en el normal. Vale para las líneas nuevas
+    local fmtLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    fmtLabel:SetPoint("LEFT", h4, "RIGHT", 8, 0)
+    fmtLabel:SetText(L("Formato de texto"))
+    local function Tip(btn, tipTitle, text)
+        btn:SetScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:AddLine(tipTitle)
+            GameTooltip:AddLine(text, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    -- (copia 96: casillas en vez de botones. Dos filas: «Marca  (o) Etiqueta  (o) Punto» y
+    -- «Hermandad  [v] En color»)
+    -- (copia 97: letra de tamaño normal, casillas más grandes y una tercera fila, «Emoticonos»)
+    local COL = 96
+    local function RowLabel(text, y)
+        local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        fs:SetPoint("TOPLEFT", h4, "BOTTOMLEFT", 0, y)
+        fs:SetText(text)
+        return fs
+    end
+    -- (casilla o redondel con su texto a la derecha; devuelve la casilla y el texto)
+    local function Option(template, size, text, anchor, relPoint, x)
+        local cb = CreateFrame("CheckButton", nil, panel, template)
+        cb:SetSize(size, size)
+        cb:SetPoint("LEFT", anchor, relPoint, x, 0)
+        local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        fs:SetPoint("LEFT", cb, "RIGHT", 3, 0)
+        fs:SetText(text)
+        return cb, fs
+    end
+    local lMark = RowLabel(L("Marca"), -10)
+    local rTag, rTagText = Option("UIRadioButtonTemplate", 20, L("Etiqueta"), lMark, "LEFT", COL)
+    local rDot = Option("UIRadioButtonTemplate", 20, L("Punto"), rTagText, "RIGHT", 14)
+    local lGuild = RowLabel(L("Hermandad"), -36)
+    local cColor = Option("UICheckButtonTemplate", 26, L("En color"), lGuild, "LEFT", COL - 3)
+    local lEmotes = RowLabel(L("Emoticonos"), -62)
+    local cEmotes = Option("UICheckButtonTemplate", 26, L("Mostrar"), lEmotes, "LEFT", COL - 3)
+    local function FormatText()
+        rTag:SetChecked(HU.db.chatMark == "tag")
+        rDot:SetChecked(HU.db.chatMark ~= "tag")
+        cColor:SetChecked(HU.db.chatGuildColor and true or false)
+        cEmotes:SetChecked(not HU.db.emotesOff)
+    end
+    cEmotes:SetScript("OnClick", function(s) HU.db.emotesOff = (not s:GetChecked()) or nil end)
+    rTag:SetScript("OnClick", function() HU.db.chatMark = "tag"; FormatText() end)
+    rDot:SetScript("OnClick", function() HU.db.chatMark = "dot"; FormatText() end)
+    cColor:SetScript("OnClick", function(s) HU.db.chatGuildColor = s:GetChecked() and true or false end)
+    cColor:SetScript("OnShow", FormatText)
+    local markTip = L("Qué sale delante del nombre en el chat de hermandad: un punto del color de su hermandad o su etiqueta, como <ABC>.")
+    Tip(rTag, L("Formato de texto"), markTip)
+    Tip(rDot, L("Formato de texto"), markTip)
+    Tip(cColor, L("Formato de texto"), L("El [Hermandad] de cada línea: en el color de la hermandad que habla o en el color normal del chat."))
+    FormatText()
     -- Comunidad (arriba a la derecha): «Crear comunidad» sin comunidad (el maestro), «Invitar a la
     -- comunidad» con ella (principal y gestores), y «Gestionar comunidad» (oficiales)
     panel.manageBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -444,17 +505,7 @@ local function BuildPanel()
     -- (debajo de la línea de estado, que ocupa todo el ancho: antes se pisaban)
     h5:SetPoint("TOPLEFT", panel, "TOP", 10, -70)
     h5:SetText(L("Oficiales conectados"))
-    -- Emoticonos sí/no (para todos), a la derecha del título
-    local bEmotes = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    bEmotes:SetSize(130, 22)
-    bEmotes:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -30, -64)
-    local function EmotesText() bEmotes:SetText(HU.db.emotesOff and L("Emoticonos: no") or L("Emoticonos: sí")) end
-    bEmotes:SetScript("OnClick", function()
-        HU.db.emotesOff = not HU.db.emotesOff or nil
-        EmotesText()
-    end)
-    bEmotes:SetScript("OnShow", EmotesText)
-    EmotesText()
+    -- (copia 97: la casilla de emoticonos va abajo, en Ajustes)
     -- (cabecera de columnas, como la lista de miembros de Blizzard)
     -- (anchos que caben en media ventana: antes «Hermandad» se salía por la derecha)
     local COL_NAME, COL_RANK = 118, 78
@@ -1006,6 +1057,7 @@ local function SyncTab()
         tab:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -20)
     end
     tab:SetShown(show and true or false)
+    if tab.logBtn then tab.logBtn:SetShown(show and true or false) end
     if not show then ShowPanel(false) end
 end
 
@@ -1022,6 +1074,16 @@ local function Setup()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         ShowPanel(not (panel and panel.where == "blizz" and panel:IsShown()))
     end)
+    -- «Registro de invitaciones» (InviteLog.lua), a la izquierda del botón de invitar del juego. Cuelga
+    -- de ese botón, así que se ve y se esconde con él; y solo con la hermandad elegida (SyncTab)
+    if f.InviteButton and HU.ShowInviteLog then
+        local b = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
+        b:SetSize(170, 20)
+        b:SetText(L("Registro de invitaciones"))
+        b:SetPoint("RIGHT", f.InviteButton, "LEFT", -4, 0)
+        b:SetScript("OnClick", function() HU:ShowInviteLog() end)
+        tab.logBtn = b
+    end
     -- (cada parte por separado: si una falla, las demás siguen y el fallo queda en /gu errores)
     if not panel then HU:SafeCall("pestaña", BuildPanel) end
     HU:SafeCall("buscador", BuildCharSearch, f)
