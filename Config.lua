@@ -210,7 +210,7 @@ function HU:QuickConfig()
     if not cfg.ok or not cfg.channel or not mine then return false end
     cfg.quick = true
     self.cfg, self.myTag, self.guildName = cfg, mine.tag, q.guild
-    self:Debug("Arranque rápido con la configuración guardada. Canal:", cfg.channel)
+    self:Debug("Arranque rápido con la configuración guardada. Canal:", HU.MaskChannel(cfg.channel))
     self:ApplyChannels()
     self:Changed("config")
     return true
@@ -318,7 +318,7 @@ function HU:RefreshConfig(force)
         end
     else
         lastErrors = nil
-        self:Debug("Config OK. Canal:", cfg.channel, "Hermandades:", #cfg.guilds, "Mi etiqueta:", self.myTag)
+        self:Debug("Config OK. Canal:", HU.MaskChannel(cfg.channel), "Hermandades:", #cfg.guilds, "Mi etiqueta:", self.myTag)
         -- (para el arranque rápido de la próxima vez; solo se escribe si ha cambiado)
         local q = self.db.quickCfg
         if mine and cfg.channel and (type(q) ~= "table" or q.text ~= text or q.guild ~= gname or time() - (q.t or 0) > 86400) then

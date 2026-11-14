@@ -3434,7 +3434,8 @@ function HU:ReplayHeld(who)
     for key, e in pairs(held) do
         if now - e.t > 180 then
             held[key] = nil; heldN = heldN - 1
-        elseif (not who or e.sender:lower() == who) and self:Vouched(e.sender) then
+        elseif (not who or e.sender:lower() == who) and (self:Vouched(e.sender) or (e.chat and self:InAnyGuild(e.sender))) then
+            if e.chat then HU.diagChat.heldOK = HU.diagChat.heldOK + 1 end
             held[key] = nil; heldN = heldN - 1
             HU.replaying = true
             HU:SafeCall("arranque", HU.OnAddonMessage, e.prefix, e.text, "WHISPER", e.sender)
@@ -3447,11 +3448,31 @@ local function Hold(prefix, text, sender, cmd)
     -- (una lista de varios trozos se guarda entera: antes la clave era remitente + orden y cada trozo [+ARCHITECTURE.md]
     local key = sender:lower() .. cmd
     if cmd == "RB" or cmd == "RC" then key = key .. "\1" .. text end
+    -- (el chat del respaldo, CW: cada línea es un mensaje distinto)
+    if cmd == "CW" then key = key .. "|" .. text end
     if not held[key] then
         if heldN >= 100 then return end
         heldN = heldN + 1
     end
-    held[key] = { sender = sender, text = text, prefix = prefix, t = GetTime() }
+    held[key] = { sender = sender, text = text, prefix = prefix, t = GetTime(), chat = (cmd == "CW") or nil }
+end
+
+-- Chat por el respaldo (CW) de alguien que aún no reconozco como de la comunidad: antes se tiraba, y
+-- con él lo perdía toda mi hermandad si yo era su contacto (visto en el juego el 15/11). Ahora se
+-- retiene (Hold, hasta 180 s) y se comprueba por dos vías; con la primera que lo confirme, se enseña:
+-- (a) que esté en el canal, donde solo entra quien tiene la contraseña (lectura a trozos, como mucho
+-- cada 20 s); (b) preguntando a su hermandad si es suyo (la guardia: MQ / MA). [+ARCHITECTURE.md]
+local verifyReadT = -999
+function HU:VerifyChatSender(sender, f)
+    local k = sender:lower()
+    if self.GetChannelMembersAsync and self:IsJoined("main") and GetTime() - verifyReadT > 20 then
+        verifyReadT = GetTime()
+        self:GetChannelMembersAsync("main", function() if HU.ReplayHeld then HU:ReplayHeld() end end)
+    end
+    local tag = table.concat(f, "~", 3):match("^%[(%w+)")
+    if tag and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and self.GuardAsk then
+        self:GuardAsk({ [k] = sender }, { tag })
+    end
 end
 
 -- Seguridad (idea n.º 8 de Olympus): admisión con tope por remitente. De cada uno de fuera de mi [+ARCHITECTURE.md]
@@ -3547,19 +3568,34 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
     local f = HU.Split(rest, "~")
     local allowed, weak = HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
     if not allowed then
-        HU:Debug("Mensaje rechazado (seguridad):", cmd, "de", sender)
+        -- (para el chat del respaldo se dice si era eco o un mensaje de verdad: Jorge, 15/11)
+        local what = cmd
+        if cmd == "CW" then what = table.concat(f, "~", 3):match("^%[%w+:E%] ") and "CW (eco de versión vieja)" or "CW (chat: se retiene y se comprueba)" end
+        HU:Debug("Mensaje rechazado (seguridad):", what, "de", sender)
         -- (arranque de alguien aún sin avalar: se guarda por si lo avalan enseguida)
         if dist == "WHISPER" and BOOTSTRAP[cmd] then
             Hold(prefix, text, sender, cmd)
             -- (si leo la lista del canal, se mira ya si está en él, en vez de esperar a mi saludo de cada
             -- 2-5 min: si está, queda «visto en el canal» y lo retenido se aplica; ver StoreChannelMembers)
             if HU.CheckChannelSoon then HU:CheckChannelSoon() end
+        elseif dist == "WHISPER" and cmd == "CW" and not HU.replaying then
+            -- (un paquete de eco de una versión vieja, «[ETIQ:E] …»: se descartaría de todos modos. Se
+            -- cuenta aparte para no confundirlo con un mensaje perdido, y no se retiene ni se comprueba)
+            if table.concat(f, "~", 3):match("^%[%w+:E%] ") then
+                HU.ChatDrop("eco de una versión vieja (no es un mensaje perdido)", sender)
+            else
+                HU.diagChat.held = HU.diagChat.held + 1
+                Hold(prefix, text, sender, cmd)
+                HU:VerifyChatSender(sender, f)
+            end
         end
         return
     end
     HU.weakMsg = weak or nil -- (se pone en cada mensaje: nunca se queda de otro)
     if dist == "CHANNEL" then HU:MarkChannelSeen(sender) end
+    HU.curCmd = cmd -- (para los avisos de depuración: qué orden se estaba tratando)
     h(HU, sender, f, dist, text)
+    HU.curCmd = nil
 end
 HU:On("CHAT_MSG_ADDON", HU.OnAddonMessage)
 

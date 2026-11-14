@@ -19,6 +19,15 @@ local function RawSend(msg, chatType, lang, target)
     return ok
 end
 HU.RawSend = RawSend -- (para Blacklist.lua: el aviso en el chat de oficiales)
+-- Contadores del chat para /gu diag (copia 109): por dónde sale y llega cada mensaje y qué se retiene
+HU.diagChat = { chan = 0, fallback = 0, blocked = 0, noEcho = 0, inChan = 0, inFallback = 0, held = 0, heldOK = 0, drops = {} }
+-- (copia 110: cada sitio donde un mensaje de chat se queda sin enseñar o sin salir lo apunta aquí,
+-- con su motivo; antes eran mudos. Se ve en /gu diag y, con /gu debug, en el momento)
+function HU.ChatDrop(why, who)
+    local d = HU.diagChat.drops
+    d[why] = (d[why] or 0) + 1
+    HU:Debug("Chat descartado (" .. why .. ")" .. (who and (": " .. tostring(who)) or ""))
+end
 
 local function RemoveChannelFromFrame(frame, name)
     if ChatFrame_RemoveChannel then
@@ -485,9 +494,11 @@ function HU:Forward(kind, msg)
             local ok = RawSend(line, "CHANNEL", nil, id)
             HU.expectBlock = nil
             if HU.chatBlockedNow or not ok then
+                HU.diagChat.blocked = HU.diagChat.blocked + 1
                 self:TextChatFailed("bloqueado")
                 self:ChatFallback(token, line)
             else
+                HU.diagChat.chan = HU.diagChat.chan + 1
                 self:WatchEcho(chanKind, token, line)
             end
         else
@@ -519,6 +530,7 @@ function HU:WatchEcho(chanKind, token, line)
         local w = echoWait[k]
         if not w then return end
         echoWait[k] = nil
+        HU.diagChat.noEcho = HU.diagChat.noEcho + 1
         HU:TextChatFailed("sin eco")
         HU:ChatFallback(w.token, line)
     end)
@@ -533,12 +545,14 @@ local MAX_OFF_TARGETS = 15
 local FEW_DIRECT = 4
 local function SendCW(self, tag, token, author, line)
     local p = self:BestPeer(tag)
-    if p and p.name then self:Whisper(p.name, "CW~" .. token .. "~" .. author .. "~" .. line, true) end
+    if p and p.name then self:Whisper(p.name, "CW~" .. token .. "~" .. author .. "~" .. line, true)
+    else HU.ChatDrop("al enviar: sin contacto en la otra hermandad", tag) end
 end
 function HU:ChatFallback(token, line)
     if not self.myTag or not self.cfg then return end
     local me = self:Me()
     if not me then return end
+    HU.diagChat.fallback = HU.diagChat.fallback + 1
     if token == "o" then
         -- (lo de oficiales nunca va por GUILD: a cada oficial conectado de las otras hermandades)
         local n = 0
@@ -637,16 +651,20 @@ HU:OnStart(function()
         -- (quien lo trae tiene que ser de esa hermandad, si ya tengo su lista; el autor lo mira [+ARCHITECTURE.md]
         if not self:MemberOf(sender, tag) then
             local W = self.whitelist[tag]
-            if W and time() - (W.t or 0) < 86400 then return end
+            if W and time() - (W.t or 0) < 86400 then return HU.ChatDrop("respaldo: quien lo trae no está en la lista de su hermandad", sender) end
             if W or self.remoteRoster[tag] then
                 local g = self.guardKnown and self.guardKnown[self:Key(sender) or ""]
                 if (self.GuardVerdict and self:GuardVerdict(sender) == true)
-                    or (g ~= nil and g.tag ~= tag and self:GuardKnown(sender)) then return end
+                    or (g ~= nil and g.tag ~= tag and self:GuardKnown(sender)) then
+                    return HU.ChatDrop("respaldo: su hermandad no lo reconoce", sender)
+                end
             end
         end
         -- (el tope es por quien lo trae y autor: un compañero que reparte lo de toda su hermandad [+ARCHITECTURE.md]
         local inner = line:match("^%[%w+:E%] ([^:]+): ")
-        if not CWAllowed(sender .. "|" .. author .. (inner and (">" .. inner) or "")) or not CarrierAllowed("w:" .. sender) then return end
+        if not CWAllowed(sender .. "|" .. author .. (inner and (">" .. inner) or "")) or not CarrierAllowed("w:" .. sender) then
+            return HU.ChatDrop("respaldo: tope de mensajes por remitente", sender)
+        end
         if kind == "off" then
             -- (lo de oficiales solo directo del autor, que tiene que ser oficial)
             if author:lower() ~= sender:lower() then return end
@@ -677,7 +695,9 @@ HU:OnStart(function()
     -- CG~canal~autor~[ETIQ] mensaje : por GUILD, de un compañero que lo recibió por susurro [+ARCHITECTURE.md]
     HU.comm.CG = function(self, sender, f, dist)
         if dist ~= "GUILD" or not self.myTag then return end
-        if not self:IsTest() and not self.roster[self:Key(sender) or ""] then return end
+        if not self:IsTest() and not self.roster[self:Key(sender) or ""] then
+            return HU.ChatDrop("reparto: quien lo reparte no sale en mi lista de hermandad", sender)
+        end
         local kind = TokenKind(f[1])
         if not kind or kind == "off" then return end
         if HU.IsExtra(kind) and not self:IsJoined(kind) then return end
@@ -685,7 +705,9 @@ HU:OnStart(function()
         if not author then return end
         local line = table.concat(f, "~", 3)
         local inner = line:match("^%[%w+:E%] ([^:]+): ")
-        if not CWAllowed("g:" .. sender .. "|" .. author .. (inner and (">" .. inner) or "")) or not CarrierAllowed("gs:" .. sender) then return end
+        if not CWAllowed("g:" .. sender .. "|" .. author .. (inner and (">" .. inner) or "")) or not CarrierAllowed("gs:" .. sender) then
+            return HU.ChatDrop("reparto: tope de mensajes por remitente", sender)
+        end
         if self:OnUnionChat(kind, line, author, nil, "w") then self:AuditRelayedLine(sender, author, line) end
     end
 end)
@@ -698,7 +720,6 @@ local LANE_TTL = 6 * 3600      -- un carril alto caduca a las 6 h de subirse (a 
 local LANE_CONFIRM = 10        -- segundo sondeo antes de mudarse por rechazos
 local LANE_PROBE_EVERY = 10    -- el enlace sondea si lleva esto sin mandar nada al canal
 local LANE_ADOPT_GAP = 120     -- como mucho un cambio cada 2 min por lo que digan otros
-local LANE_GEN_STEP = 1        -- la generación de otro solo vale si es como mucho 1 más que la mía
 local LANE_GEN_MAX = 99999
 HU.LANE_TTL = LANE_TTL
 local laneRefused, laneConfirmT, laneAdoptT = 0, nil, -999
@@ -797,7 +818,10 @@ function HU:OfferLane(new, from, strong)
         end
         return false
     end
-    if new.gen > st.gen + LANE_GEN_STEP then return false end
+    -- (copia 109: aquí se rechazaba una generación más de 1 por encima de la mía. Quien se quedaba
+    -- dos atrás, o instalaba de nuevo con la comunidad ya en la 8, no podía seguirla nunca y se
+    -- quedaba en otro carril, o sea en otro canal: visto en el juego el 15/11, carril 0 gen 2 frente
+    -- a carril 1 gen 8. Solo llega aquí lo que dice el enlace o un oficial: se sigue sin tope)
     if new.gen == st.gen and new.lane == st.lane then
         st.t = new.t -- (solo la hora: se iguala sin mudarse)
         return true
@@ -1110,6 +1134,7 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
     mark = mark or ""
     if compact then
         local name = self:Nice(author)
+        if self.EchoStarName then name = self:EchoStarName(author, name) end
         local rTag, rIdx = self:RankInfoOf(author)
         local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
         local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
@@ -1121,7 +1146,9 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
         end
         return label .. tagText .. nameLink .. ": ", self:Emotes(msg), chatType
     end
-    local colored = ClassColored(self:Nice(author), guid, tag, author)
+    local short = self:Nice(author)
+    if self.EchoStarName then short = self:EchoStarName(author, short) end
+    local colored = ClassColored(short, guid, tag, author)
     -- Formato de texto (Ajustes): punto o etiqueta delante del nombre, y [Hermandad] en color [+ARCHITECTURE.md]
     local name = self:NamePrefix(tag, author, mark) .. "|Hplayer:" .. author .. "|h[" .. colored .. "]|h"
     local pattern = (kind == "off") and CHAT_OFFICER_GET or CHAT_GUILD_GET
@@ -1548,8 +1575,9 @@ function HU:OnUnionChat(kind, text, author, guid, via)
     if not tag or not HU.cfg or not HU.cfg.byTag[tag] then return end
     author = HU:FullName(author)
     if not author or author:lower() == HU:MeKey() then return end
-    -- («[ETIQ:E] …» era el eco de las versiones hasta la 5.4.31: ya no existe y se descarta)
-    if sub == "E" then return end
+    -- («[ETIQ:E] …» era el eco de las versiones hasta la 5.4.31: no existe y se descarta. Jorge, 15/11:
+    -- «el eco NUNCA lo quiero activado, porque rompe el formato»)
+    if sub == "E" then return HU.ChatDrop("eco de una versión vieja (no es un mensaje perdido)", author) end
     msg = HU.SafeText(msg, true)
     if sub ~= "R" and Duplicate(author, text, via or "c") then return end
     -- seguridad: quien escribe tiene que estar de verdad en la hermandad de la etiqueta [+ARCHITECTURE.md]
@@ -1558,6 +1586,7 @@ function HU:OnUnionChat(kind, text, author, guid, via)
         -- juego y el mensaje queda retenido hasta la respuesta; ver Guard.lua)
         if HU.CheckImpostor then HU:CheckImpostor(author) end
         HU:HoldUnionChat(author:lower(), kind, text, author, guid)
+        HU.ChatDrop("retenido: usa mi etiqueta y no sale en mi lista", author)
         return
     end
     if not HU:IsTest() and not HU:MemberOf(author, tag) then
@@ -1571,7 +1600,7 @@ function HU:OnUnionChat(kind, text, author, guid, via)
                 or (g ~= nil and g.tag ~= tag and HU:GuardKnown(author))
         end
         if reject then
-            HU:Debug(L("Mensaje rechazado: ") .. tostring(author) .. L(" no está en <") .. tag .. ">")
+            HU.ChatDrop("el autor no está en la lista de su hermandad", tostring(author) .. " <" .. tag .. ">")
             return
         end
     end
@@ -1595,6 +1624,7 @@ function HU:OnUnionChat(kind, text, author, guid, via)
     elseif tag == HU.myTag and not HU:IsTest() then
         return -- los de mi hermandad ya lo vieron en /g
     end
+    if via == "w" then HU.diagChat.inFallback = HU.diagChat.inFallback + 1 else HU.diagChat.inChan = HU.diagChat.inChan + 1 end
     HU:Display(kind, tag, author, msg, guid)
     HU:AddHistory(kind, tag, author, msg, guid)
     return true -- (se ha mostrado)
@@ -1693,11 +1723,35 @@ local function NativeMention(text, author)
     local mentioned = author and author:lower() ~= HU:MeKey() and HU:MentionsMe(text, author, HU.myTag)
     if mentioned then HU:PingMention(author, mentioned) end
 end
-HU:On("CHAT_MSG_GUILD", NativeMention)
+-- El eco no existe en esta versión, pero un enlace con una versión hasta la 5.4.31 y «GU:e:1» en la
+-- Información de su hermandad lo sigue escribiendo en /g: «[ETIQ] Nombre Apellido: texto», con la
+-- etiqueta de OTRA hermandad de la comunidad. Esas líneas (y el aviso de «eco activado») se reconocen
+-- por su forma para no enseñarlas, ni guardarlas, ni avisar de menciones.
+-- (copia 112, para no esconder nunca un mensaje de verdad: solo si lo escribe un compañero que
+-- TIENE el addon (el eco solo lo escribe un enlace), nunca lo mío ni lo de quien no lo tiene; el
+-- aviso, solo si es la frase exacta; y la línea tiene que EMPEZAR por la etiqueta de otra hermandad)
+local ECHO_NOTICE = { ["Eco de GuildUnion activado: aquí verás el chat de las otras hermandades."] = true,
+    ["GuildUnion echo on: you will see the other guilds' chat here."] = true }
+function HU:IsEchoLine(msg, author)
+    if type(msg) ~= "string" or HU.Secret(msg) or not (self.cfg and self.myTag) then return false end
+    local k = author and self:Key(author)
+    if not k or k == self:MeKey() or not (self.guildPeers and self.guildPeers[k]) then return false end
+    local plain = msg:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    if ECHO_NOTICE[plain] then return true end
+    local tag = plain:match("^%[(%w+)%] [^%s:%[%]]+ ?[^%s:%[%]]*: ")
+    return tag ~= nil and tag ~= self.myTag and self.cfg.byTag[tag] ~= nil
+end
+HU:On("CHAT_MSG_GUILD", function(text, author)
+    if HU:IsEchoLine(text, author) then return end
+    NativeMention(text, author)
+end)
 HU:On("CHAT_MSG_OFFICER", NativeMention)
 
 -- los silenciados tampoco se ven en el /g normal (para quien tiene el addon),
 function HU:GuildLineHidden(msg, author)
+    -- (las líneas de eco que aún escribe en /g un enlace con una versión vieja: no se enseñan. Las
+    -- esconde ChatPaint.lua al escribir la línea, sin filtro de chat)
+    if HU:IsEchoLine(msg, author) then return true end
     local full = author and HU:FullName(author)
     if full and full:lower() == HU:MeKey() and HU:IsOwnHidden(msg) then return true end
     if HU.IsMuted and full and full:lower() ~= HU:MeKey() and HU:IsMuted(full) then return true end
@@ -1705,6 +1759,8 @@ function HU:GuildLineHidden(msg, author)
 end
 
 HU:On("CHAT_MSG_GUILD", function(text, author, _, _, _, _, _, _, _, _, _, guid)
+    -- (se cuenta en /gu diag: si alguna vez escondiera algo que no es eco, se vería ahí)
+    if HU:IsEchoLine(text, author) then return HU.ChatDrop("línea de eco de una versión vieja (escondida en /g)", author) end
     if HU:GuildLineHidden(text, author) then return end
     if HU.myTag then HU:AddHistory("main", HU.myTag, HU:FullName(author), text, guid) end
 end)

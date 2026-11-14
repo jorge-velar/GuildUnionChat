@@ -2265,6 +2265,59 @@ mensaje, también ese; al volver de un addon quedan manchados y el juego falla a
 mazmorra no le salió y a otro sí.
 
 Dos defensas (la segunda, cambiada en la copia 84):
+- **Copia 113 (15/11): el nombre del canal, tapado en los avisos de depuración.** Con `/gu debug`,
+  «Arranque rápido…» y «Config OK» escribían el nombre del canal entero y salía en las capturas.
+  Ahora `HU.MaskChannel` (Core.lua): dos letras y puntos, como `/gu diag`.
+- **Copia 112 (15/11): que quitar el eco no esconda ni haga pasar por perdido nada.** `IsEchoLine`
+  más estricta: solo líneas de un compañero que TIENE el addon (`guildPeers`), nunca las mías ni las
+  de quien no lo tiene; el aviso de eco, solo la frase exacta. Cada línea escondida se cuenta
+  (`ChatDrop`). Y el eco de versiones viejas que llega por el respaldo (`CW` con `[ETIQ:E]`) se
+  cuenta aparte, «eco de una versión vieja (no es un mensaje perdido)», sin retenerlo ni comprobarlo:
+  el aviso «Mensaje rechazado (seguridad): CW» dice ahora si era eco o chat de verdad.
+- **Copia 111 (15/11): el eco, fuera del todo otra vez.** Jorge: «el eco NUNCA lo quiero activado,
+  porque rompe el formato». Fuera `Echo.lua`, sus enganches, `/gu eco` y el botón del maestro (lo que
+  volvió en la 107 por un diagnóstico mío equivocado). `[ETIQ:E]` se descarta. Lo nuevo: `HU:IsEchoLine`
+  (Channel.lua) reconoce por su forma las líneas de eco que un enlace con una versión hasta la 5.4.31
+  sigue escribiendo en /g («[ETIQ] Nombre: texto» con la etiqueta de otra hermandad, y el aviso de
+  eco activado) y `GuildLineHidden` las esconde al escribir la línea (ChatPaint.lua), sin filtro. Con
+  el chat bloqueado o `/gu pintar off` se ven. Consecuencia sabida y aceptada: quien no tiene el addon
+  no lee a las otras hermandades ni ellas a él.
+- **Copias 109 y 110 (15/11): mensajes de chat que se perdían entre gente con addon. Versión 5.4.33.**
+  Dos causas vistas en el juego con `/gu debug` y `/gu carril`:
+  1. **Carriles partidos.** `OfferLane` rechazaba una generación más de 1 por encima de la propia.
+     Quien se quedaba dos atrás (o instalaba de cero) no podía seguir a la comunidad cuando esta subía
+     de carril: canal distinto, y no se leían (carril 0 gen 2 frente a carril 1 gen 8). Ahora lo que
+     dice el enlace o un oficial (`LaneStrong`) se sigue sin tope; fuera `LANE_GEN_STEP`.
+  2. **Chat del respaldo tirado.** Quien no puede escribir por el canal manda su chat por susurro
+     (CW) a un contacto de cada otra hermandad, que lo reparte (CG). `AllowAddonMessage` tiraba el CW
+     si el remitente no estaba en una lista ni «visto en el canal»; con la lista corta de ahora, casi
+     nadie de fuera lo está. Y como el contacto lo tiraba, su hermandad entera lo perdía. Ahora se
+     retiene (`Hold`, 180 s) y `HU:VerifyChatSender` lo comprueba por dos vías: lectura del canal (solo
+     entra quien tiene la contraseña; como mucho cada 20 s) y pregunta a su hermandad (guardia, MQ/MA;
+     `FinishTag` llama a `ReplayHeld`). `ReplayHeld` acepta `Vouched` o, para el chat, `InAnyGuild`.
+  Además: `HU.diagChat` (contadores en `/gu diag`: enviado por canal/respaldo, recibido por cada vía,
+  retenidos y confirmados, carril) y, en la 110, `HU.ChatDrop(motivo, quién)`: cada sitio donde un
+  mensaje de chat se descartaba en silencio lo apunta con su motivo. El aviso «Acción de oficial
+  rechazada» dice la orden (`HU.curCmd`). Corregido el separador de las líneas de eco agrupadas, que
+  en las copias 107 y 108 quedó como carácter 24 en vez de `` (error al escribir el parche).
+- **Copia 108 (15/11): historial de oficiales con marca de addon y filtro por hermandad.** Solo
+  ventana (`History.lua`). Cada línea lleva, tras la etiqueta, el punto de la hermandad en color si
+  el autor tiene el addon, en gris si no, o «?» si no se sabe (`HU:AuthorHasAddon`: lo que se sabe
+  AHORA, no cuando escribió; el historial no lo guarda). Botón «Hermandad: Todas / <ETIQ>» arriba a
+  la derecha: cada clic pasa a la siguiente y repite la búsqueda; lo de mi PC se filtra al buscar
+  (`opts.tag`), lo que llega de otros oficiales al pintar (`W.tagFilter`). «Ajustes» ya sale
+  traducido en inglés.
+- **Copia 107 (14/11): el eco vuelve, sin filtros de chat.** Al quitar `Echo.lua` (copia 98) se fue
+  también lo que el enlace hacía por los compañeros SIN addon: pasar su /g a las otras hermandades
+  (`EchoOutgoing`, líneas `[ETIQ:E] Autor: texto` por el respaldo CW/CG) y aceptarlas al recibir
+  (`EchoUnwrap`). Resultado en el juego: quien no tenía el addon dejó de oírse fuera de su hermandad.
+  Vuelve `Echo.lua` tal cual estaba en la 5.4.31 (copia 89/90) y sus enganches en `Channel.lua`
+  (`OnUnionChat`, `EchoIncoming`, `EchoSeen`, `EchoOutgoing`, `EchoStarName`), `/gu eco` y el botón del
+  maestro (ahora en la fila de «Ajustes»). Lo que cambia respecto a la 5.4.31: las líneas de eco que
+  el enlace escribe en /g ya no las esconde un filtro de chat (era lo que rompía el chat bloqueado):
+  las esconde `ChatPaint.lua` al escribir la línea, porque `HU:GuildLineHidden` vuelve a mirar
+  `IsEchoLine`. Con el texto secreto (chat bloqueado) o con `/gu pintar off` no se esconden: quien
+  tiene el addon las ve repetidas en /g, pero no se pierde nada.
 - **Copia 106 (14/11): botón «Registro de invitaciones» en la ventana de hermandad del juego.** Lo
   crea `Setup` (BlizzTab.lua) como hijo de `CommunitiesFrame.InviteButton` («Invitar miembro»),
   pegado a su izquierda: se ve y se esconde con él, y `SyncTab` lo esconde si la comunidad elegida

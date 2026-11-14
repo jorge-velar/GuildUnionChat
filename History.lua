@@ -504,7 +504,7 @@ function HU:HistSearchLocal(opts, done)
         if ids and not ids[id] then return nil end
         local e = ParseLine(day, line)
         if e and (not opts.since or e.t >= opts.since) and (not text or HU.Fold(e.m):find(text, 1, true))
-            and (not opts.kinds or opts.kinds[e.k]) then
+            and (not opts.kinds or opts.kinds[e.k]) and (not opts.tag or e.tag == opts.tag) then
             e.day, e.i = day, i
             return e
         end
@@ -1353,10 +1353,35 @@ function HU.QuerySpans(text, query)
     return out
 end
 
+-- ¿Tiene el addon quien escribió? Es lo que se sabe AHORA, no cuando escribió (el historial no lo
+-- guarda): true si ha saludado, se le ha visto en el canal o es un contacto conocido de otra
+-- hermandad; false si es de mi hermandad, está conectado y no consta; nil si no se sabe
+-- (desconectado, o de otra hermandad sin datos)
+function HU:AuthorHasAddon(name, tag)
+    local k = name and self:Key(name)
+    if not k then return nil end
+    if k == self:MeKey() or (self.guildPeers and self.guildPeers[k]) then return true end
+    local seen = self.chanSeen and self.chanSeen[k]
+    if seen and GetTime() - seen < 7200 then return true end
+    local known = tag and self.db and self.db.peers and self.db.peers[tag]
+    if known and known[k] then return true end
+    if tag and tag == self.myTag then
+        local m = self.roster and self.roster[k]
+        if m and m.online then return false end
+    end
+    return nil
+end
+local function AddonMark(e)
+    if not (e.tag and HU.DotText) then return "" end
+    local has = HU:AuthorHasAddon(e.a, e.tag)
+    if has == nil then return "|cff808080?|r " end
+    return HU:DotText(e.tag, has == false)
+end
+
 -- Una línea de la lista: { texto, bytes antes del mensaje, mensaje } (lo buscado se marca en Show)
 local function Line(e, focus, before)
     local when = HU.SafeDate("%d/%m %H:%M", e.t)
-    local tag = e.tag and ("<" .. e.tag .. "> ") or ""
+    local tag = e.tag and ("<" .. e.tag .. "> " .. AddonMark(e)) or ""
     local where = (e.k == "off" and L("[Oficiales] ")) or (e.k == "lfg" and L("[Buscar grupo] ")) or ""
     local head = (before or "") .. (focus and "|cffffffff" or "|cff999999") .. when .. "|r " .. where .. tag .. NameColored(e.a) .. ": "
     return { head .. e.m, #head, e.m }
@@ -1474,6 +1499,12 @@ Render = function()
     local all = {}
     for _, e in ipairs(W.localRes or {}) do all[#all + 1] = e end
     for _, e in ipairs(W.remoteRes or {}) do HU:HistMerge(all, e) end
+    -- (filtro por hermandad: lo de mi PC ya viene filtrado; lo de otros oficiales, no)
+    if W.tagFilter then
+        local only = {}
+        for _, e in ipairs(all) do if e.tag == W.tagFilter then only[#only + 1] = e end end
+        all = only
+    end
     table.sort(all, function(a, b) return a.t > b.t end)
     W.shown = all
     for i, e in ipairs(all) do
@@ -1483,6 +1514,8 @@ Render = function()
         rows[#rows + 1] = l
     end
     local head = string.format(L("%d mensajes"), #all) .. (W.waitingRemote and L(" · preguntando a otros oficiales...") or "")
+    -- (leyenda de la marca de addon, en gris)
+    head = head .. "   |cff999999" .. L("Punto de color: tiene el addon · punto gris: no lo tiene · ?: no se sabe") .. "|r"
     if #all == 0 and not W.waitingRemote then head = L("No hay mensajes con esa búsqueda.") end
     Show(rows, head, nil, W.keepScroll)
     W.keepScroll = true
@@ -1523,7 +1556,7 @@ function HU:HistSearch(name, text)
     W.keepScroll, W.inContext = false, false
     W.localRes, W.remoteRes, W.waitingRemote = nil, nil, true
     local since = HU.StampNow() - DAYS * 86400
-    local opts = { name = name, text = text, since = since }
+    local opts = { name = name, text = text, since = since, tag = W.tagFilter }
     Show({}, L("Buscando..."))
     self:HistSearchLocal(opts, function(res) W.localRes = res; Render() end)
     local asked = self:HistSearchRemote(opts, function(res)
@@ -1587,6 +1620,25 @@ function HU:HistWindow(show)
         back:SetScript("OnClick", function() HU.HistBack() end)
         back:Hide()
         W.backBtn = back
+        -- Filtro por hermandad (arriba a la derecha): cada clic pasa a la siguiente; «Todas» al final
+        local gBtn = CreateFrame("Button", nil, W, "UIPanelButtonTemplate")
+        gBtn:SetSize(160, 20)
+        gBtn:SetPoint("TOPRIGHT", -34, -6)
+        local function GuildLabel()
+            gBtn:SetText(L("Hermandad: ") .. (W.tagFilter and ("<" .. W.tagFilter .. ">") or L("Todas")))
+        end
+        gBtn:SetScript("OnClick", function()
+            local tags = {}
+            if HU.myTag then tags[1] = HU.myTag end
+            for _, t in ipairs(HU.OtherTags and HU:OtherTags() or {}) do tags[#tags + 1] = t end
+            local at = 0
+            for i, t in ipairs(tags) do if t == W.tagFilter then at = i end end
+            W.tagFilter = tags[at + 1] -- (tras la última, nil: todas)
+            GuildLabel()
+            HU:HistSearch(HU.Trim(W.nameBox:GetText()), HU.Trim(W.textBox:GetText()))
+        end)
+        gBtn:SetScript("OnShow", GuildLabel)
+        GuildLabel()
         -- (lista normal que empieza arriba, con barra; antes era la pieza del chat, que llena desde abajo)
         local sf = CreateFrame("ScrollFrame", "GuildUnionHistoryScroll", W, "UIPanelScrollFrameTemplate")
         sf:SetPoint("TOPLEFT", 14, -64)

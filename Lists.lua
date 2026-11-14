@@ -234,7 +234,7 @@ function HU:MayCarryOrDefer(author, tag, retry, sender, dist)
     if self:MayCarry(author, sender, dist, tag) then return true end
     if retry and dist == "GUILD" and self.KnownGuildRelay and not self:KnownGuildRelay() then self:Defer(retry)
     elseif retry and dist == "WHISPER" and not self:MemberOf(sender, (tag and tag ~= "") and tag or "") then self:Defer(retry) end
-    if self.Debug then self:Debug("Acción de oficial rechazada: la trae", sender, "firmada por", author) end
+    if self.Debug then self:Debug("Acción de oficial rechazada (" .. tostring(HU.curCmd or "reintento") .. "): la trae", sender, "firmada por", author) end
     return false
 end
 

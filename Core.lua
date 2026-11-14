@@ -271,6 +271,13 @@ function HU:Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99" .. HU:Title() .. "|r: " .. tostring(msg))
 end
 
+-- El nombre del canal, tapado (dos letras y puntos): los avisos de depuración se pegan en capturas
+-- y el nombre del canal no debe salir de la comunidad (copia 113; como ya hacía /gu diag)
+function HU.MaskChannel(name)
+    if type(name) ~= "string" or name == "" then return "nil" end
+    return name:sub(1, 2) .. "····"
+end
+
 function HU:Debug(...)
     if self.db and self.db.debug then
         local parts = {}
@@ -879,6 +886,19 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         for k in pairs(HU.diagRecv or {}) do rec[#rec + 1] = k .. "=" .. HU.diagRecv[k] end
         table.sort(rec)
         lines[#lines + 1] = "recibido: " .. table.concat(rec, " ")
+        -- (copia 109: el carril y el chat, por dónde sale y por dónde llega)
+        local dc = HU.diagChat
+        if dc then
+            local st = HU.LaneState and HU:LaneState()
+            lines[#lines + 1] = "carril: " .. tostring(st and st.lane) .. "  generación: " .. tostring(st and st.gen)
+            lines[#lines + 1] = "chat enviado: canal " .. dc.chan .. "  respaldo " .. dc.fallback .. "  (bloqueado " .. dc.blocked .. ", sin eco " .. dc.noEcho .. ")  texto del canal: " .. (HU:TextChatOK() and "bien" or "dado por roto")
+            lines[#lines + 1] = "chat recibido: canal " .. dc.inChan .. "  respaldo " .. dc.inFallback .. "  retenidos de desconocidos " .. dc.held .. " (confirmados " .. dc.heldOK .. ")"
+            local dr = {}
+            for why, n in pairs(dc.drops or {}) do dr[#dr + 1] = "   " .. n .. " × " .. why end
+            table.sort(dr)
+            lines[#lines + 1] = "chat descartado: " .. (#dr == 0 and "nada" or "")
+            for _, l in ipairs(dr) do lines[#lines + 1] = l end
+        end
         for i = math.max(1, #h - 2), #h do
             local e = h[i]
             if e then lines[#lines + 1] = "  [" .. tostring(e.k) .. "] " .. tostring(e.a) .. ": " .. tostring(type(e.m)) .. " " .. tostring(e.m and #tostring(e.m)) .. " letras" end
