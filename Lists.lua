@@ -143,7 +143,8 @@ end
 local deferred, deferT = {}, nil
 function HU:Defer(fn)
     if #deferred >= 60 then table.remove(deferred, 1) end
-    deferred[#deferred + 1] = { fn = fn, t = deferT or GetTime() }
+    -- (cmd: la orden que se dejó en espera, para que el aviso de un reintento la diga bien)
+    deferred[#deferred + 1] = { fn = fn, t = deferT or GetTime(), cmd = HU.deferCmd or HU.curCmd }
 end
 
 function HU:RetryDeferred()
@@ -154,7 +155,10 @@ function HU:RetryDeferred()
     for _, d in ipairs(list) do
         if now - d.t < 900 then
             deferT = d.t
+            local was = HU.curCmd
+            HU.deferCmd, HU.curCmd = d.cmd, (d.cmd and (d.cmd .. ", reintento")) or "reintento"
             local ok, err = pcall(d.fn)
+            HU.deferCmd, HU.curCmd = nil, was
             deferT = nil
             if not ok and self.Debug then self:Debug("Acción en espera:", err) end
         end

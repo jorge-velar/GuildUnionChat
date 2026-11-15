@@ -2265,6 +2265,24 @@ mensaje, también ese; al volver de un addon quedan manchados y el juego falla a
 mazmorra no le salió y a otro sí.
 
 Dos defensas (la segunda, cambiada en la copia 84):
+- **Copia 114 (15/11): el respaldo deja de depender de un solo contacto. Versión 5.4.34.** Visto en
+  el juego: a un mismo autor lo leía una hermandad y otra no, porque el chat del respaldo (CW) iba a
+  UN contacto por hermandad y, si ese tenía una versión vieja que lo tiraba, su hermandad entera lo
+  perdía. Ideas tomadas del estudio de Olympus (sin copiar código): varios caminos y contar una vez.
+  (1) `HU:BestPeers(tag, 2)`: el CW va a dos contactos, primero los que tienen 5.4.33 o posterior
+  (`p.ver`, del saludo). (2) `Duplicate` recuerda quién trajo la línea: la misma por el respaldo
+  desde OTRO compañero en 15 s es la misma; quien ya la tiene no la reparte otra vez (CG).
+  (3) Eco: un solo eco tarde ya no da el canal por roto 5 min; hacen falta dos seguidos (`echoMiss`).
+  (4) `/gu visto Nombre`: líneas de ese autor entregadas por el canal antes de cualquier filtro
+  (`HU.chanRaw`) y enseñadas (`HU.chanShown`). (5) `/gu version Nombre`. (6) Aviso en el chat, cada
+  10 min, cuando no estoy en el canal, con el motivo. (7) Nombre del canal tapado en los avisos de
+  depuración y en `/gu estado`. (8) `Defer` guarda la orden: el aviso de un reintento la dice bien.
+- **Copia 115 (15/11): `/gu sonda N`, solo para medir.** En los diagnósticos del juego llegan cientos
+  de sondas `LP`, que son mensajes ocultos por el canal: en Forever hoy sí se entregan (el 04/11
+  Olympus midió 0 de 123). Antes de usarlos como camino de emergencia del chat, sin intermediarios,
+  se mide: N mensajes numerados de 90 letras por `HU20C` (`SD~tanda~i~n~ETIQ~relleno`), uno cada
+  1,2 s; cada receptor dice «te han llegado X de N» y qué números faltan (también en `/gu diag`).
+  Solo oficiales; de cada remitente, una sonda por minuto. No cambia cómo viaja el chat.
 - **Copia 113 (15/11): el nombre del canal, tapado en los avisos de depuración.** Con `/gu debug`,
   «Arranque rápido…» y «Config OK» escribían el nombre del canal entero y salía en las capturas.
   Ahora `HU.MaskChannel` (Core.lua): dos letras y puntos, como `/gu diag`.
@@ -2468,3 +2486,48 @@ Dos defensas (la segunda, cambiada en la copia 84):
 
 Otro aviso parecido visto la misma noche, `tainted by 'TradeSkillMaster'` al escribir, no es
 nuestro (ese addon sustituye `HandleModifiedItemClick` y `ChatEdit_InsertLink`).
+
+## Copia 117 (15/11): mudanza de carril hiperestricta
+
+**Qué se vio en el juego.** Recién entrado, el juego rechaza los mensajes ocultos al canal durante el primer minuto (`/gu sonda 30`: aceptó 0 de 30 al entrar y 30 de 30 un minuto después, mismo personaje), aunque el texto normal sí sale. El enlace sondeaba cada 10 s y se mudaba con 6 rechazos en unos 20 s: cada enlace que entraba subía de carril a toda la comunidad. Quien no recibía el aviso se quedaba en otro canal viendo volver sus propias líneas, sin usar el respaldo y sin nada apuntado. En el registro de Jorge: 14 cambios en 5 días; el 15/11, de carril 2 a 4 tras dos entradas del enlace.
+
+**Mudanza automática (`ChannelSendResult`, `TryMoveLane`).** Solo el enlace, y solo con todo esto a la vez:
+1. `LANE_SETTLE` = 600 s desde la última pantalla de carga (`PLAYER_ENTERING_WORLD`, `LOADING_SCREEN_DISABLED`). Antes de eso los rechazos se cuentan aparte (`HU.laneStats.ignored`) y no suman.
+2. `LANE_REFUSE_SECS` = 300 s de rechazos seguidos (resultado 7), con al menos `LANE_REFUSE_MIN` = 20, sin un solo envío aceptado en medio.
+3. En ese rato no ha llegado nada por el canal, ni texto ni oculto ni el eco propio (`HU.chanInT`, que pone `MarkChannelSeen`).
+4. El enlace de otra hermandad lo confirma por susurro (`LV~carril`, vale `LANE_VOTE_TTL` = 120 s). El `LV` nunca mueve por sí solo: solo cuenta si a mí me pasa lo mismo.
+
+Los que no son el enlace ya no hacen nada con sus rechazos. Seguir al enlace o a un oficial (`OfferLane`) no cambia, para no separarse de quien lleve la 5.4.33.
+
+**A mano:** `/gu carril subir` (oficiales) sube un carril a todos; `/gu carril reiniciar` sigue devolviendo al principal.
+
+**Consecuencia:** con un solo enlace conectado en la comunidad no hay mudanza automática (falta la regla 4). Mientras, el texto sin eco va por el respaldo.
+
+**Mientras haya versiones anteriores activas**, sus enlaces siguen subiendo el carril al entrar y esta versión los sigue. Se acaba cuando `GU:v` las pause.
+
+**También en esta copia** (lo mismo que la 116, que quitaba los carriles y no se usa): espera del eco por envío y no por texto; descartes que eran mudos contados en `/gu diag` (etiqueta que no está en mi `GU:g`, autor silenciado, «al enviar: no sales en una hermandad unida», tope del reparto CF, tope de 100 retenidos); repetidos por dos caminos aparte; línea con lo caducado en la cola y lo rechazado por admisión; aviso «no estás en el canal» solo tras unos 3 min seguidos fuera.
+
+**Pendiente:** identificador único por mensaje y confirmación de entrega.
+
+## Copia 118 (15/11): carriles con doble confirmación
+
+Sobre la 117. Todo decidido por Jorge el 15/11.
+
+- **Subida automática:** además de las reglas de la 117, la tienen que confirmar **dos hermandades distintas** (`LANE_VOTES_NEEDED`; todas las otras si hay menos de dos) y no hay ninguna si ya ha habido una subida, de quien sea, en las últimas 24 h (`db.laneRaisedT`, `LANE_AUTO_GAP`).
+- **A mano, cosa de dos** (`HU:ProposeLane`, `OnLaneProposal`, `ConfirmLane`): `/gu carril subir` o `/gu carril reiniciar` de un oficial manda `LO~up|reset` por GUILD; lo ven los oficiales de su hermandad y se hace solo si otro escribe `/gu carril confirmar` en 2 min (lo ejecuta el que confirma). El maestro puede solo, escribiéndolo dos veces en 30 s.
+- **A quién se sigue** (`LaneStrong`, Comm.lua): cada uno solo a los de su hermandad (su enlace o un oficial suyo, por GUILD). A los de otra hermandad, por susurro, solo les hace caso el enlace, que luego lo dice a los suyos. Antes cualquier oficial de la comunidad movía a cualquiera.
+- **Gente en otra sala** (`NoteLane` en `OfferLane`, `HU:LaneStrays`): se apunta la sala que dice cada uno en su saludo o `LN`. Si durante 2 min hay alguien en otra, aviso a los oficiales, una línea cada 30 min como mucho. Solo avisa. `/gu carril` lo enseña siempre, junto con cómo va la regla automática (`HU:LaneStatusText`).
+- **Cada cambio de sala** se imprime a los oficiales con quién y por qué (`SetLaneState`).
+- **Caducidad:** se mira cada 5 s y no cada 60. Se quitará en la versión que numere los mensajes (acordado: sin falsas alarmas ya no tiene razón de ser).
+- **Fuera del chat** el aviso «La lista de X está en disputa» (se queda en `/gu debug`).
+- **Sin revisión automática** (Jorge, 15/11: «no movemos gente»): nadie cambia de sala solo por ver a otros en otra. En su lugar, **`/gu carril juntar`** (`HU:GatherLane`): un oficial trae a toda la comunidad a SU sala, la que sea, con una generación por encima de la más alta que ha oído. Lo puede hacer solo, escribiéndolo dos veces en 30 s (no crea una sala nueva). El aviso de «gente en otra sala» lo recomienda.
+
+## Copia 119 = 5.4.35 (15/11): que las versiones viejas no puedan subir de carril
+
+Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el resto de addons no puedan subir de canal». Visto ese día: de la sala 2 a la 9 en tres horas, un escalón por cada enlace con versión vieja que entraba.
+
+- **El oficial actualizado se queda el puesto de enlace** (`RelayScore`): dice entre 173 y 199 puntos, por encima de lo máximo de un oficial con versión vieja (157 + 15 de ventaja del enlace = 172) y dentro del tope que todos aceptan de un oficial (`SaneScore`, 199). En las versiones viejas solo el enlace sondea y sube de carril, así que con un oficial actualizado conectado nadie de su hermandad lo sube. Ocupado no puntúa así. Es de transición: quitarlo cuando todos estén actualizados.
+- **Solo se obedece a esta versión o posterior** (`HU:LaneTrusted`, `LANE_TRUST_VERSION`, en `OfferLane`): lo que diga sobre la sala una versión anterior se apunta para el aviso de «gente en otra sala» y se cuenta (`laneStats.oldIgnored`), pero no mueve a nadie. La versión se saca del saludo (`guildPeers`, `remote`); del primer saludo de alguien de otra hermandad aún no se sabe y se ignora hasta el siguiente.
+- **`/gu carril reiniciar` lo puede un oficial solo**, escribiéndolo dos veces, igual que `juntar`. Subir sigue siendo cosa de dos (o el maestro). El reinicio va con una generación por encima de la más alta oída.
+- **Número 5.4.35** y no 5.4.34: el zip de prueba de la copia 115 llevaba 5.4.34 y tiene el fallo de los carriles.
+- **Límites:** sin un oficial actualizado conectado en una hermandad, su enlace viejo sigue subiendo a los suyos (a los actualizados ya no los arrastra). Las versiones anteriores a la 5.4.33 no pueden seguir un reinicio si van más de una generación por detrás.

@@ -169,7 +169,7 @@ end
 -- Cuánto puede esperar cada mensaje en la cola (s): uno que sale tarde confunde más que ayuda
 -- (un saludo con un enlace que ya no es, un cambio de una lista vieja...)
 local QUEUE_TTL = {
-    HI = 60, HR = 60, HY = 60, RA = 60, LP = 60, PL = 60, PH = 60, LN = 60,
+    HI = 60, HR = 60, HY = 60, RA = 60, LP = 60, PL = 60, PH = 60, LN = 60, LV = 60, LO = 60,
     RC = 300, RB = 600,
     PB = 900, OD = 900, WL = 900, HL = 900,
     CX = 600, CP = 600, CQ = 600, LG = 600, PN = 600, GK = 600,
@@ -579,6 +579,16 @@ function HU:RelayScore()
     else
         self.restSince = nil
     end
+    -- (copia 119, transición) En las versiones anteriores solo el enlace sube de carril, y lo hace por la
+    -- falsa alarma de recién entrado. Para que eso no pase mientras haya alguien actualizado conectado,
+    -- un oficial con esta versión dice una puntuación por encima de la más alta que puede tener un
+    -- oficial con una versión vieja (157, más 15 si ya es el enlace = 172) y dentro del tope que todos
+    -- aceptan de un oficial (199, SaneScore). Entre actualizados sigue ganando el de mejor conexión.
+    -- Ocupado (banda, campo de batalla, ausente) no: mejor que lo sea otro. Se quitará cuando todos
+    -- estén actualizados.
+    if officer and good and not busy then
+        s = math.max(173, math.min(199, 173 + math.floor((s - 100) * 26 / 57)))
+    end
     return s
 end
 
@@ -766,8 +776,13 @@ HU.LaneContact = function(sender, tag)
 end
 -- ¿Puedo fiarme de lo que dice sender sobre el carril? (el enlace o un oficial)
 local function LaneStrong(sender, dist, tag)
-    if HU.IsOfficerName and HU:IsOfficerName(sender) then return true end
-    if dist == "GUILD" then return HU:Key(HU:RelayName() or "") == HU:Key(sender) end
+    local officer = HU.IsOfficerName and HU:IsOfficerName(sender) or false
+    -- (copia 118) Cada uno sigue solo a los de SU hermandad: su enlace o un oficial suyo, por GUILD.
+    -- A los de otra hermandad (su enlace o un oficial, por susurro) solo les hace caso MI enlace, que
+    -- luego se lo dice a los míos. Antes cualquier oficial de la comunidad movía a cualquiera.
+    if dist == "GUILD" then return officer or HU:Key(HU:RelayName() or "") == HU:Key(sender) end
+    if not HU:IsRelay() then return false end
+    if officer then return true end
     local p = tag and HU:KnownRelay(tag)
     return p and p.name and p.name:lower() == sender:lower() or false
 end
@@ -1146,11 +1161,8 @@ local function WarnDispute(self, tag, a, b)
     local now = GetTime()
     if disputeWarned[tag] and now - disputeWarned[tag] < DISPUTE_WARN then return end
     disputeWarned[tag] = now
+    -- (copia 118: ya no sale en el chat de los oficiales; «son mensajes que sobran», Jorge 15/11)
     self:Debug("Lista de", tag, "en disputa:", tostring(a), "/", tostring(b))
-    if self:CanOfficer() then
-        self:Print(string.format(L("La lista de %s está en disputa: %s dice una cosa y %s otra."),
-            tag, self:Short(a or "?"), self:Short(b or "?")))
-    end
 end
 
 -- Reparte a mi hermandad mi copia con su estado nuevo (solo quien se encarga de esa hermandad)
@@ -1404,6 +1416,38 @@ function HU:BestPeerCalc(tag)
         end
     end
     return best
+end
+
+-- (copia 114) Los n mejores contactos de esa hermandad para el chat del respaldo. Como BestPeer (el
+-- enlace primero, luego el oído más recientemente; quien no es de fiar, detrás de todos), pero
+-- devuelve varios y pone delante a quien tiene una versión que ya no tira el respaldo de un
+-- desconocido (5.4.33 o posterior: la versión de cada contacto viene en su saludo). Se recuerda 5 s
+-- por hermandad: con miles de contactos, recorrerlos en cada línea se notaba.
+local bpsMemo = {}
+function HU:BestPeers(tag, n)
+    local now = GetTime()
+    local m = bpsMemo[tag]
+    if m and now - m.t < 5 and m.n == n then
+        local ok = true
+        for _, p in ipairs(m.list) do if self.remote[p.name:lower()] ~= p then ok = false break end end
+        if ok then return m.list end
+    end
+    local cands = {}
+    for _, key in ipairs(self:RemoteKeys(tag)) do
+        local p = self.remote[key]
+        local age = p and now - (p.last or 0)
+        if p and p.tag == tag and p.name and age < 900 then
+            local score = (p.relay and 1000 or 0) - age / 10
+            if type(p.ver) == "string" and p.ver:match("^[%d%.]+$") and not HU.VersionGreater("5.4.33", p.ver) then score = score + 2000 end
+            if not self:MemberOf(p.name, tag) and not self:PeerVerified(p.name, tag) then score = score - 5000 end
+            cands[#cands + 1] = { p = p, s = score }
+        end
+    end
+    table.sort(cands, function(x, y) return x.s > y.s end)
+    local list = {}
+    for i = 1, math.min(n or 1, #cands) do list[i] = cands[i].p end
+    bpsMemo[tag] = { t = now, n = n, list = list }
+    return list
 end
 
 local relayShared, phShared = {}, {}
@@ -1895,6 +1939,27 @@ HU.comm.LN = function(self, sender, f, dist)
     self:ProbeLane()
 end
 HU.comm.LP = function() end
+-- LO~up|reset (copia 118): un oficial de MI hermandad propone cambiar de sala a toda la comunidad.
+-- Solo lo ven los oficiales; se hace si otro escribe /gu carril confirmar (HU:ConfirmLane, Channel.lua)
+HU.comm.LO = function(self, sender, f, dist)
+    if dist ~= "GUILD" or not self.OnLaneProposal or sender:lower() == (self:MeKey() or "") then return end
+    if not (self.IsOfficerName and self:IsOfficerName(sender)) then return end
+    if not ((self.IsOfficerName and self:IsOfficerName(self:Me())) or self:CanOfficer()) then return end
+    self:OnLaneProposal(sender, f[1])
+end
+-- LV~carril (copia 117): el enlace de OTRA hermandad dice que a él el canal le lleva minutos sin
+-- aceptar nada y propone ese carril. Solo cuenta como confirmación para mi propia mudanza, que
+-- además exige que a mí me pase lo mismo (HU:OnLaneVote, Channel.lua). Nunca me mueve por sí solo.
+HU.comm.LV = function(self, sender, f, dist)
+    if dist ~= "WHISPER" or not self.OnLaneVote then return end
+    local lane = tonumber(f[1])
+    local p = self.remote[sender:lower()]
+    local tag = p and p.tag
+    if not lane or lane ~= lane or lane < 1 or lane > 9 or not tag or tag == self.myTag then return end
+    local rp = self.KnownRelay and self:KnownRelay(tag)
+    if not (rp and rp.name and rp.name:lower() == sender:lower()) then return end
+    self:OnLaneVote(math.floor(lane), tag)
+end
 -- LQ: «¿en qué carril estás?» de otra hermandad. Contesto con mi LN por susurro (a cada uno como [+ARCHITECTURE.md]
 do -- (en un bloque: la parte principal del archivo no puede pasar de 200 variables locales)
 local laneAnswerT, laneAnswered, laneAnswerN = -999, {}, 0
@@ -3338,6 +3403,9 @@ function HU:MarkChannelSeen(sender)
     local k = sender:lower()
     local first = not self.chanSeen[k]
     self.chanSeen[k] = GetTime()
+    -- (copia 117: me ha llegado algo por el canal, de quien sea: el canal no está muerto; ver
+    -- ChannelSendResult en Channel.lua)
+    HU.chanInT = GetTime()
     if first and self.ReplayHeld then self:ReplayHeld(k) end
 end
 
@@ -3451,7 +3519,10 @@ local function Hold(prefix, text, sender, cmd)
     -- (el chat del respaldo, CW: cada línea es un mensaje distinto)
     if cmd == "CW" then key = key .. "|" .. text end
     if not held[key] then
-        if heldN >= 100 then return end
+        if heldN >= 100 then
+            if cmd == "CW" then HU.ChatDrop("respaldo: demasiados mensajes retenidos a la vez", sender) end
+            return
+        end
         heldN = heldN + 1
     end
     held[key] = { sender = sender, text = text, prefix = prefix, t = GetTime(), chat = (cmd == "CW") or nil }
@@ -3569,9 +3640,13 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
     local allowed, weak = HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
     if not allowed then
         -- (para el chat del respaldo se dice si era eco o un mensaje de verdad: Jorge, 15/11)
-        local what = cmd
-        if cmd == "CW" then what = table.concat(f, "~", 3):match("^%[%w+:E%] ") and "CW (eco de versión vieja)" or "CW (chat: se retiene y se comprueba)" end
-        HU:Debug("Mensaje rechazado (seguridad):", what, "de", sender)
+        local eco = cmd == "CW" and table.concat(f, "~", 3):match("^%[%w+:E%] ") ~= nil
+        if cmd == "CW" and not eco and dist == "WHISPER" then
+            -- (no es un rechazo: se retiene y se comprueba; ver VerifyChatSender)
+            HU:Debug("Chat del respaldo de alguien que aún no reconozco: se retiene y se comprueba. De", sender)
+        else
+            HU:Debug("Mensaje rechazado (seguridad):", eco and "CW (eco de versión vieja)" or cmd, "de", sender)
+        end
         -- (arranque de alguien aún sin avalar: se guarda por si lo avalan enseguida)
         if dist == "WHISPER" and BOOTSTRAP[cmd] then
             Hold(prefix, text, sender, cmd)

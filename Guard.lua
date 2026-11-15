@@ -722,7 +722,7 @@ function HU:StatusLines(compact)
         Lines[#Lines + 1] = L("|cffff8800Aviso: la línea GU:c está en la Información de hermandad y la puede leer cualquiera. Pásala a la nota de oficial del maestro.|r")
     end
     local id = self:ChannelId("main")
-    Lines[#Lines + 1] = L("Canal: ") .. self.cfg.channel .. (id and (" (/" .. id .. ")") or "") .. " - " .. (id and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r"))
+    Lines[#Lines + 1] = L("Canal: ") .. HU.MaskChannel(self.cfg.channel) .. (id and (" (/" .. id .. ")") or "") .. " - " .. (id and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r"))
     if self.offCfg then
         local oid = self:ChannelId("off")
         Lines[#Lines + 1] = L("Oficiales: ") .. self.offCfg.channel .. (oid and (" (/" .. oid .. ")") or "") .. " - " .. (oid and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r"))

@@ -686,6 +686,10 @@ local HELP = HU.LT({
     "|cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial",
     "|cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego",
     "|cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes",
+    "|cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado",
+    "|cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan",
+    "|cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)",
+    "|cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe",
     "|cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)",
     "|cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad",
     "|cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)",
@@ -804,19 +808,25 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     elseif cmd == "canal" then
         HU:PrintChannelRoster()
     elseif cmd == "carril" then
-        if arg == "reiniciar" or arg == "reset" then
-            local officer = (HU.IsOfficerName and HU:IsOfficerName(HU:Me())) or HU:CanOfficer()
+        -- (copia 118: subir y reiniciar mueven a toda la comunidad: hace falta que lo confirme otro
+        -- oficial, o el maestro escribiéndolo dos veces; ver HU:ProposeLane en Channel.lua)
+        local officer = (HU.IsOfficerName and HU:IsOfficerName(HU:Me())) or HU:CanOfficer()
+        local act = ((arg == "reiniciar" or arg == "reset") and "reset") or ((arg == "subir" or arg == "up") and "up")
+            or ((arg == "juntar" or arg == "aqui" or arg == "here" or arg == "gather") and "here") or nil
+        if act or arg == "confirmar" or arg == "confirm" then
             if not officer or not HU.cfg then
-                HU:Print(L("Solo los maestros y oficiales de una hermandad unida pueden reiniciar el carril."))
+                HU:Print(L("Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril."))
+            elseif act then
+                HU:ProposeLane(act)
             else
-                HU:ResetLane()
-                HU:Print(L("Carril reiniciado: toda la comunidad vuelve al canal principal."))
+                HU:ConfirmLane()
             end
         else
             local st = HU:LaneState()
             local left = st.lane > 0 and math.max(0, math.ceil((st.t + HU.LANE_TTL - ((GetServerTime and GetServerTime()) or time())) / 60)) or nil
             HU:Print(L("Carril del canal: ") .. st.lane .. L(" (generación ") .. st.gen .. ")"
                 .. (left and (L(". Vuelve al principal en ") .. left .. " min") or ""))
+            if HU.LaneStatusText and HU.cfg then HU:Print(HU:LaneStatusText()) end
         end
     elseif cmd == "estado" or cmd == "status" then
         HU:PrintStatus()
@@ -830,6 +840,17 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         if HU.ShowInviteLog then HU:ShowInviteLog() end
     elseif cmd == "listanegra" or cmd == "blacklist" then
         if HU.ShowBlacklist then HU:ShowBlacklist() end
+    elseif (cmd == "version" or cmd == "versión") and rawArg ~= "" then
+        -- (copia 114: la versión del addon de otro jugador. Solo se sabe de quien me ha saludado: los
+        -- compañeros de mi hermandad con el addon y mis contactos de las otras)
+        local k = HU:Key(rawArg)
+        local p = k and ((HU.guildPeers and HU.guildPeers[k]) or (HU.remote and HU.remote[k]))
+        if p and p.ver then HU:Print(HU:Nice(rawArg) .. ": " .. L("versión ") .. tostring(p.ver))
+        else HU:Print(HU:Nice(rawArg) .. ": " .. L("no sé su versión. Solo la conozco de quien me ha saludado con el addon: los de mi hermandad y mis contactos de las otras. Pídele que mire el título de su pestaña de GuildUnion.")) end
+    elseif cmd == "sonda" or cmd == "probe" then
+        HU:SendProbe(tonumber(arg) or 30)
+    elseif cmd == "visto" or cmd == "seen" then
+        HU:PrintSeen(rawArg ~= "" and rawArg or arg)
     elseif cmd == "pintar" or cmd == "paint" then
         -- (copia 94, de prueba: enciende o apaga el adorno de las líneas de mi hermandad)
         HU.db.ownPaint = onoff(arg, HU.db.ownPaint)
@@ -890,14 +911,21 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         local dc = HU.diagChat
         if dc then
             local st = HU.LaneState and HU:LaneState()
+            local ls = HU.laneStats or {}
             lines[#lines + 1] = "carril: " .. tostring(st and st.lane) .. "  generación: " .. tostring(st and st.gen)
+                .. "   rechazos del canal: " .. (ls.refused or 0) .. " (sin contar por acabar de entrar: " .. (ls.ignored or 0) .. ")"
             lines[#lines + 1] = "chat enviado: canal " .. dc.chan .. "  respaldo " .. dc.fallback .. "  (bloqueado " .. dc.blocked .. ", sin eco " .. dc.noEcho .. ")  texto del canal: " .. (HU:TextChatOK() and "bien" or "dado por roto")
-            lines[#lines + 1] = "chat recibido: canal " .. dc.inChan .. "  respaldo " .. dc.inFallback .. "  retenidos de desconocidos " .. dc.held .. " (confirmados " .. dc.heldOK .. ")"
+            lines[#lines + 1] = "chat recibido: canal " .. dc.inChan .. "  respaldo " .. dc.inFallback .. "  retenidos de desconocidos " .. dc.held .. " (confirmados " .. dc.heldOK .. ")  repetidos por dos caminos " .. (dc.dup or 0)
+            if HU.probeLog and #HU.probeLog > 0 then lines[#lines + 1] = "sondas recibidas: " .. table.concat(HU.probeLog, " · ") end
             local dr = {}
             for why, n in pairs(dc.drops or {}) do dr[#dr + 1] = "   " .. n .. " × " .. why end
             table.sort(dr)
             lines[#lines + 1] = "chat descartado: " .. (#dr == 0 and "nada" or "")
             for _, l in ipairs(dr) do lines[#lines + 1] = l end
+            -- (copia 117: lo que caduca esperando en la cola y lo que rechaza el tope de admisión)
+            local ex, ad = (HU.qStats and HU.qStats.expired) or {}, HU.diagAdmitDrop or {}
+            lines[#lines + 1] = "chat caducado en la cola: CW " .. (ex.CW or 0) .. "  CG " .. (ex.CG or 0) .. "  CF " .. (ex.CF or 0)
+                .. "   rechazados por tope de admisión: " .. ((ad.comprobado or 0) + (ad.otro or 0))
         end
         for i = math.max(1, #h - 2), #h do
             local e = h[i]
