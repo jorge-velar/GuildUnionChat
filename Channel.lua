@@ -895,8 +895,14 @@ function HU:OfferLane(new, from, strong)
     if from then NoteLane(from, new.lane, new.gen) end
     -- (copia 119: lo que diga una versión vieja se apunta, para el aviso de «gente en otra sala», pero
     -- no mueve a nadie, venga de quien venga. Jorge, 15/11: «que el resto de addons no puedan subir de canal»)
-    if strong and not self:LaneTrusted(from) then
-        HU.laneStats.oldIgnored = (HU.laneStats.oldIgnored or 0) + 1
+    -- (copia 120: «a la sala principal» sí se le obedece, que siempre es seguro. Con la 119 quien
+    -- actualizaba en una hermandad donde nadie más lo había hecho no hacía caso a su enlace y se
+    -- quedaba en la sala que tuviera guardada hasta que le caducara. Y solo se cuenta lo que me
+    -- habría cambiado de sala, no cada saludo)
+    if strong and new.lane ~= 0 and not self:LaneTrusted(from) then
+        if LaneBetter(new, self:LaneState()) then
+            HU.laneStats.oldIgnored = (HU.laneStats.oldIgnored or 0) + 1
+        end
         return false
     end
     local now = ServerNow()
@@ -1019,6 +1025,9 @@ local function LaneArmed()
 end
 local function TryMoveLane(self)
     if not LaneArmed() or not self:IsRelay() or not self.cfg then return end
+    -- (copia 120: desde que cualquiera con la versión nueva puede ser el enlace, el que no es oficial
+    -- solo guarda el puesto: ni sube de sala ni confirma la subida de otros. Jorge, 15/11)
+    if not (self.IsOfficerName and self:IsOfficerName(self:Me())) then return end
     local want, now = self:ChannelLane() + 1, GetTime()
     if want > LANE_MAX then return end
     -- (copia 118: ninguna subida automática si ya ha habido una subida en las últimas 24 h, y la

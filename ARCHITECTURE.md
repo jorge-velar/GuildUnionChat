@@ -2531,3 +2531,10 @@ Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el
 - **`/gu carril reiniciar` lo puede un oficial solo**, escribiéndolo dos veces, igual que `juntar`. Subir sigue siendo cosa de dos (o el maestro). El reinicio va con una generación por encima de la más alta oída.
 - **Número 5.4.35** y no 5.4.34: el zip de prueba de la copia 115 llevaba 5.4.34 y tiene el fallo de los carriles.
 - **Límites:** sin un oficial actualizado conectado en una hermandad, su enlace viejo sigue subiendo a los suyos (a los actualizados ya no los arrastra). Las versiones anteriores a la 5.4.33 no pueden seguir un reinicio si van más de una generación por detrás.
+
+## Copia 120 = 5.4.36 (15/11)
+
+- **De una versión vieja sí se obedece «a la sala principal»** (`OfferLane`): solo se ignoran sus órdenes hacia otra sala (las falsas alarmas son siempre subidas). Con la 119 (5.4.35), quien actualizaba en una hermandad donde nadie más lo había hecho no hacía caso a su enlace y se quedaba en la sala guardada hasta que le caducara. El contador `laneStats.oldIgnored` ya solo suma lo que habría cambiado de sala.
+- **Cualquiera con la versión nueva puntúa alto para ser el enlace** (`RelayScore`; Jorge, 15/11): el oficial, 173–199; quien no lo es, 80–99 (lo máximo que las versiones viejas le aceptan a un no oficial es 99; un no oficial viejo llega a 72). A un oficial con versión vieja (100 o más) un no oficial no le gana.
+- **El enlace que no es oficial solo guarda el puesto**: ni inicia la subida automática (`TryMoveLane`) ni vale su confirmación (`LV`).
+- **5.4.36 y no 5.4.35:** la 5.4.35 ya estaba en GitHub con su etiqueta.

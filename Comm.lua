@@ -588,6 +588,11 @@ function HU:RelayScore()
     -- estén actualizados.
     if officer and good and not busy then
         s = math.max(173, math.min(199, 173 + math.floor((s - 100) * 26 / 57)))
+    elseif good and not busy then
+        -- (copia 120: quien no es oficial también: entre 80 y 99. Las versiones viejas no le aceptan
+        -- más de 99 a quien no sale como oficial en la lista, y un no oficial con versión vieja llega
+        -- como mucho a 57 + 15 = 72. A un oficial con versión vieja no le gana: eso no se puede desde aquí)
+        s = math.max(80, math.min(99, 80 + math.floor(s * 19 / 57)))
     end
     return s
 end
@@ -1958,6 +1963,8 @@ HU.comm.LV = function(self, sender, f, dist)
     if not lane or lane ~= lane or lane < 1 or lane > 9 or not tag or tag == self.myTag then return end
     local rp = self.KnownRelay and self:KnownRelay(tag)
     if not (rp and rp.name and rp.name:lower() == sender:lower()) then return end
+    -- (copia 120: solo vale la confirmación de un enlace que sea oficial de su hermandad)
+    if not (self.IsOfficerName and self:IsOfficerName(sender)) then return end
     self:OnLaneVote(math.floor(lane), tag)
 end
 -- LQ: «¿en qué carril estás?» de otra hermandad. Contesto con mi LN por susurro (a cada uno como [+ARCHITECTURE.md]
