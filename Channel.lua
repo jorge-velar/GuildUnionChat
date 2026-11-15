@@ -1674,6 +1674,28 @@ do
             GameTooltip:AddLine(L("Miembros: sin datos todavía"), 0.6, 0.6, 0.6)
             age = nil
         end
+        -- (copia 123: la suma de todas las hermandades de la comunidad, pedido por usuarios el 15/11.
+        -- La mía es lo que dice el juego; las otras, lo que vino con su última lista: si de alguna
+        -- no hay dato todavía, se dice «al menos»)
+        local sum, known, all = 0, 0, 0
+        for _, g in ipairs(HU.cfg and HU.cfg.guilds or {}) do
+            all = all + 1
+            local n
+            if g.tag == HU.myTag then
+                n = tonumber(HU.rosterTotal)
+            else
+                local r = HU.remoteRoster and HU.remoteRoster[g.tag]
+                n = r and tonumber(r.total)
+            end
+            if n and n > 0 then sum, known = sum + n, known + 1 end
+        end
+        if all > 1 and known > 0 then
+            if known == all then
+                GameTooltip:AddLine(string.format(L("Comunidad: %d (%d hermandades)"), sum, all), 1, 0.82, 0)
+            else
+                GameTooltip:AddLine(string.format(L("Comunidad: al menos %d (faltan datos de %d)"), sum, all - known), 0.6, 0.6, 0.6)
+            end
+        end
         if addon == "1" then GameTooltip:AddLine(L("Tiene Guild Union"), 0.3, 1, 0.3)
         elseif addon == "0" then GameTooltip:AddLine(L("No tiene Guild Union"), 0.6, 0.6, 0.6) end
         -- (abajo del todo, en gris: de cuándo son los números de otra hermandad. Jorge, 12/11)
@@ -1716,11 +1738,14 @@ end
 function HU:Display(kind, tag, author, msg, guid)
     HU.NoteSpeaker(author)
     local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg, author, tag)
-    local line = self:FormatLine(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, HU.MENTION_MARK[mentioned])
+    local hmsg = self:HighlightMentions(msg, author, tag)
+    local line = self:FormatLine(kind, tag, author, hmsg, guid, HU.MENTION_MARK[mentioned])
     if mentioned then self:PingMention(author, mentioned) end
     local r, g, b = self:KindColor(kind)
     for _, f in ipairs(self:FramesFor(kind)) do
-        f:AddMessage(line, r, g, b)
+        -- (copia 121: con Prat, la línea la monta Prat con el formato del jugador; si no, la de siempre)
+        local pl = self.PratLine and self:PratLine(f, kind, tag, author, hmsg, guid, HU.MENTION_MARK[mentioned])
+        f:AddMessage(pl or line, r, g, b)
     end
 end
 

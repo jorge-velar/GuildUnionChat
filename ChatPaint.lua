@@ -6,6 +6,9 @@ local _, HU = ...
 -- Devuelve la línea adornada, nil para dejarla como está o false para no escribirla (silenciados)
 local function DecorateOwnLine(text, event, args)
     if HU.Secret(text) or type(text) ~= "string" or type(args) ~= "table" then return nil end
+    -- (copia 121: con Prat la línea ya viene adornada, PratBridge.lua; aquí no se toca. Prat pone los
+    -- corchetes fuera del enlace del nombre y este adorno no encontraba dónde meterse)
+    if HU.PratActive and HU.PratActive() then return nil end
     if not (HU.db and HU.db.ownPaint and HU.myTag) then return nil end
     local msg, author = args[1], args[2]
     if HU.Secret(msg) or HU.Secret(author) or type(msg) ~= "string" or type(author) ~= "string" then return nil end

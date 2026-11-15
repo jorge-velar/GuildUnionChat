@@ -2538,3 +2538,15 @@ Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el
 - **Cualquiera con la versión nueva puntúa alto para ser el enlace** (`RelayScore`; Jorge, 15/11): el oficial, 173–199; quien no lo es, 80–99 (lo máximo que las versiones viejas le aceptan a un no oficial es 99; un no oficial viejo llega a 72). A un oficial con versión vieja (100 o más) un no oficial no le gana.
 - **El enlace que no es oficial solo guarda el puesto**: ni inicia la subida automática (`TryMoveLane`) ni vale su confirmación (`LV`).
 - **5.4.36 y no 5.4.35:** la 5.4.35 ya estaba en GitHub con su etiqueta.
+
+## Copia 121 (15/11, de prueba): formato de Prat
+
+`PratBridge.lua`. Petición de usuarios: que las líneas de otras hermandades tengan el formato que cada uno lleva en su addon de chat, sin tener que elegirlo.
+
+- **Líneas de otras hermandades** (`HU:PratLine`, llamado desde `HU:Display`): se le pide la línea a Prat con `Prat.Format(ventana, "CHAT_MSG_GUILD", nil, <argumentos de un mensaje de hermandad>)`, que es lo que Prat ofrece a otros addons (lo usa WIM). Devuelve el texto con el formato del jugador; se escribe con `AddMessage` como siempre. Si Prat no está, está apagado (`/gu prat off`), falla o no devuelve nada, se escribe la línea de siempre: nunca se pierde una línea por esto. Todo va dentro de `pcall`.
+- **El punto o la etiqueta** (`Pre`, aviso `Prat_PreAddMessage`): Prat avisa antes de juntar las partes de cada línea; ahí se pone lo nuestro en `m.pP` (lo que va justo antes del nombre) y los emoticonos y menciones en `m.MESSAGE`. Vale para las líneas de otras hermandades y para las de la mía, que con Prat se quedaban sin punto porque Prat pone los corchetes fuera del enlace del nombre. Los silenciados se cortan con `m.DONOTPROCESS`.
+- **`ChatPaint.lua`** no toca nada con Prat enganchado.
+- **`/gu prat`** enseña cómo va (cuántas líneas con formato de Prat, cuántas con el de siempre, fallos y el último error); `/gu prat off|on` lo apaga o enciende.
+- **Sin probar en el juego.** Riesgos apuntados: `Prat.Format` llama por dentro a `ChatHistory_GetAccessID` del juego, que tras un campo de batalla da error a los addons (el mismo del chat que no se pintaba); aquí lo recoge el `pcall` y sale la línea de siempre. Los filtros de chat de otros addons para la hermandad se aplican también a estas líneas. La ventana de hermandad del juego (BlizzTab) sigue con el formato propio.
+- **Copia 122:** a Prat se le pasa el nombre con espacio («Nombre Apellido», como en las líneas de la propia hermandad; con guion tomaba el apellido por un reino). Y antes de pedirle la línea se le dice el nivel y la clase del autor si se saben (`TellPrat` → `PlayerNames:addName`): solo los de la lista corta de su hermandad. Para el nivel de todos haría falta que viajara con cada mensaje: va con el cambio de formato de la fase 1.
+- **Copia 123:** el recuadro de la etiqueta o el punto de una hermandad enseña además la suma de miembros de toda la comunidad (`OnTagEnter`, Channel.lua). La propia es `rosterTotal`; las otras, `remoteRoster[tag].total`; si falta alguna, «al menos N».

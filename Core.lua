@@ -851,6 +851,18 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         HU:SendProbe(tonumber(arg) or 30)
     elseif cmd == "visto" or cmd == "seen" then
         HU:PrintSeen(rawArg ~= "" and rawArg or arg)
+    elseif cmd == "prat" then
+        -- (copia 121, de prueba: usar o no el formato de Prat, y cómo va)
+        if arg == "on" or arg == "off" or arg == "si" or arg == "no" then HU.db.pratOff = (arg == "off" or arg == "no") or nil end
+        local st = HU.pratStats or {}
+        HU:Print("Formato de Prat: " .. (HU.db.pratOff and "apagado" or "encendido")
+            .. " · Prat: " .. ((HU.UsingPrat and HU.UsingPrat()) and "cargado" or "no está")
+            .. " · enganchado: " .. ((HU.PratActive and HU.PratActive()) and "sí" or "no")
+            .. " · líneas de otras hermandades con su formato: " .. (st.ok or 0)
+            .. " · con el de siempre: " .. (st.fallback or 0)
+            .. " · de mi hermandad adornadas: " .. (st.own or 0)
+            .. " · con nivel sabido: " .. (st.level or 0)
+            .. " · fallos: " .. (st.err or 0) .. (st.last and (" (" .. st.last .. ")") or ""))
     elseif cmd == "pintar" or cmd == "paint" then
         -- (copia 94, de prueba: enciende o apaga el adorno de las líneas de mi hermandad)
         HU.db.ownPaint = onoff(arg, HU.db.ownPaint)
