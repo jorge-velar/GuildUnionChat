@@ -20,6 +20,25 @@ end
 -- Justo antes de que Prat junte las partes de una línea de hermandad u oficiales: se le pone delante
 -- del nombre lo mismo que sin Prat (punto o etiqueta, icono de rango) y se pintan emoticonos y menciones.
 -- m es la línea por partes: pP es lo que va justo antes del nombre, MESSAGE el texto.
+-- (copia 146) Prat parte el nombre por el guion, como «Nombre-Reino», y lo que queda detrás lo trata
+-- de reino: lo acorta a tres letras y le da otro color («Little-Wil» en vez de «Little Wilix»). En
+-- Forever no hay reinos: esa segunda parte es el apellido. Aquí se le devuelve el nombre entero a la
+-- parte del nombre (que ya viene con su color) y se vacía la del reino.
+local function WholeName(m, nice)
+    local player, server = m.PLAYER, m.SERVER
+    if type(nice) ~= "string" or type(player) ~= "string" or type(server) ~= "string" or server == "" then return end
+    if HU.Secret(player) or HU.Secret(server) then return end
+    local first, last = nice:match("^(%S+) (.+)$")
+    if not first then return end
+    local _, b = player:find(first, 1, true)
+    if not b then return end
+    if not player:find(nice, 1, true) then
+        m.PLAYER = player:sub(1, b) .. " " .. last .. player:sub(b + 1)
+    end
+    m.SERVER, m.sS, m.Ss = "", "", ""
+    HU.pratStats.whole = (HU.pratStats.whole or 0) + 1
+end
+
 local function Pre(m, event)
     if type(m) ~= "table" or (event ~= "CHAT_MSG_GUILD" and event ~= "CHAT_MSG_OFFICER") then return end
     if not HU.PratActive() or not HU.myTag then return end
@@ -27,15 +46,17 @@ local function Pre(m, event)
     if type(text) ~= "string" or HU.Secret(text) then return end
     if ctx then
         -- (una línea de otra hermandad que he pedido yo: HU:PratLine)
+        WholeName(m, HU:Nice(ctx.author))
         m.pP = HU:NamePrefix(ctx.tag, ctx.author, ctx.mark) .. (m.pP or "")
         m.MESSAGE = HU:Emotes(text)
         return
     end
     -- (una línea de MI hermandad, que ha entrado por el juego)
-    if not HU.db.ownPaint then return end
     local args = m.ARGS
     local raw, author = type(args) == "table" and args[1], type(args) == "table" and args[2]
     if type(raw) ~= "string" or type(author) ~= "string" or HU.Secret(raw) or HU.Secret(author) then return end
+    WholeName(m, HU:Nice(HU:FullName(author) or author))
+    if not HU.db.ownPaint then return end
     if event == "CHAT_MSG_GUILD" and HU:GuildLineHidden(raw, author) then
         m.DONOTPROCESS = true -- (silenciados y eco de versiones viejas: Prat no la escribe)
         return

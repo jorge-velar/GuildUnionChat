@@ -58,6 +58,8 @@ HU.REDUCE_VERSION = GetMeta and GetMeta(ADDON_NAME, "X-Reduce-Version") or nil
 -- «actualiza» sin tener de dónde. Jorge, 10/11. Se sube cuando CurseForge tenga la nueva)
 HU.MIN_VERSION = "5.4.11"
 HU.PREFIX = "HU20"
+-- (copia 154: puerta para Guild Union Measure, el addon de pruebas aparte. Solo lee) [+ARCHITECTURE.md]
+_G.GuildUnionInternal = HU
 
 ---------------------------------------------------------------------------
 -- Eventos
@@ -573,7 +575,11 @@ HU.PER_CHAR = { history = true, pinned = true, myRole = true, lastSeen = true, p
     -- hermandades añadidas que no eran las suyas)
     chanLane = true, netGuilds = true, proposals = true, guildColors = true, customEmotes = true, lists = true,
     rankCache = true, offline = true, offlineT = true, peers = true, chatTabsMade = true, rosterCache = true, remoteRanks = true,
-    quickCfg = true, managers = true, officerRanks = true, myOfficerRanks = true }
+    quickCfg = true, managers = true, officerRanks = true, myOfficerRanks = true,
+    -- (copia 151: la sala fijada es de la hermandad de cada personaje)
+    laneLock = true, laneMig = true,
+    -- (copia 156: filas silenciadas, ancladas y eliminadas de la pestaña de Whisper Messenger)
+    wmRows = true }
 
 local DEFAULTS = {
     showTag = true,       -- mostrar <ETIQUETA> en la ventana del addon
@@ -814,7 +820,9 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         local act = ((arg == "reiniciar" or arg == "reset") and "reset") or ((arg == "subir" or arg == "up") and "up")
             or ((arg == "juntar" or arg == "aqui" or arg == "here" or arg == "gather") and "here") or nil
         if act or arg == "confirmar" or arg == "confirm" then
-            if not officer or not HU.cfg then
+            if HU.LaneLock and HU:LaneLock() then
+                HU:Print(string.format(L("La sala está fijada en la %d por la Información de hermandad (línea GU:l). Mientras esté esa línea no se puede cambiar."), HU:LaneLock()))
+            elseif not officer or not HU.cfg then
                 HU:Print(L("Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril."))
             elseif act then
                 HU:ProposeLane(act)
@@ -863,6 +871,9 @@ SlashCmdList.HERMANDADUNIDA = function(input)
             .. " · de mi hermandad adornadas: " .. (st.own or 0)
             .. " · con nivel sabido: " .. (st.level or 0)
             .. " · fallos: " .. (st.err or 0) .. (st.last and (" (" .. st.last .. ")") or ""))
+    elseif cmd == "wm" then
+        -- (copia 125, de prueba: cómo va la pestaña dentro de Whisper Messenger)
+        HU:Print(HU.WMStatus and HU:WMStatus() or "sin pestaña de Whisper Messenger")
     elseif cmd == "pintar" or cmd == "paint" then
         -- (copia 94, de prueba: enciende o apaga el adorno de las líneas de mi hermandad)
         HU.db.ownPaint = onoff(arg, HU.db.ownPaint)
@@ -885,64 +896,19 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         else
             HU:Print(L("Indica un número de segundos entre 30 y 1800."))
         end
+    elseif cmd == "prueba" then
+        -- (copia 148: ¿le llega a esa persona mi texto por el canal?)
+        if HU.TextProbe then HU:TextProbe(rawArg) end
+    elseif cmd == "ids" then
+        -- (copia 147: el número del canal en mi juego frente a lo que dice el servidor)
+        if HU.PrintChannelIds then HU:PrintChannelIds() end
+    elseif cmd == "todo" or cmd == "informe" or cmd == "all" or cmd == "report" then
+        -- (copia 147: todo lo que sabe el addon, en una ventana para copiar)
+        if HU.FullReport then HU:FullReport() end
     elseif cmd == "diag" then
         -- (primero, si el juego tiene bloqueados /ginvite, /gpromote…)
         if HU.OrdersDiag then HU:OrdersDiag() end
-        -- diagnóstico del chat: qué llega del juego y qué guarda el addon
-        local h = HU.db.history or {}
-        local by = {}
-        for _, e in ipairs(h) do by[e.k or "?"] = (by[e.k or "?"] or 0) + 1 end
-        local kinds = {}
-        for k, v in pairs(by) do kinds[#kinds + 1] = k .. "=" .. v end
-        local evs = {}
-        for _, ev in ipairs({ "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER", "CHAT_MSG_CHANNEL", "CHAT_MSG_ADDON" }) do
-            evs[#evs + 1] = ev:gsub("CHAT_MSG_", "") .. "=" .. (HU.evCount[ev] or 0) .. ((HU.evSecret[ev] or 0) > 0 and ("(ocultos " .. HU.evSecret[ev] .. ")") or "")
-        end
-        local lines = {
-            "Guild Union " .. tostring(HU.version) .. " - " .. (GetBuildInfo and table.concat({ GetBuildInfo() }, " ", 1, 2) or "?"),
-            "yo: " .. tostring(HU:Me()) .. "  en lista: " .. tostring(HU.roster[HU:MeKey() or ""] ~= nil) .. "  etiqueta: " .. tostring(HU.myTag) .. "  oficial: " .. tostring(HU:CanOfficer()),
-            -- (el nombre del canal, tapado: este texto se pega en Discord)
-            "canal: " .. tostring(HU:IsJoined("main")) .. " (" .. ((HU.cfg and type(HU.cfg.channel) == "string") and (HU.cfg.channel:sub(1, 2) .. "····") or "nil") .. ")  oficiales: " .. tostring(HU:IsJoined("off")) .. "  bloqueo del chat: " .. tostring(HU:IsChatLockedDown()),
-            "historial: " .. #h .. "  (" .. table.concat(kinds, " ") .. ")",
-            "eventos: " .. table.concat(evs, "  "),
-            -- (presencia por el canal: avisos de salida del canal que han llegado, y cuántos han quitado a alguien)
-            "canal: salidas " .. tostring(HU.chanLeaveN or 0) .. "  quitados por salida: " .. tostring(HU.chanLeaveDropN or 0),
-            "issecretvalue: " .. tostring(issecretvalue ~= nil) .. "  filtros: " .. tostring(ChatFrame_AddMessageEventFilter ~= nil) .. "/" .. tostring(ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter ~= nil),
-        }
-        local np, rel = 0, {}
-        for _, p in pairs(HU.guildPeers or {}) do np = np + 1; if p.relay then rel[#rel + 1] = p.name end end
-        lines[#lines + 1] = "addon en mi hermandad: " .. np .. "  enlace: " .. (HU:IsRelay() and "yo" or (table.concat(rel, ",") ~= "" and table.concat(rel, ",") or "?"))
-            .. "  cola: " .. (HU.QueueSize and HU:QueueSize() or 0)
-        local pin = HU.db.pinned
-        lines[#lines + 1] = "fijado: " .. (pin and ((pin.text or "") ~= "" and ("sí, de " .. tostring(pin.author) .. " " .. HU.SafeDate("%d/%m %H:%M", pin.t)) or "vacío") or "no ha llegado")
-        local rec = {}
-        for k in pairs(HU.diagRecv or {}) do rec[#rec + 1] = k .. "=" .. HU.diagRecv[k] end
-        table.sort(rec)
-        lines[#lines + 1] = "recibido: " .. table.concat(rec, " ")
-        -- (copia 109: el carril y el chat, por dónde sale y por dónde llega)
-        local dc = HU.diagChat
-        if dc then
-            local st = HU.LaneState and HU:LaneState()
-            local ls = HU.laneStats or {}
-            lines[#lines + 1] = "carril: " .. tostring(st and st.lane) .. "  generación: " .. tostring(st and st.gen)
-                .. "   rechazos del canal: " .. (ls.refused or 0) .. " (sin contar por acabar de entrar: " .. (ls.ignored or 0) .. ")"
-            lines[#lines + 1] = "chat enviado: canal " .. dc.chan .. "  respaldo " .. dc.fallback .. "  (bloqueado " .. dc.blocked .. ", sin eco " .. dc.noEcho .. ")  texto del canal: " .. (HU:TextChatOK() and "bien" or "dado por roto")
-            lines[#lines + 1] = "chat recibido: canal " .. dc.inChan .. "  respaldo " .. dc.inFallback .. "  retenidos de desconocidos " .. dc.held .. " (confirmados " .. dc.heldOK .. ")  repetidos por dos caminos " .. (dc.dup or 0)
-            if HU.probeLog and #HU.probeLog > 0 then lines[#lines + 1] = "sondas recibidas: " .. table.concat(HU.probeLog, " · ") end
-            local dr = {}
-            for why, n in pairs(dc.drops or {}) do dr[#dr + 1] = "   " .. n .. " × " .. why end
-            table.sort(dr)
-            lines[#lines + 1] = "chat descartado: " .. (#dr == 0 and "nada" or "")
-            for _, l in ipairs(dr) do lines[#lines + 1] = l end
-            -- (copia 117: lo que caduca esperando en la cola y lo que rechaza el tope de admisión)
-            local ex, ad = (HU.qStats and HU.qStats.expired) or {}, HU.diagAdmitDrop or {}
-            lines[#lines + 1] = "chat caducado en la cola: CW " .. (ex.CW or 0) .. "  CG " .. (ex.CG or 0) .. "  CF " .. (ex.CF or 0)
-                .. "   rechazados por tope de admisión: " .. ((ad.comprobado or 0) + (ad.otro or 0))
-        end
-        for i = math.max(1, #h - 2), #h do
-            local e = h[i]
-            if e then lines[#lines + 1] = "  [" .. tostring(e.k) .. "] " .. tostring(e.a) .. ": " .. tostring(type(e.m)) .. " " .. tostring(e.m and #tostring(e.m)) .. " letras" end
-        end
+        local lines = HU:DiagLines()
         if HU.UI and HU.UI.ShowCopy then HU.UI:ShowCopy("Guild Union - diagnóstico", table.concat(lines, "\n"))
         else for _, l in ipairs(lines) do HU:Print(l) end end
     elseif cmd == "memoria" then
@@ -1061,4 +1027,64 @@ SlashCmdList.WELOVEPVPGUILD = function(input)
     if input == "" then return HU:Print(L("Uso: /hg mensaje")) end
     local fn = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
     fn(input, "GUILD")
+end
+
+-- Las líneas de /gu diag (copia 147: sacadas de la orden para que las use también /gu todo)
+function HU:DiagLines()
+        -- diagnóstico del chat: qué llega del juego y qué guarda el addon
+        local h = HU.db.history or {}
+        local by = {}
+        for _, e in ipairs(h) do by[e.k or "?"] = (by[e.k or "?"] or 0) + 1 end
+        local kinds = {}
+        for k, v in pairs(by) do kinds[#kinds + 1] = k .. "=" .. v end
+        local evs = {}
+        for _, ev in ipairs({ "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER", "CHAT_MSG_CHANNEL", "CHAT_MSG_ADDON" }) do
+            evs[#evs + 1] = ev:gsub("CHAT_MSG_", "") .. "=" .. (HU.evCount[ev] or 0) .. ((HU.evSecret[ev] or 0) > 0 and ("(ocultos " .. HU.evSecret[ev] .. ")") or "")
+        end
+        local lines = {
+            "Guild Union " .. tostring(HU.version) .. " - " .. (GetBuildInfo and table.concat({ GetBuildInfo() }, " ", 1, 2) or "?"),
+            "yo: " .. tostring(HU:Me()) .. "  en lista: " .. tostring(HU.roster[HU:MeKey() or ""] ~= nil) .. "  etiqueta: " .. tostring(HU.myTag) .. "  oficial: " .. tostring(HU:CanOfficer()),
+            -- (el nombre del canal, tapado: este texto se pega en Discord)
+            "canal: " .. tostring(HU:IsJoined("main")) .. " (" .. ((HU.cfg and type(HU.cfg.channel) == "string") and (HU.cfg.channel:sub(1, 2) .. "····") or "nil") .. ")  oficiales: " .. tostring(HU:IsJoined("off")) .. "  bloqueo del chat: " .. tostring(HU:IsChatLockedDown()),
+            "historial: " .. #h .. "  (" .. table.concat(kinds, " ") .. ")",
+            "eventos: " .. table.concat(evs, "  "),
+            -- (presencia por el canal: avisos de salida del canal que han llegado, y cuántos han quitado a alguien)
+            "canal: salidas " .. tostring(HU.chanLeaveN or 0) .. "  quitados por salida: " .. tostring(HU.chanLeaveDropN or 0),
+            "issecretvalue: " .. tostring(issecretvalue ~= nil) .. "  filtros: " .. tostring(ChatFrame_AddMessageEventFilter ~= nil) .. "/" .. tostring(ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter ~= nil),
+        }
+        local np, rel = 0, {}
+        for _, p in pairs(HU.guildPeers or {}) do np = np + 1; if p.relay then rel[#rel + 1] = p.name end end
+        lines[#lines + 1] = "addon en mi hermandad: " .. np .. "  enlace: " .. (HU:IsRelay() and "yo" or (table.concat(rel, ",") ~= "" and table.concat(rel, ",") or "?"))
+            .. "  cola: " .. (HU.QueueSize and HU:QueueSize() or 0)
+        local pin = HU.db.pinned
+        lines[#lines + 1] = "fijado: " .. (pin and ((pin.text or "") ~= "" and ("sí, de " .. tostring(pin.author) .. " " .. HU.SafeDate("%d/%m %H:%M", pin.t)) or "vacío") or "no ha llegado")
+        local rec = {}
+        for k in pairs(HU.diagRecv or {}) do rec[#rec + 1] = k .. "=" .. HU.diagRecv[k] end
+        table.sort(rec)
+        lines[#lines + 1] = "recibido: " .. table.concat(rec, " ")
+        -- (copia 109: el carril y el chat, por dónde sale y por dónde llega)
+        local dc = HU.diagChat
+        if dc then
+            local st = HU.LaneState and HU:LaneState()
+            local ls = HU.laneStats or {}
+            lines[#lines + 1] = "carril: " .. tostring(st and st.lane) .. "  generación: " .. tostring(st and st.gen)
+                .. "   rechazos del canal: " .. (ls.refused or 0) .. " (sin contar por acabar de entrar: " .. (ls.ignored or 0) .. ")"
+            lines[#lines + 1] = "chat enviado: canal " .. dc.chan .. "  respaldo " .. dc.fallback .. "  (bloqueado " .. dc.blocked .. ", sin eco " .. dc.noEcho .. ")  texto del canal: " .. (HU:TextChatOK() and "bien" or "dado por roto")
+            lines[#lines + 1] = "chat recibido: canal " .. dc.inChan .. "  respaldo " .. dc.inFallback .. "  retenidos de desconocidos " .. dc.held .. " (confirmados " .. dc.heldOK .. ")  repetidos por dos caminos " .. (dc.dup or 0)
+            if HU.probeLog and #HU.probeLog > 0 then lines[#lines + 1] = "sondas recibidas: " .. table.concat(HU.probeLog, " · ") end
+            local dr = {}
+            for why, n in pairs(dc.drops or {}) do dr[#dr + 1] = "   " .. n .. " × " .. why end
+            table.sort(dr)
+            lines[#lines + 1] = "chat descartado: " .. (#dr == 0 and "nada" or "")
+            for _, l in ipairs(dr) do lines[#lines + 1] = l end
+            -- (copia 117: lo que caduca esperando en la cola y lo que rechaza el tope de admisión)
+            local ex, ad = (HU.qStats and HU.qStats.expired) or {}, HU.diagAdmitDrop or {}
+            lines[#lines + 1] = "chat caducado en la cola: CW " .. (ex.CW or 0) .. "  CG " .. (ex.CG or 0) .. "  CF " .. (ex.CF or 0)
+                .. "   rechazados por tope de admisión: " .. ((ad.comprobado or 0) + (ad.otro or 0))
+        end
+        for i = math.max(1, #h - 2), #h do
+            local e = h[i]
+            if e then lines[#lines + 1] = "  [" .. tostring(e.k) .. "] " .. tostring(e.a) .. ": " .. tostring(type(e.m)) .. " " .. tostring(e.m and #tostring(e.m)) .. " letras" end
+        end
+        return lines
 end

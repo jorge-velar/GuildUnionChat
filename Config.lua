@@ -31,6 +31,15 @@ function HU.ParseMinVersion(text)
     return nil
 end
 
+-- (copia 150) Sala del canal fijada: una línea «GU:l:N» en la Información de MI hermandad
+function HU.ParseLaneLock(text)
+    for raw in (text or ""):gmatch("[^\r\n]+") do
+        local v = HU.Trim(raw):match("^[Gg][Uu]:[Ll]:%s*(%d)%s*$")
+        if v then return tonumber(v) end
+    end
+    return nil
+end
+
 -- Líneas GU: pegadas («GU:t:NombreGU:g:...», p. ej. de una nota de oficial cortada): cada una en la suya
 function HU.SplitGlued(text)
     return (tostring(text or ""):gsub("([^\r\n])[ \t]*([Gg][Uu]:%a:)", "%1\n%2"))
@@ -242,6 +251,8 @@ function HU:RefreshConfig(force)
     end
     -- (versión mínima: solo de la Información de MI hermandad, tal cual, antes de juntarle nada)
     if self.SetGuildMin then self:SetGuildMin(HU.ParseMinVersion(text)) end
+    -- (y la sala fijada, igual: de la Información de MI hermandad)
+    if self.SetLaneLock then self:SetLaneLock(HU.ParseLaneLock(text)) end
     -- (versiones de antes guardaban esto para toda la cuenta: pasa a este personaje solo si es
     -- de su hermandad)
     local cdb, adb = self.cdb, self.adb

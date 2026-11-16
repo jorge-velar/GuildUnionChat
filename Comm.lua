@@ -173,7 +173,7 @@ local QUEUE_TTL = {
     RC = 300, RB = 600,
     PB = 900, OD = 900, WL = 900, HL = 900,
     CX = 600, CP = 600, CQ = 600, LG = 600, PN = 600, GK = 600,
-    CW = 60, CG = 60, CF = 60,
+    CW = 60, CG = 20, CF = 60,
 }
 local QUEUE_TTL_DEFAULT = 300
 -- (los silencios y vetos no caducan: quitar un silencio no se vuelve a mandar nunca)
@@ -333,7 +333,15 @@ function HU:Send(msg, dist, target, urgent, slow, fast)
         end
         local m = { msg, dist, target, t = GetTime(), cmd = cmd, key = key, gtag = HU.sendGroup and HU.sendGroup.tag, gdest = HU.sendGroup and HU.sendGroup.dest }
         if key then pending[key] = m end
-        if urgent then table.insert(q, 1, m) else q[#q + 1] = m end
+        if urgent and (cmd == "CW" or cmd == "CG" or cmd == "CF") then
+            -- (copia 150) El chat del respaldo se ponía SIEMPRE el primero: con varios esperando, el
+            -- último pasaba delante, salían al revés y los primeros caducaban. Ahora va detrás del
+            -- último de chat que ya espera, y todos ellos delante del resto.
+            local pos = 0
+            for i = 1, #q do if q[i].chatU then pos = i end end
+            m.chatU = true
+            table.insert(q, pos + 1, m)
+        elseif urgent then table.insert(q, 1, m) else q[#q + 1] = m end
     end
     if isBulk then FlushBulk() else Flush() end
     return true
@@ -409,8 +417,13 @@ local function Resend(k, tags)
     for tag in pairs(tags) do
         local np = HU:BestPeer(tag)
         if np and HU:Short(np.name):lower() ~= k then
+            -- (copia 151: lo que ese contacto ya recibió de mí no se le manda otra vez. Con el respaldo
+            -- a dos contactos, el «siguiente» suele ser el otro, que ya la tiene: la pintaba dos veces
+            -- y la repartía dos veces a toda su hermandad)
+            local had = {}
+            for _, x in ipairs(lastSent[HU:Short(np.name):lower()] or {}) do had[x.msg] = true end
             for _, e in ipairs(l) do
-                if now - e.t <= 30 then HU:Whisper(np.name, e.msg, e.urgent) end
+                if now - e.t <= 30 and not had[e.msg] then HU:Whisper(np.name, e.msg, e.urgent) end
             end
         end
     end
@@ -1444,6 +1457,8 @@ function HU:BestPeers(tag, n)
         if p and p.tag == tag and p.name and age < 900 then
             local score = (p.relay and 1000 or 0) - age / 10
             if type(p.ver) == "string" and p.ver:match("^[%d%.]+$") and not HU.VersionGreater("5.4.33", p.ver) then score = score + 2000 end
+            -- (copia 151: y antes que nadie, los de la 5.4.40, que reparten aunque ya lo hayan leído)
+            if type(p.ver) == "string" and p.ver:match("^[%d%.]+$") and not HU.VersionGreater("5.4.40", p.ver) then score = score + 1500 end
             if not self:MemberOf(p.name, tag) and not self:PeerVerified(p.name, tag) then score = score - 5000 end
             cands[#cands + 1] = { p = p, s = score }
         end
@@ -1569,7 +1584,8 @@ local function OnHello(sender, f, dist, isReply)
             -- (dice ser su enlace sin estar comprobado: vale como contacto, ver OfferLane)
             local new = HU.ParseLane(f[7], f[8], f[9])
             -- (y si yo no soy el enlace, se lo paso al mío, como con LN: ver HU.comm.LX)
-            if new and new.lane > HU:ChannelLane() and not HU:IsRelay() and HU.myTag and IsInGuild()
+            if new and (new.lane > HU:ChannelLane() or (new.lane == 0 and new.gen > HU:LaneState().gen))
+                and not HU:IsRelay() and HU.myTag and IsInGuild()
                 and (not HU.laneFwdT or GetTime() - HU.laneFwdT > 30) then
                 HU.laneFwdT = GetTime()
                 HU:Send(table.concat({ "LX", f[7], f[8] or "", f[9] or "", tag, sender }, "~"), "GUILD")

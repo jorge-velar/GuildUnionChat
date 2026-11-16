@@ -7,7 +7,7 @@
 ## X-Copyright: Copyright (c) 2026 Sadance
 ## X-License: MIT
 ## IconTexture: Interface\Icons\INV_Shirt_GuildTabard_01
-## Version: 5.4.37
+## Version: 5.4.40
 ## X-Reduce-Version: 1.1.0
 ## SavedVariables: GuildUnionDB
 ## SavedVariablesPerCharacter: GuildUnionCharDB
@@ -27,6 +27,7 @@ Roster.lua
 Channel.lua
 ChatPaint.lua
 PratBridge.lua
+WMPanel.lua
 Comm.lua
 Lists.lua
 Presence.lua
@@ -59,3 +60,4 @@ Blacklist.lua
 InviteLog.lua
 Mention.lua
 Wizard.lua
+Report.lua
