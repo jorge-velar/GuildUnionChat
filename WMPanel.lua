@@ -1095,9 +1095,24 @@ local function Export(tag)
 end
 
 -- El menú del clic derecho de una fila: las mismas opciones, en el mismo orden, que el suyo
+-- (copia 157) ¿Está puesta la interfaz de mando de Blizzard? Un menú abierto desde un addon le
+-- contamina el foco y deja el mando bloqueado (lo miden ForeverPlusPlus y ChillZone, que apaga lo
+-- suyo con mando de la misma forma)
+local function GamepadUI()
+    local IS = _G.C_InputInterfaceStyle
+    local pad = Enum and Enum.InputDeviceInterfaceType and Enum.InputDeviceInterfaceType.Gamepad
+    if type(IS) ~= "table" or type(IS.GetCurrentStyle) ~= "function" or pad == nil then return false end
+    local ok, style = pcall(IS.GetCurrentStyle)
+    return ok and style == pad
+end
+
 function HU.WMRowMenu(owner, tag)
     local MU = _G.MenuUtil
     if type(MU) ~= "table" or type(MU.CreateContextMenu) ~= "function" then return end
+    if GamepadUI() then
+        HU:Print(L("Con la interfaz de mando este menú no se abre: el juego dejaría el mando bloqueado."))
+        return
+    end
     local key, p = RowKey(tag), RowPrefs()
     MU.CreateContextMenu(owner, function(_, menu)
         local back = SinceMine(tag)

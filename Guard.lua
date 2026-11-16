@@ -267,7 +267,12 @@ function HU:KickPlayer(name, ban, force, auto)
         self:Print(L("Esta versión del juego no permite ") .. (ban and "vetar" or "echar") .. L(" desde un addon. Usa /") .. (ban and "ban" or "ckick") .. ".")
         return
     end
-    fn(c.name, self:Short(name))
+    -- (copia 158: con el chat bloqueado el juego lo prohíbe y saca su ventana de error)
+    if self:ChannelApiBlocked() then
+        self:Print(L("Ahora mismo el juego no deja tocar el canal (campo de batalla, arena o jefe). Prueba al salir."))
+        return
+    end
+    pcall(fn, c.name, self:Short(name))
     local k = name:lower()
     self.kicked[k] = GetTime()
     self.pendingSince[k] = nil
@@ -625,6 +630,7 @@ function HU:CheckChannelOwner(force)
 end
 
 function HU:OwnerApply(c, best, toMod, toUnmod, now)
+    if self:ChannelApiBlocked() then return end -- (copia 158)
     if not self:CanPin() then
         local setOwner = SetChannelOwner or (C_ChatInfo and C_ChatInfo.SetChannelOwner)
         if best and setOwner then

@@ -365,6 +365,9 @@ end
 local function ChannelMuteCall(name, on)
     local c = HU.chan.main
     if not c or not c.name or not HU:AmIModFast() then return end
+    -- (copia 159: con el chat bloqueado está prohibido. El silencio sigue valiendo, porque el addon ya
+    -- esconde lo que escribe el silenciado; solo falta el del canal, que se pone en el siguiente aviso)
+    if HU:ChannelApiBlocked() then return end
     local fn = C_ChatInfo and (on and C_ChatInfo.ChannelMute or C_ChatInfo.ChannelUnmute)
     if fn then pcall(fn, c.name, HU:Short(name)) end
 end
@@ -551,6 +554,7 @@ end
 local function ChannelBanCall(name, on)
     local c = HU.chan.main
     if not c or not c.name or not HU:AmIMod() then return false end
+    if HU:ChannelApiBlocked() then return false end -- (copia 158)
     local fn = on and (ChannelBan or (C_ChatInfo and C_ChatInfo.ChannelBan)) or (ChannelUnban or (C_ChatInfo and C_ChatInfo.ChannelUnban))
     if fn then pcall(fn, c.name, HU:Short(name)) return true end
     return false

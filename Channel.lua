@@ -81,6 +81,11 @@ HU.ready = false  -- (medio segundo tras entrar: ver el OnStart de abajo)
 
 function HU:ApplyChannels()
     if not self.ready then return end
+    if self:ChannelApiBlocked() then
+        HU.applyPending = true
+        return
+    end
+    HU.applyPending = nil
     local want = {}
     if self.cfg and self.cfg.ok and self.myTag then
         want.main = { name = self:LaneName(self.cfg.channel), pass = self.cfg.password }
@@ -163,6 +168,7 @@ end
 function HU:ChannelRoster(kind)
     local id = self:ChannelId(kind)
     if not id then return nil end
+    if self:ChannelApiBlocked() then return nil end
     local info = C_ChatInfo and C_ChatInfo.GetChannelRosterInfo
     if not info then return nil end
     if GetNumDisplayChannels and GetChannelDisplayInfo then
@@ -242,6 +248,13 @@ function HU:InPvpNow()
 end
 function HU:CanJoinNow()
     return not self:IsChatLockedDown() and not self:InPvpNow()
+end
+-- (copia 158) ¿Están prohibidas ahora las funciones de canal (salir, ocultarlo de la ventana, leer su
+-- lista, echar, poner moderador…)? Con el chat bloqueado (campos de batalla, arenas, jefes) el juego las
+-- prohíbe y llamarlas saca su ventana de «GuildUnion ha intentado una acción prohibida: desactivar o
+-- ignorar». Visto el 16/11 (God Platinum, 5.4.40, al entrar en un campo de batalla). [+ARCHITECTURE.md]
+function HU:ChannelApiBlocked()
+    return self:IsChatLockedDown() or self:InPvpNow()
 end
 
 function HU:EnsureJoined(kind)
@@ -346,8 +359,15 @@ end)
 orderFrame:RegisterEvent("CHANNEL_UI_UPDATE")
 orderFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 
+local hidePending = {}
 function HU:HideChannel(name)
     if self.db and self.db.showChannel then return end
+    if not name then return end
+    if self:ChannelApiBlocked() then
+        hidePending[name] = true
+        return
+    end
+    hidePending[name] = nil
     for i = 1, (NUM_CHAT_WINDOWS or 10) do
         local f = _G["ChatFrame" .. i]
         if f then RemoveChannelFromFrame(f, name) end
@@ -402,6 +422,11 @@ HU:OnStart(function()
         for kind in pairs(HU.chan) do HU:EnsureJoined(kind) end
     end, 20)
     HU.NewTicker(10, function()
+        -- (copia 158: lo que se dejó para luego mientras las funciones de canal estaban prohibidas)
+        if not HU:ChannelApiBlocked() then
+            if HU.applyPending then HU:ApplyChannels() end
+            for name in pairs(hidePending) do HU:HideChannel(name) end
+        end
         for kind in pairs(HU.chan) do HU:EnsureJoined(kind) end
     end)
 end)
@@ -1543,7 +1568,7 @@ end
 local KIND_SHORT = { main = "H", off = "O" }
 -- (mark: lo que va justo delante de la etiqueta, p. ej. la exclamación de una mención; mismo sitio
 -- que en las líneas de mi hermandad, que pinta el juego)
-function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mark)
+function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mark, has)
     local chatType = (kind == "off") and "OFFICER" or "GUILD"
     mark = mark or ""
     if compact then
@@ -1564,7 +1589,7 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
     if self.EchoStarName then short = self:EchoStarName(author, short) end
     local colored = ClassColored(short, guid, tag, author)
     -- Formato de texto (Ajustes): punto o etiqueta delante del nombre, y [Hermandad] en color [+ARCHITECTURE.md]
-    local name = self:NamePrefix(tag, author, mark) .. "|Hplayer:" .. author .. "|h[" .. colored .. "]|h"
+    local name = self:NamePrefix(tag, author, mark, has) .. "|Hplayer:" .. author .. "|h[" .. colored .. "]|h"
     local pattern = (kind == "off") and CHAT_OFFICER_GET or CHAT_GUILD_GET
     local pre, post = (pattern or ""):match("^(.-)(%%s.*)$")
     local head

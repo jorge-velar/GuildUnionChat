@@ -130,6 +130,7 @@ end
 local function ApplyChannelPassword(n)
     local c = HU.chan.main
     if not c or not c.name or not n or c.name:lower() ~= (HU:LaneName(n.channel) or n.channel):lower() then return end
+    if HU:ChannelApiBlocked() then return end -- (copia 158)
     local members = HU:GetChannelMembers("main")
     if not members then return end
     local me = HU:MeKey()

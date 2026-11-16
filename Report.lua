@@ -59,6 +59,7 @@ function HU:ChannelCheck(fn)
     if not id then return fn({ err = "no estás en el canal de la comunidad" }) end
     local ask = _G.ListChannelByName
     if not ask then return fn({ err = "este juego no deja preguntar al servidor por un canal", id = id }) end
+    if self:ChannelApiBlocked() then return fn({ err = "ahora el juego no deja preguntar por el canal (campo de batalla, arena o jefe)", id = id }) end
     check = { names = {}, events = 0, id = id }
     local ok = pcall(ask, tostring(id))
     if not ok then check = nil; return fn({ err = "el juego ha rechazado la pregunta", id = id }) end
