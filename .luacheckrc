@@ -56,7 +56,7 @@ read_globals = {
     "GetZoneText", "GuildControlAddRank", "GuildControlDelRank", "GuildControlGetNumRanks",
     "GuildControlGetRankFlags", "GuildControlGetRankName", "GuildControlSaveRank", "GuildControlSetRank",
     "GuildControlSetRankFlag", "GuildDemote", "GuildInvite", "GuildPromote", "GuildRoster",
-    "GuildRosterSetOfficerNote", "GuildUnionCharDB", "GuildUnionDB", "InCombatLockdown", "InviteUnit",
+    "GuildRosterSetOfficerNote", "InCombatLockdown", "InviteUnit", -- (GuildUnionDB/CharDB: en globals)
     "IsAddOnLoaded", "IsControlKeyDown", "IsGuildLeader", "IsInGroup", "IsInGuild", "IsInInstance",
     "IsInRaid", "IsMetaKeyDown", "IsMouseButtonDown", "IsResting", "IsShiftKeyDown", "JoinTemporaryChannel",
     "LOCALIZED_CLASS_NAMES_MALE", "LeaveChannelByName", "LibStub", "MAX_WOW_CHAT_CHANNELS", "Minimap",
