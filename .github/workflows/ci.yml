@@ -1,4 +1,4 @@
-# Comprobación de Guild Union en cada push y pull request (sin tests: solo luacheck)
+# Comprobación de Guild Union en cada push y pull request: pruebas (Lua 5.1, el de WoW) y luacheck
 name: CI
 
 on:
@@ -8,22 +8,54 @@ on:
   workflow_dispatch:
 
 jobs:
+  pruebas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar Lua 5.1
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+
+      - name: Pruebas (tests/run.lua)
+        run: lua5.1 tests/run.lua
+
+      # Solo informa (hoy faltan unas 70). Cuando estén todas: añadir --estricto para que pare el CI
+      - name: Textos sin traducción al inglés
+        run: lua5.1 tests/traducciones.lua
+
   luacheck:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
-      - name: Instalar luacheck
+      - name: Instalar luacheck y Lua 5.1
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq lua-check
+          sudo apt-get install -y -qq lua-check lua5.1
 
-      - name: luacheck (solo avisos, no bloquea)
-        # luacheck sale con 1 si hay avisos y con 2 si hay errores de sintaxis:
-        # los errores sí paran el pipeline, los avisos no.
+      # Para solo con avisos NUEVOS: los que ya había están en tests/luacheck-conocidos.txt
+      # (los errores de sintaxis paran siempre: luacheck sale con 2 o más)
+      - name: luacheck (para con avisos nuevos)
         run: |
           set +e
-          luacheck . -q --formatter=plain
+          luacheck . -q --formatter=plain --codes > luacheck.txt
           code=$?
-          [ "$code" -ge 2 ] && exit 1 || exit 0
+          set -e
+          [ "$code" -ge 2 ] && { cat luacheck.txt; exit 1; }
+          lua5.1 tests/luacheck_nuevos.lua < luacheck.txt
+
+      # La lista al día, por si hay que guardarla (la primera vez, o tras arreglar avisos):
+      # se descarga desde la ejecución del CI y se copia a tests/luacheck-conocidos.txt
+      - name: Lista de avisos al día
+        if: always()
+        run: lua5.1 tests/luacheck_nuevos.lua --actualizar < luacheck.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: luacheck-conocidos
+          path: tests/luacheck-conocidos.txt

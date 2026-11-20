@@ -10,6 +10,12 @@ max_line_length = false      -- hay líneas largas a propósito
 unused_args = false          -- los manejadores de eventos reciben muchos argumentos que no usan
 exclude_files = { "Libs/**", "Tools/**", "docs/**", ".git/**", ".claude/**" }
 
+-- Pruebas (tests/run.lua): Lua normal, con io/os/require, y las funciones del ejecutor
+files["tests/**"] = {
+    std = "lua51",
+    globals = { "describe", "it", "before_each", "pending", "assert_" },
+}
+
 -- Lo que el addon escribe en las variables globales (a propósito)
 globals = {
     "GuildUnionDB", "GuildUnionCharDB", "HermandadUnida",
