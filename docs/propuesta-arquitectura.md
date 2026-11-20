@@ -220,13 +220,14 @@ cierra cuando se cumple su «hecho cuando».
   - `cola_spec`: prefijos, prioridades, saturación, bloqueo del chat, «gana el último», caducidad,
     silencios que no caducan y la pausa por versión mínima.
 - CI (`.github/workflows/ci.yml`): pruebas con Lua 5.1, informe de traducciones y luacheck que
-  para con avisos nuevos. `tests/` queda fuera del zip del release y del paquete de CurseForge.
+  para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 
 ### Pendiente
 
-1. **Crear `tests/luacheck-conocidos.txt`**: aquí no se puede, porque no hay luacheck. La primera
-   vez que pase el CI, se descarga el artefacto `luacheck-conocidos` y se guarda en el repositorio.
-   Hasta entonces el script avisa pero no para la integración.
+1. **Ir quitando los 18 avisos conocidos de luacheck** (`tests/luacheck-conocidos.txt`: sombras de
+   variables, ramas `if` vacías, valores sin usar). Al arreglar uno, se rehace la lista con
+   `--actualizar` o se descarga el artefacto `luacheck-conocidos` del CI. Las 15 funciones del juego
+   que daban W113 ya están en `read_globals`.
 2. **Pruebas de formato con mensajes reales** (`tests/golden/`): grabar con `/gu diag` o TestLog
    unos cuantos mensajes reales de cada orden y añadir la prueba (está marcada como pendiente en
    `cola_spec`).

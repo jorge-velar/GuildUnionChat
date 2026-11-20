@@ -11,17 +11,20 @@ local here = (arg and arg[0] and arg[0]:match("^(.*)[/\\][^/\\]+$")) or "tests"
 local FILE = here .. "/luacheck-conocidos.txt"
 local update = arg and arg[1] == "--actualizar"
 
+-- (algunos textos llevan otra línea dentro: «shadowing upvalue 'R' on line 194». Tampoco cuenta)
+local function Norm(s) return (s:gsub(" on line %d+", "")) end
+
 local function Key(line)
     -- Comm.lua:123:5: (W211) unused variable 'x'
     local file, rest = line:match("^(.-):%d+:%d+: (.*)$")
     if not file then return nil end
-    return file:gsub("\\", "/"):gsub("^%./", "") .. ": " .. rest
+    return Norm(file:gsub("\\", "/"):gsub("^%./", "") .. ": " .. rest)
 end
 
 local function Count(lines)
     local n, order = {}, {}
     for _, l in ipairs(lines) do
-        local k = Key(l) or l
+        local k = Key(l) or Norm(l)
         if not n[k] then order[#order + 1] = k end
         n[k] = (n[k] or 0) + 1
     end

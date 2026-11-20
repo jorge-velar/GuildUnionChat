@@ -68,4 +68,9 @@ read_globals = {
     "UnitIsAFK", "UnitLevel", "UnitName", "UnitRace", "UpdateAddOnMemoryUsage", "WOW_PROJECT_CAMELOT",
     "WOW_PROJECT_ID", "date", "debugprofilestop", "debugstack", "geterrorhandler", "hooksecurefunc",
     "issecretvalue", "issecurevariable", "strmatch", "time", "tinsert", "wipe",
+    -- (añadidas en la 5.4.41: las usan BlizzTab, Blacklist, Channel, ChatPaint, ChatTabs, Combat,
+    -- Core, InviteLog y WMPanel)
+    "C_FriendList", "C_Texture", "EventRegistry", "FCF_GetChatFrameByID", "GameFontHighlight",
+    "GetBattlefieldStatus", "GetCVarBool", "GetGuildEventInfo", "GetLocale", "GetMaxBattlefieldID",
+    "GetNumGuildEvents", "Menu", "MenuUtil", "TimeUtil", "UIErrorsFrame",
 }
