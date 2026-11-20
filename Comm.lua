@@ -169,11 +169,11 @@ end
 -- Cuánto puede esperar cada mensaje en la cola (s): uno que sale tarde confunde más que ayuda
 -- (un saludo con un enlace que ya no es, un cambio de una lista vieja...)
 local QUEUE_TTL = {
-    HI = 60, HR = 60, HY = 60, RA = 60, LP = 60, PL = 60, PH = 60, LN = 60,
+    HI = 60, HR = 60, HY = 60, RA = 60, LP = 60, PL = 60, PH = 60, LN = 60, LV = 60, LO = 60,
     RC = 300, RB = 600,
     PB = 900, OD = 900, WL = 900, HL = 900,
     CX = 600, CP = 600, CQ = 600, LG = 600, PN = 600, GK = 600,
-    CW = 60, CG = 60, CF = 60,
+    CW = 60, CG = 20, CF = 60,
 }
 local QUEUE_TTL_DEFAULT = 300
 -- (los silencios y vetos no caducan: quitar un silencio no se vuelve a mandar nunca)
@@ -183,7 +183,9 @@ local NEVER_EXPIRE = { MU = true, MZ = true, BN = true }
 local LATEST_WINS = { HI = true, HR = true, HY = true, RA = true, LN = true }
 local pending = {} -- [orden, vía, destino] = el que espera, de los de LATEST_WINS
 -- lo que se ha perdido, para /gu cola y el banco
-HU.qStats = { expired = {}, dropped = {}, replaced = 0, offline = 0, lockdown = 0 }
+HU.qStats = { expired = {}, dropped = {}, replaced = 0, offline = 0, lockdown = 0, skipped = 0 }
+-- (en HU y no como variable del archivo: este archivo ya ronda el tope de 200 variables de Lua)
+HU.SKIP_LOCKED = { HI = true, HR = true, HY = true, RA = true, LP = true, PL = true, PH = true, LN = true }
 local function Count(t, cmd) t[cmd or "?"] = (t[cmd or "?"] or 0) + 1 end
 local function TTL(cmd) if NEVER_EXPIRE[cmd] then return nil end return QUEUE_TTL[cmd] or QUEUE_TTL_DEFAULT end
 
@@ -301,6 +303,12 @@ end
 function HU:Send(msg, dist, target, urgent, slow, fast)
     if #msg > 255 then msg = HU.Utf8Cut(msg, 255) end
     local cmd = msg:sub(1, 2)
+    -- (con el chat bloqueado por el juego, los saludos y presentaciones no se guardan: caducan a los 60 s
+    -- y solo llenaban la cola. Al acabar el bloqueo se saluda de nuevo: Combat.lua)
+    if HU.SKIP_LOCKED[cmd] and self:IsChatLockedDown() then
+        self.qStats.skipped = (self.qStats.skipped or 0) + 1
+        return false
+    end
     local isBulk = BFAST_CMDS[cmd] or BULK_CMDS[cmd] or BMID_CMDS[cmd] or BLOW_CMDS[cmd]
     local q = (BFAST_CMDS[cmd] and bfast) or (BULK_CMDS[cmd] and bulk) or (BMID_CMDS[cmd] and bmid) or (BLOW_CMDS[cmd] and blow)
         or (CHAT_CMDS[cmd] and qChat) or (MID_CMDS[cmd] and mid) or (LOW_CMDS[cmd] and low) or queue
@@ -325,7 +333,15 @@ function HU:Send(msg, dist, target, urgent, slow, fast)
         end
         local m = { msg, dist, target, t = GetTime(), cmd = cmd, key = key, gtag = HU.sendGroup and HU.sendGroup.tag, gdest = HU.sendGroup and HU.sendGroup.dest }
         if key then pending[key] = m end
-        if urgent then table.insert(q, 1, m) else q[#q + 1] = m end
+        if urgent and (cmd == "CW" or cmd == "CG" or cmd == "CF") then
+            -- (copia 150) El chat del respaldo se ponía SIEMPRE el primero: con varios esperando, el
+            -- último pasaba delante, salían al revés y los primeros caducaban. Ahora va detrás del
+            -- último de chat que ya espera, y todos ellos delante del resto.
+            local pos = 0
+            for i = 1, #q do if q[i].chatU then pos = i end end
+            m.chatU = true
+            table.insert(q, pos + 1, m)
+        elseif urgent then table.insert(q, 1, m) else q[#q + 1] = m end
     end
     if isBulk then FlushBulk() else Flush() end
     return true
@@ -401,8 +417,13 @@ local function Resend(k, tags)
     for tag in pairs(tags) do
         local np = HU:BestPeer(tag)
         if np and HU:Short(np.name):lower() ~= k then
+            -- (copia 151: lo que ese contacto ya recibió de mí no se le manda otra vez. Con el respaldo
+            -- a dos contactos, el «siguiente» suele ser el otro, que ya la tiene: la pintaba dos veces
+            -- y la repartía dos veces a toda su hermandad)
+            local had = {}
+            for _, x in ipairs(lastSent[HU:Short(np.name):lower()] or {}) do had[x.msg] = true end
             for _, e in ipairs(l) do
-                if now - e.t <= 30 then HU:Whisper(np.name, e.msg, e.urgent) end
+                if now - e.t <= 30 and not had[e.msg] then HU:Whisper(np.name, e.msg, e.urgent) end
             end
         end
     end
@@ -528,7 +549,7 @@ local function Busy()
         local inInst, kind = IsInInstance()
         if inInst and (kind == "raid" or kind == "pvp" or kind == "arena") then return true, BUSY_PENALTY end
     end
-    if UnitIsAFK and UnitIsAFK("player") then
+    if UnitIsAFK and HU.SafeBool(UnitIsAFK("player"), false) then
         afkSince = afkSince or GetTime()
         if GetTime() - afkSince >= AFK_AFTER then return true, AFK_PENALTY end
     else
@@ -565,11 +586,26 @@ function HU:RelayScore()
     local busy, penalty = Busy()
     if busy then s = s - penalty end
     -- en zona de descanso (ciudad, posada) se sale del juego al momento y no da tiempo a pasar el puesto: [+ARCHITECTURE.md]
-    if IsResting and IsResting() then
+    if IsResting and HU.SafeBool(IsResting(), false) then
         self.restSince = self.restSince or GetTime()
         if GetTime() - self.restSince >= 60 then s = s - 20 end
     else
         self.restSince = nil
+    end
+    -- (copia 119, transición) En las versiones anteriores solo el enlace sube de carril, y lo hace por la
+    -- falsa alarma de recién entrado. Para que eso no pase mientras haya alguien actualizado conectado,
+    -- un oficial con esta versión dice una puntuación por encima de la más alta que puede tener un
+    -- oficial con una versión vieja (157, más 15 si ya es el enlace = 172) y dentro del tope que todos
+    -- aceptan de un oficial (199, SaneScore). Entre actualizados sigue ganando el de mejor conexión.
+    -- Ocupado (banda, campo de batalla, ausente) no: mejor que lo sea otro. Se quitará cuando todos
+    -- estén actualizados.
+    if officer and good and not busy then
+        s = math.max(173, math.min(199, 173 + math.floor((s - 100) * 26 / 57)))
+    elseif good and not busy then
+        -- (copia 120: quien no es oficial también: entre 80 y 99. Las versiones viejas no le aceptan
+        -- más de 99 a quien no sale como oficial en la lista, y un no oficial con versión vieja llega
+        -- como mucho a 57 + 15 = 72. A un oficial con versión vieja no le gana: eso no se puede desde aquí)
+        s = math.max(80, math.min(99, 80 + math.floor(s * 19 / 57)))
     end
     return s
 end
@@ -724,7 +760,7 @@ function HU:HelloText(cmd)
         local changed = table.concat(self.advertisedHelpers or {}, ",") ~= table.concat(helpers, ",")
         if changed then self.helpersChangedT = GetTime() end
         self.advertisedHelpers = helpers
-        if changed and self:LaunchPhase() and self.PresenceSchedule then HU.After(0, function() HU:PresenceSchedule() end) end
+        if changed and self.PresenceSchedule then HU.After(0, function() HU:PresenceSchedule() end) end
         -- (y a mi hermandad enseguida, no en el saludo de dentro de 2-5 minutos: los ayudantes van en [+ARCHITECTURE.md]
         if changed and cmd ~= "HR" then self:HelpersChangedHello() end
     end
@@ -758,8 +794,13 @@ HU.LaneContact = function(sender, tag)
 end
 -- ¿Puedo fiarme de lo que dice sender sobre el carril? (el enlace o un oficial)
 local function LaneStrong(sender, dist, tag)
-    if HU.IsOfficerName and HU:IsOfficerName(sender) then return true end
-    if dist == "GUILD" then return HU:Key(HU:RelayName() or "") == HU:Key(sender) end
+    local officer = HU.IsOfficerName and HU:IsOfficerName(sender) or false
+    -- (copia 118) Cada uno sigue solo a los de SU hermandad: su enlace o un oficial suyo, por GUILD.
+    -- A los de otra hermandad (su enlace o un oficial, por susurro) solo les hace caso MI enlace, que
+    -- luego se lo dice a los míos. Antes cualquier oficial de la comunidad movía a cualquiera.
+    if dist == "GUILD" then return officer or HU:Key(HU:RelayName() or "") == HU:Key(sender) end
+    if not HU:IsRelay() then return false end
+    if officer then return true end
     local p = tag and HU:KnownRelay(tag)
     return p and p.name and p.name:lower() == sender:lower() or false
 end
@@ -1138,11 +1179,8 @@ local function WarnDispute(self, tag, a, b)
     local now = GetTime()
     if disputeWarned[tag] and now - disputeWarned[tag] < DISPUTE_WARN then return end
     disputeWarned[tag] = now
+    -- (copia 118: ya no sale en el chat de los oficiales; «son mensajes que sobran», Jorge 15/11)
     self:Debug("Lista de", tag, "en disputa:", tostring(a), "/", tostring(b))
-    if self:CanOfficer() then
-        self:Print(string.format(L("La lista de %s está en disputa: %s dice una cosa y %s otra."),
-            tag, self:Short(a or "?"), self:Short(b or "?")))
-    end
 end
 
 -- Reparte a mi hermandad mi copia con su estado nuevo (solo quien se encarga de esa hermandad)
@@ -1398,6 +1436,40 @@ function HU:BestPeerCalc(tag)
     return best
 end
 
+-- (copia 114) Los n mejores contactos de esa hermandad para el chat del respaldo. Como BestPeer (el
+-- enlace primero, luego el oído más recientemente; quien no es de fiar, detrás de todos), pero
+-- devuelve varios y pone delante a quien tiene una versión que ya no tira el respaldo de un
+-- desconocido (5.4.33 o posterior: la versión de cada contacto viene en su saludo). Se recuerda 5 s
+-- por hermandad: con miles de contactos, recorrerlos en cada línea se notaba.
+local bpsMemo = {}
+function HU:BestPeers(tag, n)
+    local now = GetTime()
+    local m = bpsMemo[tag]
+    if m and now - m.t < 5 and m.n == n then
+        local ok = true
+        for _, p in ipairs(m.list) do if self.remote[p.name:lower()] ~= p then ok = false break end end
+        if ok then return m.list end
+    end
+    local cands = {}
+    for _, key in ipairs(self:RemoteKeys(tag)) do
+        local p = self.remote[key]
+        local age = p and now - (p.last or 0)
+        if p and p.tag == tag and p.name and age < 900 then
+            local score = (p.relay and 1000 or 0) - age / 10
+            if type(p.ver) == "string" and p.ver:match("^[%d%.]+$") and not HU.VersionGreater("5.4.33", p.ver) then score = score + 2000 end
+            -- (copia 151: y antes que nadie, los de la 5.4.40, que reparten aunque ya lo hayan leído)
+            if type(p.ver) == "string" and p.ver:match("^[%d%.]+$") and not HU.VersionGreater("5.4.40", p.ver) then score = score + 1500 end
+            if not self:MemberOf(p.name, tag) and not self:PeerVerified(p.name, tag) then score = score - 5000 end
+            cands[#cands + 1] = { p = p, s = score }
+        end
+    end
+    table.sort(cands, function(x, y) return x.s > y.s end)
+    local list = {}
+    for i = 1, math.min(n or 1, #cands) do list[i] = cands[i].p end
+    bpsMemo[tag] = { t = now, n = n, list = list }
+    return list
+end
+
 local relayShared, phShared = {}, {}
 -- (de qué enlace se contó lo último: si cambia, se cuenta ya, sin esperar los 300/600 s. Si no, tras un [+ARCHITECTURE.md]
 local sharedRelayOf, plRelayOf = {}, {}
@@ -1480,7 +1552,7 @@ local function OnHello(sender, f, dist, isReply)
             HU.relayHelpers = { list = list, t = GetTime(), relay = sender }
             -- (fase de lanzamiento: el enlace y sus ayudantes van en las listas; si cambian, el cambio
             -- sale en unos segundos y no en la vuelta de cada 2 minutos)
-            if HU:LaunchPhase() and HU.PresenceSchedule and (not old or old.relay ~= sender or table.concat(old.list, ",") ~= f[5]) then
+            if HU.PresenceSchedule and (not old or old.relay ~= sender or table.concat(old.list, ",") ~= f[5]) then
                 HU:PresenceSchedule()
             end
         end
@@ -1512,7 +1584,8 @@ local function OnHello(sender, f, dist, isReply)
             -- (dice ser su enlace sin estar comprobado: vale como contacto, ver OfferLane)
             local new = HU.ParseLane(f[7], f[8], f[9])
             -- (y si yo no soy el enlace, se lo paso al mío, como con LN: ver HU.comm.LX)
-            if new and new.lane > HU:ChannelLane() and not HU:IsRelay() and HU.myTag and IsInGuild()
+            if new and (new.lane > HU:ChannelLane() or (new.lane == 0 and new.gen > HU:LaneState().gen))
+                and not HU:IsRelay() and HU.myTag and IsInGuild()
                 and (not HU.laneFwdT or GetTime() - HU.laneFwdT > 30) then
                 HU.laneFwdT = GetTime()
                 HU:Send(table.concat({ "LX", f[7], f[8] or "", f[9] or "", tag, sender }, "~"), "GUILD")
@@ -1797,7 +1870,7 @@ function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
             r.annMiss = (r.annMiss or 0) + 1
             if r.annMiss >= 2 and self.NeedRoster then self:NeedRoster(tag) end
             -- (fase de lanzamiento: la lista son unos nombres; si no cuadra dos veces, se le pide [+ARCHITECTURE.md]
-            if r.annMiss >= 2 and self:LaunchPhase() and self.ResponsibleFor and self:ResponsibleFor(tag)
+            if r.annMiss >= 2 and self.ResponsibleFor and self:ResponsibleFor(tag)
                 and (not r.rfAskT or GetTime() - r.rfAskT > 60) then
                 r.rfAskT = GetTime()
                 self:Whisper(author, "RF~" .. (self.myTag or "") .. "~1", true)
@@ -1887,6 +1960,29 @@ HU.comm.LN = function(self, sender, f, dist)
     self:ProbeLane()
 end
 HU.comm.LP = function() end
+-- LO~up|reset (copia 118): un oficial de MI hermandad propone cambiar de sala a toda la comunidad.
+-- Solo lo ven los oficiales; se hace si otro escribe /gu carril confirmar (HU:ConfirmLane, Channel.lua)
+HU.comm.LO = function(self, sender, f, dist)
+    if dist ~= "GUILD" or not self.OnLaneProposal or sender:lower() == (self:MeKey() or "") then return end
+    if not (self.IsOfficerName and self:IsOfficerName(sender)) then return end
+    if not ((self.IsOfficerName and self:IsOfficerName(self:Me())) or self:CanOfficer()) then return end
+    self:OnLaneProposal(sender, f[1])
+end
+-- LV~carril (copia 117): el enlace de OTRA hermandad dice que a él el canal le lleva minutos sin
+-- aceptar nada y propone ese carril. Solo cuenta como confirmación para mi propia mudanza, que
+-- además exige que a mí me pase lo mismo (HU:OnLaneVote, Channel.lua). Nunca me mueve por sí solo.
+HU.comm.LV = function(self, sender, f, dist)
+    if dist ~= "WHISPER" or not self.OnLaneVote then return end
+    local lane = tonumber(f[1])
+    local p = self.remote[sender:lower()]
+    local tag = p and p.tag
+    if not lane or lane ~= lane or lane < 1 or lane > 9 or not tag or tag == self.myTag then return end
+    local rp = self.KnownRelay and self:KnownRelay(tag)
+    if not (rp and rp.name and rp.name:lower() == sender:lower()) then return end
+    -- (copia 120: solo vale la confirmación de un enlace que sea oficial de su hermandad)
+    if not (self.IsOfficerName and self:IsOfficerName(sender)) then return end
+    self:OnLaneVote(math.floor(lane), tag)
+end
 -- LQ: «¿en qué carril estás?» de otra hermandad. Contesto con mi LN por susurro (a cada uno como [+ARCHITECTURE.md]
 do -- (en un bloque: la parte principal del archivo no puede pasar de 200 variables locales)
 local laneAnswerT, laneAnswered, laneAnswerN = -999, {}, 0
@@ -2005,7 +2101,7 @@ end
 HU.comm.PR = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     for tag in (f[1] or ""):gmatch("%w+") do
-        local p = self:LaunchPhase() and self:KnownRelay(tag) or (not self:LaunchPhase() and self:BestPeer(tag))
+        local p = self:KnownRelay(tag)
         -- en hermandades grandes contestan solo unos pocos (al azar), no todos
         if p and math.random() <= math.min(1, 8 / math.max(1, HU:PeerCount())) then
             HU.After(0.5 + math.random() * 4, function()
@@ -2061,7 +2157,6 @@ local reCache = {}
 -- Fase de lanzamiento: además del maestro y los oficiales, el enlace y sus ayudantes (son los que
 -- susurran a las otras hermandades, y solo se acepta a quien está en sus listas)
 local function SharedExtra(self)
-    if not self:LaunchPhase() then return nil, "" end
     local relay, list
     if self:IsRelay() then
         relay, list = self:Me(), self.advertisedHelpers
@@ -2299,7 +2394,7 @@ local function PushRoster(name, tries)
     HU:SendRosterTo(name)
 end
 function HU:OnContactJoined(author)
-    if not self:LaunchPhase() or not self.myTag then return end
+    if not self.myTag then return end
     local name = author and self:FullName(author)
     if not name then return end
     local k = name:lower()
@@ -2322,28 +2417,25 @@ local rfAsked = {}
 local rfRetry = {}
 function HU:AskMissingRosters()
     if not self.myTag then return end
-    -- (en cada hermandad lo pide solo quien se encarga de esa otra hermandad;
-    -- la lista entera llega por GUILD y les sirve a todos)
-    local pooled = self:IsRelay() or (self.relayHelpers and GetTime() - self.relayHelpers.t < 700)
+    -- (la lista son unos pocos nombres: quien no la tiene la pide él mismo)
     -- (una hermandad por fotograma: buscar el contacto de todas las que faltan seguido llegaba a 4 ms)
     local n = 0
     for _, tag in ipairs(self:OtherTags()) do
         if not self.remoteRoster[tag] then
             n = n + 1
-            HU.After(0.02 * (n - 1), function() HU:AskMissingRosterTag(tag, pooled) end)
+            HU.After(0.02 * (n - 1), function() HU:AskMissingRosterTag(tag) end)
         end
     end
 end
-function HU:AskMissingRosterTag(tag, pooled)
+function HU:AskMissingRosterTag(tag)
     if not self.myTag then return end
     local now = GetTime()
     do
         local p = not self.remoteRoster[tag] and self:BestPeer(tag)
         -- (fase de lanzamiento: la lista son unos pocos nombres; quien no la tiene la pide él mismo.
         -- El enlace que volvía de una desconexión se quedaba sin la de alguna hermandad)
-        if p and pooled and not self:ResponsibleFor(tag) and not self:LaunchPhase() then p = nil end
         -- (quien vuelve de una desconexión ha perdido los contactos y el "mejor" puede ser cualquiera [+ARCHITECTURE.md]
-        if p and self:LaunchPhase() and not p.relay then
+        if p and not p.relay then
             rfRetry[tag] = (rfRetry[tag] or 0) + 1
             if rfRetry[tag] <= 4 then
                 self:AskPeers({ tag })
@@ -2448,10 +2540,6 @@ function HU:AskGuildForMissing()
             r[#r + 1] = tag
             nqAsked["R" .. tag] = now
         end
-        if not self:BigCommunity() and (not self.whitelist[tag] or (self.listNeed and self.listNeed[tag])) and not Recent("W" .. tag) and (nqTry < 3 or not nqAsked["W" .. tag] or now - nqAsked["W" .. tag] > 600) then
-            w[#w + 1] = tag
-            nqAsked["W" .. tag] = now
-        end
     end
     if #r == 0 and #w == 0 then return end
     lastNQ = GetTime()
@@ -2500,7 +2588,7 @@ function HU:SendStoredRoster(tag, force)
     if seen and seen.sig == mySig and now - seen.t < listSeen.GAP and seen.t >= (listSeen.need or 0) then return end
     if force and listSeen.force[tag] and now - listSeen.force[tag] < listSeen.GAP then return end
     -- (la misma lista entera, como mucho cada 10 minutos: los cambios ya llegan al momento. [+ARCHITECTURE.md]
-    local gap = self:LaunchPhase() and 10 or 600
+    local gap = 10
     if not force and rbInGuild[tag] and GetTime() - rbInGuild[tag] < gap then return end
     -- (se apunta como mandada solo aquí, cuando de verdad sale)
     if force then listSeen.force[tag] = now end
@@ -2555,7 +2643,7 @@ function HU:WelcomeGuildmate()
             if not (last and last >= now) then
                 -- (fuera de la fase de lanzamiento la lista es de todos los conectados, cientos de nombres:
                 -- entonces, como mucho cada 5 minutos)
-                local gap = self:LaunchPhase() and WELCOME_GAP or 300
+                local gap = WELCOME_GAP
                 local at = math.max(now + WELCOME_DELAY, (last or -999) + gap)
                 welcomeAt[tag] = at
                 HU.After(at - now + math.random() * 0.5, function() HU:SendStoredRoster(tag, true) end)
@@ -2873,7 +2961,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
         local short = raw .. "~0~~" .. fwdFlag
         -- (la lista de lanzamiento, 1-3 trozos, también al momento: es la que llega cuando cambia
         -- quién manda los cambios)
-        local fast = (nparts <= 3 and self:LaunchPhase() and not self:SimpleMode()) or nil
+        local fast = (nparts <= 3 and not self:SimpleMode()) or nil
         if #full <= 250 then self:Send(full, "GUILD", nil, nil, nil, fast)
         elseif #short <= 250 then self:Send(short, "GUILD", nil, nil, nil, fast)
         elseif fwdFlag == "c" then self:Send(raw, "GUILD", nil, nil, nil, fast) end
@@ -2888,7 +2976,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
         partial[pkey] = pt
         for k, v in pairs(partial) do if GetTime() - (v.last or v.t or 0) > 600 then partial[k] = nil end end
         -- (si a los 40 s sigue a medias, se ha perdido algún trozo: se pide a [+ARCHITECTURE.md]
-        local quietMax = HU:LaunchPhase() and 15 or 120
+        local quietMax = 15
         local function check()
             if partial[pkey] ~= pt then return end
             -- (con las colas cargadas los trozos pueden tardar: 2 minutos sin ninguno)
@@ -3172,7 +3260,7 @@ HU.comm.RF = function(self, sender, f, dist)
     if not (self:HandlesTag(tag) or self:IsRelay()) then return end
     local st = rosterState[tag]
     -- (RF~etiq~1: «me ha llegado otra lista distinta de la tuya, confírmamela»: vale a los 5 s)
-    local gap = (f[2] == "1") and 5 or (self:LaunchPhase() and 30 or 120)
+    local gap = (f[2] == "1") and 5 or 30
     -- (dentro del freno no se descarta: se manda cuando acabe, UNA sola vez por hermandad, al último que [+ARCHITECTURE.md]
     if st and GetTime() - st.fullT < gap then
         local pend = rfLater[tag]
@@ -3338,6 +3426,9 @@ function HU:MarkChannelSeen(sender)
     local k = sender:lower()
     local first = not self.chanSeen[k]
     self.chanSeen[k] = GetTime()
+    -- (copia 117: me ha llegado algo por el canal, de quien sea: el canal no está muerto; ver
+    -- ChannelSendResult en Channel.lua)
+    HU.chanInT = GetTime()
     if first and self.ReplayHeld then self:ReplayHeld(k) end
 end
 
@@ -3434,7 +3525,8 @@ function HU:ReplayHeld(who)
     for key, e in pairs(held) do
         if now - e.t > 180 then
             held[key] = nil; heldN = heldN - 1
-        elseif (not who or e.sender:lower() == who) and self:Vouched(e.sender) then
+        elseif (not who or e.sender:lower() == who) and (self:Vouched(e.sender) or (e.chat and self:InAnyGuild(e.sender))) then
+            if e.chat then HU.diagChat.heldOK = HU.diagChat.heldOK + 1 end
             held[key] = nil; heldN = heldN - 1
             HU.replaying = true
             HU:SafeCall("arranque", HU.OnAddonMessage, e.prefix, e.text, "WHISPER", e.sender)
@@ -3447,11 +3539,34 @@ local function Hold(prefix, text, sender, cmd)
     -- (una lista de varios trozos se guarda entera: antes la clave era remitente + orden y cada trozo [+ARCHITECTURE.md]
     local key = sender:lower() .. cmd
     if cmd == "RB" or cmd == "RC" then key = key .. "\1" .. text end
+    -- (el chat del respaldo, CW: cada línea es un mensaje distinto)
+    if cmd == "CW" then key = key .. "|" .. text end
     if not held[key] then
-        if heldN >= 100 then return end
+        if heldN >= 100 then
+            if cmd == "CW" then HU.ChatDrop("respaldo: demasiados mensajes retenidos a la vez", sender) end
+            return
+        end
         heldN = heldN + 1
     end
-    held[key] = { sender = sender, text = text, prefix = prefix, t = GetTime() }
+    held[key] = { sender = sender, text = text, prefix = prefix, t = GetTime(), chat = (cmd == "CW") or nil }
+end
+
+-- Chat por el respaldo (CW) de alguien que aún no reconozco como de la comunidad: antes se tiraba, y
+-- con él lo perdía toda mi hermandad si yo era su contacto (visto en el juego el 15/11). Ahora se
+-- retiene (Hold, hasta 180 s) y se comprueba por dos vías; con la primera que lo confirme, se enseña:
+-- (a) que esté en el canal, donde solo entra quien tiene la contraseña (lectura a trozos, como mucho
+-- cada 20 s); (b) preguntando a su hermandad si es suyo (la guardia: MQ / MA). [+ARCHITECTURE.md]
+local verifyReadT = -999
+function HU:VerifyChatSender(sender, f)
+    local k = sender:lower()
+    if self.GetChannelMembersAsync and self:IsJoined("main") and GetTime() - verifyReadT > 20 then
+        verifyReadT = GetTime()
+        self:GetChannelMembersAsync("main", function() if HU.ReplayHeld then HU:ReplayHeld() end end)
+    end
+    local tag = table.concat(f, "~", 3):match("^%[(%w+)")
+    if tag and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and self.GuardAsk then
+        self:GuardAsk({ [k] = sender }, { tag })
+    end
 end
 
 -- Seguridad (idea n.º 8 de Olympus): admisión con tope por remitente. De cada uno de fuera de mi [+ARCHITECTURE.md]
@@ -3547,19 +3662,38 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
     local f = HU.Split(rest, "~")
     local allowed, weak = HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
     if not allowed then
-        HU:Debug("Mensaje rechazado (seguridad):", cmd, "de", sender)
+        -- (para el chat del respaldo se dice si era eco o un mensaje de verdad: Jorge, 15/11)
+        local eco = cmd == "CW" and table.concat(f, "~", 3):match("^%[%w+:E%] ") ~= nil
+        if cmd == "CW" and not eco and dist == "WHISPER" then
+            -- (no es un rechazo: se retiene y se comprueba; ver VerifyChatSender)
+            HU:Debug("Chat del respaldo de alguien que aún no reconozco: se retiene y se comprueba. De", sender)
+        else
+            HU:Debug("Mensaje rechazado (seguridad):", eco and "CW (eco de versión vieja)" or cmd, "de", sender)
+        end
         -- (arranque de alguien aún sin avalar: se guarda por si lo avalan enseguida)
         if dist == "WHISPER" and BOOTSTRAP[cmd] then
             Hold(prefix, text, sender, cmd)
             -- (si leo la lista del canal, se mira ya si está en él, en vez de esperar a mi saludo de cada
             -- 2-5 min: si está, queda «visto en el canal» y lo retenido se aplica; ver StoreChannelMembers)
             if HU.CheckChannelSoon then HU:CheckChannelSoon() end
+        elseif dist == "WHISPER" and cmd == "CW" and not HU.replaying then
+            -- (un paquete de eco de una versión vieja, «[ETIQ:E] …»: se descartaría de todos modos. Se
+            -- cuenta aparte para no confundirlo con un mensaje perdido, y no se retiene ni se comprueba)
+            if table.concat(f, "~", 3):match("^%[%w+:E%] ") then
+                HU.ChatDrop("eco de una versión vieja (no es un mensaje perdido)", sender)
+            else
+                HU.diagChat.held = HU.diagChat.held + 1
+                Hold(prefix, text, sender, cmd)
+                HU:VerifyChatSender(sender, f)
+            end
         end
         return
     end
     HU.weakMsg = weak or nil -- (se pone en cada mensaje: nunca se queda de otro)
     if dist == "CHANNEL" then HU:MarkChannelSeen(sender) end
+    HU.curCmd = cmd -- (para los avisos de depuración: qué orden se estaba tratando)
     h(HU, sender, f, dist, text)
+    HU.curCmd = nil
 end
 HU:On("CHAT_MSG_ADDON", HU.OnAddonMessage)
 
@@ -3580,6 +3714,8 @@ local plSent = {}
 local modHello = {}
 function HU:HelloCycle()
     if not self.myTag or not IsInGuild() then return end
+    -- (con el chat bloqueado no sale nada: se saluda al acabar. Combat.lua)
+    if self:IsChatLockedDown() then return end
     self:Send(self:HelloText("HI"), "GUILD")
     -- (lo demás, en el fotograma siguiente: montar el saludo ya cuesta ~3 ms)
     HU.After(0, function() HU:HelloCycleExpire() end)
@@ -3645,7 +3781,7 @@ function HU:RelayHelloRest(members, now, hi)
                 self:Whisper(p.name, hi)
             end
             -- (a los demás, solo un enlace que lo haya dicho él mismo)
-            local rp = self:LaunchPhase() and self:KnownRelay(tag) or (not self:LaunchPhase() and p)
+            local rp = self:KnownRelay(tag)
             if rp then shared[#shared + 1] = tag .. ":" .. rp.name end
         else
             missing[#missing + 1] = tag
@@ -3740,6 +3876,7 @@ end
 -- 30 minutos y, entre medias, cada 2 minutos solo los cambios (quién entra, sale o cambia)
 function HU:RosterCycle()
     if not self.myTag or not self:IsJoined("main") or not self:RosterSlot() then return end
+    if self:IsChatLockedDown() then return end
     -- si aún estoy mandando lo anterior, espero (con hermandades enormes son cientos de mensajes)
     if #bulk > 150 then return end -- (las listas de conectados van en su propia cola)
     -- (una hermandad por fotograma, como PresenceFlush: todas seguidas pasaban de 1,85 ms)
@@ -3759,7 +3896,7 @@ function HU:RosterCycleTag(tag)
     local st = rosterState[tag]
     -- (fase de lanzamiento: la lista entera son 2 mensajes; cada 5 min, por si algún cambio
     -- se perdió por el camino. Con la lista de todos, cada 30 min)
-    if not st or now - st.fullT >= (self:LaunchPhase() and 300 or 1800) then
+    if not st or now - st.fullT >= 300 then
         p.sentRoster = now
         self:SendRosterTo(p.name)
     elseif now - st.t >= 120 then
@@ -3855,7 +3992,7 @@ HU:OnStart(function()
     end)
     for _, d in ipairs({ 100, 180, 260 }) do HU.After(d, function() HU:AskMissingRosters() end) end
     -- (fase de lanzamiento: antes, por si la hermandad no se la ha pasado)
-    for _, d in ipairs({ 30, 60 }) do HU.After(d, function() if HU:LaunchPhase() then HU:AskMissingRosters() end end) end
+    for _, d in ipairs({ 30, 60 }) do HU.After(d, function() HU:AskMissingRosters() end) end
     HU.NewTicker(300, function() HU:AskGuildForMissing(); HU:AskMissingRosters() end)
     -- (cada 15 s, no 60: así la lista sale poco después de conocer al enlace de otra hermandad; los
     -- cambios siguen saliendo cada 2 minutos)

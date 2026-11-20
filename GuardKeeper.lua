@@ -91,6 +91,7 @@ local function ChanAction(self, kind, name, ban, why)
     if not fn then return false end
     local k = name:lower()
     if self.kicked[k] and GetTime() - self.kicked[k] < 60 then return false end
+    if self:ChannelApiBlocked() then return false end -- (copia 158)
     pcall(fn, c.name, self:Short(name))
     self.kicked[k] = GetTime()
     self:AddAudit({ tag = self.myTag, actor = self:Me(), text = (ban and L("vetó a ") or L("echó a ")) .. self:Short(name) .. why }, "all")

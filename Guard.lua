@@ -76,7 +76,7 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
         if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld() end) end
     end
     if kind == "main" then
-        -- quiénes son moderadores (para las espadas rojas y para saludarlos)
+        -- quiénes son moderadores (para saludarlos)
         self.chanMods, self.chanModList = mods, modList
         self.chanIAmMod = iAmMod
         self.chanMembersSeen = seen
@@ -230,10 +230,9 @@ function HU:MissingLists()
     if not self.cfg or self:IsTest() then return missing end
     -- con más de 6 hermandades las listas completas no se reparten; quien está en el canal está
     -- conectado, así que basta con la lista de conectados de su hermandad
-    local big = self:BigCommunity()
     for _, g in ipairs(self.cfg.guilds) do
         local ok
-        if big and g.tag ~= self.myTag then ok = self:OnlineListFresh(g.tag) else ok = self:ListFresh(g.tag) end
+        if g.tag ~= self.myTag then ok = self:OnlineListFresh(g.tag) else ok = self:ListFresh(g.tag) end
         if not ok then missing[#missing + 1] = g.tag end
     end
     return missing
@@ -268,7 +267,12 @@ function HU:KickPlayer(name, ban, force, auto)
         self:Print(L("Esta versión del juego no permite ") .. (ban and "vetar" or "echar") .. L(" desde un addon. Usa /") .. (ban and "ban" or "ckick") .. ".")
         return
     end
-    fn(c.name, self:Short(name))
+    -- (copia 158: con el chat bloqueado el juego lo prohíbe y saca su ventana de error)
+    if self:ChannelApiBlocked() then
+        self:Print(L("Ahora mismo el juego no deja tocar el canal (campo de batalla, arena o jefe). Prueba al salir."))
+        return
+    end
+    pcall(fn, c.name, self:Short(name))
     local k = name:lower()
     self.kicked[k] = GetTime()
     self.pendingSince[k] = nil
@@ -385,6 +389,8 @@ local function FinishTag(self, id, q, tag)
             if not wit or wit[k] then
                 self.guardKnown[k] = { tag = tag, t = now }
                 verdict[k] = { intruder = false, t = now }
+                -- (su chat del respaldo que estaba retenido ya se puede enseñar: Comm.lua, VerifyChatSender)
+                if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld(k) end) end
             elseif self.Debug then self:Debug("Guardia: el testigo de", tag, "no confirma a", k) end
             q.names[k] = nil
         end
@@ -467,198 +473,10 @@ local function KnownSet(self)
 end
 HU.GuardKnownSet = KnownSet -- (lo usa la revisión a petición: GuardKeeper.lua)
 
--- La revisión se hace por trozos (unos pocos miles de personas por fotograma), para que con
--- 20.000 en el canal el juego no se quede parado
-local SLICE = 200
-local MOD_RECHECK = 120 -- quien no es moderador vuelve a mirarlo cada 2 minutos (o si cambian los moderadores)
-local FULL_EVERY = 120   -- revisión del canal entero cada 2 minutos; entre medias, solo la ligera
-local pass               -- revisión en curso
-local lastModCheck = -999
-local lastFull = -999
-local joinedSince = {}   -- [clave] = nombre: entraron al canal desde la última revisión
-local suspectName = {}   -- [clave] = nombre de los sospechosos (pendingSince solo guarda la hora)
-
--- Revisión ligera: solo los que acaban de entrar y los sospechosos que siguen pendientes. [+ARCHITECTURE.md]
-local function LightMembers(self)
-    local list, seen = {}, {}
-    for k, name in pairs(joinedSince) do
-        list[#list + 1] = { name = name, mod = false }; seen[k] = true
-    end
-    for k in pairs(self.pendingSince) do
-        if not seen[k] and suspectName[k] then list[#list + 1] = { name = suspectName[k], mod = false } end
-    end
-    joinedSince = {}
-    return list
-end
-
+-- (desde la 5.4.8 el canal principal solo se revisa a petición y los vetados los echa un encargado:
+-- GuardKeeper.lua. Aquí estaba la revisión periódica del canal entero; se quitó en la 58)
 function HU:GuardTick(full)
-    -- (desde la 5.4.8 el canal principal solo se revisa a petición y los vetados los echa un encargado:
-    -- GuardKeeper.lua. Lo de abajo ya no se usa)
     if self.GuardRedirect then return self:GuardRedirect(full) end
-    if pass and GetTime() - pass.started < 30 then return end -- ya hay una en marcha
-    -- (recién entrado, sin la lista de mi hermandad: no se juzga a nadie, todos parecerían de fuera)
-    if not self:IsTest() and (not self.rosterList or #self.rosterList == 0) then return end
-    pass = nil
-    if not full and self.chanIAmMod == true and GetTime() - lastFull < FULL_EVERY and self:IsJoined("main") then
-        local members = LightMembers(self)
-        if #members == 0 then return self:GuardFinish({}, GetTime(), true) end
-        pass = { members = members, i = 1, suspects = {}, now = GetTime(), started = GetTime(), me = self:MeKey(), light = true }
-        HU.After(0, function() HU:GuardStep() end)
-        return
-    end
-    lastFull = GetTime()
-    joinedSince = {}
-    if not self.myTag or not self:IsJoined("main") then
-        self.intruders = {}
-        self.guardStatus = L("Sin canal")
-        return self:Changed("guard")
-    end
-    -- (ni maestro, ni oficial, ni enlace, ni moderador ya: no lee el canal; ver NeedsChannelList)
-    if self.NeedsChannelList and not self:NeedsChannelList() then
-        self.intruders = {}
-        self.guardStatus = L("No eres moderador del canal")
-        return self:Changed("guard")
-    end
-    if self.chanIAmMod == false and GetTime() - lastModCheck < MOD_RECHECK then
-        self.intruders = {}
-        self.guardStatus = L("No eres moderador del canal")
-        return self:Changed("guard")
-    end
-    lastModCheck = GetTime()
-    -- ¿soy moderador? Se mira buscándome en la lista del juego, sin construirla entera (con miles en
-    -- el canal, quien no es moderador se ahorra casi todo)
-    local quick = self:QuickAmIMod()
-    if quick == false then
-        self.chanIAmMod = false
-        self.intruders = {}
-        self.guardStatus = L("No eres moderador del canal")
-        return self:Changed("guard")
-    end
-    local now = GetTime()
-    if quick == true then
-        -- soy moderador: el canal se lee directamente por trozos (sin construir antes la lista entera)
-        local id, num, info = self:ChannelRoster("main")
-        if id and num > 0 then
-            self.chanIAmMod = true
-            pass = { id = id, info = info, num = num, i = 1, suspects = {}, now = now, started = now, me = self:MeKey(),
-                known = (not self:IsTest()) and false or nil }
-            HU.After(0, function() HU:GuardStep() end)
-            return
-        end
-    end
-    local members = self:GetChannelMembers("main")
-    if not members then
-        self.intruders = {}
-        self.guardStatus = L("La lista del canal no está disponible (abre Social > Chat una vez)")
-        return self:Changed("guard")
-    end
-    if not self:AmIMod(members) then
-        self.intruders = {}
-        self.guardStatus = L("No eres moderador del canal")
-        return self:Changed("guard")
-    end
-    pass = { members = members, i = 1, suspects = {}, now = now, started = now, me = self:MeKey(),
-        known = (not self:IsTest()) and false or nil }
-    HU.After(0, function() HU:GuardStep() end)
-end
-
-function HU:GuardStep()
-    local p = pass
-    if not p then return end
-    if p.known == false and not self:LaunchPhase() then
-        -- (la tabla de conocidos, en su propio fotograma)
-        p.known = KnownSet(self)
-        HU.After(0, function() HU:GuardStep() end)
-        return
-    end
-    local members, now, me, known = p.members, p.now, p.me, p.known
-    -- (si no hay nadie vetado, no hace falta mirarlo en cada uno)
-    if p.anyBan == nil then p.anyBan = next(self.db.bans or {}) ~= nil end
-    -- fase de lanzamiento: sin las listas de todas las hermandades no se buscan intrusos, solo vetados
-    if p.banOnly == nil then p.banOnly = self:LaunchPhase() end
-    if p.banOnly and not p.anyBan then pass = nil; return self:GuardFinish({}, now, p.light) end
-    local total = members and #members or p.num
-    local last = math.min(total, p.i + SLICE - 1)
-    for idx = p.i, last do
-        -- (sin crear una tabla por persona: con miles en el canal era mucha basura)
-        local name, mod
-        if members then
-            local m = members[idx]
-            if m then name, mod = m.name, m.mod end
-        else
-            local n, owner, isMod = p.info(p.id, idx)
-            if n then name, mod = self:FullName(n) or n, (isMod or owner) and true or false end
-        end
-        local k = name and name:lower()
-        if name and k ~= me and not mod then
-            -- vetado del chat: fuera aunque sea de las hermandades
-            if p.anyBan and self.IsBanned and self:IsBanned(name) and (not self.kicked[k] or now - self.kicked[k] > 60) then
-                self:KickPlayer(name, true, true)
-            elseif not p.banOnly and not (known and known[k]) and (known or not self:InAnyGuild(name)) then
-                p.suspects[k] = name
-                suspectName[k] = name
-                self.pendingSince[k] = self.pendingSince[k] or now
-            end
-        end
-    end
-    p.i = last + 1
-    if p.i <= total then
-        HU.After(0, function() HU:GuardStep() end)
-        return
-    end
-    pass = nil
-    self:GuardFinish(p.suspects, now, p.light)
-end
-
-function HU:GuardFinish(suspects, now, light)
-    self.intruders = {}
-    for k in pairs(self.pendingSince) do
-        if not suspects[k] then self.pendingSince[k] = nil; suspectName[k] = nil end
-    end
-    if self:LaunchPhase() then
-        self.guardStatus = L("Fase de lanzamiento: cada hermandad echa a quien se hace pasar por ella")
-        return self:Changed("guard")
-    end
-
-    local missing = self:MissingLists()
-    local grace = self.db.grace or 120
-    -- (con muchas hermandades, los cambios de las listas de conectados llegan cada 2 minutos:
-    -- un poco más de margen para quien acaba de entrar en una)
-    if self:BigCommunity() then grace = math.max(grace, 180) end
-    -- ¿tengo la lista COMPLETA (también desconectados) de todas las demás? Si no, no basta con no [+ARCHITECTURE.md]
-    local full = true
-    for _, t in ipairs(self:OtherTags()) do if not self:ListFresh(t) then full = false end end
-    local toAsk = {}
-    for k, name in pairs(suspects) do
-        local since = self.pendingSince[k]
-        if now - since >= grace then
-            local verdict = self:GuardVerdict(name)
-            local sure = (full and #missing == 0) or (verdict == true)
-            if not sure and verdict == nil then toAsk[k] = name end
-            -- (en la lista de intrusos, solo los confirmados: nadie puede echar a uno sin confirmar)
-            if sure then self.intruders[#self.intruders + 1] = { name = name, since = since } end
-            if sure and self.db.autoGuard and (not self.kicked[k] or now - self.kicked[k] > 60) then
-                self:KickPlayer(name, false, nil, true)
-            end
-        end
-    end
-    if next(toAsk) then
-        local tags = {}
-        for _, t in ipairs(self:OtherTags()) do tags[#tags + 1] = t end
-        -- (hasta 3 preguntas con nombres distintos; cada una se apunta los suyos como preguntados)
-        if #tags > 0 then for _ = 1, 3 do self:GuardAsk(toAsk, tags) end end
-    end
-    table.sort(self.intruders, function(a, b) return a.since < b.since end)
-
-    if #missing > 0 then
-        self.guardStatus = (self.db.autoGuard and L("Activa (pregunta a las hermandades sin lista: ") or L("Solo aviso (pregunta a las hermandades sin lista: "))
-            .. table.concat(missing, ", ", 1, math.min(#missing, 6)) .. (#missing > 6 and "..." or "") .. ")"
-    elseif self.db.autoGuard then
-        self.guardStatus = L("Activa: se echa a quien no esté en ninguna hermandad")
-    else
-        self.guardStatus = L("Solo aviso. Activa la expulsión automática si quieres.")
-    end
-    self:Changed("guard")
 end
 
 -- Agrupa ráfagas de eventos: una sola revisión por lote, no una por evento
@@ -812,6 +630,7 @@ function HU:CheckChannelOwner(force)
 end
 
 function HU:OwnerApply(c, best, toMod, toUnmod, now)
+    if self:ChannelApiBlocked() then return end -- (copia 158)
     if not self:CanPin() then
         local setOwner = SetChannelOwner or (C_ChatInfo and C_ChatInfo.SetChannelOwner)
         if best and setOwner then
@@ -835,7 +654,6 @@ end
 
 function HU:OnSomeoneJoined(author)
     local name = author and self:FullName(author)
-    if name then joinedSince[name:lower()] = name end
     -- (entra un maestro u oficial: si el canal lo tiene alguien que no lo es, que se lo pase ya)
     if name and GetTime() - lastOwnerCheck > 10 and self:IsOfficerName(name) then
         HU.After(3, function() HU:CheckChannelOwner(true) end)
@@ -846,17 +664,12 @@ end
 function HU:OnSomeoneLeft(author)
     local name = author and self:FullName(author)
     if not name then return end
-    local k = name:lower()
-    joinedSince[k] = nil
-    self.pendingSince[k] = nil
-    suspectName[k] = nil
+    self.pendingSince[name:lower()] = nil
 end
 
 function HU:OnChannelRolesChanged()
     -- (puede que ahora sea moderador, o que haya dejado de serlo)
     self:ForgetChannelMembers()
-    lastModCheck = -999
-    lastFull = -999
     self:ScheduleGuardTick(2)
     -- (puede que el juego me haya hecho propietario)
     HU.After(2 + math.random() * 3, function() HU:CheckChannelOwner(true) end)
@@ -915,7 +728,7 @@ function HU:StatusLines(compact)
         Lines[#Lines + 1] = L("|cffff8800Aviso: la línea GU:c está en la Información de hermandad y la puede leer cualquiera. Pásala a la nota de oficial del maestro.|r")
     end
     local id = self:ChannelId("main")
-    Lines[#Lines + 1] = L("Canal: ") .. self.cfg.channel .. (id and (" (/" .. id .. ")") or "") .. " - " .. (id and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r"))
+    Lines[#Lines + 1] = L("Canal: ") .. HU.MaskChannel(self.cfg.channel) .. (id and (" (/" .. id .. ")") or "") .. " - " .. (id and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r"))
     if self.offCfg then
         local oid = self:ChannelId("off")
         Lines[#Lines + 1] = L("Oficiales: ") .. self.offCfg.channel .. (oid and (" (/" .. oid .. ")") or "") .. " - " .. (oid and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r"))
@@ -926,6 +739,10 @@ function HU:StatusLines(compact)
     for _ in pairs(self.guildPeers) do gp = gp + 1 end
     Lines[#Lines + 1] = L("Con el addon en tu hermandad: ") .. (gp + 1) .. L(".  Enlace de tu hermandad: ") .. self:Short(self:RelayName() or "?")
     Lines[#Lines + 1] = self:QueueText()
+    if self:IsChatLockedDown() then
+        -- (lo de abajo —contactos, «sin confirmar»— puede salir en naranja por esto, no por un fallo)
+        Lines[#Lines + 1] = "|cffff8800" .. L("El juego tiene bloqueado el chat ahora (combate en una instancia o un campo de batalla): el addon no puede enviar ni leer. Se reanuda solo al acabar.") .. "|r"
+    end
     local old = self.OldVersions and self.OldVersions() or {}
     if #old > 0 then
         Lines[#Lines + 1] = "|cffff8800" .. L("Versiones viejas en tu hermandad: ") .. "|r" .. table.concat(old, ", ", 1, math.min(#old, 8)) .. (#old > 8 and "..." or "")
@@ -964,11 +781,7 @@ function HU:StatusLines(compact)
             local fresh = math.floor(GetTime() - math.max(r.updated or 0, r.confirmedT or 0))
             local freshText = fresh < 90 and (L("hace ") .. fresh .. " s") or (L("hace ") .. math.floor(fresh / 60) .. " min")
             local state = fresh <= 720 and (L("al día ") .. freshText) or ("|cffff8800" .. L("sin confirmar desde ") .. freshText .. "|r")
-            if self:LaunchPhase() then
-                listText = L("maestro ") .. gm .. L(" y oficiales ") .. off .. L(" conectados (") .. state .. ")"
-            else
-                listText = #r.members .. L(" conectados, ") .. gm .. L(" maestro y ") .. off .. L(" oficiales (") .. state .. ")"
-            end
+            listText = L("maestro ") .. gm .. L(" y oficiales ") .. off .. L(" conectados (") .. state .. ")"
         end
         Lines[#Lines + 1] = "  <" .. tag .. L("> contacto: ") .. (p and self:Short(p.name) or L("|cffff8800ninguno todavía|r")) .. "  - " .. listText
     end

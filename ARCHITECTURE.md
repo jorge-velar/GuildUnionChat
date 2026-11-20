@@ -138,7 +138,32 @@ y entonces es lo único que queda; si aún no lo dice, solo la de menos de 7 dí
 
 ### línea 359 · `HU.ICON_GM = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:15:15:0:-1|t"`
 
-maestro: corona; oficiales: dos espadas cruzadas; moderadores del canal: las espadas en rojo
+### Quién es oficial: por permisos (ReduceClean-40)
+
+`HU:RankRole(tag, rango)`: el rango 0 es el maestro. Para los demás, en este orden:
+1. Línea `GU:r:ETIQ:N` en la Información (a mano): oficiales del 1 al N. Si está, manda.
+2. Rangos con permiso de oficial (`HU:OfficerRanksOf`):
+   * **mi hermandad:** los rangos con la casilla «Oficial» marcada en Control de hermandad
+     (`C_GuildInfo.GuildControlGetRankFlags(rango + 1)[22]`; el 22 es la casilla `OfficerCheckbox`
+     de `Blizzard_GuildControlUI`). Se lee como mucho cada 30 s y al llegar `GUILD_RANKS_UPDATE`;
+     se guarda (`db.myOfficerRanks`) por si un día no se puede leer.
+   * **otras hermandades:** no se pueden ver sus permisos. Su enlace los manda detrás de los
+     nombres de los rangos: `RN~ETIQ~nombres~1,2` («0» = solo el maestro; vacío = no se saben). Valen
+     lo mismo que los rangos de su lista, que trae el mismo enlace (mismas reglas: `REMOTE_DATA`,
+     `TAG_FIELD`). Se guardan (`db.officerRanks`). Llegan con la lista entera: si una hermandad
+     cambia los permisos, las demás lo ven en la siguiente lista entera.
+3. Sin saberlo (versión vieja que no los manda, o permisos sin leer): como antes, solo el rango 1.
+Un rango sin la casilla Oficial (p. ej. «Castigado») nunca cuenta, esté donde esté.
+`HU:OfficerRanksNote()`: la línea del asistente (paso 8) con los rangos que cuentan.
+Pendiente de ver en el juego: si un raso puede leer `GuildControlGetRankFlags` (si no, usa lo
+guardado o el rango 1).
+
+maestro: corona; admin: dos espadas cruzadas en rojo; oficial: las espadas normales. Admin es el
+rango de oficial más alto bajo el maestro, y solo cuando la hermandad tiene más de un rango de
+oficial (`HU:IsAdminRank`; con `GU:r:ETIQ:N`, el rango 1 si N ≥ 2). Es solo para pintar
+(`HU:RoleOf` devuelve "admin"): los permisos siguen saliendo de `HU:RankRole`, que no los distingue.
+Hasta la copia 75 el rojo marcaba a los moderadores del canal; se quitó (Jorge, 12/11). Se pinta en
+dos sitios: la línea del chat (`FormatLineParts`) y la lista de oficiales conectados (BlizzTab.lua)
 (un poco más grandes y bajadas 1 px, para que queden centradas con el texto; las espadas se
 recortan un poco para que no se vea el borde de la imagen)
 
@@ -148,6 +173,19 @@ Pone la corona o las espadas en una textura (las filas de la lista)
 Rango de alguien a partir de las listas que tenemos
 (cada línea del chat lo pide para el icono, y con una lista de otra hermandad sin índice se
 recorrían sus 1.000 miembros uno a uno: una sola línea llegaba a 3 ms. Se recuerda 5 s)
+
+### (57) `local function Doubt(self, sig)`
+
+Un oficial de WLP vio en rojo «Falta al menos una línea GU:g» y «Tu hermandad no aparece» justo tras
+cambiar de zona, con la Información de hermandad bien escrita (11/11). El juego puede dar la Información
+vacía o a medias un momento; fuera de los primeros 45 s tras entrar eso se tomaba por bueno, y si quedaba
+alguna línea suelta de la comunidad (la del título, de las notas repartidas) salía el error.
+Ahora, si ya había una configuración buena y la lectura nueva la deja sin hermandades o sin la mía, no se
+aplica: se pide la lista de hermandad al servidor (`RequestRoster`) y se vuelve a mirar. Solo se cree si
+han pasado `DOUBT_MIN` s **y** el servidor ha entregado la lista otra vez (`rosterVersion` ha subido) y la
+lectura sigue igual; o a los `DOUBT_MAX` s, por si el servidor no contesta. Mientras, sigue valiendo la
+configuración anterior. Si el maestro quita de verdad la hermandad de la comunidad, se nota unos 25 s
+más tarde que antes.
 
 ## Channel.lua
 
@@ -197,18 +235,29 @@ que ordena canales lo vuelve a mover, no nos lo quitamos el uno al otro sin para
 
 ### línea 245 · `HU.After(0.3, function()`
 
-Si el nuestro se había colado delante de los del juego (PC lento, entrar dentro de una
-mazmorra...), estos se corrieron un número (General al /2, Comercio al /3...) y el juego no
-los devuelve solos. Los del juego que van detrás del hueco bajan uno, en orden, hasta el
-primer hueco o el primer canal que no es del juego (nuestro, de otro addon o personal: esos
-no se tocan).
-(un momento después, por si el juego tarda en dar los números nuevos)
+(hasta la 35; sustituido por `HU:FixChannelOrder`, ver más abajo)
 
 ### línea 283 · `HU:OnStart(function()`
 
-Al entrar: medio segundo después ya se entra al canal (con la configuración guardada si la de
-la hermandad aún no ha llegado). Antes se esperaban 10 s para no quitarle el /1 al General;
-ahora, si el nuestro se cuela delante, MoveChannelHigh devuelve los del juego a su sitio.
+Al entrar: se espera a que el juego meta sus canales (como mucho 15 s) y se entra al nuestro (con
+la configuración guardada si la de la hermandad aún no ha llegado).
+
+### Orden de los canales: `HU:FixChannelOrder` (ReduceClean-36)
+
+Si el nuestro está delante de un canal del juego (General, Comercio…), se cambia de sitio con el
+primero de ellos que va detrás (`C_ChatInfo.SwapChatChannelsByChannelIndex`). Un cambio cada vez
+y como mucho uno cada 0,5 s; en el caso normal (nuestro /1, General /2) basta uno.
+- **Solo funciona desde algo que hace el jugador.** Comprobado por Jorge el 10/11: desde un
+  temporizador no hace nada (ni da error); con `/run` directo sí. Por eso se llama desde
+  `GLOBAL_MOUSE_DOWN` (cualquier clic) y al abrir el chat con Intro (`ChatTabs.lua`, gancho a
+  `ChatFrameUtil.OpenChat`).
+- Los clics **solo se escuchan mientras el orden está mal** (`HU:WatchChannelOrder`, marco
+  propio `orderFrame`): se mira cuando el juego avisa de cambios en los canales
+  (`CHANNEL_UI_UPDATE`, `CHAT_MSG_CHANNEL_NOTICE`) y medio segundo después de cada cambio de
+  sitio; con el orden bien, se deja de escuchar `GLOBAL_MOUSE_DOWN`.
+- Hasta la 35, `MoveChannelHigh` lo intentaba 1 s después de entrar o de unirse al canal: en el
+  juego no hacía nada, y el nuestro se quedaba con el /1 si entraba cuando no estaba el General
+  (mazmorra, cambio de carril…). El juego recuerda ese orden al volver a entrar.
 
 ### línea 352 · `local needsT, needsV = -999, false`
 
@@ -308,10 +357,10 @@ Retail: lo que se escribe en el chat de la ventana de la hermandad del juego (Co
 pasa por SendChatMessage. Se trata igual que el /g: pasa a las demás hermandades y, si estás
 silenciado o vetado, no le llega a nadie con el addon (en el chat normal).
 
-### línea 1056 · `local KIND_SHORT = { main = "H", off = "O", lfg = "BG" }`
+### línea 1056 · `local KIND_SHORT = { main = "H", off = "O" }`
 
 Igual, pero por separado: la cabecera (canal, hermandad, nombre) y el mensaje
-compact (chat del panel): sin el reino, y el canal en corto ([H], [O], [BG]) o sin él
+compact (chat del panel): sin el reino, y el canal en corto ([H], [O]) o sin él
 (showKind = false en las pestañas de un solo chat, donde ya se sabe cuál es)
 
 ### línea 1122 · `local customByCode, customMaxLen, customFirstPat`
@@ -453,6 +502,8 @@ un rato (resta 40). Devuelve si lo está y cuánto resta.
 (el AFK automático del juego salta a los 5 min sin moverse: con 150 el enlace cambiaba cada vez
 que un oficial se quedaba quieto y volvía al moverse, y cada cambio era una lista nueva para las
 otras hermandades. Con 40, otro oficial le releva; un raso no)
+(desde la 39, `UnitIsAFK` e `IsResting` pasan por `HU.SafeBool`: en combate o mazmorra el juego
+puede darlos como valor secreto y usarlos directamente daba error cada 15 s; secreto = «no»)
 
 ### línea 567 · `if IsResting and IsResting() then`
 
@@ -1331,6 +1382,20 @@ Rango "Castigado": al silenciar o vetar a alguien de tu hermandad, se le puede b
 rango (que no tiene permiso para hablar en el chat de hermandad: así el juego tampoco le
 deja escribir). Al acabar, se le devuelve su rango. Cada cambio es un clic en un botón del
 juego (/gdemote, /gpromote): un addon no puede cambiar rangos por su cuenta.
+- Bajar: ventana `GU_PUNISH` justo después de silenciar (solo a quien silencia, si puede degradar y
+  el silenciado es de su hermandad). Devolver: ventana `GU_UNPUNISH` cuando acaba el tiempo (si sigue
+  conectado), al quitar el silencio, o 20 s después de entrar si acabó estando fuera.
+- Castigo repartido (ReduceClean-38): al pulsar Bajar, quien castiga manda `KS~nombre~rango de
+  antes~quién~t` por el canal oculto de su hermandad (solo GUILD; lo acepta quien ve que lo manda un
+  oficial). Al pulsar Devolver se manda con rango -1: los demás lo borran y se les cierra la ventana.
+  Cada 30 s (y 20 s después de entrar) cada oficial mira los castigos con el silencio ya acabado
+  (los silencios llegan a todos, MU): «¿Devolverle su rango?» le sale a quien castigó; si ese no
+  está conectado, a cualquier oficial que pueda ascender. Si se pulsa «Ahora no», vuelve a salir a
+  los 10 min. Al quitar el silencio o al acabarse estando conectado, a quien castigó le sale ya.
+- Sin rango de castigo (ReduceClean-37): ventana `GU_NOPUNISH` («crea un rango Castigado sin
+  permiso para hablar»), con las mismas condiciones que `GU_PUNISH`. Nombres que valen:
+  castigado, castigada, castigados, punished. El addon no puede comprobar los permisos del rango
+  (`GuildControlGetRankFlags` no existe en Forever).
 
 ## Audit.lua
 
@@ -1378,9 +1443,49 @@ PQ                           alguien que acaba de entrar pide el mensaje fijado
 
 Crea en el chat del juego las pestañas:
 "Hermandad"     chat de hermandad + lo que llega de las otras hermandades
-"Buscar grupo"  los mensajes de Buscar grupo de todas las hermandades
 "Oficiales"     chat de oficiales unido (solo si puedes verlo)
 Se crean una vez; si las cierras, se pueden volver a crear desde el panel o con /gu pestañas.
+
+**ReduceClean-88 (13/11): versión para salir, hecha desde la prueba 2.** Tres cosas:
+- Dentro de un campo de batalla o una arena, los filtros de `CHAT_MSG_GUILD` y `CHAT_MSG_OFFICER` se
+  dan de baja (`HU:SyncPvpFilters`, Core.lua; la llama `SyncSelfPaint` de Channel.lua en
+  `UPDATE_BATTLEFIELD_STATUS`, `PLAYER_ENTERING_WORLD` y `ZONE_CHANGED_NEW_AREA`). Ahí las líneas de
+  mi hermandad las pinta el juego, sin etiqueta. Al salir se vuelven a poner y, como `HU.selfPaint`
+  ya está encendido, las pinta el addon. Motivo: con los filtros puestos dentro de la partida la
+  5.4.31 (copia 85) daba 16× «string conversion on a secret string value (tainted by GuildUnion)» y
+  el chat no se veía. Era el «modo 3» de la prueba (copia 86); el rastro y los modos `/gu bg` se
+  han quitado. Sin confirmación escrita de Jorge de que el modo 3 se viera bien en la partida.
+- Enlaces de profesión (`|Htrade:`) que no se abren al pulsarlos: NO es por cómo pinta el addon. La
+  copia 88 dejaba esas líneas sin tocar (las pintaba el juego, sin etiqueta) y tampoco se abrían; a
+  quien pone el enlace sí se le abre el suyo. Lo que encaja es que Forever no deja abrir la profesión
+  de otro jugador desde el chat. La 89 quita aquel cambio: esas líneas vuelven a llevar etiqueta.
+  Falta, para cerrarlo del todo, la prueba con Guild Union desactivado.
+- Lo de la 87, que sigue igual:
+
+**ReduceClean-87 (prueba 2 de campos de batalla, 13/11): el addon ya no crea pestañas ni toca la caja
+de escribir.** Fuera `HU:CreateChatTabs` (con `FCF_OpenNewWindow` y el vaciado de grupos), la creación
+sola al configurarse, `/gu pestañas`, el botón «Pestaña del chat GuildUnion» de Oficiales y el cambio
+de tipo de chat al pulsar una pestaña o abrir el chat (`ApplyTab`: `SetChatType`, `SetStickyType`,
+`UpdateHeader`). Motivo: Olympus avisa de que crear o configurar ventanas de chat desde un addon deja
+marcados sus datos, y dentro de una partida la 5.4.31 daba «string conversion on a secret string value
+(tainted by GuildUnion)». Sin confirmar que fuera la causa. Queda: reconocer por su nombre las pestañas
+«Hermandad» y «Oficiales» que el jugador tenga (las recupera el juego al entrar) para pintar ahí lo de
+las otras hermandades, el menú «Guild Union» del clic derecho en una pestaña, y el orden de canales
+al abrir el chat. Lo de abajo sobre crear pestañas y «cada pestaña escribe en lo suyo» ya no vale.
+
+«Buscar grupo» se quitó entero en la ReduceClean-85 (Jorge, 13/11: no se usaba): fuera la pestaña,
+`/glf` y `/buscargrupo`, `HU:SendLFG`, el modo de la caja de escribir (`eb.guLFG`) y el interruptor de
+oficiales (`LG`, `db.lfgState`). Lo que mande una versión vieja con la marca `[ETIQ:B]` se descarta
+en `HU:OnUnionChat`, y un `LG` que llegue no tiene quien lo atienda (Comm lo ignora). El addon no
+cierra la pestaña «Buscar grupo» que ya tenga alguien creada: la cierra él a mano. El historial
+guardado conserva sus líneas viejas de ese tipo (`lfg` en History.lua y Social.lua).
+
+### Cada pestaña escribe en lo suyo (ReduceClean-35)
+
+- Se aplica al abrir el chat (gancho a `ChatFrameUtil.OpenChat`, solo sin texto) y al hacer clic
+  izquierdo en la pestaña (gancho a `FCF_Tab_OnClick`). Cambia el tipo y el «pegajoso» del cuadro de
+  esa ventana: Hermandad → GUILD, Oficiales → OFFICER. No toca nada si el tipo actual no es el
+  pegajoso (contestando un susurro, etc.).
 
 ## Test.lua
 
@@ -1649,6 +1754,23 @@ chat: van a la ventana de órdenes (Orders.lua). Antes el addon los escribía en
 al abrirla tú, y eso en Forever contamina esos comandos y el juego los bloquea hasta /reload.
 
 ## History.lua
+
+### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)
+
+`HU.QuerySpans(mensaje, búsqueda)` da los trozos (bytes) donde está lo buscado, sin mirar mayúsculas
+ni acentos (`HU.Fold` letra a letra) y saltando los códigos del juego del mensaje (`|c`, `|cn…:`,
+`|H…|h`, `|T…|t`, `|A…|a`). `Line` devuelve `{ texto, bytes antes del mensaje, mensaje }` y `Show`
+pone detrás de cada trozo un fondo azul de «texto seleccionado» (`MarkRow`, con
+`CalculateScreenAreaFromCharacterSpan`, lo mismo que usa el chat de Blizzard al seleccionar con el
+ratón; índices en bytes del texto entero, el final sin incluir). Todo con `pcall`: si fallase, la
+línea sale sin marcar. (La 46 lo pintaba de naranja; Jorge lo quería como seleccionado.)
+Al llegar más resultados de la misma búsqueda la lista ya no vuelve arriba (`W.keepScroll`); sí con
+una búsqueda nueva.
+**48:** viendo el contexto («[ver]»), lo que sigue llegando se guarda pero no se pinta (`W.inContext`):
+antes te devolvía a la lista. Al volver, la lista queda donde la dejaste (`W.listScroll`).
+El historial guarda y compara con la hora del servidor (`HU.StampNow`), no con la del PC de cada
+oficial: con relojes distintos, los mensajes de varios oficiales salían desordenados. Lo guardado
+antes sigue con la hora del PC de quien lo guardó.
 
 ### línea 6 · `local MAX_BYTES = 8 * 1024 * 1024`
 
@@ -2006,10 +2128,462 @@ siguiente suyo. Al acabar (DisplayChat), los que queden. No se rehace nada suyo:
 
 Buscador de personajes en la pestaña de miembros de Blizzard, junto a su filtro (como el de
 GuildManagement): busca en mi hermandad y en los oficiales conectados de las otras. La lista de
-Blizzard no se filtra (tocar sus datos bloquea sus botones): como mucho se lleva hasta él
+Blizzard no se filtra (tocar sus datos bloquea sus botones).
 
-### línea 462 · `local found = box.FindElementDataByPredicate and select(2, pcall(box.FindElementDataByPred`
+### El buscador no mueve la lista de Blizzard (ReduceClean-39)
+
+Hasta la 38 el buscador desplazaba la lista de miembros de Blizzard hasta la persona
+(`ScrollToElementDataByPredicate`). Al desplazarla, Blizzard prepara las filas nuevas dentro de esa
+llamada; si la llamada viene del addon, esas filas (y el `memberInfo` de cada una) quedan
+contaminadas, y lo que el jugador haga luego con ese miembro en su ventana lo bloquea el juego:
+cambiar el rango (`SetGuildRankOrder`), guardar la nota (`SetNote`), «Copiar nombre»
+(`CopyToClipboard`). Informes de Jorge del 10/11 con la 37.
+Ahora `ScrollTo` solo **mira**: busca la fila entre las que se ven (`FindFrameByPredicate`) y le pone
+encima un resaltado nuestro (pegado a la fila, no dentro de ella). Durante 20 s lo vuelve a buscar
+cada 0,25 s, así que si bajas con la rueda la marca te sigue. Si está en la lista pero no se ve,
+lo dice una vez en el chat.
+**49:** en la lista estrecha de la vista del chat el aviso es solo la flecha; en la ancha de Miembros,
+flecha y texto, y mientras dura la marca cada fila que se ve lleva su **número de posición** a la
+derecha (Blizzard no los pone y el «183 de 690» no servía de nada). Se leen las filas
+(`GetFrames`, `FindFrameElementDataIndex`) y los números son nuestros, pegados a cada fila.
+**43:** el aviso ya no parpadea: recuadro fijo con el borde de las fichas del juego, flecha dorada y
+el nombre en dorado. Al borrar lo escrito en el buscador (X, Escape o borrar) se quitan el aviso y
+la marca (`ClearMark`).
+**45:** elegir a alguien de otra hermandad (Intro o clic) ya no abre un susurro: se dice de qué
+hermandad es (`Pick`). Susurrar sigue en el clic derecho. La marca y el aviso ya no duran 20 s:
+siguen mientras no cambies lo escrito en el buscador (se miran cada 0,25 s, solo con la ventana
+abierta); al escribir otra cosa, borrarlo o esconderse el buscador, `ClearMark`.
+**44:** el buscador sale en la vista de miembros y en la del chat; no en Información ni con nuestra
+pestaña abierta (se miraba `IsShown` de la casilla, que sigue «puesta» aunque su lista esté
+escondida; ahora `IsVisible`, y se recoloca al cambiar de vista y al abrir o cerrar nuestra pestaña,
+`HU.SyncCharSearch`).
+**42:** si está en la lista pero no se ve, una flecha parpadeando en el borde de la lista (abajo o
+arriba, hacia donde está) con «Nombre: más abajo · 37 de 120». Solo lecturas de la lista
+(`FindElementDataIndexByPredicate`, `GetDataIndexBegin/End`, `GetDataProviderSize`). Al aparecer
+su fila, la flecha se quita y la fila se resalta. Probado con la 41 (10/11): mover la lista desde el
+addon bloquea rango y «Copiar nombre» aunque luego la muevas tú; por eso no se mueve nunca.
+
+### línea 676 · `local found = box.FindElementDataByPredicate and select(2, pcall(box.FindElementDataByPred`
 
 (desconectado y la lista no enseña desconectados: no se marca la casilla desde el addon —eso
 contaminaría la lista y bloquearía sus botones—; se hace brillar para que la marques tú, y
-al marcarla te lleva a él solo)
+al marcarla se marca a la persona)
+
+### Clic derecho en la lista de Blizzard (ReduceClean-39)
+
+`Menu.ModifyMenu("MENU_UNIT_COMMUNITIES_GUILD_MEMBER", …)`: la vía de Blizzard para que los addons
+añadan opciones a sus menús. Blizzard llama a lo nuestro aparte (`securecallfunction`), después de
+montar lo suyo, así que sus opciones no se contaminan. Solo para oficiales (`HU:CanPin`) y no sobre
+uno mismo: «Silenciar 10 min», «Quitar silencio», «Buscar lo que ha dicho» (lo mismo que el menú
+de nuestra lista, `PlayerMenu`).
+
+
+## Mention.lua
+
+### línea 1 · `local _, HU = ...`
+
+Rellenar el nombre de una mención con Tab. Pieza suelta: si falla o se quita del `.toc`, lo demás sigue igual.
+  * Solo mira la caja de escribir del juego cuando se habla por hermandad u oficiales y el texto no
+    empieza por «/» (el juego revisa los textos con «/» cada vez que cambian; ahí no se escribe nada).
+  * Al cambiar el texto busca el último «@» antes del cursor y lo que va detrás (2 letras o más, como
+    mucho un espacio). Con eso arma la lista: mi hermandad (`HU.roster`), lo que se sabe de las otras
+    (`HU.remoteRoster`) y quien ha hablado en la última hora (`HU.EachRecentSpeaker`, Channel.lua).
+    Sin mayúsculas ni acentos; primero los conectados.
+  * Encima de la caja sale una franja con los tres primeros. No es una lista que se pulse: solo avisa.
+  * Tab pone el nombre completo («@Nombre Apellido »). Otro Tab sin tocar nada cambia al siguiente.
+  * El Tab entra por `ChatEdit_CustomTabPressed`, el enganche que deja el juego para los addons (lo
+    llama con securecall). Si otro addon lo tenía puesto, se le llama cuando aquí no hay nada que rellenar.
+
+## ChatTabs.lua · Chattynator
+
+Chattynator (addon de chat de otro autor, con versión para Forever) esconde las ventanas y pestañas de
+chat del juego y pone las suyas. Leído en su versión 234:
+  * Los mensajes normales los pinta copiando el mecanismo del juego: pasa los filtros y usa
+    `CHAT_FLAG_<marca>`, así que la etiqueta propia, las marcas de mención y los emoticonos funcionan.
+  * De lo que escriben los addons solo recoge `DEFAULT_CHAT_FRAME:AddMessage`. Lo escrito en otra
+    ventana del juego (la pestaña «Buscar grupo») no se ve.
+  * Usa la caja de escribir del juego (`ChatFrame1EditBox`): el Tab de menciones y `/glf` funcionan.
+Por eso, con Chattynator cargado (`HU.UsingChattynator`), `HU:FramesFor` devuelve solo la ventana
+principal para todos los tipos, y no se crean las pestañas propias. No se usa su
+`AddMessageToWindowAndTab`: marca el mensaje para una sola pestaña y, si el jugador no tiene activados
+ahí los mensajes de addon, no lo vería en ningún sitio.
+
+## Channel.lua · la etiqueta como enlace
+
+`HU:TagText(tag, hex, addon)` pinta `<ETIQ>` como enlace de addon (`|Haddon:GuildUnion:tag:ETIQ:x|h`).
+El juego avisa de cualquier enlace del chat con `ChatFrame.OnHyperlinkEnter` y `OnHyperlinkLeave`
+(EventRegistry); ahí se enseña un recuadro con el nombre de la hermandad, miembros y conectados
+(de `HU.rosterTotal/rosterOnline` en la mía; de `remoteRoster[tag].total/.online/.updated` en las
+otras, con «hace X min») y, en las líneas propias, si el autor tiene el addon. El clic no hace nada.
+## Channel.lua · no entrar al canal donde el juego lo bloquea
+
+En un campo de batalla o una arena el juego bloquea `JoinTemporaryChannel` (ADDON_ACTION_BLOCKED), y
+al entrar al juego `EnsureJoined` lo intentaba una vez por segundo durante 20 s: tantos bloqueos
+seguidos sacan el aviso del juego «tus addons están dando muchos problemas» (visto el 12/11).
+
+- `HU:CanJoinNow()` dice si se puede intentar: no con el chat bloqueado (`IsChatLockedDown`), no en
+  zona `pvp`/`arena` (`IsInInstance`) y no con una partida en estado `active` (`GetBattlefieldStatus`:
+  desde que se acepta, antes de la pantalla de carga). `EnsureJoined` no intenta nada mientras tanto.
+- Las mazmorras y bandas no se cortan por zona: ahí solo manda `IsChatLockedDown`, para no dejar sin
+  chat a quien entra al juego dentro de una.
+- Red de seguridad: el intento se marca con `HU.expectBlock = "join"`; si aun así sale bloqueado,
+  ese canal espera 60 s (`c.blockedT`) en vez de reintentar cada segundo.
+- Al cambiar de zona (`PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`) se vuelve a mirar a los 2 s,
+  para entrar al canal nada más salir de la partida.
+
+## Channel.lua · memoria de clases
+
+El color del nombre en el chat unido sale de la clase, y la clase se buscaba en cada mensaje: por el
+identificador del mensaje (`GetPlayerInfoByGUID`), en la lista de mi hermandad o en la lista corta de
+las otras (`HU:ClassOfName`). Si ninguna la daba, naranja; el mismo jugador cambiaba de color según
+por dónde llegara su mensaje.
+
+- `RememberClass` / `RecallClass` (locales, junto a `ClassColored`): cuando se sabe la clase se apunta
+  en `db.classMemo` (`[nombre en minúsculas] = número de clase`, de la cuenta) y, cuando no se sabe, se
+  usa la apuntada. Lo que llega con identificador manda y corrige lo apuntado.
+- Tope: dos tandas de `MEMO_GEN` nombres (`classMemo` y `classMemoOld`). Al llenarse la actual pasa a
+  vieja y se tira la vieja anterior; lo que se vuelve a usar de la vieja se rescata a la actual.
+- Los repasos del historial no traen identificador: usan la memoria, nunca la escriben mal.
+- Fallo arreglado de paso: en el eco (`[ETIQ:E]`, lo de alguien sin addon que reenvía su enlace)
+  `OnUnionChat` cambiaba el autor pero dejaba el identificador de quien reenvía, y el nombre salía con
+  la clase del que reenviaba. Ahora el eco va sin identificador.
+- Límite: de quien nunca se ha sabido la clase (miembro sin addon de otra hermandad que no está en la
+  lista corta) sigue saliendo naranja. Arreglarlo es mandar la clase dentro del eco: comunicación.
+
+## Core.lua · filtros del chat y valores secretos (campos de batalla)
+
+Error visto el 12/11 (BugSack, con rastro): `attempt to perform string conversion on a secret string
+value (execution tainted by 'GuildUnion')` en `ChatHistory_GetToken`, llamado desde
+`MessageEventHandler` (ChatFrameOverrides.lua:683) con `chatType="GUILD"` y `chanSender=<secret>`.
+
+Qué pasa: el juego solo llama a los filtros de addons si el **texto** se puede leer
+(`canaccessvalue(...)` mira el primer dato). Hay momentos en que el texto de `/g` se lee pero el
+identificador de quien escribe (`arg12`) es secreto. `MentionFilter` devolvía todos los datos del
+mensaje, también ese; al volver de un addon quedan manchados y el juego falla al usarlos
+(`strlower` de un secreto) y la línea no se pinta. El rastro del 12/11 fue **en una mazmorra**
+(Jorge); no se sabe cuándo exactamente sella el juego el identificador (¿en combate?): a Jorge en
+mazmorra no le salió y a otro sí.
+
+Dos defensas (la segunda, cambiada en la copia 84):
+- **Copia 114 (15/11): el respaldo deja de depender de un solo contacto. Versión 5.4.34.** Visto en
+  el juego: a un mismo autor lo leía una hermandad y otra no, porque el chat del respaldo (CW) iba a
+  UN contacto por hermandad y, si ese tenía una versión vieja que lo tiraba, su hermandad entera lo
+  perdía. Ideas tomadas del estudio de Olympus (sin copiar código): varios caminos y contar una vez.
+  (1) `HU:BestPeers(tag, 2)`: el CW va a dos contactos, primero los que tienen 5.4.33 o posterior
+  (`p.ver`, del saludo). (2) `Duplicate` recuerda quién trajo la línea: la misma por el respaldo
+  desde OTRO compañero en 15 s es la misma; quien ya la tiene no la reparte otra vez (CG).
+  (3) Eco: un solo eco tarde ya no da el canal por roto 5 min; hacen falta dos seguidos (`echoMiss`).
+  (4) `/gu visto Nombre`: líneas de ese autor entregadas por el canal antes de cualquier filtro
+  (`HU.chanRaw`) y enseñadas (`HU.chanShown`). (5) `/gu version Nombre`. (6) Aviso en el chat, cada
+  10 min, cuando no estoy en el canal, con el motivo. (7) Nombre del canal tapado en los avisos de
+  depuración y en `/gu estado`. (8) `Defer` guarda la orden: el aviso de un reintento la dice bien.
+- **Copia 115 (15/11): `/gu sonda N`, solo para medir.** En los diagnósticos del juego llegan cientos
+  de sondas `LP`, que son mensajes ocultos por el canal: en Forever hoy sí se entregan (el 04/11
+  Olympus midió 0 de 123). Antes de usarlos como camino de emergencia del chat, sin intermediarios,
+  se mide: N mensajes numerados de 90 letras por `HU20C` (`SD~tanda~i~n~ETIQ~relleno`), uno cada
+  1,2 s; cada receptor dice «te han llegado X de N» y qué números faltan (también en `/gu diag`).
+  Solo oficiales; de cada remitente, una sonda por minuto. No cambia cómo viaja el chat.
+- **Copia 113 (15/11): el nombre del canal, tapado en los avisos de depuración.** Con `/gu debug`,
+  «Arranque rápido…» y «Config OK» escribían el nombre del canal entero y salía en las capturas.
+  Ahora `HU.MaskChannel` (Core.lua): dos letras y puntos, como `/gu diag`.
+- **Copia 112 (15/11): que quitar el eco no esconda ni haga pasar por perdido nada.** `IsEchoLine`
+  más estricta: solo líneas de un compañero que TIENE el addon (`guildPeers`), nunca las mías ni las
+  de quien no lo tiene; el aviso de eco, solo la frase exacta. Cada línea escondida se cuenta
+  (`ChatDrop`). Y el eco de versiones viejas que llega por el respaldo (`CW` con `[ETIQ:E]`) se
+  cuenta aparte, «eco de una versión vieja (no es un mensaje perdido)», sin retenerlo ni comprobarlo:
+  el aviso «Mensaje rechazado (seguridad): CW» dice ahora si era eco o chat de verdad.
+- **Copia 111 (15/11): el eco, fuera del todo otra vez.** Jorge: «el eco NUNCA lo quiero activado,
+  porque rompe el formato». Fuera `Echo.lua`, sus enganches, `/gu eco` y el botón del maestro (lo que
+  volvió en la 107 por un diagnóstico mío equivocado). `[ETIQ:E]` se descarta. Lo nuevo: `HU:IsEchoLine`
+  (Channel.lua) reconoce por su forma las líneas de eco que un enlace con una versión hasta la 5.4.31
+  sigue escribiendo en /g («[ETIQ] Nombre: texto» con la etiqueta de otra hermandad, y el aviso de
+  eco activado) y `GuildLineHidden` las esconde al escribir la línea (ChatPaint.lua), sin filtro. Con
+  el chat bloqueado o `/gu pintar off` se ven. Consecuencia sabida y aceptada: quien no tiene el addon
+  no lee a las otras hermandades ni ellas a él.
+- **Copias 109 y 110 (15/11): mensajes de chat que se perdían entre gente con addon. Versión 5.4.33.**
+  Dos causas vistas en el juego con `/gu debug` y `/gu carril`:
+  1. **Carriles partidos.** `OfferLane` rechazaba una generación más de 1 por encima de la propia.
+     Quien se quedaba dos atrás (o instalaba de cero) no podía seguir a la comunidad cuando esta subía
+     de carril: canal distinto, y no se leían (carril 0 gen 2 frente a carril 1 gen 8). Ahora lo que
+     dice el enlace o un oficial (`LaneStrong`) se sigue sin tope; fuera `LANE_GEN_STEP`.
+  2. **Chat del respaldo tirado.** Quien no puede escribir por el canal manda su chat por susurro
+     (CW) a un contacto de cada otra hermandad, que lo reparte (CG). `AllowAddonMessage` tiraba el CW
+     si el remitente no estaba en una lista ni «visto en el canal»; con la lista corta de ahora, casi
+     nadie de fuera lo está. Y como el contacto lo tiraba, su hermandad entera lo perdía. Ahora se
+     retiene (`Hold`, 180 s) y `HU:VerifyChatSender` lo comprueba por dos vías: lectura del canal (solo
+     entra quien tiene la contraseña; como mucho cada 20 s) y pregunta a su hermandad (guardia, MQ/MA;
+     `FinishTag` llama a `ReplayHeld`). `ReplayHeld` acepta `Vouched` o, para el chat, `InAnyGuild`.
+  Además: `HU.diagChat` (contadores en `/gu diag`: enviado por canal/respaldo, recibido por cada vía,
+  retenidos y confirmados, carril) y, en la 110, `HU.ChatDrop(motivo, quién)`: cada sitio donde un
+  mensaje de chat se descartaba en silencio lo apunta con su motivo. El aviso «Acción de oficial
+  rechazada» dice la orden (`HU.curCmd`). Corregido el separador de las líneas de eco agrupadas, que
+  en las copias 107 y 108 quedó como carácter 24 en vez de `` (error al escribir el parche).
+- **Copia 108 (15/11): historial de oficiales con marca de addon y filtro por hermandad.** Solo
+  ventana (`History.lua`). Cada línea lleva, tras la etiqueta, el punto de la hermandad en color si
+  el autor tiene el addon, en gris si no, o «?» si no se sabe (`HU:AuthorHasAddon`: lo que se sabe
+  AHORA, no cuando escribió; el historial no lo guarda). Botón «Hermandad: Todas / <ETIQ>» arriba a
+  la derecha: cada clic pasa a la siguiente y repite la búsqueda; lo de mi PC se filtra al buscar
+  (`opts.tag`), lo que llega de otros oficiales al pintar (`W.tagFilter`). «Ajustes» ya sale
+  traducido en inglés.
+- **Copia 107 (14/11): el eco vuelve, sin filtros de chat.** Al quitar `Echo.lua` (copia 98) se fue
+  también lo que el enlace hacía por los compañeros SIN addon: pasar su /g a las otras hermandades
+  (`EchoOutgoing`, líneas `[ETIQ:E] Autor: texto` por el respaldo CW/CG) y aceptarlas al recibir
+  (`EchoUnwrap`). Resultado en el juego: quien no tenía el addon dejó de oírse fuera de su hermandad.
+  Vuelve `Echo.lua` tal cual estaba en la 5.4.31 (copia 89/90) y sus enganches en `Channel.lua`
+  (`OnUnionChat`, `EchoIncoming`, `EchoSeen`, `EchoOutgoing`, `EchoStarName`), `/gu eco` y el botón del
+  maestro (ahora en la fila de «Ajustes»). Lo que cambia respecto a la 5.4.31: las líneas de eco que
+  el enlace escribe en /g ya no las esconde un filtro de chat (era lo que rompía el chat bloqueado):
+  las esconde `ChatPaint.lua` al escribir la línea, porque `HU:GuildLineHidden` vuelve a mirar
+  `IsEchoLine`. Con el texto secreto (chat bloqueado) o con `/gu pintar off` no se esconden: quien
+  tiene el addon las ve repetidas en /g, pero no se pierde nada.
+- **Copia 106 (14/11): botón «Registro de invitaciones» en la ventana de hermandad del juego.** Lo
+  crea `Setup` (BlizzTab.lua) como hijo de `CommunitiesFrame.InviteButton` («Invitar miembro»),
+  pegado a su izquierda: se ve y se esconde con él, y `SyncTab` lo esconde si la comunidad elegida
+  no es la hermandad. Abre `HU:ShowInviteLog`. Sustituye al botón «Invitaciones» que la copia 103
+  puso dentro de la ventana de la lista negra; `/gu invitaciones` sigue.
+- **Copia 105 (14/11):** «Oficiales conectados» ordenada por papel (maestro, administrador, oficial)
+  y nombre (`OfficerEntries`, BlizzTab.lua).
+- **Copia 104 (14/11): aviso al invitar a alguien de la lista negra.** Blacklist.lua engancha con
+  `hooksecurefunc` `C_GuildInfo.Invite` (lo que usan `/ginvite`, el menú de clic derecho y el
+  cuadro de invitar del juego) y `GuildInvite` si existe. Va después de la función del juego, así
+  que no la toca ni puede parar la invitación: si el nombre está en `db.bans`, a quien invita le
+  sale un texto rojo en el centro de la pantalla (`UIErrorsFrame`), un sonido y una línea en su
+  chat con quién lo vetó y el motivo. Vale para cualquiera con el addon, no solo oficiales.
+- **Copia 103 (14/11): registro de invitaciones (InviteLog.lua) y armazón común de ventanas de lista
+  (ListWindow.lua).** El juego apunta en su registro de hermandad quién invitó a quién
+  (`GetNumGuildEvents` / `GetGuildEventInfo`, tipo `"invite"`), pero solo conserva las últimas
+  entradas. InviteLog.lua se lo pide (`QueryGuildEventLog`, al entrar, cada 10 min y al abrir la
+  ventana), y al llegar `GUILD_EVENT_LOG_UPDATE` guarda las invitaciones nuevas en
+  `db.inviteLog[nombre de hermandad]` = `{ t, by, who }` (tope 2.000). El juego no da fecha sino
+  «hace cuánto» (años, meses, días, horas): se pasa a hora aproximada y una entrada ya guardada se
+  reconoce por mismo invitador + mismo invitado + hora parecida (margen de 2 h o el 10 % de la
+  antigüedad). No se reparte entre jugadores: cada uno guarda lo que ve su addon. `HU:InvitedBy(nombre)`
+  lo usa el aviso de la lista negra («Lo invitó X»). Ventana `HU:ShowInviteLog` (`/gu invitaciones`
+  y botón «Invitaciones» en la ventana de la lista negra): fecha, quién invitó, a quién (blanco
+  sigue en la hermandad, gris ya no está, rojo en la lista negra) y buscador.
+  ListWindow.lua: `HU.NewListWindow` (ventana movible con título, texto, cabecera de columnas, lista
+  con barra y `win:Fill`), `HU.NewEditBox`, `HU.NewButton`; la usan las dos ventanas, para no repetir.
+- **Copia 102 (14/11): el aviso de la lista negra va al chat de oficiales (/o).** `BlacklistCheck`
+  escribe con `HU.RawSend(…, "OFFICER")` una línea que empieza por `[Guild Union] ` (texto llano, la
+  ven también los oficiales sin addon; no cruza a otras hermandades porque el puente solo reenvía lo
+  que el jugador teclea). Para que no la repitan todos los oficiales con addon: cada uno espera
+  2–12 s al azar y, si mientras ve en /o una línea con esa marca y el nombre, lo da por dicho
+  (`db.blackSaid[k]` = hora); de cada persona se dice como mucho una vez cada 24 h. Si ya se dijo
+  hoy o no se puede escribir en /o (sin permiso, chat bloqueado), se le dice solo a él con
+  `HU:Print`. El botón «Comprobar ahora» nunca escribe en /o. Quitar a alguien de la lista borra su
+  marca de «dicho».
+- **Copia 101 (14/11): cada hermandad coteja solo a sus miembros** (decisión de Jorge; la copia 100
+  miraba también las otras y se deshizo). La lista es común; `HU:BlacklistCheck` cruza `db.bans` solo
+  con `HU.roster`. Botón «Comprobar ahora»: `HU:BlacklistCheck(true)` repasa también a los ya
+  avisados y contesta aunque no haya nadie.
+- **Copia 99 (14/11): lista negra de la comunidad (Blacklist.lua).** No añade datos ni mensajes
+  nuevos: es la lista de vetados que ya existía (`db.bans`, `HU:SetBan`, mensaje `BN`, Social.lua),
+  que se reparte entre hermandades, se entrega a quien entra y se repasa cada 5 min, pero que no
+  tenía ningún botón desde la limpieza. Blacklist.lua pone: (1) la ventana `HU:ShowBlacklist`
+  (botón «Lista negra» en la zona de oficiales de la pestaña, y `/gu listanegra`): lista de vetados
+  con quién lo vetó y el motivo, en rojo el que está ahora en mi hermandad; añadir (con motivo) y
+  quitar, para quien cumple `HU:CanPin` (maestro, administradores y oficiales); (2) el cotejo
+  `HU:BlacklistCheck`: cada 60 s cruza `db.bans` con `HU.roster` (mi hermandad) y avisa una vez por
+  persona y sesión a quien puede actuar. Vetar sigue haciendo lo de siempre: fuera del canal de la
+  comunidad y sus líneas ocultas. Va por nombre de personaje: un personaje secundario no se detecta.
+- **Copia 98 (14/11) = 5.4.32, limpieza antes de subir.** Lo que dicen las notas de más abajo sobre
+  `selfPaint`, `SyncPvpFilters`, `MentionFilter`, `PaintOwnLine`, `OwnTagFlag`, `HideFilter` y el eco
+  es historia: ese código ya no existe. Quitado de Channel.lua (de 1.924 a ~1.720 líneas) y Core.lua;
+  `Echo.lua` fuera del paquete y todas sus llamadas quitadas (una línea `[ETIQ:E]` de una versión
+  vieja se descarta en `OnUnionChat`; `GU:e:` de la Información se sigue leyendo en Config.lua para
+  no tomarlo por una línea desconocida, pero nadie lo usa). Queda un solo filtro de chat, el de
+  `CHAT_MSG_SYSTEM` (Comm.lua, vía `HU.AddChatFilter`).
+  Archivo nuevo **ChatPaint.lua**: el adorno de las líneas de mi hermandad (`DecorateOwnLine` y la
+  sustitución de `AddMessage`), separado de Channel.lua. Lo que estaba repetido entre las líneas de
+  las otras hermandades y las de la mía va ahora en dos funciones de Channel.lua que usan los dos
+  caminos: `HU:NamePrefix` (marca de mención + punto o etiqueta + icono de rango; con `has == false`
+  sale en gris, compañero sin addon) y `HU:GuildColored` (el `[Hermandad]` en color). El manejador
+  de `CHAT_MSG_GUILD` que guarda el historial usa `HU:GuildLineHidden` en vez de repetir sus
+  condiciones. Pendiente para la división grande: Comm.lua (3.876 líneas), Channel.lua, History.lua.
+- **Copias 96–97 (14/11): Ajustes con casillas.** Tres filas bajo «Ajustes» (BlizzTab.lua): Marca
+  (dos redondeles, etiqueta o punto), Hermandad (casilla «En color») y Emoticonos (casilla
+  «Mostrar»), con una raya de división encima.
+- **Copia 95 (14/11): «Formato de texto» en Ajustes.** Dos ajustes por jugador, con un botón cada
+  uno bajo «Ajustes» en la pestaña del addon (BlizzTab.lua): `db.chatMark` (`"dot"` de serie, o
+  `"tag"`) decide si delante del nombre va el punto del color de la hermandad o la etiqueta
+  `<ETIQ>`; `db.chatGuildColor` (apagado de serie) pinta el `[Hermandad]` en el color de la
+  hermandad que habla. Valen igual para las líneas de las otras hermandades (`FormatLineParts`) y
+  para las de la mía (`DecorateOwnLine`, que envuelve en color el enlace `|Hchannel:` que pone el
+  juego). Sustituyen a `chatStyle` y `chatTag` de las copias 92–93; `/gu estilo` desaparece y
+  `/gu etiqueta on/off` cambia `chatMark`.
+- **Copia 94 (14/11, prueba): las líneas de mi hermandad se adornan «en el paso 3».** El fallo del
+  bloqueo del chat venía de intervenir en los filtros (antes de que el juego monte la línea). Ahora
+  el juego recibe, filtra y monta la línea de /g y /o sin nada nuestro por medio, y solo al final,
+  cuando llama a `AddMessage` de la ventana, entra el addon: `WrapFrame` (Channel.lua) sustituye
+  `ChatFrameN.AddMessage` por una función que, si el evento es `CHAT_MSG_GUILD` u `OFFICER`, pasa el
+  texto por `DecorateOwnLine` (dentro de `pcall`) y luego llama a la original. El juego le pasa a
+  `AddMessage` el evento y sus argumentos (`eventArgs`), así que autor y mensaje salen de ahí, sin
+  filtro ni escucha aparte. `DecorateOwnLine` mete delante del primer `|Hplayer:` la marca de
+  mención, el punto (`chatStyle`) o la etiqueta (`chatTag`) y el icono de rango, y pasa el cuerpo
+  por menciones y emoticonos; devuelve `false` para no escribir la línea (`GuildLineHidden`:
+  silenciados y líneas propias ocultas). Con texto, mensaje o autor secretos no toca nada: la línea
+  sale en el formato del juego. Las líneas que pinta el addon (otras hermandades, avisos) no llevan
+  evento y pasan sin tocar. Interruptor: `db.ownPaint` (`/gu pintar on/off`). Riesgo a probar en
+  mazmorra: al sustituir `AddMessage`, lo que el juego ejecuta después en ese mismo manejador
+  (`SetLastTellTarget` en susurros, `FlashTabIfNotShown`) corre marcado por el addon.
+- **Copia 93 (14/11, prueba): punto de color.** `db.chatStyle` elige cómo se distingue la hermandad
+  en las líneas de las otras: `"dot"` (de serie) pone delante del nombre un punto teñido con el color
+  de la hermandad (`HU:DotText`, `Media\dot.tga`, dentro del enlace de la etiqueta para que salga su
+  recuadro al pasar el ratón); `"color"` es lo de la copia 92. `/gu estilo` cambia de uno a otro.
+- **Copia 92 (14/11): color por hermandad en vez de etiqueta.** En `HU:FormatLineParts` (línea del
+  chat del juego, no la compacta de la ventana del addon) el trozo de `CHAT_GUILD_GET` /
+  `CHAT_OFFICER_GET` que va antes del nombre (`[Hermandad]`) se envuelve en el color de la hermandad
+  (`GuildColorHex`) cuando la línea es de otra hermandad. La etiqueta `<ETIQ>` en el chat pasa a
+  depender de `db.chatTag` (apagada de serie; `/gu etiqueta on`); `db.showTag` queda para la ventana
+  del addon. Las líneas de mi hermandad las pinta el juego y no se tocan.
+- **Copia 91 (prueba para verla en el juego, 14/11): sin filtros en los chats de jugadores y sin eco.**
+  Idea tomada de cómo trabaja Olympus (solo filtra mensajes del sistema). `HU.CHAT_FILTERS = false`
+  en Channel.lua hace que `AddFilter` no registre nada: fuera `MentionFilter` (/g y /o: etiqueta,
+  icono de rango, menciones resaltadas, emoticonos, `selfPaint`), el de `GuildLineHidden`
+  (silenciados, líneas propias ocultas, eco) y `HideFilter` (canal de la unión, que ya se quita de
+  las ventanas con `HU:HideChannel`). Queda solo el de `CHAT_MSG_SYSTEM` (Comm.lua). El juego pinta
+  las líneas de mi hermandad tal cual; las de las otras las sigue pintando el addon. `Echo.lua` no
+  se carga (quitado del .toc, guardado en `_quitados/`): todo el que lo llama comprueba antes que
+  exista (`if HU.EchoIncoming then …`), así que el eco queda apagado en las dos direcciones y lo
+  que llegue como `[ETIQ:E]` de versiones anteriores se descarta. El código que queda sin uso
+  (`MentionFilter`, `PaintOwnLine`, `OwnTagFlag`, `selfPaint`, `SyncPvpFilters`, `cfg.echo`,
+  `GU:e:1`) NO se ha borrado todavía: se limpia cuando Jorge dé el visto bueno al aspecto.
+- **Copia 90 (hipótesis, sin probar en el juego):** ante un dato secreto el filtro ya no devuelve
+  nada, ni siquiera `false`. Rastro del 13/11 23:24 en mazmorra con la 5.4.31: `/g` con el
+  identificador secreto y el texto legible → `ChatFrameFilters.lua` sí llama al filtro
+  (`canaccessvalue(...)` deja pasar), nuestro `false` llega manchado a `results[1]`, el juego lo lee
+  y queda «tainted by GuildUnion»; al pintar falla en `HistoryKeeper.lua:35` (`strlower` de un
+  secreto) y la línea no sale. Sin valores devueltos no hay nada manchado que leer.
+- `HU.AddChatFilter`: si **cualquier** dato del mensaje es secreto (`AnySecret`), el filtro contesta
+  solo `false` y no devuelve datos (hasta la copia 89; ver la línea de arriba). Antes miraba solo texto y nombre. Es la defensa principal: va
+  mensaje a mensaje y vale en cualquier sitio, mazmorras incluidas. Indicio de que basta: el filtro
+  de silenciados de `/g` lleva semanas contestando solo `true`/`false` sin que saliera este error.
+- `HU.selfPaint` (copia 84, 5.4.31; sustituye al quitar y poner filtros de la 5.4.30, que no
+  arreglaba nada). Rastro del 13/11 con la 5.4.30: `HistoryKeeper.lua:9: attempted to index a table
+  that cannot be accessed while tainted (execution tainted by 'GuildUnion')`, desde
+  `MessageEventHandler:682`, `chatType="GUILD"`, `accessIDs=<forbidden table>`.
+  - Por qué: la tabla `accessIDs` del juego usa como clave un texto con el identificador de quien
+    escribe. En cuanto el juego guarda una clave secreta (cualquier línea de jugador en una partida),
+    la tabla queda prohibida para ejecución manchada **hasta el `/reload`**. `MentionFilter` devuelve
+    la línea cambiada (texto, marca con etiqueta e icono): eso mancha la ejecución de esa línea, el
+    juego falla al consultar la tabla y **no la pinta**. Un filtro que solo contesta `true`/`false`
+    no mancha (visto con la copia 82).
+  - Síntoma: tras una partida no se ven las líneas de `/g` y `/o` de la propia hermandad; sí `/s`,
+    `/group` y las de las otras hermandades (esas las pinta el addon con `AddMessage`).
+  - Arreglo: `HU.selfPaint` se enciende al entrar a una partida (`HU:InPvpNow`) o al ver cualquier
+    dato secreto en una línea de chat (un marco aparte en Channel.lua mira todos los datos de los
+    chats de jugadores; `AnySecret` en los filtros también lo enciende) y no se apaga hasta el
+    `/reload`. Con él encendido `MentionFilter` contesta `true` (descartar) y pinta la línea él mismo
+    en esa ventana (`PaintOwnLine`, con `FormatLineParts` como las de las otras hermandades). Antes
+    de pintar pregunta a `HU:GuildLineHidden` (eco, silenciados, líneas propias ocultas), porque al
+    descartar ya no se llama al filtro siguiente.
+  - Diferencias de la línea pintada por el addon frente a la del juego: el enlace del nombre no
+    lleva el número de línea (no sirve para denunciar esa línea desde el menú), no sale la marca
+    `<AFK>`/`<DND>`, y otros addons que filtren `/g` después de nosotros no la ven. La hora sí se pone
+    si el jugador la tiene activada.
+  - Sin configurar (`HU.myTag` vacío) no se pinta nada propio: contesta `false` y la pinta el juego.
+  - Sin probar en el juego.
+
+Otro aviso parecido visto la misma noche, `tainted by 'TradeSkillMaster'` al escribir, no es
+nuestro (ese addon sustituye `HandleModifiedItemClick` y `ChatEdit_InsertLink`).
+
+## Copia 117 (15/11): mudanza de carril hiperestricta
+
+**Qué se vio en el juego.** Recién entrado, el juego rechaza los mensajes ocultos al canal durante el primer minuto (`/gu sonda 30`: aceptó 0 de 30 al entrar y 30 de 30 un minuto después, mismo personaje), aunque el texto normal sí sale. El enlace sondeaba cada 10 s y se mudaba con 6 rechazos en unos 20 s: cada enlace que entraba subía de carril a toda la comunidad. Quien no recibía el aviso se quedaba en otro canal viendo volver sus propias líneas, sin usar el respaldo y sin nada apuntado. En el registro de Jorge: 14 cambios en 5 días; el 15/11, de carril 2 a 4 tras dos entradas del enlace.
+
+**Mudanza automática (`ChannelSendResult`, `TryMoveLane`).** Solo el enlace, y solo con todo esto a la vez:
+1. `LANE_SETTLE` = 600 s desde la última pantalla de carga (`PLAYER_ENTERING_WORLD`, `LOADING_SCREEN_DISABLED`). Antes de eso los rechazos se cuentan aparte (`HU.laneStats.ignored`) y no suman.
+2. `LANE_REFUSE_SECS` = 300 s de rechazos seguidos (resultado 7), con al menos `LANE_REFUSE_MIN` = 20, sin un solo envío aceptado en medio.
+3. En ese rato no ha llegado nada por el canal, ni texto ni oculto ni el eco propio (`HU.chanInT`, que pone `MarkChannelSeen`).
+4. El enlace de otra hermandad lo confirma por susurro (`LV~carril`, vale `LANE_VOTE_TTL` = 120 s). El `LV` nunca mueve por sí solo: solo cuenta si a mí me pasa lo mismo.
+
+Los que no son el enlace ya no hacen nada con sus rechazos. Seguir al enlace o a un oficial (`OfferLane`) no cambia, para no separarse de quien lleve la 5.4.33.
+
+**A mano:** `/gu carril subir` (oficiales) sube un carril a todos; `/gu carril reiniciar` sigue devolviendo al principal.
+
+**Consecuencia:** con un solo enlace conectado en la comunidad no hay mudanza automática (falta la regla 4). Mientras, el texto sin eco va por el respaldo.
+
+**Mientras haya versiones anteriores activas**, sus enlaces siguen subiendo el carril al entrar y esta versión los sigue. Se acaba cuando `GU:v` las pause.
+
+**También en esta copia** (lo mismo que la 116, que quitaba los carriles y no se usa): espera del eco por envío y no por texto; descartes que eran mudos contados en `/gu diag` (etiqueta que no está en mi `GU:g`, autor silenciado, «al enviar: no sales en una hermandad unida», tope del reparto CF, tope de 100 retenidos); repetidos por dos caminos aparte; línea con lo caducado en la cola y lo rechazado por admisión; aviso «no estás en el canal» solo tras unos 3 min seguidos fuera.
+
+**Pendiente:** identificador único por mensaje y confirmación de entrega.
+
+## Copia 118 (15/11): carriles con doble confirmación
+
+Sobre la 117. Todo decidido por Jorge el 15/11.
+
+- **Subida automática:** además de las reglas de la 117, la tienen que confirmar **dos hermandades distintas** (`LANE_VOTES_NEEDED`; todas las otras si hay menos de dos) y no hay ninguna si ya ha habido una subida, de quien sea, en las últimas 24 h (`db.laneRaisedT`, `LANE_AUTO_GAP`).
+- **A mano, cosa de dos** (`HU:ProposeLane`, `OnLaneProposal`, `ConfirmLane`): `/gu carril subir` o `/gu carril reiniciar` de un oficial manda `LO~up|reset` por GUILD; lo ven los oficiales de su hermandad y se hace solo si otro escribe `/gu carril confirmar` en 2 min (lo ejecuta el que confirma). El maestro puede solo, escribiéndolo dos veces en 30 s.
+- **A quién se sigue** (`LaneStrong`, Comm.lua): cada uno solo a los de su hermandad (su enlace o un oficial suyo, por GUILD). A los de otra hermandad, por susurro, solo les hace caso el enlace, que luego lo dice a los suyos. Antes cualquier oficial de la comunidad movía a cualquiera.
+- **Gente en otra sala** (`NoteLane` en `OfferLane`, `HU:LaneStrays`): se apunta la sala que dice cada uno en su saludo o `LN`. Si durante 2 min hay alguien en otra, aviso a los oficiales, una línea cada 30 min como mucho. Solo avisa. `/gu carril` lo enseña siempre, junto con cómo va la regla automática (`HU:LaneStatusText`).
+- **Cada cambio de sala** se imprime a los oficiales con quién y por qué (`SetLaneState`).
+- **Caducidad:** se mira cada 5 s y no cada 60. Se quitará en la versión que numere los mensajes (acordado: sin falsas alarmas ya no tiene razón de ser).
+- **Fuera del chat** el aviso «La lista de X está en disputa» (se queda en `/gu debug`).
+- **Sin revisión automática** (Jorge, 15/11: «no movemos gente»): nadie cambia de sala solo por ver a otros en otra. En su lugar, **`/gu carril juntar`** (`HU:GatherLane`): un oficial trae a toda la comunidad a SU sala, la que sea, con una generación por encima de la más alta que ha oído. Lo puede hacer solo, escribiéndolo dos veces en 30 s (no crea una sala nueva). El aviso de «gente en otra sala» lo recomienda.
+
+## Copia 119 = 5.4.35 (15/11): que las versiones viejas no puedan subir de carril
+
+Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el resto de addons no puedan subir de canal». Visto ese día: de la sala 2 a la 9 en tres horas, un escalón por cada enlace con versión vieja que entraba.
+
+- **El oficial actualizado se queda el puesto de enlace** (`RelayScore`): dice entre 173 y 199 puntos, por encima de lo máximo de un oficial con versión vieja (157 + 15 de ventaja del enlace = 172) y dentro del tope que todos aceptan de un oficial (`SaneScore`, 199). En las versiones viejas solo el enlace sondea y sube de carril, así que con un oficial actualizado conectado nadie de su hermandad lo sube. Ocupado no puntúa así. Es de transición: quitarlo cuando todos estén actualizados.
+- **Solo se obedece a esta versión o posterior** (`HU:LaneTrusted`, `LANE_TRUST_VERSION`, en `OfferLane`): lo que diga sobre la sala una versión anterior se apunta para el aviso de «gente en otra sala» y se cuenta (`laneStats.oldIgnored`), pero no mueve a nadie. La versión se saca del saludo (`guildPeers`, `remote`); del primer saludo de alguien de otra hermandad aún no se sabe y se ignora hasta el siguiente.
+- **`/gu carril reiniciar` lo puede un oficial solo**, escribiéndolo dos veces, igual que `juntar`. Subir sigue siendo cosa de dos (o el maestro). El reinicio va con una generación por encima de la más alta oída.
+- **Número 5.4.35** y no 5.4.34: el zip de prueba de la copia 115 llevaba 5.4.34 y tiene el fallo de los carriles.
+- **Límites:** sin un oficial actualizado conectado en una hermandad, su enlace viejo sigue subiendo a los suyos (a los actualizados ya no los arrastra). Las versiones anteriores a la 5.4.33 no pueden seguir un reinicio si van más de una generación por detrás.
+
+## Copia 120 = 5.4.36 (15/11)
+
+- **De una versión vieja sí se obedece «a la sala principal»** (`OfferLane`): solo se ignoran sus órdenes hacia otra sala (las falsas alarmas son siempre subidas). Con la 119 (5.4.35), quien actualizaba en una hermandad donde nadie más lo había hecho no hacía caso a su enlace y se quedaba en la sala guardada hasta que le caducara. El contador `laneStats.oldIgnored` ya solo suma lo que habría cambiado de sala.
+- **Cualquiera con la versión nueva puntúa alto para ser el enlace** (`RelayScore`; Jorge, 15/11): el oficial, 173–199; quien no lo es, 80–99 (lo máximo que las versiones viejas le aceptan a un no oficial es 99; un no oficial viejo llega a 72). A un oficial con versión vieja (100 o más) un no oficial no le gana.
+- **El enlace que no es oficial solo guarda el puesto**: ni inicia la subida automática (`TryMoveLane`) ni vale su confirmación (`LV`).
+- **5.4.36 y no 5.4.35:** la 5.4.35 ya estaba en GitHub con su etiqueta.
+
+## Copia 121 (15/11, de prueba): formato de Prat
+
+`PratBridge.lua`. Petición de usuarios: que las líneas de otras hermandades tengan el formato que cada uno lleva en su addon de chat, sin tener que elegirlo.
+
+- **Líneas de otras hermandades** (`HU:PratLine`, llamado desde `HU:Display`): se le pide la línea a Prat con `Prat.Format(ventana, "CHAT_MSG_GUILD", nil, <argumentos de un mensaje de hermandad>)`, que es lo que Prat ofrece a otros addons (lo usa WIM). Devuelve el texto con el formato del jugador; se escribe con `AddMessage` como siempre. Si Prat no está, está apagado (`/gu prat off`), falla o no devuelve nada, se escribe la línea de siempre: nunca se pierde una línea por esto. Todo va dentro de `pcall`.
+- **El punto o la etiqueta** (`Pre`, aviso `Prat_PreAddMessage`): Prat avisa antes de juntar las partes de cada línea; ahí se pone lo nuestro en `m.pP` (lo que va justo antes del nombre) y los emoticonos y menciones en `m.MESSAGE`. Vale para las líneas de otras hermandades y para las de la mía, que con Prat se quedaban sin punto porque Prat pone los corchetes fuera del enlace del nombre. Los silenciados se cortan con `m.DONOTPROCESS`.
+- **`ChatPaint.lua`** no toca nada con Prat enganchado.
+- **`/gu prat`** enseña cómo va (cuántas líneas con formato de Prat, cuántas con el de siempre, fallos y el último error); `/gu prat off|on` lo apaga o enciende.
+- **Sin probar en el juego.** Riesgos apuntados: `Prat.Format` llama por dentro a `ChatHistory_GetAccessID` del juego, que tras un campo de batalla da error a los addons (el mismo del chat que no se pintaba); aquí lo recoge el `pcall` y sale la línea de siempre. Los filtros de chat de otros addons para la hermandad se aplican también a estas líneas. La ventana de hermandad del juego (BlizzTab) sigue con el formato propio.
+- **Copia 122:** a Prat se le pasa el nombre con espacio («Nombre Apellido», como en las líneas de la propia hermandad; con guion tomaba el apellido por un reino). Y antes de pedirle la línea se le dice el nivel y la clase del autor si se saben (`TellPrat` → `PlayerNames:addName`): solo los de la lista corta de su hermandad. Para el nivel de todos haría falta que viajara con cada mensaje: va con el cambio de formato de la fase 1.
+- **Copia 123:** el recuadro de la etiqueta o el punto de una hermandad enseña además la suma de miembros de toda la comunidad (`OnTagEnter`, Channel.lua). La propia es `rosterTotal`; las otras, `remoteRoster[tag].total`; si falta alguna, «al menos N».
+
+## Copia 125 (16/11, de prueba): pestaña dentro de Whisper Messenger
+
+`WMPanel.lua`. Petición de Jorge: que el chat de las otras hermandades salga dentro de la ventana de Whisper Messenger.
+
+- **Lo que no se puede:** añadir líneas a su conversación «Guild» ni filas a su lista. Esa conversación la llena él con los eventos del juego y no ofrece ninguna función para añadir mensajes.
+- **Lo que sí ofrece:** `WhisperMessengerAPI.Connect("GuildUnion")` devuelve las funciones para otros addons; `RegisterPanel(id, { title, onShow, onHide, onSplit, badge, onMarkAllRead })` pone una pestaña junto a «Whispers» y «Groups» y, al pulsarla, llama a `onShow(marco)` con el hueco vacío. `onSplit(marco, ancho)` dice el ancho de su lista. `badge()` devuelve los no leídos; `RefreshPanelBadge(id)` lo repinta. `GetLook()` da sus colores.
+- **Lo que dibuja el addon** en ese hueco: a la izquierda, «Todas las hermandades» y una fila por hermandad (filtro); a la derecha, las últimas líneas del historial (`db.history`, tipo `main`) y las nuevas en directo; abajo, una caja que escribe en el chat de la propia hermandad (el addon lo lleva a las otras como siempre).
+- **En directo:** `HU.AddHistory` se envuelve una vez en `PLAYER_LOGIN`; cada entrada nueva se escribe si el panel está a la vista y, si no y es de otra hermandad, suma un no leído.
+- **`/gu wm`** enseña si Whisper Messenger está, si la pestaña se registró y el último fallo al dibujar.
+- **Sin probar en el juego.** Sin Whisper Messenger no hace nada. El usuario tiene que tener permitidas las integraciones (vienen permitidas).
+- **Copias 126 y 127:** dentro de la pestaña, el chat va en burbujas imitando las de Whisper Messenger (sus piezas son privadas y no usa ninguna librería de interfaz: todo es código suyo). Icono de clase del juego (`Interface\\ICONS\\ClassIcon_<clase>`) recortado en redondo con la máscara de retratos; cabecera con punto o etiqueta, nombre y hora; burbuja con borde del color del fondo aclarado; sus medidas (icono 24–26, márgenes 12 y 8, 75 % del ancho). Las letras son las suyas si están (`WM_ChatNormal`, `WM_HighlightSmall`, `WM_Normal`: las crea con nombre y siguen los ajustes del jugador); si no, las del juego.
+- **Copias 128 y 129:** panel rehecho contra capturas de Jorge, pieza a pieza. Fondo liso casi negro en todo el hueco (sin pintarlo se veía la textura de la ventana); cabecera con icono enmarcado, título y marca pequeña gris; sobre la burbuja solo nombre con color de clase y hora como la suya; burbuja azul muy oscuro con borde claro, letra 2 puntos mayor y más margen; lista con icono enmarcado, último mensaje y hora; caja de escribir negra con borde dorado y flecha de enviar. El marco dorado y la flecha son imágenes de Whisper Messenger cargadas de su carpeta (`Interface\\AddOns\\WhisperMessenger\\Media`), no copiadas.
+- **Copias 130 y 131:** el panel lee el aspecto de Whisper Messenger (`Skin()`: `WhisperMessengerDB.settings.hudStyle`, `themePreset`, `bubbleColorPreset`, y `GetLook()`) y usa sus mismos valores (licencia MIT). Burbujas: con estilo classic o retail, el marco de los recuadros de ayuda del juego (`TooltipBackdropTemplate`) teñido, con el borde aclarado un 35 %; con off, fondo liso. Fondos: con retail, las texturas del juego `auctionhouse-background-index` (mensajes) y `Professions-background-summarylist` (lista); con classic, transparentes; con off, colores. Fila elegida: `UI-QuestLogTitleHighlight` sumada y teñida con el color de acento del tema; al pasar el ratón, `UI-QuestTitleHighlight`. Cabecera y franja de escribir: color de cromo del tema. Caja de escribir: `Common-Input-Border` en tres trozos. Las letras se ponen con `SetFontObject`.
+- **Copia 132:** sombra de 10 px arriba y abajo de los mensajes (negro al 35 %, en degradado, solo si hay mensajes por ese lado) y bocadillos que se desvanecen en los últimos 24 px del borde, como en Whisper Messenger (`UpdateEdges`).
+- **Copia 133:** zona de escribir como la suya con estilo nativo: sin franja detrás (transparente), caja con el borde de las cajas de búsqueda del juego (`common-search-border-*`) y sin relleno, y tres botones de 26 (respuestas rápidas, emojis, enviar). El de emojis abre los emoticonos de Guild Union (los suyos son reacciones que solo ve quien tiene Whisper Messenger) y mete el código en la caja; el de respuestas rápidas lee `WhisperMessengerDB.settings.quickReplies` (o sus cuatro por defecto) y mete el texto en la caja sin enviarlo.
+- **Copias 134 y 135:** la caja de escribir vuelve al borde de las cajas de texto (`Common-Input-Border`) teñido de dorado: el de las cajas de búsqueda (`common-search-border-*`), que es el que usa él con retail, salía roto en Forever. Desplegables con el recuadro del juego sin teñir (negro, borde dorado). El selector de emojis enseña sus 18 (hoja `reactions.png`, 9 por fila) y escribe «:nombre:» en la caja, igual que el suyo; las burbujas del panel pintan «:nombre:» como dibujo. Respuestas rápidas con fila de 23, ancho fijo y resalte dorado.
+- **Copias 136 a 138:** caja de escribir con borde fino redondeado (`UI-Tooltip-Border`, 10) dorado e interior oscuro; desplegables en la capa `FULLSCREEN_DIALOG`, nivel 200, con el recuadro del juego sin teñir (azul muy oscuro, borde claro: así son los suyos); `HU:ClassFor` da la clase por las mismas vías que el chat y, sin clase, el nombre va en naranja; los mensajes propios van a la derecha, con la hora y «Tú» encima y el avatar al otro lado.
+- **Copia 139:** con el estilo nativo, el margen del bocadillo lleva además el grosor del borde del recuadro (4 por lado), como hace él: bocadillo de una línea ~33 px de alto (antes ~25) y 8 px más de ancho; 6 px entre el nombre y el bocadillo.
+- **Copia 140:** brillo de la cabecera como el suyo: capa blanca al 5 % en degradado vertical (transparente abajo, entera arriba) sobre el color de la cabecera.
+- **Copias 141 y 142:** el borde de la caja de escribir depende del estilo (dorado con retail, gris plateado con classic). Con «off»: bocadillos y caja con fondo liso y esquinas redondeadas (el borde de los recuadros pintado del color del fondo); la caja ya no se baja de nivel, porque quedaba al de la franja de fondo, que con «off» sí se pinta y la tapaba; el texto de ayuda cuelga de la caja de texto.
+- **Copia 143:** con «off», los fondos de los bocadillos y de la caja de escribir se montan como los suyos: cinco rectángulos y cuatro esquinas (cuartos de `TempPortraitAlphaMaskSmall`), todo del mismo color, radio 8, sin borde. Y el brillo blanco al 5 % también sobre la franja de escribir.
+- **Copia 144:** la zona de escribir rehecha pieza por pieza según `Composer.lua`, `ComposerSurface.lua` y `ComposerLayout.lua` de Whisper Messenger: panel de 44; caja de texto a 8 y 8, de 28 de alto; texto con márgenes 8, 8, 4, 4; ayuda a 8; botones de 26 con 4 de hueco y 8 de margen. Los adornos van en la propia caja de texto (antes iban en un marco aparte): con «off», `Rounded` (radio 8) con el color de la caja, fondo de cromo, raya arriba y brillo; con «classic» y «retail», `NativeBorder` (tres trozos, laterales de 8 a toda la altura: `common-search-border-*` con «retail» si el juego los tiene, si no `Common-Input-Border`), sin fondo ni raya, texto blanco y ayuda gris 0,5. `/gu wm` dice qué borde ha usado.
+- **Copia 146:** (1) botón de copiar en cada bocadillo de la pestaña de Whisper Messenger, como su `HoverCopy.lua`: icono de 14 al 45 % que sale en la esquina al pasar el ratón; abre `UI:ShowCopy` con el texto sin colores ni enlaces. (2) Con Prat, `WholeName` en `PratBridge.lua`: Prat parte el nombre por el guion y trata el apellido como reino (lo acorta y lo pinta aparte); antes de que escriba la línea se devuelve el nombre entero a `m.PLAYER` y se vacía `m.SERVER`, tanto en las líneas de otra hermandad como en las de la mía. `HU.pratStats.whole` cuenta las veces.
+- **Copia 147 (de prueba):** `HU:FixChannelOrder` apagado (`SWAP_CHANNELS = false` en `Channel.lua`). El chat se envía al canal por número; se sospecha, sin confirmar, que el intercambio descuadra ese número entre el juego y el servidor. Consecuencia conocida: el canal de la comunidad puede quedarse con el /1 o el /2 si entra antes que los del juego.
+- **Copia 147, `Report.lua` (nuevo):** `/gu ids` enseña los números de canal de este jugador (nombres tapados) y le pregunta al servidor quién hay en el número de la comunidad (`ListChannelByName`, lo mismo que `/chatlist N`; respuesta por `CHAT_MSG_CHANNEL_LIST`, 3 s): compara número, nombre y cuánta de esa gente conoce el addon, y dice si cuadra. `/gu todo` (o `informe`) junta en la ventana de copiar: el diagnóstico (`HU:DiagLines`, antes dentro de la orden `diag` en `Core.lua`), los números de canal, la sala y quién está en otra con su versión, las versiones de quien ha saludado y los enlaces, y por autor cuántas líneas han llegado por el canal y cuántas se han enseñado (marca a quien solo llega por el respaldo), Prat, Whisper Messenger y la cola.
+- **Copia 148 (5.4.39):** más medidas en `/gu todo`, todas de solo apuntar: `HU.chatLog` (últimos 60 mensajes de otras hermandades: hora, autor, vía, pintado / repetido / descartado y por qué; lo rellenan `OnUnionChat` y `HU.ChatDrop`), `HU.sendLog` (mis últimos 15 envíos, con lo que tardó el eco; `WatchEcho`, `GotEcho`, `ChatFallback`) y `HU.echoStats`, `db.laneLog` (30 cambios de sala o generación con motivo, guardado entre sesiones; `SetLaneState`), quién falta en el canal (saludados hace poco que el servidor no nombra), por hermandad (conectados, dentro del canal, contactos del respaldo y su versión), huellas de la configuración (16 bits la lista de hermandades, 12 bits canal+contraseña: para comparar sin enseñar), sesión (tiempos, entradas y salidas mías del canal cada 5 s, memoria, últimos errores). **`/gu prueba Nombre Apellido`**: 5 líneas de texto `#GUT tanda n destinatario` por el canal (no casan con el formato del chat: nadie las ve y las versiones anteriores las ignoran; se interceptan en `CHAT_MSG_CHANNEL` antes de la cola) más un aviso oculto `TQ~` por el canal con el prefijo `HU20C`; el addon del destinatario cuenta 7 s y contesta `TR~` en oculto por el canal. Una prueba por remitente cada 20 s. Las 5 líneas salen en el mismo instante de la orden, que es cuando el juego deja mandar texto a un canal.
+- **Copia 149:** en `/gu todo`, «quién falta en el canal» y el recuento de mi hermandad solo cuentan a los conectados (`roster[k].online`); de las otras hermandades, a quien ha saludado en los últimos 5 min. En la 148 salían como «fuera del canal» los que se habían desconectado hacía poco.
+- **Copia 150 (5.4.40) — chat por los dos caminos y salas.** Tras la revisión completa del 16/11. **Chat:** (1) `HU:Forward` manda cada línea por el canal Y por el respaldo (`ChatFallback`), siempre; el eco propio solo queda para estadística (lo de oficiales sigue igual). (2) `HU.comm.CW`: enseñar y repartir se deciden por separado (`HU.lastVerdict`): el contacto reparte por `CG` aunque ya tuviera la línea por el canal, salvo que otro compañero ya la haya repartido (`CarriedByOther`). (3) `Duplicate` cuenta, por autor y texto, las enseñadas y las llegadas por cada sitio (`c`, `w:portador`): es repetida si por ese sitio no han llegado más de las enseñadas; ventana de 120 s. (4) `SendCW`: sin contacto reciente tira de dos conectados de `remoteRoster`; si tampoco, avisa al jugador cuando esa línea no tenía otro camino. (5) `HU.comm.CG` ya no exige que quien reparte salga en mi lista. (6) `pcall` a `HU:Display` y «pintado» se apunta después. (7) `HU.OnChannelText`: lo que llega antes de `HU.ready` se guarda (60) y se repone en `Start`. (8) `Comm.lua`, cola: el chat urgente va detrás del último chat urgente (marca `chatU`), en orden, y delante del resto. **Canal:** `RejoinSoon` reinicia `backoff`, que además tiene tope de 60 s. **Salas:** `LaneBetter` a igual generación prefiere la sala más baja; `MoveLane` y `RaiseLane` suben la generación; `LaneState` olvida una vez la sala guardada (`db.laneMig = 150`); la vía «contacto» de `OfferLane` ya no sube de sala y solo deja pasar un reinicio (sala 0 con generación mayor), que además se le pasa al enlace por `LX`; `LANE_TRUST_VERSION = 5.4.40`. **Candado:** línea `GU:l:N` en la Información de mi hermandad (`HU.ParseLaneLock`, `HU:SetLaneLock`, `db.laneLock`): `LaneState` devuelve siempre esa sala y `SetLaneState` rechaza cualquier otra. **Sin hacer:** la retención de remitentes aún no reconocidos (caduca sin contarse y se repone desordenada) y contar como descarte los eventos con valor secreto.
+- **Copia 151 (5.4.40), tras la revisión independiente de la 150.** Corregido: (1) `Resend` no le manda a un contacto lo que ya recibió de mí (pintaba y repartía dos veces a toda su hermandad cuando el otro contacto se desconectaba). (2) Solo el chat principal (`token == "m"`) va siempre por los dos caminos; los canales extra, como antes, y `HU.comm.CW` no enseña lo de un canal extra en el que no estoy. (3) `OnChatLost` no avisa si la línea también salió por el canal (`HU.alsoChan`). (4) El aviso de «sin contacto» va como parámetro `solo` de `SendCW`, no como variable suelta. (5) `laneLock` y `laneMig` son por personaje (`HU.PER_CHAR`); la sala de la cuenta se olvida una vez con `laneMigA`, cuando ya se sabe el canal. (6) Una línea repetida solo se reparte si antes se pintó de verdad (`seen.ok`). (7) El contacto con más de 60 mensajes en cola no reparte (se cuenta); `CG` caduca a los 20 s. (8) El orden nuevo de la cola, solo para `CW`/`CG`/`CF`. (9) `BestPeers` prefiere contactos con 5.4.40. (11) `oldIgnored` vuelve a contar. (12) Un contacto sin comprobar no puede subir la generación más de 5. (13) Con la sala fijada no se piden confirmaciones de subida. Además: `/gu prueba` manda 3 líneas, y el informe enseña la «copia del mundo» (número del canal de Comercio).
+- **Copia 154 (5.4.40): sale de la 151, sin `/gu recuento`.** Todo lo de medir pasa a un addon aparte, **Guild Union Measure** (`addons\GuildUnionMeasure`, solo para gente de confianza), que escucha los mismos eventos del juego y apunta en su propio archivo. Lo único que se añade aquí es la puerta: `_G.GuildUnionInternal = HU` (`Core.lua`). Measure la usa para leer la sala (`HU:LaneState`) y para apuntar lo que decide `HU.LogChat` con cada línea (pintada, repetida, descartada). Las copias 152 y 153 (recuento dentro del addon) quedan sin publicar.
+- **Copia 155 (5.4.40): la pestaña «Guild Union» de Whisper Messenger solo cuenta como pendiente lo que me nombra.** `OnEntry` (`WMPanel.lua`) sumaba a `unread` cada línea de otra hermandad con el panel cerrado, y Whisper Messenger enseñaba «900 mensajes pendientes». Ahora solo suma si `HU:MentionsMe` (con `@Nombre Apellido` o `@everyone`, de cualquier hermandad y no mía). El resto se ve al abrir la pestaña. Solo ventana: sin banco.
+- **Copia 156 (5.4.40): clic derecho en las filas de la pestaña de Whisper Messenger, como el suyo.** Jorge, con captura del menú de Whisper Messenger: «añade un botón derecho mute como aquí, mismas opciones». Su API de pestañas no deja tocar su lista, así que el menú va en nuestras filas («Todas las hermandades» y cada hermandad), con sus textos y su orden: *Marcar los últimos mensajes como no leídos* (las líneas de esa fila desde la última mía; apagado si no hay), *Exportar conversación* (ventana de copiar con las últimas 500), *Silenciar / Quitar silencio* (no suben pendientes ni con mención; «todas» silencia todo), *Anclar arriba / Desanclar* (ancladas arriba en el orden en que se anclaron), *Eliminar* (la fila se esconde hasta que llega algo suyo; la última no se puede). Los pendientes van ahora por fila (`unreadBy`) y la pestaña suma todos; al ver una fila se dan por leídas las suyas. Marcas como las suyas: campana tachada (`muted.png`), chincheta (`pinned.png`) y número. Se guarda por personaje en `db.wmRows`. Solo ventana: sin banco.
+- **Copia 157 (5.4.40): el clic derecho de las filas de Whisper Messenger no se abre con la interfaz de mando.** `MenuUtil.CreateContextMenu` desde un addon contamina el foco del mando de Blizzard (ForeverPlusPlus; ChillZone apaga lo suyo con mando). Se mira con `C_InputInterfaceStyle.GetCurrentStyle() == Enum.InputDeviceInterfaceType.Gamepad` y, si es así, se avisa en el chat en vez de abrir el menú. Solo ventana: sin banco.
+- **Copia 158 (5.4.41): ninguna función de canal con el chat bloqueado.** God Platinum (16/11, 5.4.40, al entrar en un campo de batalla) vio la ventana del juego «GuildUnion … desactivar o ignorar», sin poder pulsar nada. En Forever (como en Midnight 12.0.5) las funciones de canales están prohibidas mientras dura el bloqueo del chat, y la 5.4.40 llamaba a varias sin mirarlo: leer la lista del canal (`SetSelectedDisplayChannel` en `HU:ChannelRoster`, que se dispara al llegar respaldo de alguien sin reconocer, y la 5.4.40 manda respaldo siempre), ocultar el canal de la ventana (`HU:HideChannel` al cambiar de número), salir de canales (`HU:ApplyChannels`), contraseña, echar, vetar y moderadores, y `ListChannelByName` en `/gu todo`. Ahora todas pasan por `HU:ChannelApiBlocked()` (= `IsChatLockedDown()` o dentro de una partida JcJ); ocultar el canal y aplicar canales se aplazan y el ciclo de 10 s los hace al salir. Entrar al canal ya lo miraba (`CanJoinNow`, copia 73). Incluye la 157 (menú de Whisper Messenger apagado con mando).
+- **Copia 159 (5.4.41): también silenciar en el canal.** El banco nuevo con campo de batalla (`--campo-batalla`, ADMIN 16/11) encontró en la 5.4.40 9 llamadas prohibidas con el chat bloqueado (`SetSelectedDisplayChannel` ×8, `ChannelMute` ×1) y en la 158 todavía 1 (`ChannelMute`, de `ChannelMuteCall` en `Social.lua`, cuando al enlace le llega un silencio). Ahora también pasa por `HU:ChannelApiBlocked()`.
+- **Copia 160 (5.4.41): las líneas de mi hermandad las pinta el addon, sin meterse en la función de escribir del juego.** Desde la copia 94, `ChatPaint.lua` sustituía el `AddMessage` de cada ventana para adornar `/g` y `/o`. Eso manchaba todas las líneas: tras cualquier bloqueo del chat (campo de batalla, jefe, o la prueba con `addonChatRestrictionsForced`), cada línea daba «attempted to iterate a table that cannot be accessed while tainted (GuildUnion)» hasta el `/reload` (Jorge, 16/11, 202 errores). Ahora es un filtro (`ChatFrameUtil.AddMessageEventFilter`) que solo contesta verdadero o falso: el juego lo llama con `securecallfunction`, aislado. Si hay que adornar, oculta la línea y el addon la escribe en esa ventana con `FormatLineParts` (punto o etiqueta, gris si no tiene el addon, icono de rango, color de clase, menciones, emoticonos, hora si la tiene puesta). Con datos secretos, chat bloqueado, Prat, Chattynator o `ownPaint` apagado, la pinta el juego tal cual. Si falla al pintarla, no se oculta. Se pierde «Denunciar» en esas líneas. `FormatLineParts` acepta `has` (si el autor tiene el addon).

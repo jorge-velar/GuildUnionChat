@@ -7,6 +7,7 @@ local L = HU.L
 local pending = {}   -- invitaciones que he mandado: [id] = { contact, tag, t }
 local joining        -- invitación que he aceptado: { id, from, tag, parts = {}, t }
 
+local function NewId() return tostring(math.random(100000, 999999)) .. tostring(math.floor(GetTime() * 10) % 1000) end
 local function CleanName(n) return HU.Trim((tostring(n or "")):gsub("[~;:|]", "")) end
 
 ---------------------------------------------------------------------------
@@ -93,11 +94,118 @@ local function SetNetGuild(g)
     if HU.UI and HU.UI.UpdateGuildsWindow then HU.UI:UpdateGuildsWindow() end
 end
 
+---------------------------------------------------------------------------
+-- Quién mete y saca hermandades (Jorge, 10/11): el maestro de la hermandad PRINCIPAL (línea GU:p:ETIQ
+-- de la Información; sin ella, la primera GU:g) y los GESTORES que él nombra. Nadie más, sin votar.
+--   MG~t~autor~etiqAutor~nombre1,nombre2,...     lista de gestores (la firma el maestro de la principal)
+---------------------------------------------------------------------------
+local MANAGERS_MAX = 10
+function HU:PrincipalTag()
+    local cfg = self.cfg
+    if not cfg then return nil end
+    return cfg.principal or (cfg.guilds and cfg.guilds[1] and cfg.guilds[1].tag) or nil
+end
+function HU:Managers()
+    local m = self.db and self.db.managers
+    return (m and m.list) or {}
+end
+function HU:IsManager(name)
+    local k = name and self:Key(name)
+    if not k then return false end
+    for _, n in ipairs(self:Managers()) do if self:Key(n) == k then return true end end
+    return false
+end
+function HU:IsPrincipalMaster()
+    return self.myTag ~= nil and self.myTag == self:PrincipalTag() and self:IsMaster()
+end
+-- ¿Puedo invitar hermandades? (el maestro de la principal, o un gestor que sea oficial de la suya)
+function HU:CanInvite()
+    if not self.myTag or self:IsTest() then return false end
+    return self:IsPrincipalMaster() or (self:CanPin() and self:IsManager(self:Me()))
+end
+-- ¿Ese autor (de otra hermandad o de la mía) puede meter o sacar hermandades? Comprobado por rango.
+-- true / false / nil (aún no sé: falta su lista o la de gestores; la acción espera)
+local function MayManage(self, author, tag)
+    if not author or author == "" then return false end
+    local principal = self:PrincipalTag()
+    if principal and tag == principal and self:TrustedMaster(author, tag) then return true end
+    if self:IsManager(author) then
+        local ok, why = self:TrustedOfficer(author, tag)
+        if ok then return true end
+        if why == "unknown" then return nil end
+        return false
+    end
+    if not self.db.managers then return nil end
+    return false
+end
+
+local function MGMsg(m) return table.concat({ "MG", m.t or 0, m.by or "", m.byTag or "", table.concat(m.list or {}, ",") }, "~") end
+function HU:ShareManagers(target)
+    local m = self.db.managers
+    if not m then return end
+    if target then return self:Whisper(target, MGMsg(m)) end
+    if self.myTag and IsInGuild() then self:Send(MGMsg(m), "GUILD") end
+    for _, tag in ipairs(self:OtherTags()) do
+        local peer = self:BestPeer(tag)
+        if peer then self:Whisper(peer.name, MGMsg(m)) end
+    end
+end
+
+-- /gu gestor Nombre  /  /gu gestor quitar Nombre   (solo el maestro de la principal)
+function HU:SetManager(name, add)
+    if not self:IsPrincipalMaster() then return false, L("solo el maestro de la hermandad principal puede nombrar gestores") end
+    name = HU.Trim(name or "")
+    local full = name ~= "" and self:FullName(name)
+    if not full or not HU.SafeName(full) then return false, L("escribe el nombre del jugador") end
+    local list, k = {}, self:Key(full)
+    for _, n in ipairs(self:Managers()) do if self:Key(n) ~= k then list[#list + 1] = n end end
+    if add then
+        if #list >= MANAGERS_MAX then return false, L("como mucho 10 gestores") end
+        list[#list + 1] = full
+    end
+    local cur = self.db.managers
+    self.db.managers = { list = list, by = self:Me(), byTag = self.myTag, t = math.max(HU.StampNow(), (cur and cur.t or 0) + 1) }
+    self:ShareManagers()
+    self:AddAudit({ tag = self.myTag, actor = self:Me(), text = (add and L("nombró gestor de la comunidad a ") or L("quitó de gestor de la comunidad a ")) .. self:Short(full) }, "all")
+    if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
+    return true
+end
+
+HU.comm.MG = function(self, sender, f, dist, raw)
+    local t, by, byTag, list = HU.NetT(f[1]), f[2], f[3], f[4] or ""
+    if not t or not by or by == "" or not byTag or byTag ~= self:PrincipalTag() then return end
+    if not self:CheckMasterFirm(by, byTag, function() HU.comm.MG(self, sender, f, dist, raw) end, sender, dist) then return end
+    local cur = self.db.managers
+    if cur and (cur.t or 0) >= t then return end
+    local names = {}
+    for n in list:gmatch("[^,]+") do
+        n = HU.Trim(n)
+        if HU.SafeName(n) and #names < MANAGERS_MAX then names[#names + 1] = n end
+    end
+    self.db.managers = { list = names, by = by, byTag = byTag, t = t }
+    if dist == "WHISPER" then
+        self:Send(raw, "GUILD")
+    elseif self:IsRelay() then
+        for _, ot in ipairs(self:OtherTags()) do
+            local peer = self:BestPeer(ot)
+            if peer then self:Whisper(peer.name, raw) end
+        end
+    end
+    -- (lo que esperaba a saber quién es gestor: altas y bajas de hermandades)
+    if self.RetryDeferred then self:RetryDeferred() end
+    if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
+end
+
 HU.comm.NG = function(self, sender, f, dist, raw)
     local tag, name, on, by, byTag, t = f[1], CleanName(f[2]), f[3] == "1", f[4], f[5], HU.NetT(f[6])
     if not tag or not tag:match("^%w+$") or #tag > 6 or name == "" or not t then return end
     tag = tag:upper()
-    if not self:CheckOfficerFirm(by ~= "" and by or sender, byTag, function() HU.comm.NG(self, sender, f, dist, raw) end, sender, dist) then return end
+    local retry = function() HU.comm.NG(self, sender, f, dist, raw) end
+    if not self:CheckOfficerFirm(by ~= "" and by or sender, byTag, retry, sender, dist) then return end
+    -- (además, que sea el maestro de la principal o un gestor: un oficial cualquiera ya no mete hermandades)
+    local may = MayManage(self, by ~= "" and by or sender, byTag)
+    if may == nil then self:Defer(retry) return end
+    if not may then return end
     local cur = self:NetGuilds()[tag]
     if cur and (cur.t or 0) >= t then return end
     SetNetGuild({ tag = tag, name = name, on = on, by = by, byTag = byTag, t = t })
@@ -121,77 +229,99 @@ HU.comm.NG = function(self, sender, f, dist, raw)
         .. "|cffffd100" .. name .. "|r <" .. tag .. "> (" .. self:Short(by) .. ")")
 end
 
--- Quitar una hermandad (solo las añadidas desde el panel; las de la Información se quitan de ahí)
----------------------------------------------------------------------------
--- Invitar a una hermandad nueva
----------------------------------------------------------------------------
----------------------------------------------------------------------------
--- Propuestas: un oficial propone, otro de otra hermandad aprueba
---   GP~id~ETIQ~contacto~autor~etiqAutor~t~estado~quienResuelve~etiqQuien
----------------------------------------------------------------------------
-function HU:Proposals()
-    self.db.proposals = self.db.proposals or {}
-    return self.db.proposals
-end
-
-local function GPMsg(p)
-    return table.concat({ "GP", p.id, p.tag, p.contact, p.by or "", p.byTag or "", p.t or 0, p.state or "open", p.res or "", p.resTag or "" }, "~")
-end
-
-function HU:ShareProposal(p, target)
-    if target then return self:Whisper(target, GPMsg(p)) end
-    if self.myTag and IsInGuild() then self:Send(GPMsg(p), "GUILD") end
-    for _, tag in ipairs(self:OtherTags()) do
-        local peer = self:BestPeer(tag)
-        if peer then self:Whisper(peer.name, GPMsg(p)) end
+-- Quitar una hermandad (solo las añadidas con una invitación; las de la Información se quitan de ahí)
+function HU:RemoveNetGuild(tag)
+    if not self:CanInvite() then return false, L("solo el maestro de la hermandad principal y los gestores pueden hacerlo") end
+    tag = HU.Trim(tag or ""):upper()
+    local g = self:NetGuilds()[tag]
+    local inCfg = self.cfg and self.cfg.byTag[tag]
+    if not g or not g.on then
+        if inCfg and inCfg.info then return false, L("esa hermandad está en la Información de hermandad: quítala de ahí") end
+        return false, L("no está en la comunidad")
     end
+    if tag == self.myTag then return false, L("no puedes quitar tu propia hermandad") end
+    local ng = { tag = tag, name = g.name, on = false, by = self:Me(), byTag = self.myTag, t = math.max(time(), (g.t or 0) + 1) }
+    self:Anchors()[tag] = nil
+    SetNetGuild(ng)
+    self:ShareNetGuild(ng)
+    self:AddAudit({ tag = self.myTag, actor = self:Me(), text = L("quitó la hermandad ") .. g.name .. " <" .. tag .. L("> de la comunidad") }, "all")
+    return true
 end
 
--- propuestas abiertas (de los últimos 3 días)
-function HU:OpenProposals()
-    local out = {}
-    for _, p in pairs(self:Proposals()) do
-        if p.state == "open" and time() - (p.t or 0) < 3 * 86400 then out[#out + 1] = p end
-    end
-    table.sort(out, function(a, b) return (a.t or 0) < (b.t or 0) end)
-    return out
-end
-
-function HU:CanApprove(p)
-    return self:CanPin() and not self:IsTest() and self.myTag ~= nil and p.byTag ~= self.myTag
-end
-
-HU.comm.GP = function(self, sender, f, dist, raw)
-    local id, tag, contact, by, byTag, t, state, res, resTag = f[1], (f[2] or ""):upper(), f[3], f[4], f[5], HU.NetT(f[6]), f[7], f[8], f[9]
-    if not id or not tag:match("^%w+$") or #tag > 6 or not HU.SafeName(contact) or not t then return end
-    if state ~= "open" and state ~= "ok" and state ~= "no" then return end
-    -- quien la abre y quien la resuelve tienen que ser maestros u oficiales (y de hermandades distintas)
-    local who, whoTag = by, byTag
-    if state ~= "open" then
-        who, whoTag = res, resTag
-        if resTag == byTag then return end
-    end
-    if not self:CheckOfficerFirm(who ~= "" and who or sender, whoTag, function() HU.comm.GP(self, sender, f, dist, raw) end, sender, dist) then return end
-    local cur = self:Proposals()[id]
-    if cur and (cur.state ~= "open" or state == "open") then return end -- ya la tengo (o ya está resuelta)
-    local p = { id = id, tag = tag, contact = contact, by = by, byTag = byTag, t = t, state = state, res = res, resTag = resTag }
-    self:Proposals()[id] = p
-    if dist == "WHISPER" then
-        self:Send(raw, "GUILD")
-    elseif self:IsRelay() then
-        for _, ot in ipairs(self:OtherTags()) do
-            local peer = self:BestPeer(ot)
-            if peer then self:Whisper(peer.name, raw) end
+---------------------------------------------------------------------------
+-- Invitar a una hermandad nueva: solo el maestro de la principal y los gestores, sin aprobación de
+-- nadie más. El contacto (maestro u oficial que pueda editar la Información de la nueva) acepta y
+-- recibe la configuración y las ANCLAS de todas las hermandades: sus listas entran confirmadas.
+--   GV~id~ETIQ~título~hermandad      invitación (al contacto)
+--   GA~id~1|0~nombre o motivo         respuesta
+---------------------------------------------------------------------------
+function HU:InviteGuild(contact, tag)
+    if self:IsTest() then return false, L("no se puede en modo prueba") end
+    if not self.myTag or not self.cfg then return false, L("tu hermandad no está configurada") end
+    if not self:CanInvite() then return false, L("solo el maestro de la hermandad principal y los gestores pueden invitar hermandades") end
+    contact = HU.Trim(contact or "")
+    tag = HU.Trim(tag or ""):upper()
+    if contact == "" then return false, L("escribe el nombre del maestro (u oficial) de esa hermandad") end
+    if not tag:match("^%w+$") or #tag > 6 then return false, L("la etiqueta debe tener de 1 a 6 letras o números") end
+    if self.cfg.byTag[tag] then return false, L("esa etiqueta ya la usa ") .. self:GuildName(tag) end
+    local full = self:FullName(contact)
+    if not full then return false, L("escribe el nombre del maestro (u oficial) de esa hermandad") end
+    local id = NewId()
+    pending[id] = { contact = full, tag = tag, t = GetTime() }
+    self:Whisper(full, table.concat({ "GV", id, tag, self:Title(), self.guildName or "" }, "~"), true)
+    self.inviteStatus = L("Invitación enviada a ") .. self:Short(full) .. L(". Esperando respuesta...")
+    self:Print(self.inviteStatus)
+    HU.After(125, function()
+        if pending[id] then
+            pending[id] = nil
+            HU.inviteStatus = HU:Short(full) .. L(" no ha contestado (¿está conectado y con el addon?).")
+            HU:Print(HU.inviteStatus)
+            if HU.onGuildRefused then HU.onGuildRefused(HU:Short(full), L("no ha contestado (¿está conectado y con el addon?)")) end
+            if HU.UI and HU.UI.UpdateGuildsWindow then HU.UI:UpdateGuildsWindow() end
         end
-    end
-    if state == "open" and self:CanApprove(p) then
-        self:Print("|cffffd100" .. self:Short(by) .. "|r <" .. (byTag or "?") .. L("> propone añadir una hermandad a la comunidad (contacto ") .. self:Short(contact) .. ", <" .. tag .. ">). "
-            .. L("Apruébalo o recházalo en Oficiales > Opciones > Hermandades."))
-    elseif state ~= "open" and byTag == self.myTag then
-        self:Print((state == "ok" and L("|cff44ff44Propuesta aprobada|r por ") or L("|cffff6060Propuesta rechazada|r por ")) .. self:Short(res) .. ": <" .. tag .. ">")
-    end
+    end)
     if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
+    return true
 end
+
+-- Me invitan a mí
+HU.comm.GV = function(self, sender, f, dist)
+    if dist ~= "WHISPER" or self:IsTest() then return end
+    local id, tag, title, fromGuild = f[1], (f[2] or ""):upper(), HU.CleanTitle(f[3]), CleanName(f[4])
+    if not id or not tag:match("^%w+$") or #tag > 6 then return end
+    local function no(why) self:Whisper(sender, table.concat({ "GA", id, "0", why }, "~"), true) end
+    if not IsInGuild() then return no(L("no está en ninguna hermandad")) end
+    if self.myTag then return no(L("su hermandad ya está en una comunidad (") .. self:Title() .. ")") end
+    local canEdit = CanEditGuildInfo and CanEditGuildInfo()
+    if not canEdit then return no(L("no puede editar la Información de hermandad (que lo acepte el maestro)")) end
+    if joining and GetTime() - joining.t < 120 then return no(L("ya tiene otra invitación pendiente")) end
+    local myGuild = GetGuildInfo("player") or "?"
+    joining = { id = id, from = sender, tag = tag, title = title, parts = {}, t = GetTime() }
+    self:ShowDialog("GU_JOIN", string.format(
+        L("|cff33ff99%s|r\n\n|cffffd100%s|r (%s) invita a tu hermandad |cffffd100%s|r a unirse a la comunidad |cff33ff99%s|r con la etiqueta |cffffd100<%s>|r.\n\n")
+        .. L("Compartiréis el chat de hermandad con las demás hermandades.\nTendrás que poner unas líneas GU: en la Información de hermandad.\n\n¿Aceptar?"),
+        HU.ADDON_TITLE, self:Short(sender), fromGuild ~= "" and fromGuild or "?", myGuild, title, tag), nil, joining)
+end
+
+HU.Dialogs.GU_JOIN = HU.LT({
+    text = "%s",
+    button1 = "Unirse",
+    button2 = "No",
+    OnAccept = function(_, j)
+        if not j or j ~= joining then return end
+        HU:Whisper(j.from, table.concat({ "GA", j.id, "1", GetGuildInfo("player") or "" }, "~"), true)
+        HU:Print(L("Uniéndote a ") .. j.title .. "...")
+    end,
+    OnCancel = function(_, j, reason)
+        if not j or j ~= joining then return end
+        if reason == "clicked" or reason == "timeout" then
+            HU:Whisper(j.from, table.concat({ "GA", j.id, "0", reason == "timeout" and L("no ha contestado") or L("ha dicho que no") }, "~"), true)
+        end
+        joining = nil
+    end,
+    timeout = 115,
+    showAlert = true,
+})
 
 -- Respuesta a mi invitación
 HU.comm.GA = function(self, sender, f, dist)
@@ -203,6 +333,7 @@ HU.comm.GA = function(self, sender, f, dist)
     if not ok then
         self.inviteStatus = "|cffff6060" .. self:Short(sender) .. L(" no se ha unido:|r ") .. (info or "")
         self:Print(self.inviteStatus)
+        if self.onGuildRefused then self.onGuildRefused(self:Short(sender), info) end
         if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
         return
     end
@@ -232,9 +363,13 @@ HU.comm.GA = function(self, sender, f, dist)
     self:AddAudit({ tag = self.myTag, actor = self:Me(), text = L("añadió la hermandad ") .. name .. " <" .. p.tag .. L("> a la comunidad") }, "all")
     self.inviteStatus = "|cff44ff44" .. name .. " <" .. p.tag .. L("> se ha unido a la comunidad.|r")
     self:Print(self.inviteStatus)
+    if self.onGuildJoined then self.onGuildJoined(name, p.tag) end
     -- le paso la configuración: la lista de hermandades, el título y el canal
     local items = {}
     if self.cfg.title then items[#items + 1] = "t=" .. self.cfg.title end
+    -- (la principal: la nueva la pone en su Información, GU:p, para saber quién manda)
+    local principal = self:PrincipalTag()
+    if principal then items[#items + 1] = "p=" .. principal end
     for _, cg in ipairs(self.cfg.guilds) do items[#items + 1] = "g=" .. CleanName(cg.name) .. ":" .. cg.tag end
     local ch = self.db.netChan or (self.cfg.channel and { channel = self.cfg.channel, pass = self.cfg.password })
     if ch and ch.channel then items[#items + 1] = "c=" .. ch.channel .. ":" .. (ch.pass or "") end
@@ -252,8 +387,9 @@ HU.comm.GA = function(self, sender, f, dist)
     for i, c in ipairs(chunks) do
         self:Whisper(sender, table.concat({ "GL", id, i, #chunks, c }, "~"), true)
     end
-    -- y las hermandades añadidas antes desde el panel
+    -- y las hermandades añadidas antes con invitación, y quiénes son los gestores
     ShareAllTo(sender)
+    self:ShareManagers(sender)
     if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
 end
 
@@ -270,10 +406,13 @@ HU.comm.GL = function(self, sender, f, dist)
 end
 
 function HU:ApplyJoin(j, data)
-    local guilds, title, chan, pass, anchors = {}, nil, nil, nil, {}
+    local guilds, title, chan, pass, anchors, principal = {}, nil, nil, nil, {}, nil
     for it in data:gmatch("[^;]+") do
         local k, v = it:match("^(%a)=(.*)$")
-        if k == "a" then
+        if k == "p" then
+            local pt = HU.Trim(v):upper()
+            if pt:match("^%w+$") and #pt <= 6 then principal = pt end
+        elseif k == "a" then
             local at, an = v:match("^(%w+):(.+)$")
             if at then anchors[#anchors + 1] = { tag = at:upper(), name = an } end
         elseif k == "g" then
@@ -306,6 +445,7 @@ function HU:ApplyJoin(j, data)
     -- (con muchas hermandades no caben todas en la Información (máx. 500 letras): [+ARCHITECTURE.md]
     local lines = {}
     if title then lines[#lines + 1] = "GU:t:" .. title end
+    if principal then lines[#lines + 1] = "GU:p:" .. principal end
     table.sort(guilds, function(a, b)
         local am, bm = a.name:lower() == myGuild:lower(), b.name:lower() == myGuild:lower()
         if am ~= bm then return am end
@@ -386,7 +526,7 @@ HU:OnStart(function()
                 local peer = HU:BestPeer(tag)
                 if peer then
                     ShareAllTo(peer.name)
-                    for _, p in ipairs(HU:OpenProposals()) do HU:ShareProposal(p, peer.name) end
+                    HU:ShareManagers(peer.name)
                 end
             end)
         end
@@ -397,7 +537,7 @@ local origPQ = HU.comm.PQ
 HU.comm.PQ = function(self, sender, ...)
     if origPQ then origPQ(self, sender, ...) end
     if self:IsRelay() and next(self:NetGuilds()) then ShareAllTo(sender) end
-    if self:IsRelay() then for _, p in ipairs(self:OpenProposals()) do self:ShareProposal(p, sender) end end
+    if self:IsRelay() then self:ShareManagers(sender) end
 end
 
 ---------------------------------------------------------------------------

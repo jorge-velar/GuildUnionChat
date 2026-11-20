@@ -31,6 +31,15 @@ function HU.ParseMinVersion(text)
     return nil
 end
 
+-- (copia 150) Sala del canal fijada: una línea «GU:l:N» en la Información de MI hermandad
+function HU.ParseLaneLock(text)
+    for raw in (text or ""):gmatch("[^\r\n]+") do
+        local v = HU.Trim(raw):match("^[Gg][Uu]:[Ll]:%s*(%d)%s*$")
+        if v then return tonumber(v) end
+    end
+    return nil
+end
+
 -- Líneas GU: pegadas («GU:t:NombreGU:g:...», p. ej. de una nota de oficial cortada): cada una en la suya
 function HU.SplitGlued(text)
     return (tostring(text or ""):gsub("([^\r\n])[ \t]*([Gg][Uu]:%a:)", "%1\n%2"))
@@ -70,6 +79,10 @@ function HU.ParseConfigText(text)
                 -- nombre de la comunidad (título del panel). Si no está, el de la primera hermandad
                 local t = HU.CleanTitle(rest)
                 if t ~= "" then cfg.title = t end
+            elseif kind == "p" then
+                -- hermandad principal: su maestro (y los gestores que nombre) son los que invitan
+                local tag = HU.Trim(rest):upper()
+                if tag:match("^%w+$") and #tag <= 6 then cfg.principal = tag end
             elseif kind == "e" then
                 -- eco en /g (Echo.lua): GU:e:1 lo enciende para esta hermandad
                 cfg.echo = HU.Trim(rest) == "1"
@@ -143,6 +156,37 @@ local lastKey
 local lastErrors
 local INFO_WAIT, infoRetry = 45, false
 
+-- Una lectura que rompería una configuración que funcionaba no se cree a la primera: se le pide la
+-- lista de hermandad al servidor y solo vale si, cuando la vuelve a dar, la Información sigue igual. [+ARCHITECTURE.md]
+local DOUBT_MIN, DOUBT_MAX, DOUBT_RETRY = 20, 120, 25
+local doubt -- { sig, t, v }: la lectura dudosa, cuándo se vio y con qué entrega de la lista
+local function Doubt(self, sig)
+    local now = GetTime()
+    if not doubt or doubt.sig ~= sig then
+        doubt = { sig = sig, t = now, v = self.rosterVersion or 0 }
+        if self.RequestRoster then self:RequestRoster(true) end
+    else
+        local waited = now - doubt.t
+        local delivered = (self.rosterVersion or 0) > doubt.v
+        if (waited >= DOUBT_MIN and delivered) or waited >= DOUBT_MAX then
+            doubt = nil
+            return false
+        end
+    end
+    self:Debug("Información de hermandad dudosa: se espera a que el servidor la vuelva a dar")
+    if not doubt.timer then
+        doubt.timer = true
+        local d = doubt
+        HU.After(DOUBT_RETRY, function()
+            d.timer = nil
+            if doubt ~= d then return end
+            if HU.RequestRoster then HU:RequestRoster(true) end
+            HU:RefreshConfig()
+        end)
+    end
+    return true
+end
+
 -- El canal y la contraseña: los reparte el addon desde la nota de oficial (lo más nuevo manda).
 -- Si alguien los sigue teniendo en la Información de hermandad, valen hasta que llegue lo de la nota.
 local function UseNetChannel(cfg, net)
@@ -175,7 +219,7 @@ function HU:QuickConfig()
     if not cfg.ok or not cfg.channel or not mine then return false end
     cfg.quick = true
     self.cfg, self.myTag, self.guildName = cfg, mine.tag, q.guild
-    self:Debug("Arranque rápido con la configuración guardada. Canal:", cfg.channel)
+    self:Debug("Arranque rápido con la configuración guardada. Canal:", HU.MaskChannel(cfg.channel))
     self:ApplyChannels()
     self:Changed("config")
     return true
@@ -207,6 +251,8 @@ function HU:RefreshConfig(force)
     end
     -- (versión mínima: solo de la Información de MI hermandad, tal cual, antes de juntarle nada)
     if self.SetGuildMin then self:SetGuildMin(HU.ParseMinVersion(text)) end
+    -- (y la sala fijada, igual: de la Información de MI hermandad)
+    if self.SetLaneLock then self:SetLaneLock(HU.ParseLaneLock(text)) end
     -- (versiones de antes guardaban esto para toda la cuenta: pasa a este personaje solo si es
     -- de su hermandad)
     local cdb, adb = self.cdb, self.adb
@@ -238,6 +284,17 @@ function HU:RefreshConfig(force)
     self.guildName = gname
     local cfg = HU.ParseConfigText(text)
     if cfg and self.MergeNetGuilds then self:MergeNetGuilds(cfg) end
+    -- (sin hermandades, o sin la mía, teniendo una configuración buena: puede ser que el juego haya dado
+    -- la Información vacía o a medias, p. ej. al cambiar de zona. Se espera a la siguiente entrega)
+    local broken = not cfg or #cfg.guilds == 0 or not cfg.byName[gname:lower()]
+    if broken and self.cfg and self.cfg.ok and self.myTag then
+        if Doubt(self, gname .. "\0" .. text) then
+            lastKey = nil
+            return
+        end
+    else
+        doubt = nil
+    end
     if not cfg then
         -- (recién entrado con la configuración guardada: la Información de hermandad aún puede venir
         -- vacía. No se sale del canal por eso en los primeros 30 s)
@@ -272,7 +329,7 @@ function HU:RefreshConfig(force)
         end
     else
         lastErrors = nil
-        self:Debug("Config OK. Canal:", cfg.channel, "Hermandades:", #cfg.guilds, "Mi etiqueta:", self.myTag)
+        self:Debug("Config OK. Canal:", HU.MaskChannel(cfg.channel), "Hermandades:", #cfg.guilds, "Mi etiqueta:", self.myTag)
         -- (para el arranque rápido de la próxima vez; solo se escribe si ha cambiado)
         local q = self.db.quickCfg
         if mine and cfg.channel and (type(q) ~= "table" or q.text ~= text or q.guild ~= gname or time() - (q.t or 0) > 86400) then
@@ -332,31 +389,128 @@ end
 ---------------------------------------------------------------------------
 -- Maestro y oficiales
 ---------------------------------------------------------------------------
--- Rangos de oficial: del 1 al N (por defecto solo el 1). Se cambia con GU:r:ETIQ:N
+-- Rangos de oficial fijados a mano: del 1 al N con GU:r:ETIQ:N (si está, manda)
 function HU:OfficerMax(tag)
-    return (self.cfg and self.cfg.officerMax and tag and self.cfg.officerMax[tag]) or 1
+    return (self.cfg and self.cfg.officerMax and tag and self.cfg.officerMax[tag]) or nil
+end
+
+-- Rangos de oficial por permisos: en mi hermandad, los que tienen marcada la casilla «Oficial» del
+-- Control de hermandad; en las otras, lo que manda su enlace con los nombres de los rangos (RN) [+ARCHITECTURE.md]
+local OFFICER_FLAG = 22
+local myOfficers, myOfficersT = nil, -1e9
+HU.officerRanks = HU.officerRanks or {}   -- [tag] = { [rankIndex] = true }
+
+local function ReadMyOfficerRanks()
+    local get = C_GuildInfo and C_GuildInfo.GuildControlGetRankFlags
+    if not (get and IsInGuild() and GuildControlGetNumRanks) then return nil end
+    local set, any = {}, false
+    for order = 2, GuildControlGetNumRanks() do
+        local ok, flags = pcall(get, order)
+        if ok and type(flags) == "table" then
+            any = true
+            if flags[OFFICER_FLAG] then set[order - 1] = true end
+        end
+    end
+    return any and set or nil
+end
+
+function HU:MyOfficerRanks()
+    if GetTime() - myOfficersT > 30 then
+        myOfficersT = GetTime()
+        local set = ReadMyOfficerRanks()
+        if set then
+            myOfficers = set
+            if self.db then self.db.myOfficerRanks = set end
+        elseif not myOfficers and self.db and type(self.db.myOfficerRanks) == "table" then
+            myOfficers = self.db.myOfficerRanks
+        end
+    end
+    return myOfficers
+end
+function HU:ForgetMyOfficerRanks() myOfficersT = -1e9 end
+
+function HU:OfficerRanksOf(tag)
+    if not tag then return nil end
+    if tag == self.myTag then return self:MyOfficerRanks() end
+    return self.officerRanks[tag]
+end
+
+-- "1,2": los rangos de oficial de mi hermandad, para mandarlos. "0": ninguno aparte del maestro.
+-- "": no se saben (no he podido leer los permisos)
+function HU:MyOfficerRanksText()
+    local set = self:MyOfficerRanks()
+    if not set then return "" end
+    local out = {}
+    for idx in pairs(set) do out[#out + 1] = idx end
+    if #out == 0 then return "0" end
+    table.sort(out)
+    return table.concat(out, ",")
+end
+
+-- Aviso para el asistente: qué rangos de mi hermandad cuentan como oficiales en GuildUnion
+function HU:OfficerRanksNote()
+    local names, set, list = self:MyRankNames(), self:MyOfficerRanks(), {}
+    local max = self:OfficerMax(self.myTag)
+    for i = 2, #names do
+        local idx = i - 1
+        if (max and idx <= max) or (not max and set and set[idx]) then list[#list + 1] = names[i] end
+    end
+    local who = #list > 0 and ("|cffffd100" .. table.concat(list, ", ") .. "|r") or L("ninguno (solo el maestro)")
+    if not set and not max then who = L("no se pueden leer los permisos de los rangos; de momento, el rango justo debajo del maestro") end
+    return L("Oficiales de tu hermandad en GuildUnion: ") .. who
+        .. L("\n|cff999999(los rangos con la casilla «Oficial» marcada en Control de hermandad; para cambiarlo, cambia esa casilla)|r")
 end
 
 -- "gm", "officer" o nil
 function HU:RankRole(tag, rankIndex)
     if rankIndex == nil then return nil end
     if rankIndex == 0 then return "gm" end
-    if rankIndex <= self:OfficerMax(tag) then return "officer" end
-    return nil
+    local max = self:OfficerMax(tag)
+    if max then return rankIndex <= max and "officer" or nil end
+    local set = self:OfficerRanksOf(tag)
+    if set then return set[rankIndex] and "officer" or nil end
+    -- (sin saberlo todavía, o la otra hermandad lleva una versión sin esto: como antes, solo el 1)
+    return rankIndex == 1 and "officer" or nil
 end
 
--- maestro: corona; oficiales: dos espadas cruzadas; moderadores del canal: las espadas en rojo [+ARCHITECTURE.md]
+HU:On("GUILD_RANKS_UPDATE", function() HU:ForgetMyOfficerRanks(); if HU.Changed then HU:Changed("members") end end)
+HU:OnStart(function()
+    for tag, set in pairs(HU.db.officerRanks or {}) do
+        if type(set) == "table" and not HU.officerRanks[tag] then HU.officerRanks[tag] = set end
+    end
+end)
+
+-- maestro: corona; admin: dos espadas cruzadas en rojo; oficial: las espadas normales [+ARCHITECTURE.md]
 HU.ICON_GM = "|TInterface\\GroupFrame\\UI-Group-LeaderIcon:15:15:0:-1|t"
 HU.ICON_OFFICER = "|TInterface\\CharacterFrame\\UI-StateIcon:16:16:0:-1:64:64:34:62:2:30|t"
-HU.ICON_MOD = "|TInterface\\CharacterFrame\\UI-StateIcon:16:16:0:-1:64:64:34:62:2:30:255:70:60|t"
-HU.MOD_COLOR = { 1, 0.27, 0.24 }
-HU.SWORDS_COORDS = { 34 / 64, 62 / 64, 2 / 64, 30 / 64 }
+HU.ICON_ADMIN = "|TInterface\\CharacterFrame\\UI-StateIcon:16:16:0:-1:64:64:34:62:2:30:255:70:60|t"
+HU.ADMIN_COLOR = { 1, 0.27, 0.24 }
 
 function HU:RoleIcon(role)
     if role == "gm" then return self.ICON_GM end
-    if role == "mod" then return self.ICON_MOD end
+    if role == "admin" then return self.ICON_ADMIN end
     if role == "officer" then return self.ICON_OFFICER end
     return ""
+end
+
+-- Admin: el rango de oficial más alto bajo el maestro, solo si la hermandad tiene más de un rango de
+-- oficial (con uno solo, todos son oficiales sin más) (Jorge, 12/11: «gm, admin, ofi»)
+function HU:IsAdminRank(tag, rankIndex)
+    if not rankIndex or self:RankRole(tag, rankIndex) ~= "officer" then return false end
+    local max = self:OfficerMax(tag)
+    if max then return max >= 2 and rankIndex == 1 end
+    local set = self:OfficerRanksOf(tag)
+    if not set then return false end
+    local first, n
+    n = 0
+    for idx, on in pairs(set) do
+        local i = tonumber(idx)
+        if i and on then
+            n = n + 1
+            if not first or i < first then first = i end
+        end
+    end
+    return n >= 2 and rankIndex == first
 end
 
 -- ¿Es moderador del canal del chat unido? (lo dice su addon al saludar, o lo veo en el canal)
@@ -370,10 +524,11 @@ function HU:IsChannelMod(name)
     return p and p.mod and true or false
 end
 
--- "gm", "mod" (oficial y moderador del canal), "officer" o nil, para un jugador concreto
-function HU:RoleOf(name, tag, rankIndex)
+-- "gm", "admin", "officer" o nil, para un jugador concreto (solo para pintar: lo que puede hacer cada
+-- uno lo sigue diciendo RankRole, que no distingue admin de oficial)
+function HU:RoleOf(_, tag, rankIndex)
     local role = self:RankRole(tag, rankIndex)
-    if role ~= "gm" and name and self:IsChannelMod(name) then return "mod" end
+    if role == "officer" and self:IsAdminRank(tag, rankIndex) then return "admin" end
     return role
 end
 
