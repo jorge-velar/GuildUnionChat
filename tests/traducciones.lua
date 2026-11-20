@@ -11,7 +11,7 @@ local addon = require("lib.addon")
 local strict = arg and arg[1] == "--estricto"
 
 local HU = addon.Load({}).HU
-local files = addon.Toc()
+local files = addon.LuaFiles()
 
 -- (el texto de una cadena de Lua tal cual se escribiría: se evalúa para resolver \n, \", \195...)
 local function Literal(q, body)

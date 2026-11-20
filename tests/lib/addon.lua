@@ -47,12 +47,43 @@ local function LoadWithEnv(src, name, env)
 end
 M.LoadWithEnv = LoadWithEnv
 
+-- Un .xml del .toc (p. ej. Libs/LibDBIcon-1.0/lib.xml): solo importan sus <Script file> e
+-- <Include file>, en orden y relativos a la carpeta del .xml. Los marcos en XML no se crean.
+local function XmlFiles(path, out)
+    out = out or {}
+    local src = assert(ReadFile(M.root .. "/" .. path), "no encuentro " .. path)
+    local dir = path:match("^(.*)/[^/]+$")
+    for tag, file in src:gmatch("<%s*(%a+)%s+[^>]-file%s*=%s*\"([^\"]+)\"") do
+        local full = (dir and dir .. "/" or "") .. file:gsub("\\", "/")
+        if tag == "Script" then
+            out[#out + 1] = full
+        elseif tag == "Include" then
+            XmlFiles(full, out)
+        end
+    end
+    return out
+end
+
+-- Los .lua que carga el .toc, con los de cada .xml en su sitio
+function M.LuaFiles()
+    local out = {}
+    for _, file in ipairs((M.Toc())) do
+        if file:lower():match("%.xml$") then
+            for _, f in ipairs(XmlFiles(file)) do out[#out + 1] = f end
+        else
+            out[#out + 1] = file
+        end
+    end
+    return out
+end
+
 -- opts: lo de wow.New (player, realm, guild, guildInfo, locale...) y además
 --   db / charDb : lo guardado (GuildUnionDB / GuildUnionCharDB) antes de cargar
 --   only        : lista de archivos que cargar en vez de todo el .toc (pruebas de un módulo suelto)
 function M.Load(opts)
     opts = opts or {}
-    local files, meta = M.Toc()
+    local _, meta = M.Toc()
+    local files = M.LuaFiles()
     opts.metadata = opts.metadata or meta
     local w = wow.New(opts)
     w.env.GuildUnionDB = opts.db

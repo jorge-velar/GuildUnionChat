@@ -22,7 +22,7 @@ jobs:
       - name: Pruebas (tests/run.lua)
         run: lua5.1 tests/run.lua
 
-      # Solo informa (hoy faltan unas 70). Cuando estén todas: añadir --estricto para que pare el CI
+      # Solo informa (en la 5.4.41 faltan 54). Cuando estén todas: añadir --estricto para que pare el CI
       - name: Textos sin traducción al inglés
         run: lua5.1 tests/traducciones.lua
 

@@ -1,6 +1,7 @@
 # Propuesta: arquitectura para seguir añadiendo funciones
 
-> Estado: **revisada y lista para empezar el paso 1**. Basada en la versión 5.4.12.
+> Estado: **revisada y lista para empezar el paso 1**. Escrita sobre la 5.4.12 y comprobada de nuevo
+> sobre la **5.4.41** (las cifras del diagnóstico son de la 5.4.41 salvo donde se indica).
 > La red de pruebas del paso 1 ya está montada (`tests/`, ver [Paso 1 en detalle](#paso-1-en-detalle)).
 
 ## Resumen
@@ -26,23 +27,25 @@ cambios están resumidos al final, en [Qué ha cambiado en la revisión](#qué-h
 
 ## Diagnóstico
 
-Cifras sacadas del código de la 5.4.12, con grep y con el entorno de pruebas (`tests/`).
+Cifras sacadas con grep y con el entorno de pruebas (`tests/`). Las de #3 y #6 son de la 5.4.12
+y en la 5.4.41 han crecido: con un recuento parecido salen unas 490 funciones públicas en `HU` y
+unos 40 `NewTicker`.
 
 | # | Problema | Dónde | Por qué frena |
 |---|---|---|---|
 | 1 | Cada mensaje de red se define en hasta 6 sitios | Manejador en cualquier archivo. Seguridad: `TAG_FIELD`, `BOOTSTRAP`, `OPEN`, `REMOTE_DATA`, `CHANNEL_OK` (Comm.lua). Cola: `CHAT_CMDS`, `MID_CMDS`, `LOW_CMDS`, `BFAST_CMDS`, `BULK_CMDS`, `BMID_CMDS`, `BLOW_CMDS`. Caducidad: `QUEUE_TTL`, `NEVER_EXPIRE`, `LATEST_WINS`. Combate: `DEFER_IN` y `BULK_PREFIX` (Combat.lua) | Si falta una tabla no hay error: el mensaje va a la cola por defecto, se rechaza o en combate se trata distinto, sin avisar |
-| 2 | Comm.lua es demasiado grande: 3.873 líneas y 200 KB | Comm.lua | Tiene 11 bloques `do … end` solo para no pasar de 200 variables locales; dentro hay 5 o 6 módulos |
+| 2 | Comm.lua es demasiado grande: 4.010 líneas y 208 KB | Comm.lua | Tiene unos 10 bloques `do … end` solo para no pasar de 200 variables locales; dentro hay 5 o 6 módulos |
 | 3 | No hay dependencias declaradas entre módulos | `HU`: unas 408 funciones públicas y 78 campos | Unas 185 líneas con `if HU.X then`, que esconden nombres mal escritos |
 | 4 | El orden de carga se resuelve con parches | `HU.comm` se crea en Comm.lua, que va después de Channel.lua: `CW`, `CG` y `CF` se registran dentro de `OnStart` | Hay que saber en qué orden van los archivos del .toc |
 | 5 | Formato de mensajes por posición y sin escapar | `HU.Split(text, "~")`. `CW` junta lo que sobra con `table.concat(f, "~", 3)` | Añadir un campo obliga a contar posiciones en todos los sitios que lo leen |
 | 6 | 29 temporizadores independientes | 4 de ellos van a 1 s o menos (Channel, Comm, Echo, History) | Cada uno con su regla de combate. (History usa `C_Timer` directamente, pero protegido con `Guarded`: no se salta la protección) |
 | 7 | Base de datos guardada sin versión | `DEFAULTS` y `PER_CHAR` en Core; la única migración es una marca suelta (`cdb.migrated`) | Cambiar la forma de un dato guardado es arriesgado |
 | 8 | `/gu` es un único `if/elseif` de 230 líneas | Core.lua. Alias y ayuda (`HELP`) por separado | Es fácil que la ayuda y los comandos reales dejen de coincidir |
-| 9 | Restos de las versiones Reduce y «solo chat» | `IsTest()` y `SimpleMode()` devuelven `false`, `AnnounceList()` está vacía, todo UIStubs.lua; unas 89 líneas preguntan por `CHAT_ONLY`, `IsTest`, `LaunchPhase` o `SimpleMode`. **Y en el protocolo:** `WL`, `WH`, `WD`, `WQ`, `GV` y `FQ` están en 8 tablas de Comm y Combat, pero ya no se mandan ni tienen manejador; `HU.whitelist` no lo llena nadie, así que media `AllowAddonMessage` no se ejecuta nunca | Ramas que ya no se ejecutan pero hay que leer, mantener y migrar |
+| 9 | Restos de las versiones Reduce y «solo chat» | `IsTest()` y `SimpleMode()` devuelven `false`, `AnnounceList()` está vacía, todo UIStubs.lua; unas 89 líneas preguntan por `CHAT_ONLY`, `IsTest`, `LaunchPhase` o `SimpleMode`. **Y en el protocolo:** `WL`, `WH`, `WD`, `WQ`, `FQ` y `LG` están en 8 tablas de Comm y Combat, pero ya no se mandan ni tienen manejador (63 órdenes sí lo tienen); `HU.whitelist` no lo llena nadie, así que media `AllowAddonMessage` no se ejecuta nunca | Ramas que ya no se ejecutan pero hay que leer, mantener y migrar |
 | 10 | No había pruebas | El CI solo pasaba luacheck, y sus avisos no paraban la integración | La lógica de seguridad y los lectores de configuración cambiaban sin red. **Resuelto en parte:** ver paso 1 |
-| 11 | La documentación apunta a números de línea | ARCHITECTURE.md (2.015 líneas), con líneas de la ReduceClean-7 | Se queda desfasada con cada cambio; falta una tabla del protocolo |
+| 11 | La documentación apunta a números de línea | ARCHITECTURE.md (2.589 líneas), con líneas de la ReduceClean-7 | Se queda desfasada con cada cambio; falta una tabla del protocolo |
 | 12 | Hay cinco prefijos y no todos pasan por la seguridad central | `HU20` y `HU20B` pasan por `OnAddonMessage` (`Admit` + `AllowAddonMessage`). `HU20H` (History), `HU20C` (Channel, `OnHiddenChat`) y `HU20T` (TestLog) tienen su propio `CHAT_MSG_ADDON` con sus propias comprobaciones | Quien lee Comm.lua cree que ahí está toda la seguridad, y no es así |
-| 13 | 70 textos sin traducción al inglés | `L("…")` sin entrada en LocaleEN.lua (446 textos distintos) | Hoy solo se ve dentro del juego, con `/gu idioma` |
+| 13 | 54 textos sin traducción al inglés | `L("…")` sin entrada en LocaleEN.lua (619 textos distintos) | Hoy solo se ve dentro del juego, con `/gu idioma` |
 
 ## Propuestas
 
@@ -156,7 +159,7 @@ La ayuda sale sola y cada módulo trae sus propios comandos.
 
 O se borran las ramas muertas, o se dejan detrás de una tabla `HU.features` explícita si se
 piensan recuperar. Lo que no conviene es tener funciones vacías que parecen funcionar. Incluye
-las órdenes `WL`/`WH`/`WD`/`WQ`/`GV`/`FQ` de todas las tablas y la rama de `AllowAddonMessage` que
+las órdenes `WL`/`WH`/`WD`/`WQ`/`FQ`/`LG` de todas las tablas y la rama de `AllowAddonMessage` que
 mira `HU.whitelist`. Las pruebas de esa rama están marcadas como «rama muerta» y se borran con ella.
 
 **Pasa al paso 1:** es poco trabajo y evita migrar código que no se ejecuta.
@@ -204,7 +207,8 @@ cierra cuando se cumple su «hecho cuando».
 - `tests/lib/wow.lua`: un WoW de mentira con reloj, temporizadores (`Advance`), eventos (`Fire`),
   mensajes de addon que entran (`Receive`) y salen (`sent`), saturación (`failSend`), bloqueo del
   chat (`lockdown`), jugador «Tester-Reino» y su hermandad.
-- `tests/lib/addon.lua`: carga **el addon entero** en el orden del .toc, lanza `ADDON_LOADED` y,
+- `tests/lib/addon.lua`: carga **el addon entero** en el orden del .toc (incluidos los `<Script>`
+  de los .xml, como el de LibDBIcon), lanza `ADDON_LOADED` y,
   con `:Login()`, `PLAYER_LOGIN`. Arranca y pasa un minuto sin errores guardados.
 - `tests/lib/fixtures.lua`: una comunidad de dos hermandades (UNO y DOS) ya configurada.
 - 67 pruebas en `tests/spec/`:
@@ -235,7 +239,7 @@ cierra cuando se cumple su «hecho cuando».
 6. **A confirmar:** con `HU.paused` (versión mínima), lo que sale de la cola se pierde en vez de
    esperar (`SendOne` devuelve `false`). La prueba lo fija tal como está; si no es lo que se quiere,
    se cambia la prueba junto con el código.
-7. Ir traduciendo los 70 textos que faltan y después pasar `tests/traducciones.lua --estricto`.
+7. Ir traduciendo los 54 textos que faltan y después pasar `tests/traducciones.lua --estricto`.
 
 ### Cómo se prueba
 
