@@ -85,6 +85,9 @@ end
 -- Errores: se guardan para poder copiarlos (/gu errores) y mandarlos
 ---------------------------------------------------------------------------
 HU.errors = {}
+-- Manejadores de las órdenes de red: HU.comm[orden] = function(self, sender, f, dist, raw). Se crea
+-- aquí, en el primer archivo, para que cualquier archivo pueda registrar las suyas al cargarse
+HU.comm = {}
 local function Trace(err)
     local stack = debugstack and debugstack(2, 12, 0) or ""
     return { msg = tostring(err), stack = stack }

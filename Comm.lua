@@ -132,7 +132,7 @@ function HU:RestoreRosterCache()
     end
     self:Changed("members")
 end
-HU.comm = {}
+-- (HU.comm, los manejadores de las órdenes, lo crea Core.lua)
 local perf = {} -- medidas de este ordenador y su conexión (para elegir el enlace)
 
 ---------------------------------------------------------------------------

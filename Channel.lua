@@ -783,8 +783,8 @@ local function TokenKind(token)
     if type(token) == "string" and token:sub(1, 2) == "x:" then return token end
     return nil
 end
--- (Comm.lua crea HU.comm después de cargar este archivo: las órdenes se ponen al empezar)
-HU:OnStart(function()
+-- (HU.comm lo crea Core.lua: las órdenes se registran al cargar este archivo)
+do
     -- CW~canal~autor~[ETIQ] mensaje : por susurro, del autor o de un compañero suyo que lo reparte
     HU.comm.CW = function(self, sender, f, dist)
         if dist ~= "WHISPER" or not self.myTag or not self.cfg then return end
@@ -869,7 +869,7 @@ HU:OnStart(function()
         end
         if self:OnUnionChat(kind, line, author, nil, "w", sender) then self:AuditRelayedLine(sender, author, line) end
     end
-end)
+end
 
 ---------------------------------------------------------------------------
 -- Carriles del canal (lo que le pasó a Olympus la noche del lanzamiento de Forever): el juego puede [+ARCHITECTURE.md]

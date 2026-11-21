@@ -263,7 +263,9 @@ cierra cuando se cumple su «hecho cuando».
   alguna prueba, **sin contar lo que se ejecuta solo al cargar el addon** (era casi la mitad de lo
   «cubierto»). Hoy, 33,7 % con Lua 5.1 (26,2 % antes de las pruebas de formato). Para el CI en dos
   casos:
-  - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen). Los mínimos
+  - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen) **y además**
+    tiene más líneas sin probar que antes. Así, borrar código muerto que sí se probaba (el % baja sin
+    que falte ninguna prueba) no para el CI; añadir código sin probar o quitar pruebas, sí. Los mínimos
     se miden con Lua 5.1: con la 5.4, luac reparte las instrucciones por líneas de otra forma y cada
     archivo sale hasta 1,2 puntos arriba o abajo, así que en local el margen es de 2 puntos y
     `--actualizar` solo guarda con 5.1. Los mínimos solo suben: cuando un archivo mejora, se copia el
@@ -298,8 +300,9 @@ cierra cuando se cumple su «hecho cuando».
 
    Las pruebas de la «rama muerta» se han quitado; las líneas tocadas que no ejecutaba ninguna
    prueba tienen ahora `listas_spec` y `comandos_spec`.
-4. `HU.comm = {}` en Core.lua; `CW`/`CG`/`CF` se registran al cargar Channel.lua. Hay que cambiar la
-   prueba «CW, CG y CF se registran al entrar al juego».
+4. ~~`HU.comm = {}` en Core.lua~~ **Hecho**: Core.lua crea `HU.comm` y Channel.lua registra
+   `CW`/`CG`/`CF` al cargarse (antes, en `OnStart`). La prueba de carga ahora exige que estén ya al
+   cargar (diagnóstico #4 arreglado).
 5. Metatabla estricta sobre `HU` con `/gu debug` encendido. Antes, arreglar lo que encuentre al
    pasar las pruebas con ella activa.
 6. **A confirmar:** con `HU.paused` (versión mínima), lo que sale de la cola se pierde en vez de
