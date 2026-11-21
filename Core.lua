@@ -643,6 +643,39 @@ local DEFAULTS = {
     point = nil,
 }
 
+---------------------------------------------------------------------------
+-- Migraciones de lo guardado: adb.schema (la cuenta) y cdb.schema (cada personaje) [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+HU.migrations = { account = {}, char = {} }
+-- n: su número, en orden y sin huecos. fn(adb, cdb, info) hace el cambio (dos veces seguidas no
+-- estropea nada) y devuelve false si aún no puede: info es la de RefreshConfig (Config.lua),
+-- { guild, text }, y al cargar el addon todavía no la hay. Se vuelve a probar en la siguiente.
+function HU:RegisterMigration(scope, n, name, fn)
+    local list = HU.migrations[scope]
+    if not list then error("migración: ámbito desconocido: " .. tostring(scope), 2) end
+    if n ~= #list + 1 then error("migración " .. scope .. " " .. tostring(n) .. ": toca la " .. (#list + 1), 2) end
+    list[n] = { name = name, fn = fn }
+end
+function HU:RunMigrations(info)
+    local adb, cdb = HU.adb, HU.cdb
+    if not (adb and cdb) then return end
+    for _, scope in ipairs({ "account", "char" }) do
+        local list, db = HU.migrations[scope], scope == "account" and adb or cdb
+        local cur = tonumber(db.schema) or 0
+        if cur > #list then
+            -- (lo guardado es de una versión más nueva: no se toca nada; se avisa en /gu errores)
+            HU:RecordError({ msg = string.format("Lo guardado (%s) es de una versión más nueva del addon (esquema %d; esta entiende hasta el %d): no se cambia nada. Actualiza el addon.",
+                scope == "account" and "cuenta" or "personaje", cur, #list), stack = "" }, "migraciones")
+        else
+            for i = cur + 1, #list do
+                if list[i].fn(adb, cdb, info) == false then break end
+                db.schema = i
+            end
+            db.schema = db.schema or cur
+        end
+    end
+end
+
 HU:On("ADDON_LOADED", function(name)
     if name ~= ADDON_NAME then return end
     -- la versión de pruebas "Guild Union 20" (o el viejo We Love PvP) no pueden ir a la vez:
@@ -675,6 +708,8 @@ HU:On("ADDON_LOADED", function(name)
         __index = function(_, k) if HU.PER_CHAR[k] then return cdb[k] end return adb[k] end,
         __newindex = function(_, k, v) if HU.PER_CHAR[k] then cdb[k] = v else adb[k] = v end end,
     })
+    -- (las que no necesitan nada del juego, ya; las demás, cuando se lea la Información)
+    HU:RunMigrations(nil)
     -- (sin elegir a mano: el idioma del juego; castellano solo si el juego está en español)
     if not HU.db.lang or not HU.db.langChosen then
         local loc = GetLocale and GetLocale() or ""

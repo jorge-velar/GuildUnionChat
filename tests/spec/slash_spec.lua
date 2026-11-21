@@ -160,7 +160,6 @@ describe("Comandos /gu: registro", function()
         HU:RegisterSlash("hola", { aliases = { "hi" }, help = "|cffffd100/gu hola|r  saluda", fn = function(arg, raw, cmd) got = { arg, raw, cmd } end })
         a.env.SlashCmdList.HERMANDADUNIDA("HI  Que Tal")
         A.same({ "que tal", "Que Tal", "hola" }, got)
-        before = #a.w.chat
         a.env.SlashCmdList.HERMANDADUNIDA("ayuda")
         A.matches("/gu hola", tostring(a.w.chat[#a.w.chat].msg))
     end)

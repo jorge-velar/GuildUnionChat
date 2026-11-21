@@ -104,6 +104,35 @@ HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat
 - `tests/spec/registro_spec.lua` fija que lo declarado da exactamente las tablas de la 5.4.41 y que
   toda orden con manejador está registrada (y al revés).
 
+## Core.lua · lo guardado
+
+### Migraciones: `HU:RegisterMigration` y `HU:RunMigrations`
+
+Lo guardado tiene dos ámbitos con su número de esquema: la cuenta (`adb.schema`, que también es
+`db.schema`) y cada personaje (`cdb.schema`, dentro de `adb.chars`). Cada migración es un paso de
+un número al siguiente:
+
+```lua
+HU:RegisterMigration("char", 1, "de la cuenta al personaje", function(adb, cdb, info)
+    if not info then return false end -- (necesita la Información: se vuelve a probar)
+    …
+    return true
+end)
+```
+
+- Se ejecutan al cargar el addon (`ADDON_LOADED`, con `info = nil`) y cada vez que se lee la
+  Información de la hermandad (`RefreshConfig`, con `info = { guild, text }`). Una que devuelve
+  `false` se queda para la siguiente, y las de detrás esperan.
+- Ejecutar una dos veces no estropea nada.
+- **Lo guardado por una versión más nueva** (un esquema mayor que el número de migraciones que
+  conoce esta) no se toca: se avisa en `/gu errores` y no se migra nada de ese ámbito.
+- La 1 del personaje es la que antes hacía `RefreshConfig` con la marca suelta `cdb.migrated`:
+  copia al personaje lo que versiones viejas guardaban para la cuenta (canal, fijado, notas…), solo
+  si era de su hermandad. Sigue poniendo `cdb.migrated`, que miran las versiones de antes.
+- `tests/spec/datos_spec.lua`: cada caso de la migración 1, la versión más nueva, y lo que guarda
+  la última versión publicada en un rato de juego (`tests/lib/escenario.lua`), que al actualizar no
+  pierde ninguna clave y con lo que se puede volver a la versión de antes.
+
 ## Core.lua · comandos
 
 ### Registro de los comandos /gu: `HU:RegisterSlash`

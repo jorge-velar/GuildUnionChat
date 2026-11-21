@@ -1,6 +1,6 @@
 # Propuesta: arquitectura para seguir añadiendo funciones
 
-> Estado: **revisada y lista para empezar el paso 1**. Escrita sobre la 5.4.12 y comprobada de nuevo
+> Estado: **pasos 1 y 2 hechos** en la rama `refactor/arquitectura` (ver [Paso 2 en detalle](#paso-2-en-detalle)). Escrita sobre la 5.4.12 y comprobada de nuevo
 > sobre la **5.4.41** (las cifras del diagnóstico son de la 5.4.41 salvo donde se indica).
 > La red de pruebas del paso 1 ya está montada (`tests/`, ver [Paso 1 en detalle](#paso-1-en-detalle)).
 
@@ -199,7 +199,7 @@ cierra cuando se cumple su «hecho cuando».
 | 1 | **H + G + arreglos rápidos**: pruebas, luacheck con lista de conocidos, borrar restos de Reduce, `HU.comm` en Core, metatabla estricta | CI en verde con pruebas y luacheck que paran; ninguna orden sin manejador en las tablas; `CW`/`CG`/`CF` registrados al cargar |
 | 2 | **A** (con las marcas de hoy), **F** y **E**. Primera prueba: `CW`, `CG` y `CF` | Ninguna tabla suelta de órdenes en Comm.lua ni en Combat.lua; `/gu diag` lista las órdenes desde el registro; la ayuda de `/gu` sale del registro; `db.schema` existe con su primera migración (`cdb.migrated`) |
 | 3 | **B**, y se estudia `Trust:Level` | Comm.lua por debajo de 1.000 líneas y sin bloques `do` para las variables locales; las pruebas de seguridad dan lo mismo que antes |
-| 4 | **C + D**: módulos, bus interno y planificador | Ningún `HU.NewTicker` fuera del planificador; los `if HU.X then` que quedan están justificados |
+| 4 | **C + D**: módulos, bus interno y planificador, y `HU:Defaults` (lo que quedó de E) | Ningún `HU.NewTicker` fuera del planificador; los `if HU.X then` que quedan están justificados |
 | 5 | **I** | ARCHITECTURE.md sin números de línea; tabla del protocolo generada |
 
 ## Paso 1 en detalle
@@ -345,6 +345,48 @@ lua tests/cobertura.lua --base origin/main   # cobertura, y lo nuevo desde main
 
 Cuando una prueba falla por una función del juego que falta en el WoW de mentira, se añade a
 `tests/lib/wow.lua` con el valor más neutro posible (lo que devolvería un cliente sin datos).
+
+## Paso 2 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento. Se cumple el «hecho
+cuando»: no queda ninguna tabla suelta de órdenes en Comm.lua ni en Combat.lua, `/gu diag` y la
+ayuda de `/gu` salen de los registros y `db.schema` existe con su primera migración. Los detalles
+de cada registro están en ARCHITECTURE.md.
+
+- **A, `HU:RegisterMessage`** (Protocol.lua, detrás de Core.lua). Las 63 órdenes con manejador
+  están registradas junto a él, con las marcas de antes. CW, CG y CF, las primeras, ya usan campos
+  con nombre. El combate ya no envuelve manejadores al cargar: la entrada llama a
+  `HU.CombatDispatch`.
+- **F, `HU:RegisterSlash`** (Core.lua). Sustituye el `if/elseif` de 280 líneas, los alias y `HELP`.
+- **E, `HU:RegisterMigration` y `HU:RunMigrations`** (Core.lua). Hay dos esquemas, el de la cuenta y
+  el de cada personaje. La 1 del personaje es la de `cdb.migrated`, en Config.lua.
+
+Pruebas nuevas (de 107 a 133):
+
+- `registro_spec`: lo declarado da exactamente las tablas de la 5.4.41.
+- `combate_spec`: Combat.lua no tenía ninguna.
+- `slash_spec`: los 130 comandos y alias, comparados con `tests/golden/comandos.txt`.
+- `datos_spec`: las migraciones. Incluye actualizar desde la última versión publicada sin perder
+  ninguna clave guardada y volver a ella. Usa lo que guarda esa versión en el escenario de red, así
+  que no hacen falta archivos de jugadores.
+
+Comprobado a propósito: borrar `adb.audit` al cargar lo detecta la prueba de actualizar
+(«audit.1»).
+
+**Distinto de lo propuesto, y por qué:**
+
+- Los manejadores siguen en `HU.comm[orden]` y `handler` es opcional. Varios archivos envuelven el
+  manejador de otro (`PQ` hasta seis veces, `CP`, `RC`, `HI`…), y meterlo en el registro obligaba a
+  rehacer esas cadenas.
+- `channel = true` en vez de `via = {…}`. Es la marca que existía (`CHANNEL_OK`): GUILD y WHISPER
+  siempre se han mirado en `AllowAddonMessage`, no por orden.
+- Sin `since`. La primera versión que entiende cada orden no está apuntada en ningún sitio, y
+  inventarla no sirve.
+- Las migraciones pueden esperar a la Información de la hermandad (`info`). La de `cdb.migrated`
+  la necesita y en `ADDON_LOADED` aún no se conoce.
+- Falta `HU:Defaults` por módulo. `DEFAULTS` y `PER_CHAR` siguen en Core.lua. Moverlos cambia qué
+  se crea al cargar y en qué orden, y no hace falta para el «hecho cuando». Queda para el paso 4,
+  con los módulos (C).
 
 ## Cómo quedaría una función nueva
 

@@ -225,6 +225,22 @@ function HU:QuickConfig()
     return true
 end
 
+-- Migración 1 del personaje: versiones de antes guardaban esto para toda la cuenta; pasa a este
+-- personaje solo si es de su hermandad. Necesita la Información (la de RefreshConfig)
+HU:RegisterMigration("char", 1, "de la cuenta al personaje", function(adb, cdb, info)
+    if cdb.migrated then return true end -- (ya lo hizo una versión de antes)
+    if not info then return false end
+    local gname, text = info.guild, info.text
+    cdb.migrated = true -- (lo siguen mirando las versiones de antes: no lo repiten si se vuelve a una)
+    if adb.netCfg and adb.netCfg.guild == gname then cdb.netCfg = adb.netCfg end
+    if adb.infoBackup and adb.infoBackup.guild == gname then cdb.infoBackup = adb.infoBackup end
+    local c0 = HU.ParseConfigText(text)
+    if adb.netChan and c0 and c0.byName[gname:lower()] and c0.byTag[adb.netChan.tag or ""] then cdb.netChan = adb.netChan end
+    if adb.pinned and c0 and c0.byName[gname:lower()] then cdb.pinned = adb.pinned end
+    if type(adb.extraChans) == "table" and next(adb.extraChans) and c0 then cdb.extraChans = adb.extraChans end
+    return true
+end)
+
 function HU:RefreshConfig(force)
     if not IsInGuild() then
         self:Debug("Sin hermandad")
@@ -253,18 +269,8 @@ function HU:RefreshConfig(force)
     if self.SetGuildMin then self:SetGuildMin(HU.ParseMinVersion(text)) end
     -- (y la sala fijada, igual: de la Información de MI hermandad)
     if self.SetLaneLock then self:SetLaneLock(HU.ParseLaneLock(text)) end
-    -- (versiones de antes guardaban esto para toda la cuenta: pasa a este personaje solo si es
-    -- de su hermandad)
-    local cdb, adb = self.cdb, self.adb
-    if cdb and adb and not cdb.migrated then
-        cdb.migrated = true
-        if adb.netCfg and adb.netCfg.guild == gname then cdb.netCfg = adb.netCfg end
-        if adb.infoBackup and adb.infoBackup.guild == gname then cdb.infoBackup = adb.infoBackup end
-        local c0 = HU.ParseConfigText(text)
-        if adb.netChan and c0 and c0.byName[gname:lower()] and c0.byTag[adb.netChan.tag or ""] then cdb.netChan = adb.netChan end
-        if adb.pinned and c0 and c0.byName[gname:lower()] then cdb.pinned = adb.pinned end
-        if type(adb.extraChans) == "table" and next(adb.extraChans) and c0 then cdb.extraChans = adb.extraChans end
-    end
+    -- (las migraciones que esperan a la Información de la hermandad: ver «de la cuenta al personaje»)
+    self:RunMigrations({ guild = gname, text = text })
     -- recién unida a la comunidad: el juego puede tardar en devolver la Información nueva
     if self.joinedText and not HU.ParseConfigText(text) then text = self.joinedText end
     -- más líneas de la comunidad en las notas de oficial (las leen los oficiales y las reparten)
