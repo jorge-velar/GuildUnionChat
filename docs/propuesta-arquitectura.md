@@ -235,9 +235,11 @@ cierra cuando se cumple su «hecho cuando».
     repite en la propia; quien entra tarde también lo recibe; y cada uno tiene la lista de la otra
     hermandad antes de 90 s (hoy, 36 s);
   - `formato_spec`, con el escenario:
-    - **la forma de cada mensaje** (46 formas de 5 prefijos) es la de `tests/golden/formato.txt`. Se
-      guardan los tipos de los campos (`<ver>`, `<n>`, `<nombre>`, `<etiq>`, `<x>`), no los valores,
-      para que no dependa del orden de las tablas ni de la versión de Lua. Si el cambio es a
+    - **ninguna forma de mensaje nueva** fuera de `tests/golden/formato.txt` (47 formas de 5
+      prefijos). Se guardan los tipos de los campos (`<ver>`, `<n>`, `<nombre>`, `<etiq>`, `<x>`), no
+      los valores, para que no dependa del orden de las tablas. Solo falla una forma nueva: con Lua
+      5.1 y 5.4 los retrasos al azar dan otro recorrido y algún mensaje sale en una y no en la otra,
+      así que `--actualizar` añade y no quita (lo viejo se borra a mano). Si el cambio es a
       propósito: `lua tests/run.lua Formato --actualizar`, y queda a la vista en el diff;
     - **ida y vuelta:** todo lo que se manda por `HU20`/`HU20B` lo acepta la seguridad de alguna otra
       copia. Las excepciones van en `NOBODY_ACCEPTS` con su motivo; hoy, solo `PB` (ver pendiente 10);
@@ -252,7 +254,8 @@ cierra cuando se cumple su «hecho cuando».
   para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 - Cobertura (`tests/cobertura.lua`, trabajo `cobertura` del CI): mide las líneas por las que pasa
   alguna prueba, **sin contar lo que se ejecuta solo al cargar el addon** (era casi la mitad de lo
-  «cubierto»). Hoy, 26,2 % con Lua 5.1. Para el CI en dos casos:
+  «cubierto»). Hoy, 33,7 % con Lua 5.1 (26,2 % antes de las pruebas de formato). Para el CI en dos
+  casos:
   - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen). Los mínimos
     se miden con Lua 5.1: con la 5.4, luac reparte las instrucciones por líneas de otra forma y cada
     archivo sale hasta 1,2 puntos arriba o abajo, así que en local el margen es de 2 puntos y

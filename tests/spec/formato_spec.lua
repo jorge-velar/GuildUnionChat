@@ -131,22 +131,28 @@ describe("Formato de los mensajes", function()
         A.same({}, net:Errors(), "errores")
     end)
 
-    it("la forma de cada mensaje es la de tests/golden/formato.txt", function()
+    -- (solo falla una forma NUEVA: es lo que delata un cambio de formato. Que una forma no salga en
+    -- una ejecución no lo es: los retrasos al azar del addon dan otro recorrido con otra versión de
+    -- Lua (5.1 y 5.4 sacan otros números), y algún mensaje sale en una y no en la otra. Por eso
+    -- --actualizar AÑADE lo nuevo y no quita nada: la referencia junta lo visto con las dos. Una forma
+    -- vieja que ya no debe existir se borra a mano del archivo)
+    it("ninguna forma de mensaje nueva fuera de tests/golden/formato.txt", function()
         local now = Shapes((Scenario()))
         local golden = ReadGolden()
+        local new = {}
+        for k in pairs(now) do if not (golden and golden[k]) then new[#new + 1] = k end end
+        table.sort(new)
         if runner.update or not golden then
-            WriteGolden(now)
-            print("\n(formato: referencia " .. (golden and "rehecha" or "creada") .. " en " .. GOLDEN .. ")")
+            local all = golden or {}
+            for _, k in ipairs(new) do all[k] = true end
+            WriteGolden(all)
+            print("\n(formato: " .. #new .. " formas nuevas guardadas en " .. GOLDEN .. ")")
             return
         end
-        local gone, new = {}, {}
-        for k in pairs(golden) do if not now[k] then gone[#gone + 1] = k end end
-        for k in pairs(now) do if not golden[k] then new[#new + 1] = k end end
-        table.sort(gone); table.sort(new)
-        if #gone + #new > 0 then
-            error("el formato de los mensajes ha cambiado.\n  Ya no sale:\n    " .. table.concat(gone, "\n    ")
-                .. "\n  Sale nuevo:\n    " .. table.concat(new, "\n    ")
-                .. "\n  Si es a propósito: lua tests/run.lua Formato --actualizar", 0)
+        if #new > 0 then
+            error("el formato de los mensajes ha cambiado. Formas nuevas:\n    " .. table.concat(new, "\n    ")
+                .. "\n  Si es a propósito: lua tests/run.lua Formato --actualizar (y quita a mano las formas viejas"
+                .. " que ya no deban existir)", 0)
         end
     end)
 
