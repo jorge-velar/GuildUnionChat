@@ -24,6 +24,7 @@ local SPECS = {
     "spec/red_spec",
     "spec/formato_spec",
     "spec/chat_spec",
+    "spec/listas_spec",
 }
 for _, name in ipairs(SPECS) do
     local fn, err = loadfile(here .. "/" .. name .. ".lua")

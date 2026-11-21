@@ -559,10 +559,7 @@ function RankInfoSlow(self, k)
             end
         end
     end
-    -- rangos vistos antes (se guardan entre sesiones, valen 7 días)
-    local c = self.db and self.db.rankCache and self.db.rankCache[k]
-    if c and time() - (c.t or 0) < 7 * 86400 and self.whitelist[c.tag] and self.whitelist[c.tag].set[k] then
-        return c.tag, c.idx
-    end
+    -- (db.rankCache, los rangos vistos antes, solo se leía aquí si además salía en la lista completa de
+    -- su hermandad, que ya no existe: hoy se guarda pero no se usa. Pendiente de decidir si se recupera)
     return nil
 end

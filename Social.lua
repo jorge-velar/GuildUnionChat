@@ -195,7 +195,7 @@ HU.comm.PB = function(self, sender, f, dist, raw)
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
     for en in (f[2] or ""):gmatch("[^;]+") do
         local name, race, r, s, profs = en:match("^([^:]*):([^:]*):([^:]*):([^:]*):?(.*)$")
-        local known = self.whitelist[tag] or self.remoteRoster[tag]
+        local known = self.remoteRoster[tag]
         if HU.SafeName(name) and (not known or self:MemberOf(name, tag)) then
             local function c(v) return (v:gsub("[|%c]", "")) end
             self.db.profiles[self:Key(name)] = { race = c(race), r = c(r), s = c(s), p = c(profs), t = time() }
@@ -667,9 +667,6 @@ end
 function HU:AfterGuildKick(name)
     local k = self:Key(name)
     if self.roster[k] then self.roster[k] = nil end
-    for _, W in pairs(self.whitelist) do
-        if W.set then W.set[k] = nil end
-    end
     HU.After(1, function() HU:KickPlayer(name, false, true) end)
     self:Changed("members")
 end

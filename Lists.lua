@@ -3,7 +3,8 @@ local ADDON_NAME, HU = ...
 
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
-HU.whitelist = {}          -- [tag] = { list = {nombres}, set = {[clave]=true}, hash, count, t }
+-- (las listas completas de las otras hermandades, HU.whitelist, ya no existen desde ReduceClean:
+-- de las otras solo se tiene la lista de conectados, HU.remoteRoster)
 local FRESH = 30 * 60      -- una lista sin confirmar en 30 min deja de valer (GU20: se confirma cada 10)
 
 function HU.Hash(s)
@@ -31,7 +32,7 @@ function HU:ListFor(tag)
         local m = self:MyList()
         return { list = m.list, hash = m.hash, count = m.count, t = time() }
     end
-    return self.whitelist[tag]
+    return nil -- (de las otras hermandades no hay lista completa)
 end
 
 function HU:ListFresh(tag)
@@ -44,11 +45,7 @@ function HU:InAnyGuild(name)
     local k = self:Key(name)
     if not k then return false end
     if self.roster[k] then return true end
-    for _, L in pairs(self.whitelist) do
-        if L.set[k] then return true end
-    end
-    -- (también los conectados de las otras hermandades, aunque su lista
-    -- completa aún no haya llegado o no tenga todavía a alguien que acaba de entrar)
+    -- (los conectados de las otras hermandades)
     for _, r in pairs(self.remoteRoster) do
         if r.byKey and r.byKey[k] and not r.byKey[k].weak then return true end
     end
@@ -69,8 +66,6 @@ function HU:MemberOf(name, tag)
         if self.roster[k] then return true end
         return self:IsTest() and (k == self:MeKey() or (self.db.test and self.db.test.allow[k] ~= nil)) or false
     end
-    local L = self.whitelist[tag]
-    if L and L.set and L.set[k] then return true end
     local r = self.remoteRoster[tag]
     if r and r.byKey then return r.byKey[k] ~= nil and not r.byKey[k].weak end
     if r then
@@ -109,7 +104,7 @@ function HU:TrustedOfficer(author, tag)
     if not author or author == "" then return false end
     if not self:InAnyGuild(author) then
         -- todavía no tengo la lista de su hermandad (acabo de entrar): se espera a tenerla
-        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and not self.whitelist[tag] then
+        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] then
             return false, "unknown"
         end
         return false
@@ -123,7 +118,7 @@ end
 function HU:TrustedMaster(author, tag)
     if not author or author == "" then return false end
     if not self:InAnyGuild(author) then
-        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and not self.whitelist[tag] then
+        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] then
             return false, "unknown"
         end
         return false
@@ -287,11 +282,6 @@ function HU:LaunchPhase()
     local p = (self.db and self.db.phase) or HU.PHASE
     return p ~= "full"
 end
-
--- (ReduceClean: sin listas completas de miembros —WH, WQ, WL, WD, envío por trozos y ciclo de 3 min—:
--- estaban siempre cortadas por BigCommunity. Quedan vacías estas dos, que aún llaman Comm.lua)
-function HU:AnnounceList() end
-function HU:SendList() end
 
 -- avisos del juego de altas y bajas en la hermandad: se pide la lista de la hermandad enseguida
 local joinPat

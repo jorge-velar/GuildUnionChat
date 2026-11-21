@@ -150,10 +150,10 @@ local btokens = 6
 local BFAST_CMDS = { RC = true } -- (los cambios de las listas van delante de las listas enteras)
 local BULK_CMDS = { RB = true }
 local BMID_CMDS = { PB = true }
-local BLOW_CMDS = { WL = true, OD = true, HL = true }
+local BLOW_CMDS = { OD = true, HL = true }
 local MAX_QUEUE = 1500 -- (los que mandan mucho miran antes cuánto hay en cola)
 local MAX_LOW = 3000
-local CHAT_CMDS = { MU = true, MZ = true, BN = true, CX = true, CP = true, CQ = true, LG = true, PN = true, GK = true,
+local CHAT_CMDS = { MU = true, MZ = true, BN = true, CX = true, CP = true, CQ = true, PN = true, GK = true,
     CW = true, CG = true, CF = true } -- (CW / CG / CF: el chat por el respaldo, ver Channel.lua)
 local MID_CMDS = { OE = true, MQ = true, EM = true } -- (los emoticonos pueden ser 150: sin prisa)
 local LOW_CMDS = {}
@@ -171,8 +171,8 @@ end
 local QUEUE_TTL = {
     HI = 60, HR = 60, HY = 60, RA = 60, LP = 60, PL = 60, PH = 60, LN = 60, LV = 60, LO = 60,
     RC = 300, RB = 600,
-    PB = 900, OD = 900, WL = 900, HL = 900,
-    CX = 600, CP = 600, CQ = 600, LG = 600, PN = 600, GK = 600,
+    PB = 900, OD = 900, HL = 900,
+    CX = 600, CP = 600, CQ = 600, PN = 600, GK = 600,
     CW = 60, CG = 20, CF = 60,
 }
 local QUEUE_TTL_DEFAULT = 300
@@ -923,13 +923,12 @@ function HU:BulkWhisper(target, msg, fast)
     end
     if not h or GetTime() - h.t > 900 or #h.list == 0 then return self:Whisper(target, msg, nil, nil, fast) end
     local pool = { target }
-    local W = self.whitelist[tag]
     -- (solo ayudantes que sigan conectados según la lista de su hermandad, si la tengo)
     local R = self.remoteRoster[tag]
     for _, n in ipairs(h.list) do
         local full = self:FullName(n)
         local online = not (R and R.byKey) or R.byKey[full and full:lower() or ""] ~= nil
-        if full and online and full:lower() ~= target:lower() and (not W or self:MemberOf(full, tag)) then pool[#pool + 1] = full end
+        if full and online and full:lower() ~= target:lower() then pool[#pool + 1] = full end
     end
     -- (todos los trozos de un mismo envío, al mismo: si cada trozo iba a un ayudante distinto, cada uno [+ARCHITECTURE.md]
     local g = HU.sendGroup
@@ -1407,9 +1406,7 @@ function HU:BestPeerCalc(tag)
     local now, best, bestScore = GetTime(), nil, nil
     -- (con lista buena de esa hermandad, quien no sale en ella va detrás de todos los que sí. El [+ARCHITECTURE.md]
     local rr = self.remoteRoster[tag]
-    local W = self.whitelist[tag]
-    local good = (W and W.set and next(W.set)) or (rr and not rr.boot and not rr.weak)
-    local set = W and W.set
+    local good = rr and not rr.boot and not rr.weak
     local byKey = rr and rr.byKey
     for _, key in ipairs(self:RemoteKeys(tag)) do
         local p = self.remote[key]
@@ -1423,8 +1420,7 @@ function HU:BestPeerCalc(tag)
                 local k = p._k
                 if not k or p._kn ~= p.name then k = self:Key(p.name); p._k, p._kn = k, p.name end
                 local member
-                if k and set and set[k] then member = true
-                elseif k and byKey then member = byKey[k] ~= nil and not byKey[k].weak
+                if k and byKey then member = byKey[k] ~= nil and not byKey[k].weak
                 else member = self:MemberOf(p.name, tag) end
                 -- (detrás de todos los de fiar, también sin lista buena: el ancla o un contacto comprobado
                 -- ganan a uno que solo dice ser el enlace. Si no hay nadie de fiar, sigue valiendo, para arrancar)
@@ -1631,7 +1627,7 @@ local function OnHello(sender, f, dist, isReply)
             tp.sentRoster = GetTime()
             -- (la lista, en otro fotograma: montarla entera con cientos de conectados daba el tirón del
             -- saludo, hasta 17 ms en el enlace tras un cambio de carril)
-            HU.After(0.05, function() HU:SendRosterTo(to); HU:AnnounceList(to) end)
+            HU.After(0.05, function() HU:SendRosterTo(to) end)
         end
     end
     HU:Changed("peers")
@@ -1742,7 +1738,6 @@ local function TakeProv(self, tag, author)
 end
 function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
     -- (si ya tengo la lista de esa hermandad, el que se presenta como su enlace tiene que estar en [+ARCHITECTURE.md]
-    local wl = self.whitelist[tag]
     -- (una lista de arranque no cuenta como «ya tengo su lista»: en ella nadie es miembro todavía)
     local R = self.remoteRoster[tag]
     local RS = HU.RosterStateOf(R)
@@ -1760,7 +1755,7 @@ function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
             if c0 <= 10 then HU.BootPresented(tag, n, now0) end
         end
     end
-    if ((wl and wl.set and next(wl.set)) or (R and RS ~= "b")) and not (checked or self:MemberOf(author, tag)) then
+    if R and RS ~= "b" and not (checked or self:MemberOf(author, tag)) then
         -- No sale en mi lista de X. Si X no tiene enlace «dicho por él» desde hace más de 900 s (el [+ARCHITECTURE.md]
         if byWhisper or self:KnownRelay(tag) then return end
         local pk = author:lower()
@@ -2059,7 +2054,7 @@ HU.comm.PL = function(self, sender, f, dist, raw)
         local tag, name = pair:match("^(%w+):(.+)$")
         if tag then plSeen[tag] = GetTime() end
         local rr = tag and self.remoteRoster[tag]
-        local known = tag and (self.whitelist[tag] or (rr and HU.RosterStateOf(rr) ~= "b"))
+        local known = tag and rr and HU.RosterStateOf(rr) ~= "b"
         local firsthand
         if tag then
             for _, key in ipairs(self:RemoteKeys(tag)) do
@@ -2708,8 +2703,6 @@ HU.comm.NQ = function(self, sender, f, dist)
                 if kind == "R" and self.remoteRoster[tag] then
                     if fast then HU.After(0.1, function() HU:SendStoredRoster(tag, quiet(2)) end)
                     else HU.After(0.5 + math.random() * 2, function() HU:SendStoredRoster(tag) end) end
-                elseif kind == "W" and self.whitelist[tag] then
-                    HU.After(0.5 + math.random() * 2, function() HU:SendList(tag, "GUILD") end)
                 end
             elseif kind == "R" and tag ~= self.myTag and self.remoteRoster[tag] and self:IsRelay() then
                 -- (si al que le tocaba también le falta, la manda el enlace, que las tiene todas)
@@ -3020,14 +3013,12 @@ HU.comm.RB = function(self, sender, f, dist, raw)
 
     local members = {}
     local dict = ZoneDict(pt.parts, nparts)
-    local W = pt.weak and self.whitelist[tag]
     for i = 1, nparts do
         for en in (pt.parts[i] or ""):gmatch("[^;]+") do
             local m = ParseRosterEntry(self, en, tag, dict)
             if m and pt.weak then
-                -- (de un compañero cualquiera: sin rango, y solo quien esté en su lista de miembros)
+                -- (de un compañero cualquiera: sin rango)
                 m.rankIndex, m.weak = nil, true
-                if W and W.set and not W.set[m.name:lower()] then m = nil end
             end
             if m then members[#members + 1] = m end
         end
@@ -3386,15 +3377,10 @@ end
 ---------------------------------------------------------------------------
 -- Seguridad de los mensajes del addon [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
-local TAG_FIELD = { HI = 2, HR = 2, WH = 1, WL = 1, WD = 1, RB = 1, RC = 1, RN = 1, PB = 1, OD = 1, OE = 1, RF = 1, RA = 1 }
+local TAG_FIELD = { HI = 2, HR = 2, RB = 1, RC = 1, RN = 1, PB = 1, OD = 1, OE = 1, RF = 1, RA = 1 }
 -- (RA por susurro: la presentación del enlace en Forever, con las mismas reglas que su saludo)
 -- (RC: los cambios de la lista de conectados valen igual que la lista entera, que ya se acepta)
-local BOOTSTRAP = { HI = true, HR = true, WH = true, WL = true, RB = true, RC = true, RN = true, WQ = true, RF = true, RA = true }
-
-local function AnyListMissing()
-    for _, tag in ipairs(HU:OtherTags()) do if not HU.whitelist[tag] then return true end end
-    return false
-end
+local BOOTSTRAP = { HI = true, HR = true, RB = true, RC = true, RN = true, RF = true, RA = true }
 
 -- invitaciones de hermandades nuevas: llegan de gente que aún no está en las listas
 -- (cada mensaje comprueba por su cuenta que viene de quien toca)
@@ -3406,7 +3392,7 @@ local CHANNEL_OK = { RA = true, LP = true }
 
 -- Datos de OTRA hermandad que llegan por la mía: solo los reparten el enlace, sus ayudantes o un
 -- oficial (antes, cualquiera de la hermandad podía colar una lista con él de maestro de la otra)
-local REMOTE_DATA = { WL = true, WD = true, RB = true, RC = true, RN = true, PB = true, OD = true, OE = true }
+local REMOTE_DATA = { RB = true, RC = true, RN = true, PB = true, OD = true, OE = true }
 
 -- Quien ha hablado por nuestro canal oculto (hace falta la contraseña): es de la comunidad
 HU.chanSeen = HU.chanSeen or {}
@@ -3488,9 +3474,9 @@ function HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
     if tag and tag ~= "" then
         -- nadie de fuera puede mandar datos de mi propia hermandad
         if tag == self.myTag then return false end
-        local wl = self.whitelist[tag]
         -- Lista de conectados de otra hermandad sin su lista completa (fase de lanzamiento): antes [+ARCHITECTURE.md]
-        if (cmd == "RB" or cmd == "RC") and not (wl and wl.set and next(wl.set)) then
+        -- (las listas completas, WL/WH/WD/WQ, ya no existen desde ReduceClean: siempre es este caso)
+        if cmd == "RB" or cmd == "RC" then
             if not (self.cfg and self.cfg.byTag[tag]) then return false end
             local kind = self:SenderKind(sender, tag)
             if not kind then return false end
@@ -3500,18 +3486,13 @@ function HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
             ak[self:Key(sender)] = kind
             return true
         end
-        if wl and wl.set and next(wl.set) then
-            -- el aviso de "mi lista ha cambiado" vale de cualquiera de esa hermandad (puede ser [+ARCHITECTURE.md]
-            if cmd == "WH" or cmd == "RF" then return self:MemberOf(sender, tag) or self:Vouched(sender, tag) end
-            return self:MemberOf(sender, tag)
-        end
-        -- todavía no tenemos la lista de esa hermandad: solo saludos y listas para arrancar, y
-        -- solo de quien es de la comunidad
+        -- lo demás con la etiqueta de otra hermandad: solo saludos y listas para arrancar, y solo de
+        -- quien es de la comunidad
         return BOOTSTRAP[cmd] and self.cfg and self.cfg.byTag[tag] ~= nil and self:Vouched(sender, tag) or false
     end
     if self:InAnyGuild(sender) then return true end
-    -- mientras falte alguna lista: pedirla y que me presenten contactos
-    return (cmd == "WQ" or cmd == "PL") and AnyListMissing() and self:Vouched(sender)
+    -- (que me presenten contactos de las otras hermandades: PL, de quien es de la comunidad)
+    return cmd == "PL" and #self:OtherTags() > 0 and self:Vouched(sender)
 end
 end
 

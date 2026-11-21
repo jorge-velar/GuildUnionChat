@@ -802,9 +802,7 @@ HU:OnStart(function()
         if HU.IsExtra(kind) and not self:IsJoined(kind) then return end
         -- (quien lo trae tiene que ser de esa hermandad, si ya tengo su lista; el autor lo mira [+ARCHITECTURE.md]
         if not self:MemberOf(sender, tag) then
-            local W = self.whitelist[tag]
-            if W and time() - (W.t or 0) < 86400 then return HU.ChatDrop("respaldo: quien lo trae no está en la lista de su hermandad", sender) end
-            if W or self.remoteRoster[tag] then
+            if self.remoteRoster[tag] then
                 local g = self.guardKnown and self.guardKnown[self:Key(sender) or ""]
                 if (self.GuardVerdict and self:GuardVerdict(sender) == true)
                     or (g ~= nil and g.tag ~= tag and self:GuardKnown(sender)) then
@@ -2096,11 +2094,8 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         return
     end
     if not HU:IsTest() and not HU:MemberOf(author, tag) then
-        -- (una lista completa guardada de hace más de un día no cuenta: le faltarían los nuevos)
-        local W, reject = HU.whitelist[tag], nil
-        if W and time() - (W.t or 0) < 86400 then
-            reject = true
-        elseif W or HU.remoteRoster[tag] then
+        local reject = nil
+        if HU.remoteRoster[tag] then
             local g = HU.guardKnown and HU.guardKnown[HU:Key(author) or ""]
             reject = (HU.GuardVerdict and HU:GuardVerdict(author) == true)
                 or (g ~= nil and g.tag ~= tag and HU:GuardKnown(author))

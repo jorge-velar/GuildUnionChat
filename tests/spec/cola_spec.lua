@@ -33,12 +33,12 @@ describe("Cola de envío", function()
     end)
 
     it("los datos grandes salen por HU20B", function()
-        for _, cmd in ipairs({ "RB", "RC", "PB", "WL", "OD", "HL" }) do
+        for _, cmd in ipairs({ "RB", "RC", "PB", "OD", "HL" }) do
             HU:Send(cmd .. "~DOS~x", "WHISPER", DEST)
         end
         w:Advance(3)
         local s = ToDest()
-        A.equal(6, #s)
+        A.equal(5, #s)
         for _, m in ipairs(s) do A.equal("HU20B", m.prefix, m.text) end
     end)
 

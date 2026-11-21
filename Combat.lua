@@ -19,12 +19,12 @@ local ENC_MAX = 900              -- (por si no llega el fin del encuentro)
 -- lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones [+ARCHITECTURE.md]
 local DEFER_IN = {
     RB = "list",
-    RF = "req", NQ = "req", HQ = "req", OQ = "req", FQ = "req", WQ = "req",
-    HL = "data", PB = "data", OD = "data", OE = "data", WH = "data", WL = "data", WD = "data",
+    RF = "req", NQ = "req", HQ = "req", OQ = "req",
+    HL = "data", PB = "data", OD = "data", OE = "data",
     -- (quién es el enlace o los ayudantes de otra hermandad, contado por mi hermandad: vale el último)
     PH = "last", PL = "last",
 }
-local BULK_PREFIX = { RB = true, RC = true, PB = true, OD = true, WL = true, HL = true }
+local BULK_PREFIX = { RB = true, RC = true, PB = true, OD = true, HL = true }
 
 local clock = debugprofilestop or function() return GetTime() * 1000 end
 local inInst, instKind, regen, enc, encT = false, nil, false, false, 0

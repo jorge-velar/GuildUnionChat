@@ -225,7 +225,7 @@ cierra cuando se cumple su «hecho cuando».
 - Números al azar propios en el WoW de mentira (`wow.Seed`, Park-Miller), iguales con Lua 5.1 y 5.4:
   con el `math.random` de cada versión el escenario seguía otro camino en el CI que en local, y
   History.lua salía 10 puntos más bajo en local.
-- 94 pruebas en `tests/spec/`:
+- 100 pruebas en `tests/spec/`:
   - `carga_spec`: carga, arranque y órdenes registradas (incluido el problema #4);
   - `utilidades_spec`: `Split`, `SafeText`, `SafeName`, `NetT`, `NetStamp`, `Utf8Cut`,
     `VersionGreater`, `ParseConfigText` y `ParseChannelNote`;
@@ -237,6 +237,7 @@ cierra cuando se cumple su «hecho cuando».
     el chat de `/g` llega a la otra hermandad una sola vez, en los dos sentidos y en orden; no se
     repite en la propia; quien entra tarde también lo recibe; y cada uno tiene la lista de la otra
     hermandad antes de 90 s (hoy, 36 s);
+  - `listas_spec`: de quién se sabe que es de una hermandad (`ListFresh`, `InAnyGuild`, `MemberOf`, `TrustedOfficer`/`TrustedMaster`) y la raza y profesiones de los demás (`PB`);
   - `chat_spec`: emoticonos, qué líneas de otras hermandades se enseñan (`[ETIQ:B]`, `[ETIQ:O]`, las
     de mi hermandad, los canales extra) y el historial rellenado por otros (`HistInsert`);
   - `formato_spec`, con el escenario:
@@ -283,8 +284,12 @@ cierra cuando se cumple su «hecho cuando».
    mensajes grabados en el juego con `/gu registro` (`tests/golden/entrada/`, cada uno con su efecto
    esperado) para las órdenes que el escenario no provoca y para versiones sin etiqueta en git
    (hay etiquetas de la 5.4.12 a la 5.4.41, con huecos: 5.4.13–5.4.28, 5.4.34, 5.4.38 y 5.4.39).
-3. **G**: borrar las órdenes muertas de las tablas, la rama de `HU.whitelist` y sus pruebas «rama
-   muerta», las ramas de `CHAT_ONLY`/`IsTest`/`SimpleMode`/`LaunchPhase` y UIStubs.lua si ya nada lo usa.
+3. **G**: ~~las órdenes muertas de las tablas y la rama de `HU.whitelist`~~ **hecho**: fuera
+   WL/WH/WD/WQ/FQ/LG de las tablas de Comm.lua y Combat.lua, `HU.whitelist` y todo lo que la leía
+   (9 archivos), `AnyListMissing`, `AnnounceList`/`SendList` vacías y la línea «Lista completa» de
+   `/gu estado`, que siempre decía que faltaban todas. Sin cambios de comportamiento: la tabla
+   estaba siempre vacía. Las pruebas de la «rama muerta» se han quitado. Falta: las ramas de
+   `CHAT_ONLY`/`IsTest`/`SimpleMode`/`LaunchPhase` y UIStubs.lua si ya nada lo usa.
 4. `HU.comm = {}` en Core.lua; `CW`/`CG`/`CF` se registran al cargar Channel.lua. Hay que cambiar la
    prueba «CW, CG y CF se registran al entrar al juego».
 5. Metatabla estricta sobre `HU` con `/gu debug` encendido. Antes, arreglar lo que encuentre al
@@ -309,6 +314,12 @@ cierra cuando se cumple su «hecho cuando».
     remitente. `RB` se retiene y se aplica después; `PB` no (no está en `BOOTSTRAP`), se rechaza y
     no se repite en al menos 6 minutos. Decidir si se retiene o se manda después de la lista; al
     arreglarlo, quitar `PB` de `NOBODY_ACCEPTS` en `formato_spec` (una prueba avisa).
+11. **Hallazgo de G: `db.rankCache` se guarda pero no se usa.** Los rangos de las listas
+    confirmadas se guardan «para comprobar a los oficiales aunque luego se desconecten», pero
+    `RankInfoSlow` (Config.lua) solo los leía si la persona salía además en la lista completa de su
+    hermandad, que ya no existe. Desde ReduceClean, un oficial de otra hermandad que se desconecta
+    deja de poder comprobarse. Decidir: recuperarlo (leer `rankCache` sin esa condición; cambia la
+    seguridad, con su prueba) o borrar también lo que lo escribe (Comm.lua y Social.lua).
 
 ### Cómo se prueba
 

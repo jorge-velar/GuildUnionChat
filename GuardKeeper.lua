@@ -169,7 +169,8 @@ local function ReviewEvaluate(self, ask)
     if not r or not r.suspects then return end
     local missing = self:MissingLists()
     local full = #missing == 0
-    for _, t in ipairs(self:OtherTags()) do if not self:ListFresh(t) then full = false end end
+    -- (con otras hermandades nunca hay listas completas, que ya no existen: solo vale sin ninguna otra)
+    if #self:OtherTags() > 0 then full = false end
     local found, toAsk, pending = {}, {}, 0
     for k, name in pairs(r.suspects) do
         local v = self:GuardVerdict(name)

@@ -453,9 +453,6 @@ end
 local function KnownSet(self)
     local set, now = {}, GetTime()
     for k in pairs(self.roster) do set[k] = true end
-    for _, W in pairs(self.whitelist) do
-        if W.set then for k in pairs(W.set) do set[k] = true end end
-    end
     -- (los de una lista de arranque o débil no cuentan como conocidos: los ha puesto quien la manda,
     -- que puede ser un intruso con sus amigos. Quedan de sospechosos y se pregunta por ellos)
     for _, r in pairs(self.remoteRoster) do
@@ -748,20 +745,20 @@ function HU:StatusLines(compact)
         Lines[#Lines + 1] = "|cffff8800" .. L("Versiones viejas en tu hermandad: ") .. "|r" .. table.concat(old, ", ", 1, math.min(#old, 8)) .. (#old > 8 and "..." or "")
     end
     if many then
-        local others, contact, online, full = self:OtherTags(), {}, {}, {}
-        local noContact, noOnline, noFull = {}, {}, {}
+        local others, contact, online = self:OtherTags(), {}, {}
+        local noContact, noOnline = {}, {}
         for _, tag in ipairs(others) do
             if self:BestPeer(tag) then contact[#contact + 1] = tag else noContact[#noContact + 1] = tag end
             if self.remoteRoster[tag] then online[#online + 1] = tag else noOnline[#noOnline + 1] = tag end
-            if self:ListFresh(tag) then full[#full + 1] = tag else noFull[#noFull + 1] = tag end
         end
         local function missing(list)
             if #list == 0 then return "" end
             return "  |cffff8800(" .. L("faltan: ") .. table.concat(list, ", ", 1, math.min(#list, 6)) .. (#list > 6 and "..." or "") .. ")|r"
         end
         Lines[#Lines + 1] = L("Otras hermandades: ") .. #others .. L(".  Con contacto: ") .. #contact .. missing(noContact)
-        Lines[#Lines + 1] = L("  Lista de conectados: ") .. #online .. missing(noOnline)
-        Lines[#Lines + 1] = L("  Lista completa: ") .. #full .. missing(noFull) .. L("   (detalle: /gu estado)")
+        -- (la línea «Lista completa» ya no sale: las listas completas no existen desde ReduceClean y
+        -- siempre decía que faltaban todas)
+        Lines[#Lines + 1] = L("  Lista de conectados: ") .. #online .. missing(noOnline) .. L("   (detalle: /gu estado)")
     end
     for _, tag in ipairs(many and {} or self:OtherTags()) do
         local p = self:BestPeer(tag)

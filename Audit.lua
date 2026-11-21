@@ -18,9 +18,6 @@ function HU:TagOf(name)
     local k = self:Key(name)
     if self.roster[k] then return self.myTag end
     if self:IsTest() and k == self:MeKey() then return self.myTag end
-    for tag, W in pairs(self.whitelist) do
-        if W.set[k] then return tag end
-    end
     return nil
 end
 
