@@ -253,7 +253,17 @@ function wow.New(opts)
         return m.name, m.rank or "Miembro", m.rankIndex or 4, m.level or 60, m.class or "Guerrero", m.zone or "",
             m.note or "", m.officerNote or "", m.online ~= false, 0, m.classFile or "WARRIOR"
     end
-    api.GuildRoster = function() end
+    -- (pedir la lista de la hermandad: el servidor contesta un momento después con GUILD_ROSTER_UPDATE;
+    -- varias peticiones seguidas, una sola respuesta)
+    local rosterAsked = false
+    api.GuildRoster = function()
+        if rosterAsked or not w.guild then return end
+        rosterAsked = true
+        AddTimer(0.5, function()
+            rosterAsked = false
+            w:Fire("GUILD_ROSTER_UPDATE")
+        end)
+    end
     api.IsGuildLeader = function() return w.guild and w.guild.rankIndex == 0 or false end
     api.CanEditOfficerNote = function() return false end
     api.CanViewOfficerNote = function() return false end
@@ -377,7 +387,21 @@ function wow.New(opts)
     }
     api.GetAddOnMemoryUsage = api.C_AddOns.GetAddOnMemoryUsage
     api.UpdateAddOnMemoryUsage = api.C_AddOns.UpdateAddOnMemoryUsage
-    api.C_GuildInfo = { GuildRoster = function() end, CanViewOfficerNote = function() return false end }
+    -- Rangos: 0 maestro, 1-2 oficiales (casilla «Oficial», la 22, marcada), 3-4 miembros.
+    -- GuildControlGetRankFlags recibe el rango + 1, como en el juego
+    local RANK_NAMES = { "Maestro", "Oficial", "Oficial", "Veterano", "Miembro" }
+    api.C_GuildInfo = {
+        GuildRoster = function() return api.GuildRoster() end,
+        CanViewOfficerNote = function() return false end,
+        GuildControlGetRankFlags = function(i)
+            local flags = {}
+            for k = 1, 24 do flags[k] = false end
+            flags[22] = type(i) == "number" and i >= 1 and i <= 3
+            return flags
+        end,
+    }
+    api.GuildControlGetNumRanks = function() return #RANK_NAMES end
+    api.GuildControlGetRankName = function(i) return RANK_NAMES[i] end
 
     -- Utilidades que WoW añade a Lua 5.1
     api.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end

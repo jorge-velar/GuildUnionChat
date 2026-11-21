@@ -1,0 +1,50 @@
+# Forma de cada mensaje de red del escenario de tests/lib/escenario.lua (prefijo, orden, vía).
+# <ver> versión, <n> número, <x> huella o marca de tiempo, <nombre> jugador, <etiq> hermandad;
+# las listas (;) con cada elemento distinto una vez. Se rehace con:
+#   lua tests/run.lua Formato --actualizar
+HU20  AU GUILD   AU~<x>~<n>~<etiq>~<nombre>~silenció a <nombre> en el chat durante <n> min. Motivo: spam
+HU20  AU WHISPER AU~<x>~<n>~<etiq>~<nombre>~silenció a <nombre> en el chat durante <n> min. Motivo: spam
+HU20  CG GUILD   CG~m~<nombre>~[<etiq>] hola desde <etiq>
+HU20  CQ GUILD   CQ
+HU20  CW WHISPER CW~m~<nombre>~[<etiq>] hola desde <etiq>
+HU20  HI GUILD   HI~<ver>~<etiq>~<n>~<n>~<nombre>~<n>~<n>~<n>~<n>~<ver>
+HU20  HI GUILD   HI~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
+HU20  HI WHISPER HI~<ver>~<etiq>~<n>~<n>~<nombre>~<n>~<n>~<n>~<n>~<ver>
+HU20  HI WHISPER HI~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
+HU20  HQ GUILD   HQ~<n>~<n>
+HU20  HR GUILD   HR~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
+HU20  HR WHISPER HR~<ver>~<etiq>~<n>~<n>~<nombre>~<n>~<n>~<n>~<n>~<ver>
+HU20  HR WHISPER HR~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
+HU20  HY GUILD   HY
+HU20  LP CHANNEL LP~<n>
+HU20  MU GUILD   MU~<nombre>~<n>~<nombre>~<etiq>~<n>~spam
+HU20  MU WHISPER MU~<nombre>~<n>~<nombre>~<etiq>~<n>~spam
+HU20  MZ GUILD   MZ~<nombre>,<n>,<nombre>,<etiq>,<n>,spam
+HU20  MZ WHISPER MZ~<nombre>,<n>,<nombre>,<etiq>,<n>,spam
+HU20  NQ GUILD   NQ~<n>~R:<etiq>~W:
+HU20  OQ WHISPER OQ~<etiq>~<etiq>~<n>
+HU20  PF GUILD   PF~Human~~~
+HU20  PH GUILD   PH~<etiq>~<nombre>~<nombre>
+HU20  PL GUILD   PL~<etiq>:<nombre>
+HU20  PQ GUILD   PQ
+HU20  PR GUILD   PR~<etiq>
+HU20  RA WHISPER RA~<etiq>~ #<x>
+HU20  RA WHISPER RA~<etiq>~<nombre> #<x>
+HU20  RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre>~b
+HU20  RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre>~c
+HU20  RC GUILD   RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~+<nombre>,<n>,<n>,<n>,~<nombre>~<x>~c
+HU20  RC GUILD   RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~-<nombre>~<nombre>~<x>~c
+HU20  RF WHISPER RF~<etiq>~<n>
+HU20  RN GUILD   RN~<etiq>~Maestro,Oficial,Oficial,Veterano,Miembro~<n>,<n>
+HU20  RN WHISPER RN~<etiq>~Maestro,Oficial,Oficial,Veterano,Miembro~<n>,<n>
+HU20  RQ GUILD   RQ
+HU20B PB WHISPER PB~<etiq>~<nombre>:Human:::
+HU20B RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre>~c~<x>
+HU20B RB WHISPER RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,
+HU20B RC WHISPER RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~+<nombre>,<n>,<n>,<n>,~<nombre>~<x>
+HU20B RC WHISPER RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~-<nombre>~<nombre>~<x>
+HU20H ?  WHISPER w~<n>
+HU20H E  WHISPER E~<n>~<n>
+HU20H Q  WHISPER Q~<n>~~<n>~hola
+HU20H R  WHISPER R~<n>~<n>~main~<etiq>~<nombre>~hola desde <etiq>
+HU20H V  WHISPER V~<n>~<n>~<n>~<n>

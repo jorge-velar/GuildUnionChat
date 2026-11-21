@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # (con las etiquetas: la prueba de versiones mezcladas carga la última publicada)
 
       - name: Instalar Lua 5.1
         run: |

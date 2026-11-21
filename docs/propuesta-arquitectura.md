@@ -173,9 +173,11 @@ mira `HU.whitelist`. Las pruebas de esa rama están marcadas como «rama muerta�
   cambiar el código sin cambiar el comportamiento. `Admit`, `Hold` y `PartialAdmit` son `local`
   dentro de bloques `do` y no se pueden probar por separado, así que se prueban a través de
   `HU.OnAddonMessage`.
-- **Pruebas de formato con mensajes reales**: guardar ejemplos de cada orden y comprobar que leerlos
-  y volver a escribirlos da exactamente lo mismo. Son la garantía de que los jugadores con
-  versiones antiguas se siguen entendiendo con los nuevos.
+- **Pruebas de formato**: la forma de cada mensaje que se mandan las copias de la red queda fijada
+  (`tests/golden/formato.txt`); todo lo que se manda lo acepta alguien; y la versión nueva se
+  entiende con la última publicada en una red mezclada. Son la garantía de que los jugadores con
+  versiones antiguas se siguen entendiendo con los nuevos. (Un «leer y volver a escribir» genérico no
+  existe: cada mensaje se escribe a mano y se lee por posición.)
 - **luacheck con lista de avisos conocidos**: el CI para solo con avisos *nuevos*. Los que ya había
   están en `tests/luacheck-conocidos.txt` y se van quitando.
 - `tests/traducciones.lua` lista los `L("…")` sin traducción. Hoy solo informa; cuando estén todos,
@@ -215,8 +217,12 @@ cierra cuando se cumple su «hecho cuando».
   una red de mentira con reloj común. Reparte GUILD (a su hermandad), CHANNEL (a los del canal, con
   contraseña, dueño y lista de miembros) y WHISPER (el desconectado da `TargetOffline`), con el eco
   de lo propio como en el juego. Lleva la cuenta del tráfico de cada jugador por orden
-  (`net:Traffic`). Es lo que hoy se prueba a mano con varias personas y `/gu registro`.
-- 74 pruebas en `tests/spec/`:
+  (`net:Traffic`). Es lo que hoy se prueba a mano con varias personas y `/gu registro`. Cada
+  jugador puede llevar otra versión del addon (`ref = "v5.4.41"`), que se lee de git sin sacarla a
+  ninguna carpeta, y lo guardado se conserva al salir y volver a entrar.
+- `tests/lib/escenario.lua`: un rato de juego fijo con la red (chat de hermandad y de oficiales, un
+  silencio, una búsqueda en el historial, alguien que sale y vuelve).
+- 83 pruebas en `tests/spec/`:
   - `carga_spec`: carga, arranque y órdenes registradas (incluido el problema #4);
   - `utilidades_spec`: `Split`, `SafeText`, `SafeName`, `NetT`, `NetStamp`, `Utf8Cut`,
     `VersionGreater`, `ParseConfigText` y `ParseChannelNote`;
@@ -227,7 +233,21 @@ cierra cuando se cumple su «hecho cuando».
   - `red_spec`: dos hermandades con dos jugadores cada una. Arrancan sin errores y entran al canal;
     el chat de `/g` llega a la otra hermandad una sola vez, en los dos sentidos y en orden; no se
     repite en la propia; quien entra tarde también lo recibe; y cada uno tiene la lista de la otra
-    hermandad antes de 90 s (hoy, 36 s).
+    hermandad antes de 90 s (hoy, 36 s);
+  - `formato_spec`, con el escenario:
+    - **la forma de cada mensaje** (46 formas de 5 prefijos) es la de `tests/golden/formato.txt`. Se
+      guardan los tipos de los campos (`<ver>`, `<n>`, `<nombre>`, `<etiq>`, `<x>`), no los valores,
+      para que no dependa del orden de las tablas ni de la versión de Lua. Si el cambio es a
+      propósito: `lua tests/run.lua Formato --actualizar`, y queda a la vista en el diff;
+    - **ida y vuelta:** todo lo que se manda por `HU20`/`HU20B` lo acepta la seguridad de alguna otra
+      copia. Las excepciones van en `NOBODY_ACCEPTS` con su motivo; hoy, solo `PB` (ver pendiente 10);
+    - **versiones mezcladas:** Ana y Blas con la última versión publicada (la etiqueta `v*` más alta)
+      y Alba y Bea con la de la carpeta. Sin errores, el chat en los dos sentidos, las listas, el
+      silencio y la ida y vuelta.
+
+    Comprobado a propósito: un campo nuevo en `MU` lo detecta la forma, e intercambiar el autor y el
+    silenciado al escribir y al leer (la forma no cambia: los dos son nombres) lo detecta solo la red
+    mezclada.
 - CI (`.github/workflows/ci.yml`): pruebas con Lua 5.1, informe de traducciones y luacheck que
   para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 - Cobertura (`tests/cobertura.lua`, trabajo `cobertura` del CI): mide las líneas por las que pasa
@@ -250,9 +270,10 @@ cierra cuando se cumple su «hecho cuando».
    variables, ramas `if` vacías, valores sin usar). Al arreglar uno, se rehace la lista con
    `--actualizar` o se descarga el artefacto `luacheck-conocidos` del CI. Las 15 funciones del juego
    que daban W113 ya están en `read_globals`.
-2. **Pruebas de formato con mensajes reales** (`tests/golden/`): grabar con `/gu diag` o TestLog
-   unos cuantos mensajes reales de cada orden y añadir la prueba (está marcada como pendiente en
-   `cola_spec`).
+2. **Completar el formato con mensajes reales**: lo principal ya está (`formato_spec`). Falta añadir
+   mensajes grabados en el juego con `/gu registro` (`tests/golden/entrada/`, cada uno con su efecto
+   esperado) para las órdenes que el escenario no provoca y para versiones sin etiqueta en git
+   (antes de la 5.4.35).
 3. **G**: borrar las órdenes muertas de las tablas, la rama de `HU.whitelist` y sus pruebas «rama
    muerta», las ramas de `CHAT_ONLY`/`IsTest`/`SimpleMode`/`LaunchPhase` y UIStubs.lua si ya nada lo usa.
 4. `HU.comm = {}` en Core.lua; `CW`/`CG`/`CF` se registran al cargar Channel.lua. Hay que cambiar la
@@ -274,6 +295,11 @@ cierra cuando se cumple su «hecho cuando».
    Community.lua (4 %) y Orders.lua (1 %). De vez en cuando, una prueba de mutaciones sobre Comm.lua
    (cambiar a propósito `>` por `>=` o `true` por `false` y ver que alguna prueba falla) para saber
    si lo cubierto está probado de verdad.
+10. **Hallazgo de la red: `PB` se pierde al principio.** La raza y las profesiones salen por
+    susurro a la vez que la primera lista (a los ~36 s), cuando quien las recibe todavía no se fía del
+    remitente. `RB` se retiene y se aplica después; `PB` no (no está en `BOOTSTRAP`), se rechaza y
+    no se repite en al menos 6 minutos. Decidir si se retiene o se manda después de la lista; al
+    arreglarlo, quitar `PB` de `NOBODY_ACCEPTS` en `formato_spec` (una prueba avisa).
 
 ### Cómo se prueba
 

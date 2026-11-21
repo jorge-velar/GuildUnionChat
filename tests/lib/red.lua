@@ -37,6 +37,7 @@ function R.New(opts)
         pass = opts.pass,
         line = 0,
         traffic = {},          -- lo que ha salido de cada uno: ver Net:Traffic
+        log = {},              -- todos los mensajes de addon enviados: { t, from, prefix, text, dist, target }
     }, Net)
     for tag, name in pairs(opts.guilds or { UNO = "Hermandad Uno", DOS = "Hermandad Dos" }) do
         net:Guild(tag, name)
@@ -55,7 +56,8 @@ local Player = {}
 Player.__index = Player
 
 -- Un jugador de la hermandad `tag`, todavía desconectado (sale en la lista de su hermandad)
--- opts: rankIndex (0 maestro, 1 oficial, 4 miembro), surname, db, charDb
+-- opts: rankIndex (0 maestro, 1 oficial, 4 miembro), surname, db, charDb, ref (otra versión del
+-- addon: una etiqueta de git como "v5.4.41"; ver addon.Load)
 function Net:Player(name, tag, opts)
     opts = opts or {}
     local g = assert(self.guilds[tag], "no hay hermandad " .. tostring(tag))
@@ -77,14 +79,28 @@ end
 function Net:Login(p)
     assert(not p.online, p.full .. " ya está conectado")
     local g = p.guild
+    -- (lo guardado se conserva entre una entrada y la siguiente, como las SavedVariables del juego)
     local a = addon.Load({
         now = self.now, keepRandom = true,
         player = p.name, surname = p.surname,
         guild = { name = g.name, rank = p.member.rank, rankIndex = p.member.rankIndex, members = g.members },
         guildInfo = self.info,
-        db = p.opts.db, charDb = p.opts.charDb,
+        db = p.savedDb or p.opts.db, charDb = p.savedCharDb or p.opts.charDb,
+        ref = p.opts.ref,
     })
     p.a, p.HU, p.w, p.env = a, a.HU, a.w, a.env
+    -- (qué órdenes acepta y rechaza la seguridad de este jugador, sumando todas sus entradas: para la
+    -- prueba de ida y vuelta)
+    p.accepted, p.refused = p.accepted or {}, p.refused or {}
+    local allow = a.HU.AllowAddonMessage
+    if allow then
+        a.HU.AllowAddonMessage = function(hu, cmd, ...)
+            local ok, weak = allow(hu, cmd, ...)
+            local t = ok and p.accepted or p.refused
+            t[cmd] = (t[cmd] or 0) + 1
+            return ok, weak
+        end
+    end
     p.w.net = self
     p.w.netPlayer = p
     p.online, p.member.online = true, true
@@ -101,6 +117,9 @@ end
 -- Sale del juego: deja de recibir, sus canales se vacían y su hermandad lo ve desconectado
 function Net:Logout(p)
     if not p.online then return end
+    -- (el juego guarda las SavedVariables al salir: PLAYER_LOGOUT y lo que haya en las globales)
+    p.w:Fire("PLAYER_LOGOUT")
+    p.savedDb, p.savedCharDb = p.env.GuildUnionDB, p.env.GuildUnionCharDB
     for name, set in pairs(self.members) do
         if set[p] then
             set[p] = nil
@@ -210,6 +229,7 @@ function Net:DeliverAddon(p, m)
     if not p.online then return end
     local ev = m.logged and "CHAT_MSG_ADDON_LOGGED" or "CHAT_MSG_ADDON"
     Note(self.traffic[p.key], m.prefix, m.text)
+    self.log[#self.log + 1] = { t = self.now, from = p, prefix = m.prefix, text = m.text, dist = m.dist, target = m.target }
     if m.dist == "GUILD" or m.dist == "OFFICER" then
         for _, q in ipairs(self:Guildmates(p)) do
             q.w:Fire(ev, m.prefix, m.text, m.dist, p.full, nil, nil, 0, "")

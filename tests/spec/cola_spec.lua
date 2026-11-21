@@ -136,6 +136,4 @@ describe("Cola de envío", function()
     end)
 end)
 
-describe("Formato de los mensajes", function()
-    pending("mensajes reales grabados (tests/golden/): leer y volver a escribir da lo mismo")
-end)
+-- (el formato de los mensajes se prueba en formato_spec.lua)

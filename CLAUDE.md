@@ -17,6 +17,10 @@ ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`)
     archivo por debajo de su mínimo. Aquí corre con Lua 5.4 (margen de 2 puntos); los mínimos son
     de Lua 5.1. Si un archivo sube, tras el CI se copia el artefacto `cobertura-minima` a
     `tests/cobertura-minima.txt` (no `--actualizar` con 5.4: daría otros valores).
+- El formato de los mensajes de red está fijado (`tests/spec/formato_spec.lua`,
+  `tests/golden/formato.txt`) y se prueba contra la última versión publicada. Si un cambio de formato
+  es a propósito: `lua tests/run.lua Formato --actualizar`, mantener la compatibilidad con las
+  versiones que ya están en el juego y decirlo en la PR.
 - Si falta una función del juego en el WoW de mentira, se añade a `tests/lib/wow.lua` con el valor
   más neutro posible.
 - luacheck solo corre en el CI (aquí no se puede instalar): no añadir avisos nuevos.
