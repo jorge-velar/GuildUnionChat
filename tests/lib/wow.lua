@@ -8,6 +8,24 @@ local wow = {}
 
 local unpack = unpack or table.unpack
 
+-- Números al azar propios (Park-Miller), iguales con Lua 5.1 y 5.4: el math.random de cada versión
+-- da otros números, el addon los usa para repartir saludos y retrasos, y el mismo escenario seguía
+-- otro camino en el CI (5.1) que en local (5.4). Lo comparten todos los mundos, como el del juego.
+local seed = 1
+function wow.Seed(n)
+    seed = math.floor(tonumber(n) or 1) % 2147483646 + 1
+end
+local function Random(m, n)
+    seed = seed * 16807 % 2147483647 -- (cabe entero en un double: < 2^53)
+    local r = (seed - 1) / 2147483646
+    if m == nil then return r end
+    if n == nil then m, n = 1, m end
+    m, n = math.floor(m), math.floor(n)
+    if n < m then error("bad argument #2 to 'random' (interval is empty)", 2) end
+    return m + math.floor(r * (n - m + 1))
+end
+local mathEnv = setmetatable({ random = Random, randomseed = wow.Seed }, { __index = math })
+
 ---------------------------------------------------------------------------
 -- Marcos
 ---------------------------------------------------------------------------
@@ -107,7 +125,7 @@ function wow.New(opts)
     local env = {}
     w.env = env
     if not opts.keepRandom then
-        math.randomseed(opts.seed or 1) -- (el addon usa math.random para repartir saludos: que sea siempre igual)
+        wow.Seed(opts.seed or 1) -- (el addon usa math.random para repartir saludos: que sea siempre igual)
     end
     w.frameMeta = FrameMeta(w)
 
@@ -407,6 +425,8 @@ function wow.New(opts)
     api.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
     api.tinsert, api.tremove = table.insert, table.remove
     api.unpack = unpack
+    api.math = mathEnv
+    api.random = Random
     api.strmatch, api.strfind, api.strlower, api.strupper = string.match, string.find, string.lower, string.upper
     api.strlen, api.strsub, api.strrep, api.format, api.gsub = string.len, string.sub, string.rep, string.format, string.gsub
     api.floor, api.ceil, api.abs, api.max, api.min = math.floor, math.ceil, math.abs, math.max, math.min

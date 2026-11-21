@@ -15,6 +15,7 @@
 -- Lo que manda un jugador llega a los demás en el paso siguiente (net.step, 0,1 s por defecto).
 -- Lo propio también vuelve (como en el juego: GUILD y CHANNEL devuelven el eco).
 local addon = require("lib.addon")
+local wow = require("lib.wow")
 local fixtures = require("lib.fixtures")
 
 local R = {}
@@ -42,7 +43,7 @@ function R.New(opts)
     for tag, name in pairs(opts.guilds or { UNO = "Hermandad Uno", DOS = "Hermandad Dos" }) do
         net:Guild(tag, name)
     end
-    math.randomseed(opts.seed or 1)
+    wow.Seed(opts.seed or 1) -- (los números al azar del WoW de mentira: iguales en todas las versiones de Lua)
     return net
 end
 

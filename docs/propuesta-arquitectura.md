@@ -222,7 +222,10 @@ cierra cuando se cumple su «hecho cuando».
   ninguna carpeta, y lo guardado se conserva al salir y volver a entrar.
 - `tests/lib/escenario.lua`: un rato de juego fijo con la red (chat de hermandad y de oficiales, un
   silencio, una búsqueda en el historial, alguien que sale y vuelve).
-- 83 pruebas en `tests/spec/`:
+- Números al azar propios en el WoW de mentira (`wow.Seed`, Park-Miller), iguales con Lua 5.1 y 5.4:
+  con el `math.random` de cada versión el escenario seguía otro camino en el CI que en local, y
+  History.lua salía 10 puntos más bajo en local.
+- 94 pruebas en `tests/spec/`:
   - `carga_spec`: carga, arranque y órdenes registradas (incluido el problema #4);
   - `utilidades_spec`: `Split`, `SafeText`, `SafeName`, `NetT`, `NetStamp`, `Utf8Cut`,
     `VersionGreater`, `ParseConfigText` y `ParseChannelNote`;
@@ -234,6 +237,8 @@ cierra cuando se cumple su «hecho cuando».
     el chat de `/g` llega a la otra hermandad una sola vez, en los dos sentidos y en orden; no se
     repite en la propia; quien entra tarde también lo recibe; y cada uno tiene la lista de la otra
     hermandad antes de 90 s (hoy, 36 s);
+  - `chat_spec`: emoticonos, qué líneas de otras hermandades se enseñan (`[ETIQ:B]`, `[ETIQ:O]`, las
+    de mi hermandad, los canales extra) y el historial rellenado por otros (`HistInsert`);
   - `formato_spec`, con el escenario:
     - **ninguna forma de mensaje nueva** fuera de `tests/golden/formato.txt` (47 formas de 5
       prefijos). Se guardan los tipos de los campos (`<ver>`, `<n>`, `<nombre>`, `<etiq>`, `<x>`), no
@@ -251,7 +256,7 @@ cierra cuando se cumple su «hecho cuando».
     silenciado al escribir y al leer (la forma no cambia: los dos son nombres) lo detecta solo la red
     mezclada.
 - CI (`.github/workflows/ci.yml`): pruebas con Lua 5.1, informe de traducciones y luacheck que
-  para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
+  para con cualquier aviso (`tests/luacheck-conocidos.txt` está vacía desde el paso 1). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 - Cobertura (`tests/cobertura.lua`, trabajo `cobertura` del CI): mide las líneas por las que pasa
   alguna prueba, **sin contar lo que se ejecuta solo al cargar el addon** (era casi la mitad de lo
   «cubierto»). Hoy, 33,7 % con Lua 5.1 (26,2 % antes de las pruebas de formato). Para el CI en dos
@@ -269,10 +274,11 @@ cierra cuando se cumple su «hecho cuando».
 
 ### Pendiente
 
-1. **Ir quitando los 18 avisos conocidos de luacheck** (`tests/luacheck-conocidos.txt`: sombras de
-   variables, ramas `if` vacías, valores sin usar). Al arreglar uno, se rehace la lista con
-   `--actualizar` o se descarga el artefacto `luacheck-conocidos` del CI. Las 15 funciones del juego
-   que daban W113 ya están en `read_globals`.
+1. ~~Quitar los 18 avisos conocidos de luacheck~~ **Hecho** (rama `refactor/arquitectura`): nombres
+   que tapaban a otros (`R` y `b` de fuera de Comm.lua renombrados a `SEND_RESULT` y `Bit`; los `L`
+   y `c` de dentro, a `wl` y `col`), `if` vacíos reescritos con la condición al revés, una resta que
+   no se usaba y dos `local` repetidos. La lista de conocidos está vacía: cualquier aviso para el CI.
+   Las líneas tocadas que ninguna prueba ejecutaba tienen ahora `chat_spec`.
 2. **Completar el formato con mensajes reales**: lo principal ya está (`formato_spec`). Falta añadir
    mensajes grabados en el juego con `/gu registro` (`tests/golden/entrada/`, cada uno con su efecto
    esperado) para las órdenes que el escenario no provoca y para versiones sin etiqueta en git

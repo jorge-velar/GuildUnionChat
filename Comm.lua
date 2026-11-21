@@ -191,9 +191,9 @@ local function TTL(cmd) if NEVER_EXPIRE[cmd] then return nil end return QUEUE_TT
 
 -- (el juego dice si un mensaje no ha salido por exceso de mensajes o por una restricción: entonces
 -- se queda en la cola y se prueba después, hasta que caduque)
-local R = Enum and Enum.SendAddonMessageResult or {}
-local LOCKDOWN, OFFLINE = R.AddOnMessageLockdown or 11, R.TargetOffline or 12
-local THROTTLED = { [R.AddonMessageThrottle or 3] = true, [R.ChannelThrottle or 8] = true, [R.GeneralError or 9] = true, [LOCKDOWN] = true }
+local SEND_RESULT = Enum and Enum.SendAddonMessageResult or {}
+local LOCKDOWN, OFFLINE = SEND_RESULT.AddOnMessageLockdown or 11, SEND_RESULT.TargetOffline or 12
+local THROTTLED = { [SEND_RESULT.AddonMessageThrottle or 3] = true, [SEND_RESULT.ChannelThrottle or 8] = true, [SEND_RESULT.GeneralError or 9] = true, [LOCKDOWN] = true }
 
 -- Un silencio que ha esperado en la cola dura menos: se le restan los segundos esperados (los
 -- «segs» se calculan al montar el mensaje y quien lo recibe hace fin = ahora + segs)
@@ -472,7 +472,7 @@ HU.AddChatFilter("CHAT_MSG_SYSTEM", SystemFilter)
 ---------------------------------------------------------------------------
 -- Contactos
 ---------------------------------------------------------------------------
-local function b(v) return v and "1" or "0" end
+local function Bit(v) return v and "1" or "0" end
 
 ---------------------------------------------------------------------------
 -- Quién es el enlace: primero los oficiales y el maestro (si su conexión va bien), y entre [+ARCHITECTURE.md]
@@ -764,7 +764,7 @@ function HU:HelloText(cmd)
         -- (y a mi hermandad enseguida, no en el saludo de dentro de 2-5 minutos: los ayudantes van en [+ARCHITECTURE.md]
         if changed and cmd ~= "HR" then self:HelpersChangedHello() end
     end
-    local text = HU.Utf8Cut(table.concat({ cmd or "HI", self.version, self.myTag or "", b(self:AmIModFast()), b(relay),
+    local text = HU.Utf8Cut(table.concat({ cmd or "HI", self.version, self.myTag or "", Bit(self:AmIModFast()), Bit(relay),
         relay and HU.Utf8Cut(table.concat(helpers, ","), 180) or "", self.myAdvScore or 0,
         self.ChannelLane and self:ChannelLane() or 0 }, "~"), 250)
     -- (campos 8 y 9: generación y hora del carril de la comunidad; enteros o nada)
@@ -1742,7 +1742,7 @@ local function TakeProv(self, tag, author)
 end
 function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
     -- (si ya tengo la lista de esa hermandad, el que se presenta como su enlace tiene que estar en [+ARCHITECTURE.md]
-    local L = self.whitelist[tag]
+    local wl = self.whitelist[tag]
     -- (una lista de arranque no cuenta como «ya tengo su lista»: en ella nadie es miembro todavía)
     local R = self.remoteRoster[tag]
     local RS = HU.RosterStateOf(R)
@@ -1760,7 +1760,7 @@ function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
             if c0 <= 10 then HU.BootPresented(tag, n, now0) end
         end
     end
-    if ((L and L.set and next(L.set)) or (R and RS ~= "b")) and not (checked or self:MemberOf(author, tag)) then
+    if ((wl and wl.set and next(wl.set)) or (R and RS ~= "b")) and not (checked or self:MemberOf(author, tag)) then
         -- No sale en mi lista de X. Si X no tiene enlace «dicho por él» desde hace más de 900 s (el [+ARCHITECTURE.md]
         if byWhisper or self:KnownRelay(tag) then return end
         local pk = author:lower()
@@ -3488,9 +3488,9 @@ function HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
     if tag and tag ~= "" then
         -- nadie de fuera puede mandar datos de mi propia hermandad
         if tag == self.myTag then return false end
-        local L = self.whitelist[tag]
+        local wl = self.whitelist[tag]
         -- Lista de conectados de otra hermandad sin su lista completa (fase de lanzamiento): antes [+ARCHITECTURE.md]
-        if (cmd == "RB" or cmd == "RC") and not (L and L.set and next(L.set)) then
+        if (cmd == "RB" or cmd == "RC") and not (wl and wl.set and next(wl.set)) then
             if not (self.cfg and self.cfg.byTag[tag]) then return false end
             local kind = self:SenderKind(sender, tag)
             if not kind then return false end
@@ -3500,7 +3500,7 @@ function HU:AllowAddonMessage(cmd, sender, f, dist, localID, chanName)
             ak[self:Key(sender)] = kind
             return true
         end
-        if L and L.set and next(L.set) then
+        if wl and wl.set and next(wl.set) then
             -- el aviso de "mi lista ha cambiado" vale de cualquiera de esa hermandad (puede ser [+ARCHITECTURE.md]
             if cmd == "WH" or cmd == "RF" then return self:MemberOf(sender, tag) or self:Vouched(sender, tag) end
             return self:MemberOf(sender, tag)

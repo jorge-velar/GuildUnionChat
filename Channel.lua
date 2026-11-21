@@ -1691,9 +1691,8 @@ function HU:Emotes(msg)
                     i = i + #hit
                 end
             end
-            if hit then
-                -- ya puesto (emoticono de la comunidad)
-            elseif prev:match("%s") or i == 1 then
+            -- (si ya hay uno puesto, el emoticono de la comunidad, no se busca otro)
+            if not hit and (prev:match("%s") or i == 1) then
                 for len = 3, 2, -1 do
                     local code = msg:sub(i, i + len - 1)
                     local nextc = msg:sub(i + len, i + len)
@@ -2121,15 +2120,16 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         return
     end
     if HU:IsMuted(author) and sub ~= "O" then return HU.ChatDrop("el autor está silenciado", author) end
-    if HU.IsExtra(kind) then
-        -- canal extra: se ve tal cual, también lo de tu propia hermandad
-    elseif sub == "B" then
-        return -- «Buscar grupo» de una versión vieja: ya no existe, no se muestra
-    elseif sub == "O" then
-        if not HU:IsTest() then return end
-        kind = "off"
-    elseif tag == HU.myTag and not HU:IsTest() then
-        return -- los de mi hermandad ya lo vieron en /g
+    -- (canal extra: se ve tal cual, también lo de tu propia hermandad)
+    if not HU.IsExtra(kind) then
+        if sub == "B" then
+            return -- «Buscar grupo» de una versión vieja: ya no existe, no se muestra
+        elseif sub == "O" then
+            if not HU:IsTest() then return end
+            kind = "off"
+        elseif tag == HU.myTag and not HU:IsTest() then
+            return -- los de mi hermandad ya lo vieron en /g
+        end
     end
     if via == "w" then HU.diagChat.inFallback = HU.diagChat.inFallback + 1 else HU.diagChat.inChan = HU.diagChat.inChan + 1 end
     NoteSeen(HU.chanShown, author, via or "c")

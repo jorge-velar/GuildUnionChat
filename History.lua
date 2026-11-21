@@ -303,8 +303,8 @@ function HU:HistPrune()
                 if total <= cap * 0.9 then break end
                 local d = c.days[k]
                 if k == today then
-                    local freed, b = TrimDay(d, total - cap * 0.9)
-                    total = total - freed
+                    -- (hoy se recorta y ya no se mira más: lo liberado no hace falta restarlo de total)
+                    local _, b = TrimDay(d, total - cap * 0.9)
                     c.bytes = c.bytes - (b or 0)
                     break
                 end
@@ -402,12 +402,12 @@ function HU:HistInsert(e)
     end
     if not day.lines then day.lines = DayLines(day); day.chunks = nil end
     local idx = DayIndex(day)
-    local key = e.a:lower()
-    local id = idx[key]
+    local nameKey = e.a:lower()
+    local id = idx[nameKey]
     if not id then
         id = #day.names + 1
         day.names[id] = e.a
-        idx[key] = id
+        idx[nameKey] = id
     end
     local sec = e.t - day.s
     local msg = HU.Utf8Cut(Clean(e.m), 255)
@@ -978,19 +978,20 @@ local function DigestsAsync(a, b, size, done)
                 if not dk then return done(out) end
                 day = c.days[dk]
                 dc, part = digestCache[day], nil
-                if not day then
-                    -- (borrado mientras tanto)
-                elseif dc and dc.building then
-                    -- (otra cuenta lo está sumando ahora mismo: este día, línea a línea)
-                    scan = DayScanner(day, exact)
-                elseif dc and dc.n == day.n then
-                    budget = budget - 10
-                    if apply() then scan = DayScanner(day, exact) else day = nil end
-                else
-                    dc = { n = day.n, base = math.floor(day.s / BUCKET), lo = math.huge, hi = -math.huge, cn = {}, ch = {}, building = true }
-                    digestCache[day] = dc
-                    building = true
-                    scan = DayScanner(day, build)
+                -- (sin día: borrado mientras tanto, se pasa al siguiente)
+                if day then
+                    if dc and dc.building then
+                        -- (otra cuenta lo está sumando ahora mismo: este día, línea a línea)
+                        scan = DayScanner(day, exact)
+                    elseif dc and dc.n == day.n then
+                        budget = budget - 10
+                        if apply() then scan = DayScanner(day, exact) else day = nil end
+                    else
+                        dc = { n = day.n, base = math.floor(day.s / BUCKET), lo = math.huge, hi = -math.huge, cn = {}, ch = {}, building = true }
+                        digestCache[day] = dc
+                        building = true
+                        scan = DayScanner(day, build)
+                    end
                 end
             end
         end
@@ -1559,7 +1560,7 @@ function HU:HistSearch(name, text)
     local opts = { name = name, text = text, since = since, tag = W.tagFilter }
     Show({}, L("Buscando..."))
     self:HistSearchLocal(opts, function(res) W.localRes = res; Render() end)
-    local asked = self:HistSearchRemote(opts, function(res)
+    local nAsked = self:HistSearchRemote(opts, function(res)
             W.remoteRes = res
             -- (llegan de uno en uno: se repinta como mucho cada 0,2 s)
             if W.renderSoon then return end
@@ -1567,7 +1568,7 @@ function HU:HistSearch(name, text)
             HU.After(0.2, function() W.renderSoon = nil; Render() end)
         end,
         function(res) W.remoteRes = res; W.waitingRemote = false; Render() end)
-    if asked == 0 then W.waitingRemote = false end
+    if nAsked == 0 then W.waitingRemote = false end
 end
 
 function HU:HistWindow(show)

@@ -368,8 +368,8 @@ function HU:GuildColor(tag)
     if self.cfg and tag then
         for i, g in ipairs(self.cfg.guilds) do
             if g.tag == tag then
-                local c = GUILD_COLORS[((i - 1) % #GUILD_COLORS) + 1]
-                return c[1], c[2], c[3]
+                local col = GUILD_COLORS[((i - 1) % #GUILD_COLORS) + 1]
+                return col[1], col[2], col[3]
             end
         end
     end
