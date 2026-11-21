@@ -291,6 +291,39 @@ function HU:Debug(...)
     end
 end
 
+---------------------------------------------------------------------------
+-- Metatabla estricta (propuesta C): con /gu debug, leer un campo de HU que no existe y no está en
+-- MAYBE_NIL se apunta en HU.strictMiss (con dónde) y se avisa una vez: suele ser un nombre mal
+-- escrito. Las pruebas la llevan siempre encendida y fallan con cualquier campo nuevo.
+---------------------------------------------------------------------------
+-- El estado de HU que empieza vacío: nil quiere decir «todavía no» o «no hay»
+HU.MAYBE_NIL = {
+    -- quién soy y en qué estado está el addon
+    me = true, myTag = true, cfg = true, paused = true, mustUpdate = true, guildMin = true,
+    replaying = true, weakMsg = true, diagRecv = true, oldAddon = true, badEvents = true,
+    presenceWrapped = true, staleCheck = true,
+    -- el canal
+    chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true,
+    applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
+    offCfg = true,
+    -- la configuración de la comunidad
+    joinedText = true, noteCfgText = true,
+    -- enlace, ayudantes y listas
+    wasRelay = true, aloneRelay = true, myAdvScore = true, advertisedHelpers = true, relayHelpers = true,
+    relayMissing = true, relayRetryT = true, restSince = true, lastSharedPL = true, sendGroup = true,
+    rosterNeed = true, rosterNamesV = true, rosterVersion = true,
+}
+HU.strictMiss = {}
+local function StrictIndex(_, k)
+    if HU.MAYBE_NIL[k] or HU.strictMiss[k] then return nil end
+    local where = debugstack and (debugstack(2, 1, 0) or ""):match("([%w_]+%.lua:%d+)") or "?"
+    HU.strictMiss[k] = where or "?"
+    HU:Debug("Campo de HU que no existe:", tostring(k), where or "?")
+end
+function HU:StrictMode(on)
+    setmetatable(HU, on and { __index = StrictIndex } or nil)
+end
+
 -- Solo WoW Forever: los personajes tienen nombre y apellido, y el apellido va donde en los demás [+ARCHITECTURE.md]
 
 -- ¿Es un valor secreto? (desde Midnight / Forever, el juego oculta algunos datos a los addons)
@@ -649,6 +682,7 @@ HU:On("ADDON_LOADED", function(name)
     HU:ApplyLanguage(HU.db.lang)
     -- opciones quitadas del panel: se dejan con su valor normal
     if not HU.db.debug then HU.db.showChannel = false end   -- el canal oculto no se ve en el chat
+    HU:StrictMode(HU.db.debug)
 end)
 
 HU:On("PLAYER_LOGIN", function()
@@ -980,6 +1014,7 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     elseif cmd == "debug" then
         HU.db.debug = onoff(arg, HU.db.debug)
         HU.db.showChannel = HU.db.debug
+        HU:StrictMode(HU.db.debug)
         HU:Print(L("Depuración: ") .. (HU.db.debug and L("activada (canal visible)") or "desactivada"))
     elseif cmd == "confirmar" or cmd == "confirm" then
         -- (un oficial da por buena la lista que tengo de otra hermandad: el ancla de una comunidad

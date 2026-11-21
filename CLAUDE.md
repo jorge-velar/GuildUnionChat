@@ -24,3 +24,6 @@ ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`)
 - Si falta una función del juego en el WoW de mentira, se añade a `tests/lib/wow.lua` con el valor
   más neutro posible.
 - luacheck solo corre en el CI (aquí no se puede instalar): no añadir avisos nuevos.
+- Metatabla estricta: si `strict_spec` falla con un campo de `HU`, o es un nombre mal escrito (se
+  arregla) o es estado que empieza vacío (se añade a `HU.MAYBE_NIL` en Core.lua). Nunca se añade un
+  campo a esa lista sin comprobar que algo lo asigna.

@@ -225,7 +225,7 @@ cierra cuando se cumple su «hecho cuando».
 - Números al azar propios en el WoW de mentira (`wow.Seed`, Park-Miller), iguales con Lua 5.1 y 5.4:
   con el `math.random` de cada versión el escenario seguía otro camino en el CI que en local, y
   History.lua salía 10 puntos más bajo en local.
-- 106 pruebas en `tests/spec/`:
+- 107 pruebas en `tests/spec/`:
   - `carga_spec`: carga, arranque y órdenes registradas (incluido el problema #4);
   - `utilidades_spec`: `Split`, `SafeText`, `SafeName`, `NetT`, `NetStamp`, `Utf8Cut`,
     `VersionGreater`, `ParseConfigText` y `ParseChannelNote`;
@@ -239,6 +239,7 @@ cierra cuando se cumple su «hecho cuando».
     hermandad antes de 90 s (hoy, 36 s);
   - `listas_spec`: de quién se sabe que es de una hermandad (`ListFresh`, `InAnyGuild`, `MemberOf`, `TrustedOfficer`/`TrustedMaster`) y la raza y profesiones de los demás (`PB`);
   - `comandos_spec`: `/gu fase` y `/gu confirmar`, las comprobaciones «firmes» de oficial y maestro, `MissingLists` y `PL` por susurro de alguien no comprobado;
+  - `strict_spec` (la última): ninguna prueba ha leído un campo de `HU` que no existe (metatabla estricta);
   - `chat_spec`: emoticonos, qué líneas de otras hermandades se enseñan (`[ETIQ:B]`, `[ETIQ:O]`, las
     de mi hermandad, los canales extra) y el historial rellenado por otros (`HistInsert`);
   - `formato_spec`, con el escenario:
@@ -303,8 +304,13 @@ cierra cuando se cumple su «hecho cuando».
 4. ~~`HU.comm = {}` en Core.lua~~ **Hecho**: Core.lua crea `HU.comm` y Channel.lua registra
    `CW`/`CG`/`CF` al cargarse (antes, en `OnStart`). La prueba de carga ahora exige que estén ya al
    cargar (diagnóstico #4 arreglado).
-5. Metatabla estricta sobre `HU` con `/gu debug` encendido. Antes, arreglar lo que encuentre al
-   pasar las pruebas con ella activa.
+5. ~~Metatabla estricta~~ **Hecho**: `HU:StrictMode` (Core.lua), encendida con `/gu debug`. Leer
+   un campo de `HU` que no existe y no está en `HU.MAYBE_NIL` (el estado que empieza vacío, 40
+   campos) se apunta en `HU.strictMiss` con archivo y línea, y se avisa una vez. En las pruebas va
+   siempre encendida y `strict_spec`, la última, falla con cualquier campo nuevo. Al activarla salieron
+   dos restos más del eco quitado en la 5.4.32 (`HU.echoSending` y `HU:EchoStarName`, que nadie
+   asignaba), ya borrados. Comprobado a propósito: `self.myTagg` en `HelloCycle` hace fallar la prueba
+   con «myTagg (Comm.lua:3694)».
 6. **A confirmar:** con `HU.paused` (versión mínima), lo que sale de la cola se pierde en vez de
    esperar (`SendOne` devuelve `false`). La prueba lo fija tal como está; si no es lo que se quiere,
    se cambia la prueba junto con el código.

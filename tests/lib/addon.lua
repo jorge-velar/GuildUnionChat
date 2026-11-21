@@ -11,6 +11,7 @@ local wow = require("lib.wow")
 
 local M = {}
 local ADDON_NAME = "GuildUnion"
+M.strictMisses = {} -- (HU.strictMiss de cada copia cargada: ver strict_spec)
 
 -- (la carpeta del addon: la de arriba de tests/)
 M.root = (arg and arg[0] and arg[0]:match("^(.*)[/\\]tests[/\\][^/\\]+$")) or "."
@@ -177,6 +178,12 @@ function M.Load(opts)
         if not ok then error("falla al cargar " .. file .. ": " .. tostring(e), 0) end
     end
     w:Fire("ADDON_LOADED", ADDON_NAME)
+    -- (la metatabla estricta, siempre encendida en las pruebas: lo que lea un campo de HU que no existe
+    -- se apunta, y strict_spec, la última prueba, falla si hay algo. Las versiones viejas no la tienen)
+    if HU.StrictMode and opts.strict ~= false then
+        HU:StrictMode(true)
+        M.strictMisses[#M.strictMisses + 1] = HU.strictMiss
+    end
     local a = { HU = HU, w = w, env = w.env, ref = ref }
     function a:Login(secs)
         self.w:Fire("PLAYER_LOGIN")

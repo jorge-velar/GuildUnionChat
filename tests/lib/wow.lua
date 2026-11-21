@@ -198,7 +198,12 @@ function wow.New(opts)
     api.date = function(fmt, t) return os.date(fmt, t or api.time()) end
     api.GetServerTime = api.time
     api.debugprofilestop = function() return w.now * 1000 end
-    api.debugstack = function() return "" end
+    -- (como el del juego: «Archivo.lua:123: in function …» de quien está `level` por encima)
+    api.debugstack = function(level)
+        local info = debug.getinfo((level or 1) + 1, "Sl")
+        if not info then return "" end
+        return info.short_src .. ":" .. tostring(info.currentline) .. ": in function"
+    end
     api.geterrorhandler = function() return function(e) error(e, 0) end end
     api.securecall = function(fn, ...) if type(fn) == "function" then return fn(...) end end
     api.hooksecurefunc = function(a, b, c)

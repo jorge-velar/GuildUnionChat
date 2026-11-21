@@ -1380,8 +1380,6 @@ function HU:IsOwnHidden(msg)
 end
 
 local function OnSend(msg, chatType)
-    -- (el eco que escribe el enlace en /g no es suyo: no se reenvía, o haría un bucle)
-    if HU.echoSending then return end
     if type(msg) ~= "string" or msg == "" or type(chatType) ~= "string" then return end
     chatType = chatType:upper()
     if chatType ~= "GUILD" and chatType ~= "OFFICER" then return end
@@ -1566,7 +1564,6 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
     mark = mark or ""
     if compact then
         local name = self:Nice(author)
-        if self.EchoStarName then name = self:EchoStarName(author, name) end
         local rTag, rIdx = self:RankInfoOf(author)
         local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
         local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
@@ -1579,7 +1576,6 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
         return label .. tagText .. nameLink .. ": ", self:Emotes(msg), chatType
     end
     local short = self:Nice(author)
-    if self.EchoStarName then short = self:EchoStarName(author, short) end
     local colored = ClassColored(short, guid, tag, author)
     -- Formato de texto (Ajustes): punto o etiqueta delante del nombre, y [Hermandad] en color [+ARCHITECTURE.md]
     local name = self:NamePrefix(tag, author, mark, has) .. "|Hplayer:" .. author .. "|h[" .. colored .. "]|h"
