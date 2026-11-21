@@ -104,6 +104,26 @@ HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat
 - `tests/spec/registro_spec.lua` fija que lo declarado da exactamente las tablas de la 5.4.41 y que
   toda orden con manejador está registrada (y al revés).
 
+## Core.lua · lo que se repite
+
+### Planificador: `HU:Every`
+
+```lua
+HU:Every(15, "listas-ciclo", function() HU:RosterCycle() end, { pauseInCombat = false, maxFailures = nil, times = nil })
+```
+
+Todo lo que se repite pasa por aquí: ya no hay `HU.NewTicker`. Cada tarea lleva un nombre, que sale
+en `/gu errores` si falla y en `/gu perf` con sus veces y su tiempo (`HU:TaskLines()`).
+
+- **Cada tarea sigue teniendo su propio temporizador del juego**, como antes. Uno solo para todas
+  cambiaría en qué momento corre cada una, y eso ya sería un cambio de comportamiento.
+- Un fallo no la para (`SafeCall`), salvo con `maxFailures`. `pauseInCombat` no la hace mientras
+  `HU:CombatHold()`, la regla de combate de siempre.
+- Las 40 que había llevan las dos opciones apagadas, porque hacían lo mismo sin ellas. Las que ya
+  miraban el combate lo siguen haciendo dentro.
+- `HU.After` se queda como está: no se repite y se usa mucho con 0 s para repartir trabajo entre
+  fotogramas.
+
 ## Core.lua · lo guardado
 
 ### Migraciones: `HU:RegisterMigration` y `HU:RunMigrations`

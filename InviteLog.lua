@@ -63,7 +63,7 @@ local function Ask()
 end
 HU:OnStart(function()
     HU.After(15, Ask)
-    HU.NewTicker(600, Ask)
+    HU:Every(600, "invitaciones", Ask)
 end)
 
 -- Quién invitó a esa persona (la última vez), o nil si no consta

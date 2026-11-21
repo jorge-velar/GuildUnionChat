@@ -207,7 +207,7 @@ end)
 HU:OnStart(function()
     HU.rosterStartT = GetTime()
     HU:RequestRoster(true)
-    HU.NewTicker(60, function() HU:RequestRoster() end)
+    HU:Every(60, "lista-hermandad", function() HU:RequestRoster() end)
 end)
 
 function HU:InMyGuild(name)

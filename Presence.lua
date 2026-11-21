@@ -350,7 +350,7 @@ end
 
 
 HU:OnStart(function()
-    HU.NewTicker(FAST_ROSTER, function()
+    HU:Every(FAST_ROSTER, "presencia-lista", function()
         if HU:RosterSlot() and HU.RequestRoster then HU:RequestRoster() end
     end)
 end)

@@ -303,6 +303,6 @@ end
 HU:OnStart(function()
     HU.After(20, function()
         CheckPunished()
-        HU.NewTicker(30, CheckPunished)
+        HU:Every(30, "castigos", CheckPunished)
     end)
 end)

@@ -305,7 +305,7 @@ end
 -- ¿Faltan aún los inactivos de alguna hermandad? (para el aviso "cargando" de la lista) [+ARCHITECTURE.md]
 HU:OnStart(function()
     -- (solo el enlace, una hermandad cada 2 minutos y solo si no tiene nada urgente que mandar) [+ARCHITECTURE.md]
-    HU.After(math.random() * 120, function() HU.NewTicker(120, function()
+    HU.After(math.random() * 120, function() HU:Every(120, "desconectados-repartir", function()
         if not HU.myTag or not HU:IsRelay() then return end
         if HU.MainQueueSize and HU:MainQueueSize() > 30 then return end
         for _, tag in ipairs(HU:OtherTags()) do
@@ -1117,7 +1117,7 @@ end
 HU:OnStart(function()
     local since = HU.db.lastSeen
     HU.db.lastSeen = time()
-    HU.NewTicker(30, function() HU.db.lastSeen = time() end)
+    HU:Every(30, "ultima-vez", function() HU.db.lastSeen = time() end)
     -- limpiar lo viejo (así lo guardado no crece sin parar y el juego carga más rápido al entrar)
     local now = time()
     local db, adb = HU.db, HU.adb or {}
@@ -1140,14 +1140,14 @@ HU:OnStart(function()
     end
     HU.After(6, function() HU:RestoreChat() end)
     HU.After(12, function() HU:UpdateMyProfile(true) end)
-    HU.NewTicker(120, function() HU:UpdateMyProfile() end)
+    HU:Every(120, "ficha", function() HU:UpdateMyProfile() end)
     -- lo escrito mientras no estabas (si hace más de un minuto)
     HU.After(25, function()
         if since and time() - since > 60 then HU:AskMissedChat(since) end
     end)
     -- el enlace repasa con las otras hermandades los silencios y vetos de la suya cada 5 min. Con [+ARCHITECTURE.md]
     local resync = {} -- [etiqueta] = { sig, peer, t }
-    HU.NewTicker(300, function()
+    HU:Every(300, "silencios-repasar", function()
         if not HU.myTag or not HU:IsRelay() then return end
         -- (solo los de oficiales de mi hermandad: los de otra los reparte su enlace, que es de quien
         -- los aceptan las demás; y de los vetos, los vigentes o levantados hace menos de 3 días)

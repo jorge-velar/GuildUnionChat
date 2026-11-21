@@ -75,7 +75,7 @@ function HU:BlacklistCheck(again)
     end
 end
 HU:OnStart(function()
-    HU.NewTicker(60, function() HU:BlacklistCheck() end)
+    HU:Every(60, "lista-negra", function() HU:BlacklistCheck() end)
 end)
 
 ---------------------------------------------------------------------------

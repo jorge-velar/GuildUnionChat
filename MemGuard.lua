@@ -61,7 +61,7 @@ function HU:MemTrim()
 end
 
 HU:OnStart(function()
-    HU.NewTicker(CHECK, function()
+    HU:Every(CHECK, "memoria", function()
         if InCombatLockdown and InCombatLockdown() then return end
         if HU.UI and HU.UI.frame and HU.UI.frame:IsShown() then return end
         HU:MemTrim()

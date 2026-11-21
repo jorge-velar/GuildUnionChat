@@ -419,7 +419,7 @@ HU:OnStart(function()
     -- ya se pide lo de «mientras no estabas» al arrancar, Social.lua)
     if not (inInst and PVP_KINDS[instKind]) and HU.db then HU.db.pvpSince = nil end
     -- (red de seguridad: si se pierde el aviso de fin de combate, no se queda en pausa)
-    HU.NewTicker(5, function()
+    HU:Every(5, "combate-salida", function()
         if not hold then return end
         if regen and InCombatLockdown and not InCombatLockdown() then regen = false end
         Update()

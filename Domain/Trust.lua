@@ -100,7 +100,7 @@ end
 HU:OnStart(function()
     -- (cada 10 s: con 20 s, el día 1 a veces pasaba del minuto en confirmar; solo pregunta si falta «c»,
     -- y a cada ancla como mucho una vez por minuto)
-    HU.NewTicker(10, function() HU:SafeCall("ancla", function() AskAnchors(HU) end) end)
+    HU:Every(10, "anclas", function() HU:SafeCall("ancla", function() AskAnchors(HU) end) end)
 end)
 
 local function PeerEntry(self, tag, k)

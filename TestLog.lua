@@ -147,7 +147,7 @@ end)
 HU:OnStart(function()
     loginT = GetTime()
     if On() then Add("entra", "entra al juego", nil, nil, Snapshot()) end
-    HU.NewTicker(5, function()
+    HU:Every(5, "registro-listas", function()
         if not On() then return end
         if not listsDone then
             local all = #HU:OtherTags() > 0
@@ -155,7 +155,7 @@ HU:OnStart(function()
             if all then listsDone = true; Add("listas", string.format("todas las listas a los %d s de entrar", GetTime() - loginT), nil, nil, Snapshot()) end
         end
     end)
-    HU.NewTicker(300, function()
+    HU:Every(300, "registro-foto", function()
         if not On() then return end
         Add("foto", string.format("peor fotograma en 5 min: %d ms", worst * 1000), nil, nil, Snapshot())
         worst = 0

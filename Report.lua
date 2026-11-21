@@ -270,7 +270,7 @@ local function Clock(t) return HU.SafeDate("%H:%M:%S", t) end
 -- Entradas y salidas MÍAS del canal de la comunidad en esta sesión (se mira cada 5 s)
 local chanTrack = { outs = 0, outSecs = 0, log = {} }
 HU:OnStart(function()
-    HU.NewTicker(5, function()
+    HU:Every(5, "informe-canal", function()
         if not HU.ready then return end
         local now, inside = GetTime(), HU:IsJoined("main")
         if chanTrack.state == nil then chanTrack.state, chanTrack.since = inside, now return end

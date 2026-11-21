@@ -87,7 +87,7 @@ end
 HU:OnStart(function()
     HU.After(30, function() if HU.myTag then HU:Send("PQ", "GUILD") end end)
     -- el enlace lo hace llegar también a las otras hermandades de vez en cuando
-    HU.NewTicker(300, function()
+    HU:Every(300, "fijado-repartir", function()
         if HU.db.pinned and HU.myTag and HU:IsRelay() then
             for _, tag in ipairs(HU:OtherTags()) do
                 local peer = HU:BestPeer(tag)

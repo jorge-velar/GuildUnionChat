@@ -675,9 +675,9 @@ function HU:OnChannelRolesChanged()
 end
 
 HU:OnStart(function()
-    HU.NewTicker(15, function() HU:GuardTick() end)
+    HU:Every(15, "guardia", function() HU:GuardTick() end)
     -- (con retraso al azar, para no coincidir con los demás relojes en el mismo fotograma)
-    HU.After(math.random() * 60, function() HU.NewTicker(60, function() HU:CheckChannelOwner() end) end)
+    HU.After(math.random() * 60, function() HU:Every(60, "guardia-dueno-canal", function() HU:CheckChannelOwner() end) end)
 end)
 
 ---------------------------------------------------------------------------

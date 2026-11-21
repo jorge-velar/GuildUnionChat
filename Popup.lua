@@ -251,7 +251,7 @@ HU:OnStart(function()
     elseif HU.db then
         HU.db.mustUpdate = nil
     end
-    HU.NewTicker(60, function()
+    HU:Every(60, "version-minima", function()
         -- (7 días sin que ningún oficial lo repita: se quita la franja)
         if HU.mustUpdate and HU.db and not MustValid(HU.db.mustUpdate) then
             HU.mustUpdate, HU.db.mustUpdate = nil, nil

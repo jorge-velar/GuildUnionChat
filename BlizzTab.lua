@@ -919,7 +919,7 @@ ScrollTo = function(name)
     Mark()
     -- (mientras su nombre siga en el buscador: lo quita ClearMark al borrarlo, al esconderse el
     -- buscador o al buscar a otro)
-    hl.ticker = HU.NewTicker(0.25, function() if f:IsShown() then Mark() end end)
+    hl.ticker = HU:Every(0.25, "pestana-resaltar", function() if f:IsShown() then Mark() end end)
 end
 
 local search
@@ -1112,7 +1112,7 @@ local function Setup()
     MinimapClick()
     SyncTab()
     if f:IsShown() and HU:WantsTab() then HU.After(0.1, function() SyncTab(); if tab and tab:IsShown() then ShowPanel(true) end end) end
-    HU.NewTicker(5, function()
+    HU:Every(5, "pestana-al-dia", function()
         if f:IsShown() then SyncTab() end
         if panel and panel:IsShown() then RefreshStatus(); RefreshOfficers() end
     end)

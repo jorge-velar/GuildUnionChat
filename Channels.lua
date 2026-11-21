@@ -73,7 +73,7 @@ HU.comm.PQ = function(self, sender, ...)
 end
 
 HU:OnStart(function()
-    HU.NewTicker(300, function()
+    HU:Every(300, "canales-extra", function()
         if not HU.myTag or not HU:IsRelay() then return end
         for _, x in pairs(HU.db.extraChans) do
             for _, tag in ipairs(HU:OtherTags()) do
@@ -382,13 +382,13 @@ HU:OnStart(function()
     end
     -- (sin canal, o con uno provisional: se sigue pidiendo cada minuto, así llega en cuanto se conecte
     -- alguien de la hermandad que lo tenga, sin /reload)
-    HU.NewTicker(60, function()
+    HU:Every(60, "canal-pedir", function()
         local n = HU.db.netChan
         if not (HU.myTag and IsInGuild()) or (n and not n.prov) then return end
         HU.cqAskedT = GetTime(); HU:Send("CQ", "GUILD")
     end)
     -- el enlace lo pasa a las otras hermandades de vez en cuando
-    HU.NewTicker(300, function()
+    HU:Every(300, "canal-repartir", function()
         if HU.myTag and HU:IsRelay() and HU.db.netChan then
             for _, tag in ipairs(HU:OtherTags()) do
                 local peer = HU:SafePeer(tag)

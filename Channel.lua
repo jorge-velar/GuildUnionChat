@@ -418,10 +418,10 @@ HU:OnStart(function()
     HU.After(0.5, TryStart)
     -- (y otra vez a los 10 s, por si la Información de hermandad tardó)
     HU.After(10, function() HU:RefreshConfig(true) end)
-    HU.NewTicker(1, function()
+    HU:Every(1, "canal-entrar-pronto", function()
         for kind in pairs(HU.chan) do HU:EnsureJoined(kind) end
-    end, 20)
-    HU.NewTicker(10, function()
+    end, { times = 20 })
+    HU:Every(10, "canal-entrar", function()
         -- (copia 158: lo que se dejó para luego mientras las funciones de canal estaban prohibidas)
         if not HU:ChannelApiBlocked() then
             if HU.applyPending then HU:ApplyChannels() end
@@ -1152,13 +1152,13 @@ end
 -- (el enlace sondea cada LANE_PROBE_EVERY s si no ha mandado nada al canal en ese tiempo: así un canal
 -- que deja de funcionar se nota en segundos aunque nadie escriba, no cuando toque la presentación)
 HU:OnStart(function()
-    HU.NewTicker(LANE_PROBE_EVERY, function()
+    HU:Every(LANE_PROBE_EVERY, "carril-sondeo", function()
         -- (con wasRelay, lo que salió en mi último saludo, y no IsRelay: este repasa a todos los [+ARCHITECTURE.md]
         if HU.wasRelay and GetTime() - lastChannelSend > LANE_PROBE_EVERY - 0.5 and HU:IsJoined("main") then
             HU.After(0, function() HU:ProbeLane() end)
         end
     end)
-    HU.NewTicker(5, function()
+    HU:Every(5, "carril-caducar", function()
         -- (copia 118: cada 5 s y no cada 60, para que vuelvan casi a la vez y no con un minuto de diferencia)
         -- (caducidad: todos tienen la misma hora de subida, así que vuelven al 0 a la vez; si el 0
         -- sigue roto, los rechazos los vuelven a subir)
@@ -2309,7 +2309,7 @@ end)
 -- se tarda un poco en volver al canal y el aviso saltaba en ese hueco, con un motivo que no era)
 local noChanT, outSince = -999, nil
 HU:OnStart(function()
-    HU.NewTicker(60, function()
+    HU:Every(60, "canal-fuera-aviso", function()
         if not HU.ready or not IsInGuild() or HU.paused
             or GetTime() - (HU.loginT or 0) < 90 or not HU:CanJoinNow() or HU:IsJoined("main") then
             outSince = nil
@@ -2415,7 +2415,7 @@ end
 do
     local splitSince, splitWarnT = nil, -9999
     HU:OnStart(function()
-        HU.NewTicker(30, function()
+        HU:Every(30, "carril-otra-sala", function()
             if not (HU.cfg and HU.myTag) then splitSince = nil return end
             local strays = HU:LaneStrays()
             if #strays == 0 then splitSince = nil return end

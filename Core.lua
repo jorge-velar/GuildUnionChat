@@ -205,8 +205,53 @@ end
 function HU.After(delay, fn)
     return C_Timer.After(delay, function() HU:SafeCall("timer", fn) end)
 end
-function HU.NewTicker(delay, fn, n)
-    return C_Timer.NewTicker(delay, function(t) HU:SafeCall("ticker", fn, t) end, n)
+
+-- Planificador: todo lo que se repite pasa por HU:Every, con un nombre [+ARCHITECTURE.md]
+-- opts: times (cuántas veces; sin él, siempre), pauseInCombat (no se hace mientras HU:CombatHold()),
+-- maxFailures (tras tantos fallos se para, como el cortacircuitos de History). Devuelve el
+-- temporizador del juego (:Cancel() lo para)
+local taskClock = debugprofilestop or function() return GetTime() * 1000 end
+HU.tasks = {} -- [nombre] = { every, n (veces), ms (en total), max, fails, skipped, off }
+function HU:Every(secs, name, fn, opts)
+    if type(name) ~= "string" or name == "" then error("HU:Every: falta el nombre", 2) end
+    if type(fn) ~= "function" then error("HU:Every " .. name .. ": falta la función", 2) end
+    opts = opts or {}
+    local task = HU.tasks[name]
+    if not task then
+        task = { name = name, n = 0, ms = 0, max = 0, fails = 0, skipped = 0 }
+        HU.tasks[name] = task
+    end
+    task.every, task.off = secs, nil
+    local ticker
+    ticker = C_Timer.NewTicker(secs, function()
+        if opts.pauseInCombat and HU.CombatHold and HU:CombatHold() then task.skipped = task.skipped + 1 return end
+        local t0 = taskClock()
+        local ok = HU:SafeCall(name, fn)
+        local ms = taskClock() - t0
+        task.n, task.ms = task.n + 1, task.ms + ms
+        if ms > task.max then task.max = ms end
+        if not ok then
+            task.fails = task.fails + 1
+            if opts.maxFailures and task.fails >= opts.maxFailures then
+                task.off = true
+                ticker:Cancel()
+                HU:Debug("Tarea parada por fallar", task.fails, "veces:", name)
+            end
+        end
+    end, opts.times)
+    return ticker
+end
+-- Las tareas, de la que más tiempo se lleva a la que menos (para /gu perf)
+function HU:TaskLines()
+    local list = {}
+    for _, t in pairs(HU.tasks) do list[#list + 1] = t end
+    table.sort(list, function(a, b) if a.ms ~= b.ms then return a.ms > b.ms end return a.name < b.name end)
+    local out = {}
+    for _, t in ipairs(list) do
+        out[#out + 1] = string.format("%-24s cada %gs  %dx  %.1f ms (peor %.1f)%s%s%s", t.name, t.every or 0, t.n, t.ms, t.max,
+            t.fails > 0 and ("  fallos " .. t.fails) or "", t.skipped > 0 and ("  en combate " .. t.skipped) or "", t.off and "  PARADA" or "")
+    end
+    return out
 end
 
 -- La X de nuestras ventanas. La plantilla del juego cierra con HideUIPanel, que pasa por su gestor

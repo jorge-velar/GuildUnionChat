@@ -522,7 +522,7 @@ end
 -- el enlace recuerda las hermandades añadidas cada 30 minutos (Guild Union 20) y a quien entra
 HU:OnStart(function()
     -- (una hermandad cada 0,2 s: todas a la vez pasaba de 8 ms con muchas hermandades)
-    HU.NewTicker(1800, function()
+    HU:Every(1800, "comunidad-repartir", function()
         if not HU.myTag or not HU:IsRelay() then return end
         for i, tag in ipairs(HU:OtherTags()) do
             HU.After(i * 0.2, function()

@@ -1433,16 +1433,16 @@ HU:OnStart(function()
     C_ChatInfo.RegisterAddonMessagePrefix(HU.PREFIX_B)
     HU.loginT = GetTime()
     SamplePerf()
-    HU.NewTicker(30, SamplePerf)
+    HU:Every(30, "medir-conexion", SamplePerf)
     HU.After(20, Bench)
-    HU.NewTicker(600, Bench)
+    HU:Every(600, "banco", Bench)
     -- el enlace que entra en una banda o se pone ausente lo dice enseguida (para que lo
     -- haga otro), y al salir vuelve a decir su puntuación
     local wasBusy = false
     -- (acabo de pasar a ser el enlace: saludo y presentación en el canal ya, sin esperar al saludo [+ARCHITECTURE.md]
     local TAKEOVER_GAP = 45
     local relayNow, lastTakeover = false, -999
-    HU.NewTicker(15, function()
+    HU:Every(15, "enlace-ocupado", function()
         local b = Busy()
         if b ~= wasBusy then
             wasBusy = b
@@ -1456,7 +1456,7 @@ HU:OnStart(function()
         end
         relayNow = r
     end)
-    HU.NewTicker(1.0, HU.QueueTick) -- (el cupo de la cola de envío: Net/Transport.lua)
+    HU:Every(1.0, "cola-cupo", HU.QueueTick) -- (el cupo de la cola de envío: Net/Transport.lua)
     -- saludo: cada 2 a 5 minutos (según cuántos tengan el addon en la hermandad)
     local function hello()
         HU:SafeCall("hello", HU.HelloCycle, HU)
@@ -1505,10 +1505,10 @@ HU:OnStart(function()
     for _, d in ipairs({ 100, 180, 260 }) do HU.After(d, function() HU:AskMissingRosters() end) end
     -- (fase de lanzamiento: antes, por si la hermandad no se la ha pasado)
     for _, d in ipairs({ 30, 60 }) do HU.After(d, function() HU:AskMissingRosters() end) end
-    HU.NewTicker(300, function() HU:AskGuildForMissing(); HU:AskMissingRosters() end)
+    HU:Every(300, "pedir-listas", function() HU:AskGuildForMissing(); HU:AskMissingRosters() end)
     -- (cada 15 s, no 60: así la lista sale poco después de conocer al enlace de otra hermandad; los
     -- cambios siguen saliendo cada 2 minutos)
-    HU.NewTicker(15, function() HU:RosterCycle() end)
+    HU:Every(15, "listas-ciclo", function() HU:RosterCycle() end)
 end)
 
 HU:OnStart(function()
