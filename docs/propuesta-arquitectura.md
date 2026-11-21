@@ -314,7 +314,13 @@ cierra cuando se cumple su «hecho cuando».
 6. ~~A confirmar: `HU.paused` pierde la cola~~ **Decidido: se queda como está** (el refactor no
    cambia el comportamiento). Documentado en [fallos-conocidos.md](fallos-conocidos.md), 3.
 7. Ir traduciendo los 54 textos que faltan y después pasar `tests/traducciones.lua --estricto`.
-8. **Más escenarios de red** (`red_spec`): topes de tráfico por jugador y minuto con
+8. **Más escenarios de red.** En parte **hecho** (`escenarios_spec`, antes del paso 3): canal de
+   texto caído (chat y oficiales por el respaldo, y vuelta al canal), seis hermandades (reparto con
+   `CF`), relevo del enlace, carriles (subir con dos oficiales, reiniciar, sala fijada con `GU:l` y
+   subida automática con el canal rechazado), menciones y `/gu sonda`. Con ellos, Comm.lua (76 %) y
+   Channel.lua (78 %) pasan del 75 % con Lua 5.1, y la cobertura total del 35 % al 51 %. El WoW de
+   mentira ya deja ver las notas de oficial a los rangos 0 a 2: antes nadie era oficial para el
+   addon. Falta: topes de tráfico por jugador y minuto con
    `net:Traffic`; una entrada masiva (150 jugadores en 60 s tras un reinicio) con tope de cola y
    sin nadie sin lista; conexiones y desconexiones vistas desde la otra hermandad; silencios
    repartidos; y el chat por el respaldo cuando el canal falla. Con lo que se mida en cada sesión

@@ -120,11 +120,10 @@ local totalPct = 100 * covered / math.max(1, total)
 if opts["sin-probar"] then
     local file = opts["sin-probar"]
     local r = assert(byFile[file], "no conozco " .. file)
-    local src, fnOf, cur = {}, {}, "(fuera de funciones)"
+    local fnOf, cur = {}, "(fuera de funciones)"
     local n = 0
     for line in io.lines(root .. "/" .. file) do
         n = n + 1
-        src[n] = line
         local name = line:match("^%s*function%s+([%w_.:]+)") or line:match("^%s*local%s+function%s+([%w_]+)")
             or line:match("^%s*([%w_.]+)%s*=%s*function") or line:match("RegisterMessage%(\"(%u+)\"")
         if name then cur = name .. " (" .. n .. ")" end
