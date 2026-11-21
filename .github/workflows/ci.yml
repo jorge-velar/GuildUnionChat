@@ -26,6 +26,33 @@ jobs:
       - name: Textos sin traducción al inglés
         run: lua5.1 tests/traducciones.lua
 
+  # Cobertura (tests/cobertura.lua): ningún archivo baja de su mínimo (tests/cobertura-minima.txt) y,
+  # en una PR, lo nuevo o cambiado está probado al 70 %. La tabla sale en el resumen de la ejecución.
+  cobertura:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # (para comparar con la rama de destino)
+
+      - name: Instalar Lua 5.1 (trae luac5.1)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+
+      - name: Cobertura
+        run: lua5.1 tests/cobertura.lua --base "origin/${{ github.base_ref || 'main' }}" --al-dia cobertura-al-dia.txt
+
+      # Los valores de ahora, por si hay que guardarlos como mínimos (cuando suben): se descarga y se
+      # copia a tests/cobertura-minima.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura-minima
+          path: cobertura-al-dia.txt
+          if-no-files-found: ignore
+
   luacheck:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

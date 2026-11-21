@@ -1,0 +1,21 @@
+# Guild Union: instrucciones para Claude
+
+Addon de WoW (destino principal WoW Forever, Lua 5.1). Código, comentarios y textos en español; los
+textos que ve el jugador van con `L()` y su inglés en LocaleEN.lua. Los comentarios largos van a
+ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`).
+
+## Pruebas (obligatorio)
+
+- Todo cambio de código del addon llega con pruebas en `tests/spec/`. Sin dependencias: el ejecutor
+  es `tests/run.lua` y el WoW de mentira `tests/lib/wow.lua`.
+- Lo que necesita varios jugadores (chat entre hermandades, listas, enlaces, silencios) se prueba con
+  la red de `tests/lib/red.lua`.
+- Un fallo visto en el juego: primero la prueba que lo reproduce, luego el arreglo.
+- Antes de dar algo por hecho, pasar:
+  - `lua tests/run.lua` (todas en verde);
+  - `lua tests/cobertura.lua --base origin/main`: lo nuevo, probado al 70 % como mínimo, y ningún
+    archivo por debajo de su mínimo. Si un archivo sube, `--actualizar` y se sube la lista con el
+    cambio.
+- Si falta una función del juego en el WoW de mentira, se añade a `tests/lib/wow.lua` con el valor
+  más neutro posible.
+- luacheck solo corre en el CI (aquí no se puede instalar): no añadir avisos nuevos.

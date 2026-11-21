@@ -230,6 +230,17 @@ cierra cuando se cumple su «hecho cuando».
     hermandad antes de 90 s (hoy, 36 s).
 - CI (`.github/workflows/ci.yml`): pruebas con Lua 5.1, informe de traducciones y luacheck que
   para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
+- Cobertura (`tests/cobertura.lua`, trabajo `cobertura` del CI): mide las líneas por las que pasa
+  alguna prueba, **sin contar lo que se ejecuta solo al cargar el addon** (era casi la mitad de lo
+  «cubierto»). Hoy, 26,4 %. Para el CI en dos casos:
+  - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen). Los mínimos
+    solo suben: cuando un archivo mejora, se rehacen con `--actualizar` o con el artefacto
+    `cobertura-minima` del CI;
+  - en una PR, las líneas nuevas o cambiadas están probadas a menos del 70 %. El informe dice cuáles
+    faltan. Los archivos solo de interfaz (BlizzTab, WMPanel, ListWindow, UIWindows, Wizard) quedan
+    fuera de esta regla.
+
+  La tabla por archivo sale en el resumen de cada ejecución del CI.
 
 ### Pendiente
 
@@ -256,6 +267,11 @@ cierra cuando se cumple su «hecho cuando».
    repartidos; y el chat por el respaldo cuando el canal falla. Con lo que se mida en cada sesión
    real de `/gu registro` se ajustan los umbrales y las suposiciones de la red (p. ej. el límite de
    envío del servidor de Forever, que la red todavía no simula).
+9. **Subir la cobertura donde más rinde:** History.lua (17 %, el historial compartido entre
+   hermandades se puede probar con la red como el chat), Social.lua (17 %), Core.lua (15 %),
+   Community.lua (4 %) y Orders.lua (1 %). De vez en cuando, una prueba de mutaciones sobre Comm.lua
+   (cambiar a propósito `>` por `>=` o `true` por `false` y ver que alguna prueba falla) para saber
+   si lo cubierto está probado de verdad.
 
 ### Cómo se prueba
 
@@ -263,6 +279,7 @@ cierra cuando se cumple su «hecho cuando».
 lua tests/run.lua                 # todas las pruebas
 lua tests/run.lua Seguridad       # solo las que llevan «Seguridad» en el nombre
 lua tests/traducciones.lua        # textos sin traducción
+lua tests/cobertura.lua --base origin/main   # cobertura, y lo nuevo desde main
 ```
 
 Cuando una prueba falla por una función del juego que falta en el WoW de mentira, se añade a

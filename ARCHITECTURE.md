@@ -3,6 +3,22 @@
 > [!note] Qué es
 > Los comentarios largos que estaban en el código (por qué se hace así, qué pasaba antes, qué midió el banco). En el código queda la primera línea con la marca `[+ARCHITECTURE.md]`; aquí está el texto entero, por archivo y número de línea (de la ReduceClean-7, antes de moverlos) y la primera línea de código que lo sigue.
 
+## Pruebas: la regla
+
+Todo cambio de código llega con sus pruebas en `tests/spec/`, y el CI lo comprueba
+(`tests/cobertura.lua`):
+
+- **Lo nuevo o cambiado** en una PR tiene que estar probado al **70 %** como mínimo. Si no, el CI
+  dice qué líneas faltan. Solo quedan fuera los archivos de pura interfaz (BlizzTab, WMPanel,
+  ListWindow, UIWindows, Wizard).
+- **Ningún archivo baja** de su cobertura mínima (`tests/cobertura-minima.txt`). Cuando un archivo
+  sube, se rehacen los mínimos (`lua tests/cobertura.lua --actualizar`) para que no vuelva a bajar.
+- **Cada fallo visto en el juego** se arregla escribiendo primero la prueba que lo reproduce.
+- Lo que hace falta de varios jugadores (chat entre hermandades, listas, enlaces) se prueba con la
+  red de `tests/lib/red.lua`, no a mano.
+
+Cómo se escriben y se pasan las pruebas: [docs/propuesta-arquitectura.md](docs/propuesta-arquitectura.md#paso-1-en-detalle).
+
 ## Core.lua
 
 ### línea 251 · `function HU.Secret(v)`
