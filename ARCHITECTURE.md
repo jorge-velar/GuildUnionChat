@@ -12,7 +12,8 @@ Todo cambio de código llega con sus pruebas en `tests/spec/`, y el CI lo compru
   dice qué líneas faltan. Solo quedan fuera los archivos de pura interfaz (BlizzTab, WMPanel,
   ListWindow, UIWindows, Wizard).
 - **Ningún archivo baja** de su cobertura mínima (`tests/cobertura-minima.txt`). Cuando un archivo
-  sube, se rehacen los mínimos (`lua tests/cobertura.lua --actualizar`) para que no vuelva a bajar.
+  sube, se rehacen los mínimos para que no vuelva a bajar: se copia el artefacto `cobertura-minima`
+  del CI (son de Lua 5.1; con la 5.4 de un equipo salen otros valores).
 - **Cada fallo visto en el juego** se arregla escribiendo primero la prueba que lo reproduce.
 - Lo que hace falta de varios jugadores (chat entre hermandades, listas, enlaces) se prueba con la
   red de `tests/lib/red.lua`, no a mano.

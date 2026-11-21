@@ -232,10 +232,12 @@ cierra cuando se cumple su «hecho cuando».
   para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 - Cobertura (`tests/cobertura.lua`, trabajo `cobertura` del CI): mide las líneas por las que pasa
   alguna prueba, **sin contar lo que se ejecuta solo al cargar el addon** (era casi la mitad de lo
-  «cubierto»). Hoy, 26,4 %. Para el CI en dos casos:
+  «cubierto»). Hoy, 26,2 % con Lua 5.1. Para el CI en dos casos:
   - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen). Los mínimos
-    solo suben: cuando un archivo mejora, se rehacen con `--actualizar` o con el artefacto
-    `cobertura-minima` del CI;
+    se miden con Lua 5.1: con la 5.4, luac reparte las instrucciones por líneas de otra forma y cada
+    archivo sale hasta 1,2 puntos arriba o abajo, así que en local el margen es de 2 puntos y
+    `--actualizar` solo guarda con 5.1. Los mínimos solo suben: cuando un archivo mejora, se copia el
+    artefacto `cobertura-minima` del CI;
   - en una PR, las líneas nuevas o cambiadas están probadas a menos del 70 %. El informe dice cuáles
     faltan. Los archivos solo de interfaz (BlizzTab, WMPanel, ListWindow, UIWindows, Wizard) quedan
     fuera de esta regla.

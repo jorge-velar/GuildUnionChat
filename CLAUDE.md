@@ -14,8 +14,9 @@ ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`)
 - Antes de dar algo por hecho, pasar:
   - `lua tests/run.lua` (todas en verde);
   - `lua tests/cobertura.lua --base origin/main`: lo nuevo, probado al 70 % como mínimo, y ningún
-    archivo por debajo de su mínimo. Si un archivo sube, `--actualizar` y se sube la lista con el
-    cambio.
+    archivo por debajo de su mínimo. Aquí corre con Lua 5.4 (margen de 2 puntos); los mínimos son
+    de Lua 5.1. Si un archivo sube, tras el CI se copia el artefacto `cobertura-minima` a
+    `tests/cobertura-minima.txt` (no `--actualizar` con 5.4: daría otros valores).
 - Si falta una función del juego en el WoW de mentira, se añade a `tests/lib/wow.lua` con el valor
   más neutro posible.
 - luacheck solo corre en el CI (aquí no se puede instalar): no añadir avisos nuevos.

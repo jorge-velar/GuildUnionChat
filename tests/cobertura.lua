@@ -3,7 +3,8 @@
 --   lua tests/cobertura.lua                       informe, y para si un archivo baja de su mínimo
 --   lua tests/cobertura.lua --base origin/main    y además: las líneas nuevas o cambiadas desde main
 --                                                 tienen que estar probadas (NUEVAS_MIN)
---   lua tests/cobertura.lua --actualizar          guarda los valores de ahora como mínimos
+--   lua tests/cobertura.lua --actualizar          guarda los valores de ahora como mínimos (solo con
+--                                                 Lua 5.1; si no, el artefacto «cobertura-minima» del CI)
 --   lua tests/cobertura.lua --al-dia ruta.txt     escribe los valores de ahora en otro archivo (CI)
 --
 -- Se mide SIN lo que se ejecuta al cargar el addon (definir funciones, llenar tablas): eso pasa sin
@@ -17,9 +18,11 @@ package.path = here .. "/?.lua;" .. package.path
 
 -- Mínimo para lo nuevo de cada PR (en %)
 local NUEVAS_MIN = 70
--- Margen para los mínimos por archivo (en puntos): Lua 5.1 y 5.4 recorren las tablas en otro orden
--- y alguna línea puede cambiar de una ejecución a otra
-local MARGEN = 1.0
+-- Margen para los mínimos por archivo (en puntos). Los mínimos se miden con Lua 5.1 (el del CI y el de
+-- WoW). Con otra versión, luac reparte las instrucciones por líneas de otra forma y un archivo sale
+-- hasta 1,2 puntos arriba o abajo (medido el 21/11/2026): en local (5.4) el margen es mayor
+local LUA51 = _VERSION == "Lua 5.1"
+local MARGEN = LUA51 and 1.0 or 2.0
 -- Archivos solo de interfaz (el WoW de mentira no pinta nada): fuera de la regla de lo nuevo
 local SOLO_INTERFAZ = {
     ["BlizzTab.lua"] = true, ["WMPanel.lua"] = true, ["ListWindow.lua"] = true,
@@ -33,7 +36,8 @@ do
     while arg and arg[i] do
         local a = arg[i]
         if a == "--base" or a == "--al-dia" then opts[a:sub(3)] = arg[i + 1]; i = i + 1
-        elseif a == "--actualizar" then opts.actualizar = true end
+        elseif a == "--actualizar" then opts.actualizar = true
+        elseif a == "--forzar" then opts.forzar = true end
         i = i + 1
     end
 end
@@ -119,7 +123,7 @@ local function Round(x) return math.floor(x * 10) / 10 end
 local function WriteMins(path)
     local f = assert(io.open(path, "wb"))
     f:write("# Cobertura mínima de cada archivo (%), sin lo que se ejecuta al cargar. No puede bajar.\n")
-    f:write("# Se rehace con:  lua tests/cobertura.lua --actualizar   (o con el artefacto del CI)\n")
+    f:write("# Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)\n")
     local sorted = {}
     for _, r in ipairs(rows) do sorted[#sorted + 1] = r end
     table.sort(sorted, function(a, b) return a.file < b.file end)
@@ -257,6 +261,12 @@ if summary and summary ~= "" then
 end
 
 if opts.actualizar then
+    if not LUA51 and not opts.forzar then
+        print("\nLos mínimos se guardan con Lua 5.1 (el del CI): con " .. _VERSION .. " saldrían otros y el CI fallaría."
+            .. "\nUsa lua5.1, o descarga el artefacto «cobertura-minima» del CI y cópialo a " .. MINIMOS
+            .. " (--forzar para guardarlos igualmente).")
+        realExit(1)
+    end
     WriteMins(MINIMOS)
     print("\nMínimos guardados en " .. MINIMOS)
     realExit(0)
