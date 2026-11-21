@@ -250,7 +250,7 @@ cierra cuando se cumple su «hecho cuando».
       así que `--actualizar` añade y no quita (lo viejo se borra a mano). Si el cambio es a
       propósito: `lua tests/run.lua Formato --actualizar`, y queda a la vista en el diff;
     - **ida y vuelta:** todo lo que se manda por `HU20`/`HU20B` lo acepta la seguridad de alguna otra
-      copia. Las excepciones van en `NOBODY_ACCEPTS` con su motivo; hoy, solo `PB` (ver pendiente 10);
+      copia. Las excepciones van en `NOBODY_ACCEPTS` con su motivo; hoy, solo `PB` (ver [fallos-conocidos.md](fallos-conocidos.md), 1);
     - **versiones mezcladas:** Ana y Blas con la última versión publicada (la etiqueta `v*` más alta)
       y Alba y Bea con la de la carpeta. Sin errores, el chat en los dos sentidos, las listas, el
       silencio y la ida y vuelta.
@@ -311,9 +311,8 @@ cierra cuando se cumple su «hecho cuando».
    dos restos más del eco quitado en la 5.4.32 (`HU.echoSending` y `HU:EchoStarName`, que nadie
    asignaba), ya borrados. Comprobado a propósito: `self.myTagg` en `HelloCycle` hace fallar la prueba
    con «myTagg (Comm.lua:3694)».
-6. **A confirmar:** con `HU.paused` (versión mínima), lo que sale de la cola se pierde en vez de
-   esperar (`SendOne` devuelve `false`). La prueba lo fija tal como está; si no es lo que se quiere,
-   se cambia la prueba junto con el código.
+6. ~~A confirmar: `HU.paused` pierde la cola~~ **Decidido: se queda como está** (el refactor no
+   cambia el comportamiento). Documentado en [fallos-conocidos.md](fallos-conocidos.md), 3.
 7. Ir traduciendo los 54 textos que faltan y después pasar `tests/traducciones.lua --estricto`.
 8. **Más escenarios de red** (`red_spec`): topes de tráfico por jugador y minuto con
    `net:Traffic`; una entrada masiva (150 jugadores en 60 s tras un reinicio) con tope de cola y
@@ -326,17 +325,14 @@ cierra cuando se cumple su «hecho cuando».
    Community.lua (4 %) y Orders.lua (1 %). De vez en cuando, una prueba de mutaciones sobre Comm.lua
    (cambiar a propósito `>` por `>=` o `true` por `false` y ver que alguna prueba falla) para saber
    si lo cubierto está probado de verdad.
-10. **Hallazgo de la red: `PB` se pierde al principio.** La raza y las profesiones salen por
-    susurro a la vez que la primera lista (a los ~36 s), cuando quien las recibe todavía no se fía del
-    remitente. `RB` se retiene y se aplica después; `PB` no (no está en `BOOTSTRAP`), se rechaza y
-    no se repite en al menos 6 minutos. Decidir si se retiene o se manda después de la lista; al
-    arreglarlo, quitar `PB` de `NOBODY_ACCEPTS` en `formato_spec` (una prueba avisa).
-11. **Hallazgo de G: `db.rankCache` se guarda pero no se usa.** Los rangos de las listas
-    confirmadas se guardan «para comprobar a los oficiales aunque luego se desconecten», pero
-    `RankInfoSlow` (Config.lua) solo los leía si la persona salía además en la lista completa de su
-    hermandad, que ya no existe. Desde ReduceClean, un oficial de otra hermandad que se desconecta
-    deja de poder comprobarse. Decidir: recuperarlo (leer `rankCache` sin esa condición; cambia la
-    seguridad, con su prueba) o borrar también lo que lo escribe (Comm.lua y Social.lua).
+10. ~~Hallazgo de la red: `PB` se pierde al principio~~ **Decidido: se queda como está.**
+    Documentado en [fallos-conocidos.md](fallos-conocidos.md), 1.
+11. ~~Hallazgo de G: `db.rankCache` se guarda pero no se usa~~ **Decidido: se queda como está.**
+    Documentado en [fallos-conocidos.md](fallos-conocidos.md), 2.
+
+Regla para el resto del refactor: cualquier fallo o mejora que aparezca se apunta en
+[fallos-conocidos.md](fallos-conocidos.md) y no se arregla dentro de los pasos; se arregla aparte,
+en su propia PR.
 
 ### Cómo se prueba
 

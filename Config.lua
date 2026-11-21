@@ -560,6 +560,6 @@ function RankInfoSlow(self, k)
         end
     end
     -- (db.rankCache, los rangos vistos antes, solo se leía aquí si además salía en la lista completa de
-    -- su hermandad, que ya no existe: hoy se guarda pero no se usa. Pendiente de decidir si se recupera)
+    -- su hermandad, que ya no existe: hoy se guarda pero no se usa. Ver docs/fallos-conocidos.md, 2)
     return nil
 end

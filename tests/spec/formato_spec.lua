@@ -18,7 +18,7 @@ local TAGS = { UNO = true, DOS = true }
 local NOBODY_ACCEPTS = {
     -- (raza y profesiones: sale a la vez que la primera lista, cuando quien la recibe todavía no se
     -- fía del remitente; no se retiene como RB y no se repite en un buen rato. Hallazgo del 21/11/2026,
-    -- pendiente de decidir si se retiene o se manda después de la lista)
+    -- se deja así a propósito: docs/fallos-conocidos.md, 1)
     PB = "sale con la primera lista, antes de que el otro se fíe; no se retiene",
 }
 

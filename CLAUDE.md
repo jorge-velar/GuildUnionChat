@@ -4,6 +4,9 @@ Addon de WoW (destino principal WoW Forever, Lua 5.1). Código, comentarios y te
 textos que ve el jugador van con `L()` y su inglés en LocaleEN.lua. Los comentarios largos van a
 ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`).
 
+Durante el refactor de arquitectura (docs/propuesta-arquitectura.md) el addon funciona igual que
+antes: un fallo o una mejora que aparezca se apunta en docs/fallos-conocidos.md y se arregla aparte.
+
 ## Pruebas (obligatorio)
 
 - Todo cambio de código del addon llega con pruebas en `tests/spec/`. Sin dependencias: el ejecutor
