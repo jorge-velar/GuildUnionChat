@@ -96,6 +96,37 @@ describe("Datos guardados: esquema", function()
     end)
 end)
 
+describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
+    -- (DEFAULTS y PER_CHAR de Core.lua en la 5.4.41, tal cual)
+    local OLD_CHAR = { "history", "pinned", "myRole", "lastSeen", "pvpSince", "netChan", "chatShow", "netCfg",
+        "infoBackup", "noteChanSeen", "joinedChans", "extraChans", "chatTab", "chanLane", "netGuilds", "proposals",
+        "guildColors", "customEmotes", "lists", "rankCache", "offline", "offlineT", "peers", "chatTabsMade",
+        "rosterCache", "remoteRanks", "quickCfg", "managers", "officerRanks", "myOfficerRanks", "laneLock", "laneMig", "wmRows" }
+    local OLD_DEFAULTS = { showTag = true, chatMark = "dot", chatGuildColor = false, ownPaint = true, autoGuard = false,
+        bans = {}, grace = 120, debug = false, showChannel = false, audit = {}, history = {}, log = {}, profiles = {},
+        offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {} }
+
+    it("da exactamente lo de antes: qué va en el personaje y los valores por defecto", function()
+        local HU = F.Community().HU
+        local char = {}
+        for k in pairs(HU.PER_CHAR) do char[#char + 1] = k end
+        table.sort(char)
+        local want = {}
+        for i, k in ipairs(OLD_CHAR) do want[i] = k end
+        table.sort(want)
+        A.same(want, char)
+        A.same(OLD_DEFAULTS, HU.savedDefaults)
+    end)
+
+    it("una clave declarada dos veces o un ámbito que no existe dan error", function()
+        local HU = F.Community().HU
+        A.falsy(pcall(HU.Saved, HU, { char = { "pinned" } }))
+        A.falsy(pcall(HU.Saved, HU, { servidor = { "x" } }))
+        A.truthy(pcall(HU.Saved, HU, { account = { nuevaClave = 1 } }))
+        A.equal("account", HU.savedScope.nuevaClave)
+    end)
+end)
+
 describe("Datos guardados: actualizar desde la última versión publicada", function()
     it("no se pierde nada de lo guardado, y volver a la de antes funciona", function()
         local release = addon.LatestRelease()

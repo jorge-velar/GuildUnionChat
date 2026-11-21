@@ -45,3 +45,14 @@ en su propia PR, cambiando la prueba que la fija junto con el código.
 - **Arreglo propuesto:** si se quiere conservar, devolver `true` en pausa (el mensaje vuelve
   delante de su cola, como cuando el juego va saturado) y poner un tope de tiempo para que no se
   acumule. Probablemente no merece la pena.
+
+## 4. Claves guardadas que nadie usa
+
+- **Dónde:** Core.lua, en su `HU:Saved` (antes, `DEFAULTS` y `PER_CHAR`).
+- **Qué pasa:** `theme` (de la cuenta) se escribe con `"default"` en lo guardado cada vez que se
+  carga el addon, y nada lo lee; `chatTab`, `chatTabsMade` y `proposals` (del personaje) están
+  declaradas pero no las escribe ni las lee nadie. Son restos de versiones anteriores. No hacen
+  daño, salvo unos bytes en lo guardado.
+- **Qué lo fija:** `datos_spec` («da exactamente lo de antes»).
+- **Arreglo propuesto:** quitarlas de `HU:Saved` y añadir una migración (`HU:RegisterMigration`)
+  que borre `theme` de lo guardado; cambiar a la vez la lista de esa prueba.

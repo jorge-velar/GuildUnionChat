@@ -1,6 +1,8 @@
 -- Guild Union - modo combate: en combate dentro de una banda o mazmorra el addon solo muestra y manda [+ARCHITECTURE.md]
 local _, HU = ...
 
+HU:Saved({ char = { "pvpSince" } })
+
 -- (campos de batalla y arenas también: ahí el juego bloquea los envíos en combate y, sin este modo, la
 -- cola se llenaba de saludos que caducaban y se perdía el contacto con las otras hermandades. 11/11)
 local INSTANCE_KINDS = { party = true, raid = true, pvp = true, arena = true }
@@ -165,7 +167,7 @@ local function HelloAgain()
     if GetTime() - helloT < 20 or not HU.myTag or not HU.HelloCycle then return end
     helloT = GetTime()
     HU:SafeCall("combate", HU.HelloCycle, HU)
-    if HU.AnnounceRelay then HU.After(1.5, function() HU:AnnounceRelay(true) end) end
+    HU.After(1.5, function() HU:AnnounceRelay(true) end)
 end
 local function CatchUp()
     -- (tras un combate largo o si se tiró algo: se piden a mi hermandad todas las listas de una vez; [+ARCHITECTURE.md]
@@ -217,7 +219,7 @@ local function StartDrain()
     diag.releaseT = GetTime()
     -- (mi hermandad, leída de nuevo: la lectura se dejó para después; con su freno de 15 s, que entre pulls
     -- se sale de combate cada pocos segundos)
-    if HU.RequestRoster then HU:RequestRoster() end
+    HU:RequestRoster()
     HU.After(0, Drain)
 end
 
@@ -301,7 +303,7 @@ local function CedeNow()
     if not HU.myTag or not IsInGuild() or not HU.RosterSlot then return end
     if not HU:RosterSlot() then return end
     HU.myAdvScore = HU:RelayScore()
-    if HU.ForgetRelayMemo then HU.ForgetRelayMemo() end
+    HU.ForgetRelayMemo()
     -- (1,1 s: quién es el enlace se recuerda 1 s, MassLogin.lua)
     HU.After(1.1, function()
         if HU.myTag and IsInGuild() then HU:Send(HU:HelloText("HI"), "GUILD", nil, true) end
@@ -317,7 +319,7 @@ local function CheckQueue()
     elseif HU.myTag and HU.RelayScore then
         -- (ha salido de la cola sin entrar: la puntuación vuelve a la suya; se dirá en el saludo siguiente)
         HU.myAdvScore = HU:RelayScore()
-        if HU.ForgetRelayMemo then HU.ForgetRelayMemo() end
+        HU.ForgetRelayMemo()
     end
 end
 function HU:InPvpQueue() return queued end
@@ -425,3 +427,5 @@ HU:OnStart(function()
         Update()
     end)
 end)
+
+HU:Module("Combat", { "Config", "Core", "Net/Relay", "Net/Transport", "Protocol", "Roster", "Social" })

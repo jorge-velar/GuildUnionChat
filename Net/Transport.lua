@@ -113,7 +113,7 @@ local function SendOne(prefix, q, m)
     if r == OFFLINE and m[2] == "WHISPER" and type(m[3]) == "string" then
         HU.qStats.offline = HU.qStats.offline + 1
         local who = m[3]
-        HU.After(0, function() if HU.ForgetOffline then HU:ForgetOffline(who) end end)
+        HU.After(0, function() HU:ForgetOffline(who) end)
     end
     return false
 end
@@ -308,7 +308,7 @@ local function SystemFilter(_, _, text)
     end
     local who = text:match(notFoundPattern)
     if who then
-        if HU.PresenceNotFound then HU:PresenceNotFound(who) end
+        HU:PresenceNotFound(who)
         local k = HU:Short(who):lower()
         if pinged[k] and GetTime() - pinged[k] < 30 then
             HU:ForgetOffline(who)
@@ -338,3 +338,5 @@ function HU:ForgetOffline(who)
 end
 
 HU.AddChatFilter("CHAT_MSG_SYSTEM", SystemFilter)
+
+HU:Module("Net/Transport", { "Channel", "Core", "Domain/Trust", "Presence" })

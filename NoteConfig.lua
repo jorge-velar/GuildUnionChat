@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "netCfg" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local function NoteLine(note)
@@ -198,3 +200,5 @@ function HU:MakeOfficerNotesPrivate()
     self:Print(L("Para que la contraseña no la vea cualquiera: en la ventana de la hermandad (Rangos), quita «Ver notas de oficial» a los rangos que no sean de oficiales."))
     return false, L("este cliente no deja cambiar los permisos desde un addon")
 end
+
+HU:Module("NoteConfig", { "Config", "Core", "Net/Transport", "Pinned", "Protocol", "Roster" })

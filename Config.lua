@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "infoBackup", "myOfficerRanks", "quickCfg" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 HU.ADDON_TITLE = "Guild Union"
@@ -164,7 +166,7 @@ local function Doubt(self, sig)
     local now = GetTime()
     if not doubt or doubt.sig ~= sig then
         doubt = { sig = sig, t = now, v = self.rosterVersion or 0 }
-        if self.RequestRoster then self:RequestRoster(true) end
+        self:RequestRoster(true)
     else
         local waited = now - doubt.t
         local delivered = (self.rosterVersion or 0) > doubt.v
@@ -180,7 +182,7 @@ local function Doubt(self, sig)
         HU.After(DOUBT_RETRY, function()
             d.timer = nil
             if doubt ~= d then return end
-            if HU.RequestRoster then HU:RequestRoster(true) end
+            HU:RequestRoster(true)
             HU:RefreshConfig()
         end)
     end
@@ -213,7 +215,7 @@ function HU:QuickConfig()
     if not gname and time() - (tonumber(q.t) or 0) > 7 * 86400 then return false end
     local cfg = HU.ParseConfigText(q.text)
     if not cfg then return false end
-    if self.MergeNetGuilds then self:MergeNetGuilds(cfg) end
+    self:MergeNetGuilds(cfg)
     UseNetChannel(cfg, self.db.netChan)
     local mine = cfg.byName[q.guild:lower()]
     if not cfg.ok or not cfg.channel or not mine then return false end
@@ -244,7 +246,7 @@ end)
 function HU:RefreshConfig(force)
     if not IsInGuild() then
         self:Debug("Sin hermandad")
-        if self.SetGuildMin then self:SetGuildMin(nil) end
+        self:SetGuildMin(nil)
         self.cfg, self.myTag, self.guildName = nil, nil, nil
         lastKey = nil
         self:ApplyChannels()
@@ -266,9 +268,9 @@ function HU:RefreshConfig(force)
         return
     end
     -- (versión mínima: solo de la Información de MI hermandad, tal cual, antes de juntarle nada)
-    if self.SetGuildMin then self:SetGuildMin(HU.ParseMinVersion(text)) end
+    self:SetGuildMin(HU.ParseMinVersion(text))
     -- (y la sala fijada, igual: de la Información de MI hermandad)
-    if self.SetLaneLock then self:SetLaneLock(HU.ParseLaneLock(text)) end
+    self:SetLaneLock(HU.ParseLaneLock(text))
     -- (las migraciones que esperan a la Información de la hermandad: ver «de la cuenta al personaje»)
     self:RunMigrations({ guild = gname, text = text })
     -- recién unida a la comunidad: el juego puede tardar en devolver la Información nueva
@@ -283,7 +285,7 @@ function HU:RefreshConfig(force)
     if extra and HU.MergeConfigText then text = HU.MergeConfigText(text, extra) end
     local net = self.db.netChan
     local key = gname .. "\0" .. text .. "\0" .. (net and (net.channel .. (net.pass or "") .. (net.t or 0)) or "")
-        .. "\0" .. (self.NetGuildsKey and self:NetGuildsKey() or "")
+        .. "\0" .. (self:NetGuildsKey() or "")
     if not force and key == lastKey then return end
     lastKey = key
 
@@ -479,7 +481,7 @@ function HU:RankRole(tag, rankIndex)
     return rankIndex == 1 and "officer" or nil
 end
 
-HU:On("GUILD_RANKS_UPDATE", function() HU:ForgetMyOfficerRanks(); if HU.Changed then HU:Changed("members") end end)
+HU:On("GUILD_RANKS_UPDATE", function() HU:ForgetMyOfficerRanks(); HU:Changed("members") end)
 HU:OnStart(function()
     for tag, set in pairs(HU.db.officerRanks or {}) do
         if type(set) == "table" and not HU.officerRanks[tag] then HU.officerRanks[tag] = set end
@@ -524,7 +526,7 @@ function HU:IsChannelMod(name)
     local k = self:Key(name)
     if not k then return false end
     -- (la forma rápida: la completa monta la lista entera del canal, y esto se mira al pintar)
-    if k == self:MeKey() then return self.AmIModFast and self:AmIModFast() or false end
+    if k == self:MeKey() then return self:AmIModFast() or false end
     if self.chanMods and self.chanMods[k] then return true end
     local p = (self.guildPeers and self.guildPeers[k]) or (self.remote and self.remote[k])
     return p and p.mod and true or false
@@ -569,3 +571,5 @@ function RankInfoSlow(self, k)
     -- su hermandad, que ya no existe: hoy se guarda pero no se usa. Ver docs/fallos-conocidos.md, 2)
     return nil
 end
+
+HU:Module("Config", { "Channel", "Community", "Core", "Guard", "NoteConfig", "Popup", "Ranks", "Roster" })

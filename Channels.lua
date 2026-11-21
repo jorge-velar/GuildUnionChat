@@ -2,6 +2,14 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({
+    char = {
+        extraChans = {},      -- canales extra: [nombre] = { name, pass, del, by, tag, t }
+        "netChan",            -- canal y contraseña repartidos desde la nota de oficial: { channel, pass, t, by, tag }
+        "noteChanSeen",
+    },
+})
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local MAX_EXTRA = 3
@@ -397,3 +405,5 @@ HU:OnStart(function()
         end
     end)
 end)
+
+HU:Module("Channels", { "Audit", "Channel", "Comm", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/Transport", "Protocol", "Roster" })

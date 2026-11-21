@@ -221,7 +221,7 @@ function HU:GuardReview()
             review = nil
             return HU:Print(L("La lista del canal no está disponible (abre Social > Chat una vez)"))
         end
-        local known = HU.GuardKnownSet and HU.GuardKnownSet(HU) or {}
+        local known = HU.GuardKnownSet(HU) or {}
         local me = HU:MeKey()
         r.suspects, r.total, r.union, r.untilT = {}, #list, 0, GetTime() + REVIEW_TTL
         for _, m in ipairs(list) do
@@ -263,3 +263,5 @@ HU:On("CHAT_MSG_CHANNEL_JOIN", function(_, author, _, fullName, _, _, _, _, base
         HU.After(5, function() HU:GuardOfficersNow() end)
     end
 end)
+
+HU:Module("GuardKeeper", { "Audit", "Channel", "Config", "Core", "Guard", "Lists", "Pinned", "Roster", "Social" })

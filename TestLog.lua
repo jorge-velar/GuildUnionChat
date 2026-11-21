@@ -39,7 +39,7 @@ local function Add(kind, text, who, t, snap)
     while #d.entries > MAX do table.remove(d.entries, 1) end
     -- (lo de los demás llega al que dirige la prueba)
     if d.leader and not who and not HU.paused and HU:Key(d.leader) ~= HU:MeKey() then
-        if HU.MarkPinged then HU:MarkPinged(d.leader) end
+        HU:MarkPinged(d.leader)
         pcall(C_ChatInfo.SendAddonMessage, HU.TPREFIX,
             HU.Utf8Cut(table.concat({ e.t, kind, e.x, snap or "" }, "~"), 255), "WHISPER", d.leader)
     end
@@ -161,3 +161,5 @@ HU:OnStart(function()
         worst = 0
     end)
 end)
+
+HU:Module("TestLog", { "Channel", "Config", "Core", "Net/Transport" })

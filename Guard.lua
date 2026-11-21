@@ -56,7 +56,7 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
     -- esto sustituye a «ha hablado por el canal oculto» para arrancar con otra hermandad: HU:Vouched)
     if kind == "main" and keys then
         self.chanRosterKeys, self.chanRosterKeysT = keys, GetTime()
-        if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld() end) end
+        HU.After(0, function() HU:ReplayHeld() end)
     end
     if not found then
         local me = self:MeKey()
@@ -73,7 +73,7 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
             local k = m.name and m.name:lower()
             if k then self.chanSeen[k] = now end
         end
-        if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld() end) end
+        HU.After(0, function() HU:ReplayHeld() end)
     end
     if kind == "main" then
         -- quiénes son moderadores (para saludarlos)
@@ -338,7 +338,7 @@ function HU:GuardAsk(names, tags)
         local p = self:BestPeer(tag)
         if not p then return end -- sin contacto en alguna: no se puede saber, no se pregunta
         q.wait[tag] = p.name
-        q.wit[tag] = self.GuardWitness and self:GuardWitness(tag, p.name) or nil
+        q.wit[tag] = self:GuardWitness(tag, p.name) or nil
         q.left = q.left + 1
     end
     queries[id] = q
@@ -391,8 +391,8 @@ local function FinishTag(self, id, q, tag)
                 self.guardKnown[k] = { tag = tag, t = now }
                 verdict[k] = { intruder = false, t = now }
                 -- (su chat del respaldo que estaba retenido ya se puede enseñar: Net/Security.lua, VerifyChatSender)
-                if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld(k) end) end
-            elseif self.Debug then self:Debug("Guardia: el testigo de", tag, "no confirma a", k) end
+                HU.After(0, function() HU:ReplayHeld(k) end)
+            else self:Debug("Guardia: el testigo de", tag, "no confirma a", k) end
             q.names[k] = nil
         end
     end
@@ -417,7 +417,7 @@ HU.comm.MA = function(self, sender, f, dist)
     if not tag then return end
     -- (contesta por X solo quien está en la lista buena de X: antes valía el «mejor contacto», que [+ARCHITECTURE.md]
     if not self:MemberOf(sender, tag) then
-        if self.Debug then self:Debug("Respuesta de la guardia no aceptada:", sender, tag) end
+        self:Debug("Respuesta de la guardia no aceptada:", sender, tag)
         return
     end
     local set = {}
@@ -475,7 +475,7 @@ HU.GuardKnownSet = KnownSet -- (lo usa la revisión a petición: GuardKeeper.lua
 -- (desde la 5.4.8 el canal principal solo se revisa a petición y los vetados los echa un encargado:
 -- GuardKeeper.lua. Aquí estaba la revisión periódica del canal entero; se quitó en la 58)
 function HU:GuardTick(full)
-    if self.GuardRedirect then return self:GuardRedirect(full) end
+    return self:GuardRedirect(full)
 end
 
 -- Agrupa ráfagas de eventos: una sola revisión por lote, no una por evento
@@ -532,7 +532,7 @@ function HU:CheckImpostor(author)
     local k = self:Key(author)
     if not k or not self.myTag then return end
     if self:GuildVerified(k) or self:InMyGuild(author) then return true end
-    if not (self.CanPin and self:CanPin()) then return end
+    if not (self:CanPin()) then return end
     local now = GetTime()
     local a = impAsk[k]
     if a and now - a.t < 300 then return end
@@ -550,7 +550,7 @@ function HU:CheckImpostor(author)
             if HU:ChannelHas(author) == false then return end
             HU:SetMute(author, 3600, L("Se hace pasar por <") .. HU.myTag .. ">")
             if HU:AmIModFast() then HU:KickPlayer(author, false, nil, true) end
-            if HU.DropHeldChat then HU:DropHeldChat(k) end
+            HU:DropHeldChat(k)
         end)
     end
     -- (la espera al azar es para que, si hay varios oficiales, pregunte solo el primero: los demás
@@ -742,7 +742,7 @@ function HU:StatusLines(compact)
         -- (lo de abajo —contactos, «sin confirmar»— puede salir en naranja por esto, no por un fallo)
         Lines[#Lines + 1] = "|cffff8800" .. L("El juego tiene bloqueado el chat ahora (combate en una instancia o un campo de batalla): el addon no puede enviar ni leer. Se reanuda solo al acabar.") .. "|r"
     end
-    local old = self.OldVersions and self.OldVersions() or {}
+    local old = self.OldVersions() or {}
     if #old > 0 then
         Lines[#Lines + 1] = "|cffff8800" .. L("Versiones viejas en tu hermandad: ") .. "|r" .. table.concat(old, ", ", 1, math.min(#old, 8)) .. (#old > 8 and "..." or "")
     end
@@ -792,3 +792,5 @@ function HU:StatusLines(compact)
     Lines[#Lines + 1] = L("Guardia: ") .. (self.guardStatus or "?")
     return Lines
 end
+
+HU:Module("Guard", { "Audit", "Channel", "Config", "Core", "Domain/Trust", "GuardKeeper", "Lists", "Net/Relay", "Net/Security", "Net/Transport", "Pinned", "Protocol", "Roster", "Social" })

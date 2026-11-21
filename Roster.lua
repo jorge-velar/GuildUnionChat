@@ -86,7 +86,7 @@ local function ReadOne(self, s, i, now)
             e.noteSeen = officerNote
             e.noteOff1, e.noteOff2 = HU.ParseOfficerNote(officerNote)
             e.noteChan1, e.noteChan2, e.noteChanBad = HU.ParseChannelNote(officerNote)
-            e.noteCfg = HU.NoteConfigLine and HU.NoteConfigLine(officerNote) or nil
+            e.noteCfg = HU.NoteConfigLine(officerNote) or nil
         end
         if not s.offName and e.noteOff1 then s.offName, s.offPass = e.noteOff1, e.noteOff2 end
         -- canal y contraseña en una nota de oficial (gana la del rango más alto)
@@ -121,7 +121,7 @@ local function Finish(self, s)
             local txt = table.concat(ls, "\n")
             if txt ~= (self.noteCfgText or "") then
                 self:OnNoteConfig(ls)
-                if self.RefreshConfig then self:RefreshConfig() end
+                self:RefreshConfig()
             end
         end
 
@@ -137,7 +137,7 @@ local function Finish(self, s)
         end
         self:Changed("members")
         -- (lo que viene después, en los fotogramas siguientes)
-        HU.After(0, function() if HU.AfterRosterScan then HU:AfterRosterScan() end end)
+        HU.After(0, function() HU:AfterRosterScan() end)
         HU.After(0.02, function() HU:RefreshConfig() end)
     end
     if dirty then dirty = false; self:QueueScan() end
@@ -214,3 +214,5 @@ function HU:InMyGuild(name)
     local k = self:Key(name)
     return k and self.roster[k] ~= nil
 end
+
+HU:Module("Roster", { "Channel", "Channels", "Config", "Core", "NoteConfig", "Presence" })

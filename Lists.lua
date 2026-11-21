@@ -1,6 +1,8 @@
 -- Guild Union - listas completas de miembros (lista blanca del canal)
 local ADDON_NAME, HU = ...
 
+HU:Saved({ char = { "lists" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 -- (las listas completas de las otras hermandades, HU.whitelist, ya no existen desde ReduceClean:
@@ -50,7 +52,7 @@ function HU:InAnyGuild(name)
         if r.byKey and r.byKey[k] and not r.byKey[k].weak then return true end
     end
     -- confirmado por su hermandad (la guardia le preguntó) o en sus inactivos
-    if self.GuardKnown and self:GuardKnown(name) then return true end
+    if self:GuardKnown(name) then return true end
     for _, list in pairs(self.db.offline or {}) do
         if list[k] then return true end
     end
@@ -168,7 +170,7 @@ function HU:IsGuildForwarder(sender)
     local e = sk and self.roster[sk]
     if not e then return false end
     if self:RankRole(self.myTag, e.rankIndex) then return true end
-    local relay = self.RelayName and self:RelayName()
+    local relay = self:RelayName()
     if relay and self:Key(relay) == sk then return true end
     local short = self:Short(sender):lower()
     local h = self.relayHelpers
@@ -176,7 +178,7 @@ function HU:IsGuildForwarder(sender)
         if h.relay and self:Key(h.relay) == sk then return true end
         for _, n in ipairs(h.list) do if self:Short(n):lower() == short then return true end end
     end
-    if self.IsRelay and self:IsRelay() then
+    if self:IsRelay() then
         for _, n in ipairs(self.advertisedHelpers or {}) do if self:Short(n):lower() == short then return true end end
     end
     return false
@@ -233,7 +235,7 @@ function HU:MayCarryOrDefer(author, tag, retry, sender, dist)
     if self:MayCarry(author, sender, dist, tag) then return true end
     if retry and dist == "GUILD" and self.KnownGuildRelay and not self:KnownGuildRelay() then self:Defer(retry)
     elseif retry and dist == "WHISPER" and not self:MemberOf(sender, (tag and tag ~= "") and tag or "") then self:Defer(retry) end
-    if self.Debug then self:Debug("Acción de oficial rechazada (" .. tostring(HU.curCmd or "reintento") .. "): la trae", sender, "firmada por", author) end
+    self:Debug("Acción de oficial rechazada (" .. tostring(HU.curCmd or "reintento") .. "): la trae", sender, "firmada por", author)
     return false
 end
 
@@ -258,7 +260,7 @@ function HU:CheckOfficerFirm(author, tag, retry, sender, dist)
     if not self:CheckOfficer(author, tag, retry, sender, dist) then return false end
     if FirmRank(self, author) then return true end
     if retry then self:Defer(retry) end
-    if self.Debug then self:Debug("Acción de estructura en espera (lista sin confirmar):", author) end
+    self:Debug("Acción de estructura en espera (lista sin confirmar):", author)
     return false
 end
 function HU:CheckMasterFirm(author, tag, retry, sender, dist)
@@ -297,7 +299,7 @@ HU:On("CHAT_MSG_SYSTEM", function(text)
     if type(text) ~= "string" or not HU.myTag then return end
     for _, pat in ipairs(GuildChangePatterns()) do
         if text:find(pat) then
-            if HU.RequestRoster then HU:RequestRoster(true) end
+            HU:RequestRoster(true)
             return
         end
     end
@@ -313,3 +315,4 @@ HU:On("ADDON_LOADED", function(name)
     HU.db.lists = {}
 end)
 
+HU:Module("Lists", { "Config", "Core", "Guard", "Net/Relay", "Roster" })

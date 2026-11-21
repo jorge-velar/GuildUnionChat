@@ -103,7 +103,7 @@ local function Guarded(where, fn, ...)
     local ok, err = pcall(fn, ...)
     if ok then return end
     failures = failures + 1
-    if HU.RecordError then HU:RecordError(err, "historial " .. where) end
+    HU:RecordError(err, "historial " .. where)
     if failures >= 10 and not disabled then
         disabled = true
         if HU:CanPin() then HU:Print(L("El historial de oficiales ha dado errores y se ha apagado hasta que recargues (/gu errores para verlos).")) end
@@ -665,7 +665,7 @@ local function HFlush()
         else
             -- (en pausa por la versión mínima: no sale nada del addon)
             if HU.paused then htokens = htokens - 1 break end
-            if HU.MarkPinged then HU:MarkPinged(m[2]) end
+            HU:MarkPinged(m[2])
             local ok, r = pcall(C_ChatInfo.SendAddonMessage, HU.HPREFIX, m[1], "WHISPER", m[2])
             htokens = htokens - 1
             if ok and (r == false or (type(r) == "number" and THROTTLED[r])) then
@@ -948,7 +948,7 @@ local function DigestsAsync(a, b, size, done)
     local tick
     local function step()
         -- (en combate en banda o mazmorra se espera: ver Combat.lua)
-        if HU.CombatHold and HU:CombatHold() then C_Timer.After(0.5, tick) return end
+        if HU:CombatHold() then C_Timer.After(0.5, tick) return end
         local budget = DIGEST_SLICE
         -- (y como mucho DIGEST_CAP.MS de trabajo, mirado cada DIGEST_CAP.SUB líneas: 300 líneas eran 4-10 ms en un
         -- fotograma, y se notaba al acabar cada pull, cuando el relleno vuelve a arrancar)
@@ -1631,7 +1631,7 @@ function HU:HistWindow(show)
         gBtn:SetScript("OnClick", function()
             local tags = {}
             if HU.myTag then tags[1] = HU.myTag end
-            for _, t in ipairs(HU.OtherTags and HU:OtherTags() or {}) do tags[#tags + 1] = t end
+            for _, t in ipairs(HU:OtherTags() or {}) do tags[#tags + 1] = t end
             local at = 0
             for i, t in ipairs(tags) do if t == W.tagFilter then at = i end end
             W.tagFilter = tags[at + 1] -- (tras la última, nil: todas)
@@ -1649,7 +1649,7 @@ function HU:HistWindow(show)
         sf:SetScrollChild(content)
         W.scroll, W.content, W.rows = sf, content, {}
         -- (elegir un nombre de las sugerencias ya busca, como Intro)
-        if HU.NameSuggest then HU:NameSuggest(W.nameBox, function(s) s:ClearFocus(); go:Click() end) end
+        HU:NameSuggest(W.nameBox, function(s) s:ClearFocus(); go:Click() end)
         W:Hide()
     end
     if show == nil then show = not W:IsShown() end
@@ -1707,3 +1707,5 @@ HU:OnStart(function()
     HU.After(25 + math.random() * 20, function() Guarded("rellenar", HU.HistStartSync, HU) end)
     HU:Every(SYNC_EVERY, "historial-rellenar", function() Guarded("rellenar", HU.HistStartSync, HU) end)
 end)
+
+HU:Module("History", { "BlizzTab", "Channel", "Combat", "Config", "Core", "Lists", "Net/Transport", "Pinned" })

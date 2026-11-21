@@ -101,7 +101,7 @@ function HU:RelayScore()
     local s = 0
     -- (oficial por rango, que es lo que los demás pueden comprobar en su lista: con «ver notas de
     -- oficial» cada uno se daba los 100 y nadie podía verificarlo, ver SaneScore)
-    local idx = self.MyRankIndex and self:MyRankIndex()
+    local idx = self:MyRankIndex()
     local officer = idx ~= nil and self:RankRole(self.myTag, idx) ~= nil
     if officer and good then s = s + 100 end
     -- conexión: ping del juego y lo que tardan en volverme mis propios mensajes
@@ -301,9 +301,9 @@ function HU:HelloText(cmd)
     end
     local text = HU.Utf8Cut(table.concat({ cmd or "HI", self.version, self.myTag or "", Bit(self:AmIModFast()), Bit(relay),
         relay and HU.Utf8Cut(table.concat(helpers, ","), 180) or "", self.myAdvScore or 0,
-        self.ChannelLane and self:ChannelLane() or 0 }, "~"), 250)
+        self:ChannelLane() or 0 }, "~"), 250)
     -- (campos 8 y 9: generación y hora del carril de la comunidad; enteros o nada)
-    local st = self.LaneState and self:LaneState()
+    local st = self:LaneState()
     if st then
         local extra = "~" .. st.gen .. "~" .. math.floor(st.t)
         local _, seps = text:gsub("~", "")
@@ -329,7 +329,7 @@ HU.LaneContact = function(sender, tag)
 end
 -- ¿Puedo fiarme de lo que dice sender sobre el carril? (el enlace o un oficial)
 local function LaneStrong(sender, dist, tag)
-    local officer = HU.IsOfficerName and HU:IsOfficerName(sender) or false
+    local officer = HU:IsOfficerName(sender) or false
     -- (copia 118) Cada uno sigue solo a los de SU hermandad: su enlace o un oficial suyo, por GUILD.
     -- A los de otra hermandad (su enlace o un oficial, por susurro) solo les hace caso MI enlace, que
     -- luego se lo dice a los míos. Antes cualquier oficial de la comunidad movía a cualquiera.
@@ -606,8 +606,8 @@ local function OnHello(sender, f, dist, isReply)
             local re = HU.roster[HU:Key(sender) or ""]
             trusted = re ~= nil and HU:RankRole(HU.myTag, re.rankIndex) ~= nil
         elseif tag and tag ~= "" and tag ~= HU.myTag and HU.cfg and HU.cfg.byTag[tag] then
-            trusted = (HU.CheckOfficerFirm and HU:CheckOfficerFirm(sender, tag, nil, sender, dist))
-                or (HU.TrustedOfficer and HU:TrustedOfficer(sender, tag) and HU.RosterStateOf(HU.remoteRoster[tag]) == "c")
+            trusted = (HU:CheckOfficerFirm(sender, tag, nil, sender, dist))
+                or (HU:TrustedOfficer(sender, tag) and HU.RosterStateOf(HU.remoteRoster[tag]) == "c")
         end
         if trusted then
             local fresh = HU.mustUpdate ~= minv
@@ -653,11 +653,11 @@ local function OnHello(sender, f, dist, isReply)
     else
         if tag == "" or not HU.cfg or not HU.cfg.byTag[tag] then return end
         -- (por susurro, «soy el enlace de X» solo vale de alguien de la lista de X, o avalado por X: [+ARCHITECTURE.md]
-        if relay and not (HU:CheckedOf(sender, tag) or HU:FullPeer(sender, tag) or (HU.VouchedOf and HU:VouchedOf(sender, tag))) then
+        if relay and not (HU:CheckedOf(sender, tag) or HU:FullPeer(sender, tag) or (HU:VouchedOf(sender, tag))) then
             HU:Debug("Saludo de enlace no aceptado (no está en la lista de su hermandad):", sender, tag)
             relay = false
             -- (pero sin datos buenos de X vale como una presentación del canal (raSeen): solo sirve para [+ARCHITECTURE.md]
-            if not (HU.RosterTrusted and HU:RosterTrusted(tag)) and HU.BootPresented then HU.BootPresented(tag, sender, GetTime()) end
+            if not (HU:RosterTrusted(tag)) and HU.BootPresented then HU.BootPresented(tag, sender, GetTime()) end
         end
         -- ¿contacto nuevo (o que no daba señales desde hace un rato)?
         local isNew = not HU.remote[k] or GetTime() - (HU.remote[k].last or 0) > 900
@@ -708,7 +708,7 @@ local function OnHello(sender, f, dist, isReply)
             HU.After(0, function() HU:Whisper(sender, HU:HelloText("HR"), true) end)
         end
         -- nuevo contacto: si soy el enlace, le mando mi lista (si ya la tienen, solo irán los cambios)
-        local st = HU.RosterStateFor and HU.RosterStateFor(tag)
+        local st = HU.RosterStateFor(tag)
         local stale = not st or GetTime() - st.fullT >= 1800
         -- (se manda al mejor contacto de esa hermandad, normalmente su enlace,
         -- y de ahí se reparte entre sus ayudantes; no a cualquiera que salude, como un moderador)
@@ -765,7 +765,7 @@ function HU:AnnounceRelay(force)
     lastAnnounce, lastAnnounceText = now, text
     -- (al final, la huella de mi lista de conectados: quien tenga otra distinta, se ha
     -- perdido algún cambio y la vuelve a pedir)
-    local hash = self.MyRosterHash and self:MyRosterHash()
+    local hash = self:MyRosterHash()
     -- Siempre por susurro al enlace y a los ayudantes de cada hermandad: en Forever un addon no puede
     -- escribir solo en un canal (el juego lo bloquea y sale el aviso rojo «ADDON_ACTION_BLOCKED»), y lo
     -- oculto por un canal de jugadores no le llega a nadie (medido por Olympus: 0 de 123)
@@ -786,7 +786,7 @@ end
 -- Contestar a una presentación que llegó por susurro: la mía, solo a él
 local function AnswerRAByWhisper(author)
     if not HU:IsRelay() or not HU.myTag then return end
-    local hash = HU.MyRosterHash and HU:MyRosterHash()
+    local hash = HU:MyRosterHash()
     local helpers = HU.advertisedHelpers or HU:MyHelpers()
     HU:AnnounceByWhisper(table.concat({ "RA", HU.myTag, HU.Utf8Cut(table.concat(helpers, ","), 200) .. (hash and (" #" .. hash) or "") }, "~"), author)
 end
@@ -950,7 +950,7 @@ function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
     if hash and tag ~= self.myTag then
         local r = self.remoteRoster[tag]
         if not r then
-            if self.NeedRoster then self:NeedRoster(tag) end
+            self:NeedRoster(tag)
         elseif HU.HashNoKept(r.members) == hash then
             r.annMiss = 0
             r.confirmedT = GetTime() -- (su enlace confirma que mi copia es la suya)
@@ -959,12 +959,12 @@ function HU:OnRelayAnnounce(author, tag, msg, byWhisper)
             r.annMiss = (r.annMiss or 0) + 1
             if r.annMiss >= 2 and self.NeedRoster then self:NeedRoster(tag) end
             -- (fase de lanzamiento: la lista son unos nombres; si no cuadra dos veces, se le pide [+ARCHITECTURE.md]
-            if r.annMiss >= 2 and self.ResponsibleFor and self:ResponsibleFor(tag)
+            if r.annMiss >= 2 and self:ResponsibleFor(tag)
                 and (not r.rfAskT or GetTime() - r.rfAskT > 60) then
                 r.rfAskT = GetTime()
                 self:Whisper(author, "RF~" .. (self.myTag or "") .. "~1", true)
             end
-            if r.annMiss >= 3 and self.ResponsibleFor and self:ResponsibleFor(tag) then
+            if r.annMiss >= 3 and self:ResponsibleFor(tag) then
                 r.annMiss = 0
                 self:Whisper(author, "RF~" .. (self.myTag or ""), true)
             end
@@ -983,7 +983,7 @@ HU.comm.PH = function(self, sender, f, dist)
     -- Seguridad: de mi enlace, sus ayudantes o un oficial, como antes. De otro compañero, solo si el [+ARCHITECTURE.md]
     local strict = not self:IsGuildForwarder(sender)
     if strict and not (relay and relay ~= "" and self:MemberOf(relay, tag)) then
-        if self.Debug then self:Debug("PH no aceptado:", sender, tag, relay) end
+        self:Debug("PH no aceptado:", sender, tag, relay)
         return
     end
     local list = {}
@@ -1028,7 +1028,7 @@ HU.comm.LN = function(self, sender, f, dist)
         -- (el aviso viene de alguien de la otra hermandad que no es mi contacto: no le hago caso, pero le
         -- pregunto el carril a mi contacto, cuya respuesta sí vale. Si no, me quedaba atrás 7 min)
         local new = HU.ParseLane(f[1], f[2], f[3])
-        if not strong and p and p.tag and new and new.lane > (self.ChannelLane and self:ChannelLane() or 0)
+        if not strong and p and p.tag and new and new.lane > (self:ChannelLane() or 0)
             and self:MemberOf(sender, p.tag) and (not HU.laneAskT or GetTime() - HU.laneAskT > 90) then
             HU.laneAskT = GetTime()
             local tag = p.tag
@@ -1046,7 +1046,7 @@ HU.comm.LN = function(self, sender, f, dist)
     -- LN~carril (versiones anteriores, o un compañero que pide comprobarlo): el enlace sondea
     if not self:IsRelay() or not self.ProbeLane then return end
     local n = tonumber(f[1])
-    if not n or n <= (self.ChannelLane and self:ChannelLane() or 0) then return end
+    if not n or n <= (self:ChannelLane() or 0) then return end
     if GetTime() - laneProbeT < 20 then return end
     laneProbeT = GetTime()
     self:ProbeLane()
@@ -1059,8 +1059,8 @@ HU.comm.LP = function() end
 HU:RegisterMessage("LO", { ttl = 60 })
 HU.comm.LO = function(self, sender, f, dist)
     if dist ~= "GUILD" or not self.OnLaneProposal or sender:lower() == (self:MeKey() or "") then return end
-    if not (self.IsOfficerName and self:IsOfficerName(sender)) then return end
-    if not ((self.IsOfficerName and self:IsOfficerName(self:Me())) or self:CanOfficer()) then return end
+    if not (self:IsOfficerName(sender)) then return end
+    if not ((self:IsOfficerName(self:Me())) or self:CanOfficer()) then return end
     self:OnLaneProposal(sender, f[1])
 end
 -- LV~carril (copia 117): el enlace de OTRA hermandad dice que a él el canal le lleva minutos sin
@@ -1073,10 +1073,10 @@ HU.comm.LV = function(self, sender, f, dist)
     local p = self.remote[sender:lower()]
     local tag = p and p.tag
     if not lane or lane ~= lane or lane < 1 or lane > 9 or not tag or tag == self.myTag then return end
-    local rp = self.KnownRelay and self:KnownRelay(tag)
+    local rp = self:KnownRelay(tag)
     if not (rp and rp.name and rp.name:lower() == sender:lower()) then return end
     -- (copia 120: solo vale la confirmación de un enlace que sea oficial de su hermandad)
-    if not (self.IsOfficerName and self:IsOfficerName(sender)) then return end
+    if not (self:IsOfficerName(sender)) then return end
     self:OnLaneVote(math.floor(lane), tag)
 end
 -- LQ: «¿en qué carril estás?» de otra hermandad. Contesto con mi LN por susurro (a cada uno como [+ARCHITECTURE.md]
@@ -1128,7 +1128,7 @@ HU.comm.PA = function(self, sender, f, dist)
     local p = self.guildPeers[k]
     if not p then self.guildPeers[k] = { name = sender, last = GetTime(), score = 0 } else p.last = GetTime() end
     HU.ForgetRelayMemo()
-    if self.ReplayHeldChat then self:ReplayHeldChat(k) end
+    self:ReplayHeldChat(k)
 end
 HU:RegisterMessage("HI", { tagField = 2, bootstrap = true, ttl = 60, latestWins = true, skipLocked = true })
 HU.comm.HI = function(_, sender, f, dist) OnHello(sender, f, dist, false) end
@@ -1148,7 +1148,7 @@ HU.comm.PL = function(self, sender, f, dist, raw)
     if dist == "WHISPER" then
         local sp = self.remote[sender:lower()]
         if not (sp and sp.tag and self:IsRemoteForwarder(sender, sp.tag)) then
-            if self.Debug then self:Debug("PL por susurro no aceptado:", sender) end
+            self:Debug("PL por susurro no aceptado:", sender)
             return
         end
     else
@@ -1479,7 +1479,7 @@ HU:OnStart(function()
         -- (como mucho 8 s: lo normal es que la lista llegue antes por la bienvenida, WelcomeGuildmate)
         local spread = (onlineNow < 1) and 8 or math.max(1, math.min(8, onlineNow / 50))
         -- (día a día, entrando suelto: al momento. La espera al azar, solo en una entrada masiva)
-        if HU.QuietLogins and HU.QuietLogins(10) then HU.AskGuildForMissing(HU)
+        if HU.QuietLogins(10) then HU.AskGuildForMissing(HU)
         else HU.After(1 + math.random() * spread, function() HU:AskGuildForMissing() end) end
         for _, d in ipairs({ 6, 13, 28 }) do
             HU.After(d + math.random() * math.min(spread, 10), function() HU:AskGuildForMissing() end)
@@ -1491,7 +1491,7 @@ HU:OnStart(function()
     HU.After(2, function()
         local _, onlineNow = GetNumGuildMembers()
         local spread = math.max(1, math.min(10, (tonumber(onlineNow) or 0) / 50))
-        if HU.QuietLogins and HU.QuietLogins(10) then
+        if HU.QuietLogins(10) then
             HU.After(math.random() * 2, function() HU:AskSavedContacts(true) end)
             HU.After(5 + math.random() * 2, function() HU:AskSavedContacts(true) end)
             -- (si la hermandad aún se asienta, los contactos tardan en tenerla confirmada: dos más de reserva)
@@ -1520,3 +1520,5 @@ HU:OnStart(function()
     end
     HU.After(1, restore)
 end)
+
+HU:Module("Net/Relay", { "Channel", "Comm", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/RosterSync", "Net/Security", "Net/Transport", "Popup", "Presence", "Protocol", "Ranks", "Roster" })

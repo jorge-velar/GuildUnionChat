@@ -1,6 +1,8 @@
 -- Guild Union - Confianza en las listas de otras hermandades: estados, anclas y contactos comprobados (antes en Comm.lua)
 local _, HU = ...
 
+HU:Saved({ char = { peers = {} } }) -- contactos de otras hermandades vistos antes: [tag] = {[clave] = {name, t}}
+
 -- Quién puede mandarme la lista de conectados de otra hermandad, y cuánto me fío de ella. [+ARCHITECTURE.md]
 local VOUCH_TTL = 900       -- lo que dura el aviso de un enlace comprobado (o de mi hermandad)
 HU.VOUCH_TTL = VOUCH_TTL     -- (también lo usa Net/Relay.lua)
@@ -86,10 +88,10 @@ local function AskAnchors(self)
     for _, tag in ipairs(self:OtherTags()) do
         local a = self.db.anchors[tag]
         local r = self.remoteRoster[tag]
-        if a and not a.dead and StateOf(r) ~= "c" and (self:IsRelay() or self:HandlesTag(tag) or (self.ResponsibleFor and self:ResponsibleFor(tag)))
+        if a and not a.dead and StateOf(r) ~= "c" and (self:IsRelay() or self:HandlesTag(tag) or (self:ResponsibleFor(tag)))
             and (not anchorAsked[tag] or GetTime() - anchorAsked[tag] > 60) then
             local k = self:Key(a.name)
-            local online = (r and r.byKey and r.byKey[k or ""]) or (self.ChannelHas and self:ChannelHas(a.name) == true)
+            local online = (r and r.byKey and r.byKey[k or ""]) or (self:ChannelHas(a.name) == true)
             if k and online then
                 anchorAsked[tag] = GetTime()
                 self:Whisper(a.name, "RF~" .. self.myTag .. "~2", true)
@@ -134,7 +136,7 @@ function HU:SenderKind(sender, tag)
     if Fresh(self.raSeen, tag, k) or Fresh(self.fwdVouch, tag, k) then return "boot" end
     -- (en Forever las presentaciones RA por el canal no llegan: vale también estar en la lista de
     -- miembros del canal, que solo se consigue con la contraseña)
-    if self.ChannelHas and self:ChannelHas(sender) == true then return "boot" end
+    if self:ChannelHas(sender) == true then return "boot" end
     return nil
 end
 
@@ -164,7 +166,7 @@ end
 
 -- Reparte a mi hermandad mi copia con su estado nuevo (solo quien se encarga de esa hermandad)
 local function Reshare(self, tag)
-    if self:IsRelay() or self:HandlesTag(tag) or (self.ResponsibleFor and self:ResponsibleFor(tag)) then
+    if self:IsRelay() or self:HandlesTag(tag) or (self:ResponsibleFor(tag)) then
         self:SendStoredRoster(tag, true)
     end
 end
@@ -446,3 +448,5 @@ function HU:BestPeers(tag, n)
     bpsMemo[tag] = { t = now, n = n, list = list }
     return list
 end
+
+HU:Module("Domain/Trust", { "Comm", "Config", "Core", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport" })

@@ -2,6 +2,8 @@
 local _, HU = ...
 local Reshare = HU.ReshareRoster -- (Domain/Trust.lua)
 
+HU:Saved({ char = { rankCache = {} } }) -- rangos vistos de otras hermandades: [clave] = { tag, idx, t }
+
 ---------------------------------------------------------------------------
 -- Listas de miembros
 ---------------------------------------------------------------------------
@@ -216,10 +218,8 @@ local rosterState = {}
 function HU.ForgetRosterState() wipe(rosterState) end
 
 function HU:SendRosterTo(target, fast)
-    if self.RankNamesMessage then
-        local rn = self:RankNamesMessage()
-        if rn then self:Whisper(target, rn) end
-    end
+    local rn = self:RankNamesMessage()
+    if rn then self:Whisper(target, rn) end
     local msgs, seq, sig = self:BuildRosterMessages()
     -- (fast: solo si son pocos trozos, la lista de lanzamiento; una grande no se cuela en el chat)
     if #msgs > 3 then fast = nil end
@@ -339,13 +339,13 @@ function HU:AskSavedContacts(late)
     if not self.myTag or not IsInGuild() or not self.cfg or not self.db then return end
     local _, onlineNow = GetNumGuildMembers()
     -- (quien puede repartir la lista confirmada a su hermandad pregunta primero; los rasos, después)
-    local sharer = self:CanOfficer() or self:IsRelay() or (self.RosterSlot and self:RosterSlot() ~= nil)
+    local sharer = self:CanOfficer() or self:IsRelay() or (self:RosterSlot() ~= nil)
     local wide = sharer or (tonumber(onlineNow) or 0) <= 1
     if late == nil and not wide then return end
     if late and wide then return end
     local me = self:MeKey()
     for _, tag in ipairs(self:OtherTags()) do
-        local s = HU.RosterStateOf and HU.RosterStateOf(tag)
+        local s = HU.RosterStateOf(tag)
         -- Contactos comprobados (no antiguos) de esa hermandad: con ellos cualquiera, también un raso, [+ARCHITECTURE.md]
         local full = {}
         for k, e in pairs((self.db.peers or {})[tag] or {}) do
@@ -353,8 +353,8 @@ function HU:AskSavedContacts(late)
         end
         -- (idea de Olympus: si otro de mi hermandad la ha pedido o ha pasado por ella hace menos de 30 s,
         -- no la pido a los antiguos: llega a todos por GUILD. Así no se multiplican las peticiones)
-        local busy = (#full == 0) and HU.GuildAskedRecently and HU.GuildAskedRecently(tag, 30)
-        if s ~= "c" and (wide or #full > 0) and not busy and not (self.RosterTrusted and self:RosterTrusted(tag)) and (savedAsked[tag] or 0) < 4 then
+        local busy = (#full == 0) and HU.GuildAskedRecently(tag, 30)
+        if s ~= "c" and (wide or #full > 0) and not busy and not (self:RosterTrusted(tag)) and (savedAsked[tag] or 0) < 4 then
             local list = {}
             if wide then
                 for k, e in pairs((self.db.peers or {})[tag] or {}) do
@@ -575,7 +575,7 @@ HU.comm.NQ = function(self, sender, f, dist)
             -- (día a día: quien contesta lleva más de 5 min conectado y tiene la copia confirmada. Entonces [+ARCHITECTURE.md]
             local function quiet(secs) return not (rbInGuild[tag] and GetTime() - rbInGuild[tag] < secs) end
             local fast = GetTime() - (self.loginT or GetTime()) > 300
-                and HU.RosterStateOf and HU.RosterStateOf(self.remoteRoster[tag]) == "c"
+                and HU.RosterStateOf(self.remoteRoster[tag]) == "c"
             local own = tag ~= self.myTag and self.cfg and self.cfg.byTag[tag]
             if own and self:ResponsibleFor(tag, sender, try - 1) then
                 if kind == "R" and self.remoteRoster[tag] then
@@ -888,7 +888,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
     end
     HU.partialRoster[tag] = nil
     -- (ya está la de verdad: fuera la gris de la última vez)
-    if self.DropGhost then self:DropGhost(tag) end
+    self:DropGhost(tag)
 
     local members = {}
     local dict = ZoneDict(pt.parts, nparts)
@@ -1031,7 +1031,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
     if late and before and MembersSigHash(nr.members) ~= before then
         -- (la corregida no se marca como «recién hecha»: eso hacía que quien la corregía viera como más
         -- viejas las de los demás y las volviera a repartir, en cadena)
-        if (self:IsRelay() or (self.ResponsibleFor and self:ResponsibleFor(tag)))
+        if (self:IsRelay() or (self:ResponsibleFor(tag)))
             and (not lateShared[tag] or GetTime() - lateShared[tag] > LATE_FIX_FOR) then
             lateShared[tag] = GetTime()
             local heard = rbInGuild[tag]
@@ -1070,7 +1070,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
             self:AfterRosterDecided(tag, pt.wFrom, nr)
         end
         -- (los trozos se repartieron con otro estado del que ha quedado: se reparte otra vez) [+ARCHITECTURE.md]
-        if pt.fwdFlag ~= state and (self:IsRelay() or self:HandlesTag(tag) or (state == "c" and (self:CanOfficer() or (self.RosterSlot and self:RosterSlot() ~= nil)))) then self:SendStoredRoster(tag, true) end
+        if pt.fwdFlag ~= state and (self:IsRelay() or self:HandlesTag(tag) or (state == "c" and (self:CanOfficer() or (self:RosterSlot() ~= nil)))) then self:SendStoredRoster(tag, true) end
     elseif fwdK then
         -- (el reenvío de un compañero que he contado como directo: lo mismo que arriba)
         if state == "c" then
@@ -1199,7 +1199,7 @@ HU.comm.RC = function(self, sender, f, dist, raw)
     while #rd > 40 or (rd[1] and GetTime() - rd[1].t > 600) do table.remove(rd, 1) end
     local r = self.remoteRoster[tag]
     if not r then
-        if self.NeedRoster then self:NeedRoster(tag) end
+        self:NeedRoster(tag)
         return
     end
     -- (de mi hermandad: se toma su estado. Si es más bajo que el mío, siempre; si es más alto, solo si
@@ -1254,3 +1254,5 @@ HU.comm.RC = function(self, sender, f, dist, raw)
     self:RetryDeferred()
     self:Changed("members")
 end
+
+HU:Module("Net/RosterSync", { "Comm", "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Security", "Net/Transport", "Protocol", "Ranks", "Roster" })

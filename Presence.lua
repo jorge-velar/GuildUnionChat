@@ -35,7 +35,7 @@ end
 
 -- Solo «ha entrado X» / «se ha ido X», enseguida y sin saber qué copia tiene esa hermandad (los cambios [+ARCHITECTURE.md]
 local function SendRecent(self, p, tag, fast)
-    local now, sig = GetTime(), self.RosterSigNow and self.RosterSigNow()
+    local now, sig = GetTime(), self.RosterSigNow()
     if not sig then return false end
     local pseudo, any = { sig = {}, hash = "0" }, false
     for n, sg in pairs(sig) do pseudo.sig[n] = sg end
@@ -67,7 +67,7 @@ end
 function HU:PresenceFlush(fast)
     if not self.myTag or not self:IsJoined("main") or not self:RosterSlot() then return end
     -- (primero las líneas de mi lista, en este fotograma; los cambios para cada hermandad, en los siguientes)
-    if self.WarmRosterEntries then self:WarmRosterEntries() end
+    self:WarmRosterEntries()
     local all = self:OtherTags()
     local start, n = math.random(math.max(1, #all)), 0
     for i = 1, #all do
@@ -89,7 +89,7 @@ function HU:PresenceFlushTag(tag, fast)
         return
     end
     local p = self:BestPeer(tag)
-    local st = self.RosterStateFor and self.RosterStateFor(tag)
+    local st = self.RosterStateFor(tag)
     if p and st then
         -- (si son muchos cambios, la lista entera)
         if not self:SendRosterDelta(p.name, st, fast) then
@@ -187,9 +187,9 @@ HU:On("CHAT_MSG_SYSTEM", function(text)
                 if IsFav(e.name) then FavNow() end
                 -- (se ha ido el enlace o un ayudante: el nuevo reparto sale ya, no a los 15 s)
                 if not p.on and InRelayGroup(HU, k) and HU:IsRelay() and HU.HelpersChangedHello then HU:HelpersChangedHello(true) end
-                local shared = HU.RankRole and HU:RankRole(HU.myTag, e.rankIndex) ~= nil or InRelayGroup(HU, k)
+                local shared = HU:RankRole(HU.myTag, e.rankIndex) ~= nil or InRelayGroup(HU, k)
                 HU:PresenceSchedule(shared)
-                if HU.RequestRoster then HU:RequestRoster() end
+                HU:RequestRoster()
             end
             return
         end
@@ -210,7 +210,7 @@ local function DropRemote(self, tag, k)
     local keep = {}
     for _, m in ipairs(r.members) do if m.name:lower() ~= k then keep[#keep + 1] = m end end
     r.members = keep
-    if HU.IndexRoster then HU.IndexRoster(r) end
+    HU.IndexRoster(r)
     r.online = math.max(0, (r.online or #keep + 1) - 1)
     self:Changed("members")
     if IsFav(k) then FavNow() end
@@ -292,11 +292,11 @@ local function Leaving()
     local e = me and HU.roster[me]
     if not (e and e.online) then return end
     local slot = HU:RosterSlot()
-    if not (slot or (HU.RankRole and HU:RankRole(HU.myTag, e.rankIndex))) then return end
+    if not (slot or (HU:RankRole(HU.myTag, e.rankIndex))) then return end
     leaving = true
     HU:Send("PV", "GUILD", nil, true, nil, true)
     -- («-yo» sobre cualquier copia: la huella va a 0 y los cambios valen igual)
-    local sig = slot and HU.RosterSigNow and HU.RosterSigNow()
+    local sig = slot and HU.RosterSigNow()
     local mine = e._re and e._re.short
     e.online = false
     HU.rosterVersion = (HU.rosterVersion or 0) + 1
@@ -354,3 +354,5 @@ HU:OnStart(function()
         if HU:RosterSlot() and HU.RequestRoster then HU:RequestRoster() end
     end)
 end)
+
+HU:Module("Presence", { "Channel", "Config", "Core", "Domain/Trust", "Net/Relay", "Net/RosterSync", "Net/Transport", "Protocol", "Roster" })

@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "officerRanks", "remoteRanks" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 HU.remoteRanks = {}   -- [tag] = { "Maestro", "Oficial", ... }  (posición 1 = rango 0)
@@ -47,7 +49,7 @@ function HU:RankNamesMessage()
     local names = {}
     for _, n in ipairs(self:MyRankNames()) do names[#names + 1] = (n:gsub("[~,]", " ")) end
     if #names == 0 then return nil end
-    local officers = self.MyOfficerRanksText and self:MyOfficerRanksText() or ""
+    local officers = self:MyOfficerRanksText() or ""
     local head = "RN~" .. self.myTag .. "~"
     local room = 250 - #head - #officers - 1
     return head .. HU.Utf8Cut(table.concat(names, ","), room) .. "~" .. officers
@@ -77,7 +79,7 @@ HU.comm.RN = function(self, sender, f, dist, raw)
         self.officerRanks[tag] = set
         self.db.officerRanks = self.db.officerRanks or {}
         self.db.officerRanks[tag] = set
-        if self.RetryDeferred then self:RetryDeferred() end
+        self:RetryDeferred()
     end
     if dist == "WHISPER" then self:Send(raw, "GUILD") end
     self:Changed("members")
@@ -306,3 +308,5 @@ HU:OnStart(function()
         HU:Every(30, "castigos", CheckPunished)
     end)
 end)
+
+HU:Module("Ranks", { "Audit", "Config", "Core", "Lists", "Net/Transport", "Popup", "Protocol", "Roster", "Social" })

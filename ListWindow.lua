@@ -108,3 +108,5 @@ function HU.NewButton(parent, text, w)
     b:SetSize(w, 22); b:SetText(text)
     return b
 end
+
+HU:Module("ListWindow", { "Core" })

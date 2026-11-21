@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "pinned" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local function Clean(s) return (tostring(s or ""):gsub("[~\r\n]", " ")) end
@@ -96,3 +98,5 @@ HU:OnStart(function()
         end
     end)
 end)
+
+HU:Module("Pinned", { "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "Protocol", "Ranks" })

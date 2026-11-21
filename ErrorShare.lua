@@ -118,3 +118,5 @@ function HU:ClearReceivedErrors()
     if self.db then self.db.errIn = nil end
     return n
 end
+
+HU:Module("ErrorShare", { "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "Protocol" })

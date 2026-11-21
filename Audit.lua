@@ -2,6 +2,8 @@
 local ADDON_NAME, HU = ...
 local L = HU.L
 
+HU:Saved({ account = { audit = {} } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local seen = {}
@@ -174,4 +176,4 @@ HU:On("ADDON_LOADED", function(name)
     for _, e in ipairs(HU.db.audit) do if e.id then seen[e.id] = true end end
 end)
 
--- Autores que aparecen en el registro (para filtrar)
+HU:Module("Audit", { "Channel", "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "Protocol" })

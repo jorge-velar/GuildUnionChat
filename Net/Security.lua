@@ -49,7 +49,7 @@ function HU:Vouched(sender, tag)
     -- (o sale en la lista del canal, que leen el enlace y los oficiales: ver StoreChannelMembers)
     if self.chanRosterKeys and self.chanRosterKeys[k] and GetTime() - (self.chanRosterKeysT or 0) < 900 then return true end
     -- (en Forever lo oculto por el canal no llega: vale estar en la lista de miembros del canal)
-    if self.ChannelHas and self:ChannelHas(sender) == true then return true end
+    if self:ChannelHas(sender) == true then return true end
     local p = self.remote[k]
     if p and (not tag or p.tag == tag) then return true end
     -- (los ayudantes que su enlace, visto en el canal, ha anunciado en su presentación)
@@ -163,7 +163,7 @@ function HU:VerifyChatSender(sender, f)
     local k = sender:lower()
     if self.GetChannelMembersAsync and self:IsJoined("main") and GetTime() - verifyReadT > 20 then
         verifyReadT = GetTime()
-        self:GetChannelMembersAsync("main", function() if HU.ReplayHeld then HU:ReplayHeld() end end)
+        self:GetChannelMembersAsync("main", function() HU:ReplayHeld() end)
     end
     local tag = table.concat(f, "~", 3):match("^%[(%w+)")
     if tag and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and self.GuardAsk then
@@ -180,9 +180,9 @@ local function Trusted(k, sender)
     local p = HU.remote[k]
     local tag = p and p.tag
     if not tag then return false end
-    if HU.FullPeer and HU:FullPeer(sender, tag) then return true end
-    if HU.CheckedOf and HU:CheckedOf(sender, tag) then return true end
-    local rp = HU.KnownRelay and HU:KnownRelay(tag)
+    if HU:FullPeer(sender, tag) then return true end
+    if HU:CheckedOf(sender, tag) then return true end
+    local rp = HU:KnownRelay(tag)
     return rp ~= nil and rp.name ~= nil and rp.name:lower() == k
 end
 local function Admit(sender, dist)
@@ -277,7 +277,7 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
             Hold(prefix, text, sender, cmd)
             -- (si leo la lista del canal, se mira ya si está en él, en vez de esperar a mi saludo de cada
             -- 2-5 min: si está, queda «visto en el canal» y lo retenido se aplica; ver StoreChannelMembers)
-            if HU.CheckChannelSoon then HU:CheckChannelSoon() end
+            HU:CheckChannelSoon()
         elseif dist == "WHISPER" and cmd == "CW" and not HU.replaying then
             -- (un paquete de eco de una versión vieja, «[ETIQ:E] …»: se descartaría de todos modos. Se
             -- cuenta aparte para no confundirlo con un mensaje perdido, y no se retiene ni se comprueba)
@@ -300,3 +300,5 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
     HU.curCmd = nil
 end
 HU:On("CHAT_MSG_ADDON", HU.OnAddonMessage)
+
+HU:Module("Net/Security", { "Channel", "Combat", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Roster" })

@@ -7,6 +7,17 @@ ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`)
 Durante el refactor de arquitectura (docs/propuesta-arquitectura.md) el addon funciona igual que
 antes: un fallo o una mejora que aparezca se apunta en docs/fallos-conocidos.md y se arregla aparte.
 
+## Código nuevo: los registros
+
+- Una orden de red: `HU:RegisterMessage` junto a su manejador (Protocol.lua). Un comando `/gu`:
+  `HU:RegisterSlash`, y añadirlo a `INPUTS` de `slash_spec` y rehacer la referencia. Algo que se
+  repite: `HU:Every(segs, "nombre", fn)` (no hay `NewTicker`). Lo que se guarda: `HU:Saved` al
+  principio del archivo; si cambia de forma, una migración (`HU:RegisterMigration`).
+- Cada archivo acaba con `HU:Module(nombre, { necesita })`; si `modulos_spec` dice que no cuadra,
+  se copia la línea que propone.
+- Se llama directamente a las funciones de `HU` (nada de `if HU.X then HU:X() end`); `guardas_spec`
+  lo vigila.
+
 ## Pruebas (obligatorio)
 
 - Todo cambio de código del addon llega con pruebas en `tests/spec/`. Sin dependencias: el ejecutor

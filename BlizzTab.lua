@@ -2,6 +2,10 @@
 local _, HU = ...
 local L = HU.L
 
+-- Formato de texto del chat (botones de Ajustes): delante del nombre, "dot" (punto del color de la
+-- hermandad) o "tag" (<ETIQUETA>)
+HU:Saved({ account = { chatMark = "dot" } })
+
 local tab, panel
 local KEEP = 60                 -- últimas líneas de otras hermandades que se repintan al volver al chat
 local recent = {}
@@ -287,8 +291,8 @@ end
 
 local function RefreshStatus()
     if not panel then return end
-    local chan = HU.IsJoined and HU:IsJoined("main")
-    local relay = (HU.IsRelay and HU:IsRelay()) and L("tú") or (HU.RelayName and HU:RelayName()) or "?"
+    local chan = HU:IsJoined("main")
+    local relay = (HU:IsRelay()) and L("tú") or (HU:RelayName()) or "?"
     -- (cuenta también la mía: con WLP, WLP2 y WLP3 son 3, no 2. Jorge, 12/11)
     local n = #HU:OtherTags() + (HU.myTag and 1 or 0)
     panel.status:SetText(
@@ -415,7 +419,7 @@ local function BuildPanel()
     bUnmute:SetScript("OnClick", function() HU:SetMute(mName:GetText(), -1) end)
     -- (lista negra de la comunidad: su ventana, Blacklist.lua)
     local bBlack = Button(panel, L("Lista negra"), 90, bUnmute, 6)
-    bBlack:SetScript("OnClick", function() if HU.ShowBlacklist then HU:ShowBlacklist() end end)
+    bBlack:SetScript("OnClick", function() HU:ShowBlacklist() end)
     HU:NameSuggest(qName, function(s) s:ClearFocus(); b2:Click() end)
     HU:NameSuggest(mName)
     for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute, bBlack }) do
@@ -494,11 +498,11 @@ local function BuildPanel()
     panel.manageBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.manageBtn:SetSize(150, 22); panel.manageBtn:SetText(L("Gestionar comunidad"))
     panel.manageBtn:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -14, -10)
-    panel.manageBtn:SetScript("OnClick", function() if HU.ShowGuildsWindow then HU:ShowGuildsWindow() end end)
+    panel.manageBtn:SetScript("OnClick", function() HU:ShowGuildsWindow() end)
     panel.createBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.createBtn:SetSize(170, 22)
     panel.createBtn:SetPoint("RIGHT", panel.manageBtn, "LEFT", -6, 0)
-    panel.createBtn:SetScript("OnClick", function() if HU.OpenWizard then HU:OpenWizard() end end)
+    panel.createBtn:SetScript("OnClick", function() HU:OpenWizard() end)
 
     -- Columna derecha: oficiales de las otras hermandades
     local h5 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1280,7 +1284,7 @@ function HU:ShowGuildsWindow()
         local hM = Header(gw, L("Gestores (pueden invitar)"), remBox, -16)
         hM:SetPoint("TOPLEFT", remBox, "BOTTOMLEFT", -6, -16)
         local mBox = Box(gw, 170, hM, 6, -6)
-        if HU.NameSuggest then HU:NameSuggest(mBox) end
+        HU:NameSuggest(mBox)
         local bAdd = Button(gw, L("Nombrar"), 80, mBox, 10)
         local bDel = Button(gw, L("Quitar"), 80, bAdd, 6)
         local function Set(add)
@@ -1311,3 +1315,5 @@ HU:OnStart(function()
         HU.UI.Toggle = function() HU:OpenReduce() end
     end
 end)
+
+HU:Module("BlizzTab", { "Blacklist", "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "Wizard" })

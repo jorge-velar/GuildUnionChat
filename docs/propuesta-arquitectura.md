@@ -1,6 +1,6 @@
 # Propuesta: arquitectura para seguir añadiendo funciones
 
-> Estado: **pasos 1, 2 y 3 hechos** en la rama `refactor/arquitectura` (ver [Paso 2 en detalle](#paso-2-en-detalle) y [Paso 3 en detalle](#paso-3-en-detalle)). Escrita sobre la 5.4.12 y comprobada de nuevo
+> Estado: **pasos 1 a 4 hechos** en la rama `refactor/arquitectura` (ver [Paso 2](#paso-2-en-detalle), [Paso 3](#paso-3-en-detalle) y [Paso 4 en detalle](#paso-4-en-detalle)). Falta el 5 (documentación). Escrita sobre la 5.4.12 y comprobada de nuevo
 > sobre la **5.4.41** (las cifras del diagnóstico son de la 5.4.41 salvo donde se indica).
 > La red de pruebas del paso 1 ya está montada (`tests/`, ver [Paso 1 en detalle](#paso-1-en-detalle)).
 
@@ -441,6 +441,37 @@ Propuesta en su lugar, para el paso 4 con los módulos (C):
 
 - llevar las de Lists.lua (pertenencia y rango) a Domain/Trust.lua, para que estén todas juntas;
 - dejar esta tabla en la documentación (I).
+
+## Paso 4 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento. Se cumple el «hecho
+cuando»:
+
+- no queda ningún `HU.NewTicker`;
+- de las 200 comprobaciones `if HU.X then` de funciones de `HU`, quedan las de funciones del juego y
+  una justificada (`guardas_spec`).
+
+Los detalles están en ARCHITECTURE.md.
+
+- **D, `HU:Every`**: las 40 tareas que se repiten llevan nombre y su tiempo en `/gu perf`. Cada una
+  sigue con su temporizador del juego, para no mover en qué momento corre. `pauseInCombat` y
+  `maxFailures` existen, pero están apagadas en todas.
+- **C, módulos**: cada archivo acaba con `HU:Module(nombre, necesita)`, calculado y comprobado por
+  `modulos_spec`. Al entrar, el núcleo mira que haya cargado todo. Con eso se han quitado 185
+  comprobaciones que sobraban.
+- **C, avisos**: `HU:Listen` y `HU:Fire`. Por ahora solo lo usa `HU:Changed`.
+- **E, `HU:Saved`**: cada módulo declara lo que guarda. `DEFAULTS` y `PER_CHAR` ya no son listas a
+  mano.
+
+Distinto de lo propuesto:
+
+- Sin `OnInit`/`OnLogin` por módulo: `HU:On("ADDON_LOADED")` y `HU:OnStart` ya hacen eso, y cambiarlos
+  movería el orden de arranque.
+- El bus no sustituye todavía las llamadas directas (`RefreshConfig`, `RetryDeferred`…). Cada una
+  cambia quién decide cuándo pasa, y conviene hacerlas una a una, cuando se toque cada módulo.
+
+Hallazgo, apuntado en [fallos-conocidos.md](fallos-conocidos.md), 4: hay cuatro claves guardadas que
+nadie usa (`theme`, `chatTab`, `chatTabsMade`, `proposals`).
 
 ## Cómo quedaría una función nueva
 

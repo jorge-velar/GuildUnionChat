@@ -1,6 +1,8 @@
 -- Guild Union - comunicación entre addons (contactos y listas de miembros)
 local _, HU = ...
 
+HU:Saved({ char = { "rosterCache" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 HU.guildPeers = {}     -- [clave] = { name, last, mod, ver }  usuarios del addon en mi hermandad
@@ -135,3 +137,5 @@ end
 -- medidas de este ordenador y su conexión (para elegir el enlace): las usan Net/Transport.lua,
 -- Net/Relay.lua y Net/Security.lua
 HU.netPerf = {}
+
+HU:Module("Comm", { "Config", "Core", "Net/RosterSync" })

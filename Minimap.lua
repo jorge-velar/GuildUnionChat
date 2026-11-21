@@ -25,7 +25,7 @@ end
 
 local function OnClick(_, button)
     if button == "RightButton" and HU.ShowGuildsWindow and HU:CanPin() then return HU:ShowGuildsWindow() end
-    if HU.OpenMainWindow then HU:OpenMainWindow() end
+    HU:OpenMainWindow()
 end
 
 local function Register()
@@ -67,3 +67,5 @@ end)
 HU:OnStart(function()
     if Register() and HU.db.minimapHidden then HU:ShowMinimapButton(false) end
 end)
+
+HU:Module("Minimap", { "BlizzTab", "Channel", "Config", "Core", "Pinned" })

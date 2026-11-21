@@ -303,3 +303,5 @@ if E then
     E["Medidor: "] = "Meter: "
     E["Medidor de tirones (Ctrl+C y mándaselo a quien lleva el addon)"] = "Stutter meter (Ctrl+C and send it to the addon's maintainer)"
 end
+
+HU:Module("Perf", { "Core" })

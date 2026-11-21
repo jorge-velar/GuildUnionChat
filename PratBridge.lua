@@ -124,3 +124,5 @@ HU:On("PLAYER_LOGIN", function()
     local ok = pcall(_G.Prat.RegisterChatEvent, HU, "Prat_PreAddMessage", OnPre)
     registered = ok and true or false
 end)
+
+HU:Module("PratBridge", { "Channel", "Core" })

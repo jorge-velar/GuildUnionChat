@@ -3,6 +3,20 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({
+    account = {
+        bans = {},            -- vetados del chat: [clave] = { name, on, by, tag, t }
+        mutes = {},           -- silenciados en el chat de la comunidad: [clave] = { name, u (hasta), by, tag, t }
+        profiles = {},        -- fichas: [clave] = { race, r (rol), s (rama), p (profesiones), t }
+        loginHistory = false, -- al entrar, escribir en el chat del juego el historial y lo de "mientras no estabas"
+    },
+    char = {
+        history = {},
+        offline = {},         -- desconectados de otras hermandades: [tag] = { [clave] = { c, l, s } }
+        "offlineT", "lastSeen",
+    },
+})
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local function Clean(s) return (tostring(s or ""):gsub("[~:;,%.|\r\n]", " ")) end
@@ -160,7 +174,7 @@ function HU:SendProfilesTo(target, since)
     local function Step()
         if not self.myTag then return end
         -- (fase de lanzamiento: solo las de quien sale en las listas que ven las otras hermandades)
-        local extra = self.SharedExtraSet and self:SharedExtraSet()
+        local extra = self:SharedExtraSet()
         local last = math.min(#keys, i + PROFILE_STEP - 1)
         for j = i, last do
             local k = keys[j]
@@ -307,7 +321,7 @@ HU:OnStart(function()
     -- (solo el enlace, una hermandad cada 2 minutos y solo si no tiene nada urgente que mandar) [+ARCHITECTURE.md]
     HU.After(math.random() * 120, function() HU:Every(120, "desconectados-repartir", function()
         if not HU.myTag or not HU:IsRelay() then return end
-        if HU.MainQueueSize and HU:MainQueueSize() > 30 then return end
+        if HU:MainQueueSize() > 30 then return end
         for _, tag in ipairs(HU:OtherTags()) do
             local t = HU.db.offlineT and HU.db.offlineT[tag]
             if (not t or time() - t > 12 * 3600) and HU:BestPeer(tag) then
@@ -491,7 +505,7 @@ function HU:SetMute(name, seconds, reason)
     HU.After(0.06, function()
         if m.u == -1 then
             if HU.OfferRestoreRank and not HU:IsMuted(full) then HU:OfferRestoreRank(full, true) end
-        elseif HU.OfferPunish then
+        else
             HU:OfferPunish(full)
         end
     end)
@@ -1014,7 +1028,7 @@ HU.comm.HL = function(self, sender, f, dist)
     local sk = self:Key(sender)
     if not (sk and self.roster[sk]) then return end
     if dist == "GUILD" and not HLSourceOK(self, sender) then
-        if self.Debug then self:Debug("Historial rechazado (no le toca contestar):", sender) end
+        self:Debug("Historial rechazado (no le toca contestar):", sender)
         return
     end
     if dist == "GUILD" then lastHeard = GetTime() end
@@ -1197,3 +1211,5 @@ function HU:TypeLines(macro, title)
     if #lines == 0 then return end
     self:RunOrders({ title = title or L("Órdenes de hermandad"), text = lines[1] .. (#lines > 1 and (" (+" .. (#lines - 1) .. ")") or ""), lines = lines })
 end
+
+HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })

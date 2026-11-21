@@ -70,3 +70,5 @@ function HU:MessagePrefix(cmd)
     local spec = HU.msgs[cmd]
     return spec and spec.prefix == "HU20B" and HU.PREFIX_B or HU.PREFIX
 end
+
+HU:Module("Protocol", { })

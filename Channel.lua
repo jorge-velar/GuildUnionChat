@@ -2,6 +2,15 @@
 local ADDON_NAME, HU = ...
 local L = HU.L
 
+HU:Saved({
+    account = {
+        showTag = true,         -- mostrar <ETIQUETA> en la ventana del addon
+        chatGuildColor = false, -- [Hermandad] en el color de cada hermandad (false: el color normal del chat)
+    },
+    -- (copia 151: la sala fijada es de la hermandad de cada personaje)
+    char = { "chanLane", "joinedChans", "laneLock", "laneMig" },
+})
+
 HU.chan = { main = {}, off = {} }   -- main = chat de hermandad, off = chat de oficiales, "x:Nombre" = canales extra
 
 function HU.IsExtra(kind) return type(kind) == "string" and kind:sub(1, 2) == "x:" end
@@ -156,12 +165,12 @@ local rosterSel, rosterDirty = {}, {}
 -- (alguien ha entrado o salido del canal: la próxima lectura pide la lista de nuevo)
 function HU:ChannelRosterChanged(kind)
     rosterDirty[kind] = true
-    if self.ForgetChannelMembers then self:ForgetChannelMembers() end
+    self:ForgetChannelMembers()
 end
 -- ¿Necesito leer la lista entera del canal por mi cuenta? Solo el enlace (busca moderadores a los [+ARCHITECTURE.md]
 function HU:NeedsChannelList()
     if self.chanIAmMod == true or self:IsRelay() then return true end
-    local idx = self.MyRankIndex and self:MyRankIndex()
+    local idx = self:MyRankIndex()
     return idx ~= nil and self.myTag ~= nil and self:RankRole(self.myTag, idx) ~= nil
 end
 
@@ -398,7 +407,7 @@ HU:OnStart(function()
         HU:RefreshConfig(true)
         if not HU.cfg then HU:QuickConfig() end
         HU:ApplyChannels()
-        HU.After(0, function() if HU.ReplayEarlyChannel then HU.ReplayEarlyChannel() end end)
+        HU.After(0, function() HU.ReplayEarlyChannel() end)
     end
     local function AnyGameChannel()
         for i = 1, (MAX_WOW_CHAT_CHANNELS or 10) do
@@ -540,7 +549,7 @@ function HU:Forward(kind, msg)
             return HU.ChatDrop("al enviar: no sales (todavía) en una de las hermandades unidas")
         end
     end
-    if kind ~= "off" and self.IsMuted and self:IsMuted(self:Me()) then
+    if kind ~= "off" and self:IsMuted(self:Me()) then
         self:Print(L("|cffff4444Estás silenciado en el chat de ") .. HU:Title() .. "|r (" .. (self:MuteLeftText(self:Me()) or "") .. L("): tu mensaje no ha llegado a las otras hermandades."))
         return
     end
@@ -657,7 +666,7 @@ local function SendCW(self, tag, token, author, line, solo)
     -- (copia 114: a dos contactos, no a uno. Si el único elegido tenía una versión que lo tiraba, o
     -- no lo repartía, su hermandad entera se quedaba sin la línea. Quien la recibe dos veces la cuenta
     -- una: Duplicate, más abajo)
-    local list = self.BestPeers and self:BestPeers(tag, 2) or { self:BestPeer(tag) }
+    local list = self:BestPeers(tag, 2) or { self:BestPeer(tag) }
     if #list == 0 then
         -- (copia 150) Sin contacto reciente (nadie de esa hermandad ha hablado ni saludado en 15 min):
         -- antes la línea no iba a nadie y no se decía. Reserva: dos conectados de su lista.
@@ -800,7 +809,7 @@ do
         if not self:MemberOf(sender, tag) then
             if self.remoteRoster[tag] then
                 local g = self.guardKnown and self.guardKnown[self:Key(sender) or ""]
-                if (self.GuardVerdict and self:GuardVerdict(sender) == true)
+                if (self:GuardVerdict(sender) == true)
                     or (g ~= nil and g.tag ~= tag and self:GuardKnown(sender)) then
                     return HU.ChatDrop("respaldo: su hermandad no lo reconoce", sender)
                 end
@@ -834,7 +843,7 @@ do
         if peers then
             -- (copia 151: con más de 60 mensajes esperando no reparto: saldría tarde y retrasaría
             -- todo lo demás. Lo reparte el otro contacto; se cuenta)
-            if self.QueueSize and self:QueueSize() > 60 then
+            if self:QueueSize() > 60 then
                 HU.ChatDrop("reparto: mi cola de envío está cargada, no lo reparto yo", author)
             else
                 self:Send("CG~" .. f.chan .. "~" .. author .. "~" .. line, "GUILD", nil, true)
@@ -985,7 +994,7 @@ local function SpreadLane(self, st, spread)
     if self.myTag and IsInGuild() then self:Send(msg, "GUILD") end
     if spread == "all" and self.OtherTags then
         for _, tag in ipairs(self:OtherTags()) do
-            local p = self.KnownRelay and self:KnownRelay(tag) or (self.BestPeer and self:BestPeer(tag))
+            local p = self:KnownRelay(tag) or (self:BestPeer(tag))
             if p then self:Whisper(p.name, msg, true) end
         end
     end
@@ -1013,11 +1022,11 @@ function HU:SetLaneState(new, why, spread)
         self:Log(L("Carril del canal: ") .. st.lane .. " (" .. tostring(why) .. ")")
         if raised then self.db.laneRaisedT = ServerNow() end
         -- (copia 118: los oficiales ven cada cambio en el momento, con quién y por qué)
-        if self.CanOfficer and self:CanOfficer() then
+        if self:CanOfficer() then
             self:Print(L("Cambio de sala del canal: ahora la ") .. st.lane .. " (" .. tostring(why) .. ")")
         end
         self:ApplyChannels()
-        HU.After(5, function() if HU.HelloCycle then HU:HelloCycle() end end)
+        HU.After(5, function() HU:HelloCycle() end)
     end
     if spread then SpreadLane(self, st, spread) end
     return true
@@ -1196,7 +1205,7 @@ local function TryMoveLane(self)
     if not LaneArmed() or not self:IsRelay() or not self.cfg or self:LaneLock() then return end
     -- (copia 120: desde que cualquiera con la versión nueva puede ser el enlace, el que no es oficial
     -- solo guarda el puesto: ni sube de sala ni confirma la subida de otros. Jorge, 15/11)
-    if not (self.IsOfficerName and self:IsOfficerName(self:Me())) then return end
+    if not (self:IsOfficerName(self:Me())) then return end
     local want, now = self:ChannelLane() + 1, GetTime()
     if want > LANE_MAX then return end
     -- (copia 118: ninguna subida automática si ya ha habido una subida en las últimas 24 h, y la
@@ -1216,7 +1225,7 @@ local function TryMoveLane(self)
     if now - voteSentT > 60 then
         voteSentT = now
         for _, tag in ipairs(self:OtherTags()) do
-            local p = self.KnownRelay and self:KnownRelay(tag)
+            local p = self:KnownRelay(tag)
             if p and p.name then self:Whisper(p.name, "LV~" .. want, true) end
         end
     end
@@ -1391,7 +1400,7 @@ local function OnSend(msg, chatType)
     if sig == lastSig and now - lastTime < 0.2 then return end -- evita duplicados si se enganchan las dos funciones
     lastSig, lastTime = sig, now
     -- silenciado o vetado: no llega a nadie con el addon (ni a mí)
-    if chatType == "GUILD" and HU.IsMuted and HU:IsMuted(HU:Me()) then HideOwn(msg) end
+    if chatType == "GUILD" and HU:IsMuted(HU:Me()) then HideOwn(msg) end
     HU:Forward(chatType == "OFFICER" and "off" or "main", msg)
 end
 
@@ -1767,7 +1776,7 @@ function HU:HighlightMentions(msg, author, tag)
         if not full then return nil end
         local rest = (used == "@" .. name) and (sp .. nxt) or ""
         if HU.Fold(full) == me then return "|cffff9a1f" .. used .. "|r" .. rest end
-        if (self.InAnyGuild and self:InAnyGuild(full)) or HU.SpokeLately(full) then return "|cff7fd4ff" .. used .. "|r" .. rest end
+        if (self:InAnyGuild(full)) or HU.SpokeLately(full) then return "|cff7fd4ff" .. used .. "|r" .. rest end
         return nil
     end))
 end
@@ -1928,7 +1937,7 @@ function HU:Display(kind, tag, author, msg, guid)
     local r, g, b = self:KindColor(kind)
     for _, f in ipairs(self:FramesFor(kind)) do
         -- (copia 121: con Prat, la línea la monta Prat con el formato del jugador; si no, la de siempre)
-        local pl = self.PratLine and self:PratLine(f, kind, tag, author, hmsg, guid, HU.MENTION_MARK[mentioned])
+        local pl = self:PratLine(f, kind, tag, author, hmsg, guid, HU.MENTION_MARK[mentioned])
         f:AddMessage(pl or line, r, g, b)
     end
 end
@@ -1940,7 +1949,7 @@ function HU:ChatNotice(text)
     local e = { t = time(), k = "main", sys = true, m = text }
     h[#h + 1] = e
     while #h > 3000 do table.remove(h, 1) end
-    for _, fr in ipairs(self.FramesFor and self:FramesFor("main") or { DEFAULT_CHAT_FRAME }) do
+    for _, fr in ipairs(self:FramesFor("main") or { DEFAULT_CHAT_FRAME }) do
         fr:AddMessage("|cffffd100[" .. self:Title() .. "]|r " .. text, 1, 0.82, 0)
     end
     if self.UI and self.UI.OnChat then self.UI:OnChat(e) end
@@ -2079,10 +2088,10 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         return
     end
     -- seguridad: quien escribe tiene que estar de verdad en la hermandad de la etiqueta [+ARCHITECTURE.md]
-    if tag == HU.myTag and not HU:MemberOf(author, tag) and not (HU.GuildVerified and HU:GuildVerified(author:lower())) then
+    if tag == HU.myTag and not HU:MemberOf(author, tag) and not (HU:GuildVerified(author:lower())) then
         -- (no está en mi lista ni ha hablado por la hermandad: se le pregunta por la vía GUILD del
         -- juego y el mensaje queda retenido hasta la respuesta; ver Guard.lua)
-        if HU.CheckImpostor then HU:CheckImpostor(author) end
+        HU:CheckImpostor(author)
         HU:HoldUnionChat(author:lower(), kind, text, author, guid)
         HU.ChatDrop("retenido: usa mi etiqueta y no sale en mi lista", author)
         return
@@ -2091,7 +2100,7 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         local reject = nil
         if HU.remoteRoster[tag] then
             local g = HU.guardKnown and HU.guardKnown[HU:Key(author) or ""]
-            reject = (HU.GuardVerdict and HU:GuardVerdict(author) == true)
+            reject = (HU:GuardVerdict(author) == true)
                 or (g ~= nil and g.tag ~= tag and HU:GuardKnown(author))
         end
         if reject then
@@ -2099,7 +2108,7 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
             return
         end
     end
-    if HU.SeenPeer then HU:SeenPeer(author, tag) end
+    HU:SeenPeer(author, tag)
     -- (ha escrito en nuestro canal con esa etiqueta: vale como una presentación RA para arrancar su
     -- lista, que en Forever no llegan por el canal)
     if tag ~= HU.myTag and HU.BootPresented then HU.BootPresented(tag, author, GetTime()) end
@@ -2141,7 +2150,7 @@ local function ChanLine(it)
         return HU:AddHistory(h[1], h[2], h[3], h[4], h[5])
     end
     local kind = it.kind
-    if HU.MarkChannelSeen then HU:MarkChannelSeen(HU:FullName(it.author)) end
+    HU:MarkChannelSeen(HU:FullName(it.author))
     -- (mi propia línea de vuelta: el texto del canal funciona)
     local full = HU:FullName(it.author)
     if full and full:lower() == HU:MeKey() then HU:GotEcho(it.text) end
@@ -2208,7 +2217,7 @@ function HU.OnChannelText(text, author, fullName, baseName, guid)
     if not kind then return end -- (canales del juego y de otros addons: nada que hacer)
     -- (copia 148: las líneas de /gu prueba no son chat)
     if kind == "main" and type(text) == "string" and not HU.Secret(text) and text:sub(1, 5) == "#GUT " then
-        if HU.OnTextProbe then HU:SafeCall("prueba", HU.OnTextProbe, text, author) end
+        HU:SafeCall("prueba", HU.OnTextProbe, text, author)
         return
     end
     if kind == "main" then NoteSeen(HU.chanRaw, author) end
@@ -2227,7 +2236,7 @@ local function OnHiddenChat(prefix, text, dist, sender, _, _, localID, chanName)
     if text:sub(1, 3) == "SD~" then return HU.OnProbe(text, sender, localID, chanName) end
     -- (copia 148: aviso y respuesta de /gu prueba)
     if text:sub(1, 3) == "TQ~" or text:sub(1, 3) == "TR~" then
-        if HU.OnTextProbeMsg then HU.OnTextProbeMsg(text, sender, localID, chanName) end
+        HU.OnTextProbeMsg(text, sender, localID, chanName)
         return
     end
     local k, body = text:match("^CM~([^~]+)~(.*)$")
@@ -2239,7 +2248,7 @@ local function OnHiddenChat(prefix, text, dist, sender, _, _, localID, chanName)
     -- de otro addon; en modo prueba el de oficiales va por el principal)
     local from = HU:OurChannelKind(localID, chanName)
     if from ~= true and from ~= kind then return end
-    if HU.MarkChannelSeen then HU:MarkChannelSeen(HU:FullName(sender)) end
+    HU:MarkChannelSeen(HU:FullName(sender))
     HU:OnUnionChat(kind, body, sender, nil)
 end
 -- (por la vía registrada, que es la que usa esta versión, y por la normal, de versiones anteriores)
@@ -2421,7 +2430,7 @@ do
             if #strays == 0 then splitSince = nil return end
             splitSince = splitSince or GetTime()
             if GetTime() - splitSince < LANE_SPLIT_SECS or GetTime() - splitWarnT < LANE_SPLIT_WARN then return end
-            if not (HU.CanOfficer and HU:CanOfficer()) then return end
+            if not (HU:CanOfficer()) then return end
             splitWarnT = GetTime()
             local e = strays[1]
             HU:Print("|cffff8800" .. string.format(L("Hay %d de la comunidad en otra sala del canal (p. ej. %s en la %d; tú en la %d): no os leéis."),
@@ -2429,3 +2438,5 @@ do
         end)
     end)
 end
+
+HU:Module("Channel", { "Audit", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/Security", "Net/Transport", "Pinned", "PratBridge", "Protocol", "Ranks", "Report", "Roster", "Social" })

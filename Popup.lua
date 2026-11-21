@@ -266,3 +266,5 @@ HU.Dialogs.GU_LANG = {
     button1 = "Reload / Recargar", button2 = "Later / Luego", reload = true,
     OnAccept = function() HU:Reload() end,
 }
+
+HU:Module("Popup", { "Core", "Social" })

@@ -26,7 +26,7 @@ function HU:MemTrim()
     if not self.memOver then self.memOver = true; return mb end
     local before = mb
     -- 1) lo que se puede volver a calcular
-    if self.HistDropCaches then self:HistDropCaches() end
+    self:HistDropCaches()
     collectgarbage("collect")
     mb = AddonMB() or mb
     -- 2) los días más viejos del historial de oficiales: 3 por vuelta, una vuelta por segundo
@@ -52,11 +52,11 @@ function HU:MemTrim()
         collectgarbage("collect")
         mb = AddonMB() or mb
     end
-    if not warned and self.CanPin and self:CanPin() then
+    if not warned and self:CanPin() then
         warned = true
         self:Print(string.format(L("Memoria del addon por encima de %d MB (%.1f MB): se ha borrado lo más viejo; ahora %.1f MB."), HU.MEM_LIMIT_MB, before, mb))
     end
-    if self.TestLogAdd then self.TestLogAdd("memoria", string.format("%.1f MB -> %.1f MB", before, mb)) end
+    self.TestLogAdd("memoria", string.format("%.1f MB -> %.1f MB", before, mb))
     return mb
 end
 
@@ -67,3 +67,5 @@ HU:OnStart(function()
         HU:MemTrim()
     end)
 end)
+
+HU:Module("MemGuard", { "Core", "History", "Pinned" })

@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "customEmotes", "guildColors", "managers", "netGuilds" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local pending = {}   -- invitaciones que he mandado: [id] = { contact, tag, t }
@@ -193,7 +195,7 @@ HU.comm.MG = function(self, sender, f, dist, raw)
         end
     end
     -- (lo que esperaba a saber quién es gestor: altas y bajas de hermandades)
-    if self.RetryDeferred then self:RetryDeferred() end
+    self:RetryDeferred()
     if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
 end
 
@@ -513,7 +515,7 @@ function HU:ApplyJoin(j, data)
     if chan and chan ~= "" then
         self.db.netChan = { channel = chan, pass = (pass ~= "" and pass) or nil, t = HU.StampNow(), by = self:Me(), tag = self.myTag }
         self:RefreshConfig(true)
-        if self.ShareNetChan then self:ShareNetChan() end
+        self:ShareNetChan()
     end
     self:AddAudit({ tag = self.myTag, actor = self:Me(), text = L("unió la hermandad a la comunidad ") .. (title or "") }, "all")
     self:Print(L("|cff44ff44Tu hermandad ya forma parte de ") .. self:Title() .. L(".|r Los miembros con el addon se conectarán solos."))
@@ -643,7 +645,7 @@ HU.comm.EM = function(self, sender, f, dist, raw)
             if peer then self:Whisper(peer.name, raw) end
         end
     end
-    if self.ResetEmoteCache then self:ResetEmoteCache() end
+    self:ResetEmoteCache()
 end
 
 -- quien entra recibe los emoticonos
@@ -654,3 +656,5 @@ HU.comm.PQ = function(self, sender, ...)
         for code, e in pairs(self.db.customEmotes or {}) do self:Whisper(sender, EMMsg(code, e)) end
     end
 end
+
+HU:Module("Community", { "Audit", "Channel", "Channels", "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "NoteConfig", "Pinned", "Popup", "Protocol" })

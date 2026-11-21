@@ -104,6 +104,53 @@ HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat
 - `tests/spec/registro_spec.lua` fija que lo declarado da exactamente las tablas de la 5.4.41 y que
   toda orden con manejador está registrada (y al revés).
 
+## Core.lua · módulos y avisos
+
+### Módulos: `HU:Module` al final de cada archivo
+
+Cada archivo del .toc acaba con `HU:Module("Net/Relay", { "Channel", "Comm", … })`: su nombre (la
+ruta sin `.lua`) y los archivos que definen las funciones de `HU` que llama.
+
+- Va **al final** porque así solo consta si el archivo ha cargado entero.
+- Al entrar (`PLAYER_LOGIN`, antes de los `OnStart`), `HU:CheckModules()` mira que esté todo lo
+  necesitado. Lo que falte sale en `/gu errores`, con quién lo necesita.
+- La lista no se escribe a mano: `tests/lib/modulos.lua` la calcula y `modulos_spec` exige que lo
+  declarado sea exactamente eso. Una dependencia nueva hay que declararla, y así se ve en la PR.
+
+Por eso sobran las comprobaciones `HU.X and HU:X()` / `if HU.X then HU:X() end`:
+
+- todos los archivos se cargan siempre, en orden, y lo comprueba `CheckModules`;
+- esconden los nombres mal escritos (la llamada no se hace nunca, sin avisar).
+
+Se han quitado 185. `guardas_spec` no deja que vuelvan sobre una función que siempre existe, salvo
+las de su lista `JUSTIFIED`, con su motivo. Hoy solo hay una: `SyncCharSearch`, que no existe hasta
+que el juego carga su ventana de hermandad. Las de funciones del juego o de sus marcos (`IsShown`,
+`GetAtlasInfo`…) siguen: el juego puede no tenerlas.
+
+### Avisos entre módulos: `HU:Listen` / `HU:Fire`
+
+`HU:Fire("CHANGED", "members")` llama a todo lo que ha hecho `HU:Listen("CHANGED", fn)`, en orden.
+Cada uno va por `SafeCall`, como los eventos del juego: si uno falla, los demás siguen.
+
+Hoy lo usa `HU:Changed`, que antes llamaba a `HU.UI:MarkDirty` directamente y ahora avisa con
+`CHANGED`; lo escucha UI.lua. Los siguientes candidatos son los avisos que hoy son llamadas
+directas entre módulos (`RefreshConfig`, `RetryDeferred`…).
+
+### Lo guardado: `HU:Saved`
+
+Cada módulo declara sus claves al principio de su archivo:
+
+```lua
+HU:Saved({ account = { bans = {}, loginHistory = false }, char = { history = {}, "offlineT" } })
+```
+
+- `account` es para toda la cuenta y `char`, para cada personaje.
+- `clave = valor` le da un valor por defecto; la clave sola, sin valor.
+- Core.lua junta las declaraciones en `HU.PER_CHAR` y en sus valores por defecto. Antes eran dos
+  listas a mano en Core.lua: `DEFAULTS` y `PER_CHAR`.
+- Una clave declarada dos veces es un error.
+- `datos_spec` fija que lo declarado da exactamente lo de la 5.4.41.
+
 ## Core.lua · lo que se repite
 
 ### Planificador: `HU:Every`
