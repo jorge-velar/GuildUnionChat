@@ -54,7 +54,7 @@ local function Label(where, fn, a, b)
     local label = tostring(where)
     if where == "CHAT_MSG_ADDON" then
         if type(a) == "string" and a:sub(1, 4) == "HU20" then
-            -- (el tipo, con «~» detrás o solo, como HY, RQ, PA, CQ, PQ, NK; igual que lo lee Comm.lua)
+            -- (el tipo, con «~» detrás o solo, como HY, RQ, PA, CQ, PQ, NK; igual que lo lee Net/Security.lua)
             local kind = type(b) == "string" and (b:match("^(%u%u?)~") or b:match("^(%u%u?)$"))
             label = label .. " " .. a .. " " .. (kind or "?")
         else

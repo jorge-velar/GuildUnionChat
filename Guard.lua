@@ -390,7 +390,7 @@ local function FinishTag(self, id, q, tag)
             if not wit or wit[k] then
                 self.guardKnown[k] = { tag = tag, t = now }
                 verdict[k] = { intruder = false, t = now }
-                -- (su chat del respaldo que estaba retenido ya se puede enseñar: Comm.lua, VerifyChatSender)
+                -- (su chat del respaldo que estaba retenido ya se puede enseñar: Net/Security.lua, VerifyChatSender)
                 if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld(k) end) end
             elseif self.Debug then self:Debug("Guardia: el testigo de", tag, "no confirma a", k) end
             q.names[k] = nil

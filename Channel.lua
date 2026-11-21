@@ -722,7 +722,7 @@ function HU:ChatFallback(token, line, logged)
     for _, tag in ipairs(tags) do SendCW(self, tag, token, me, line, not logged) end
 end
 
--- Una línea mía del respaldo que se ha caducado en la cola sin salir (lo llama Comm.lua)
+-- Una línea mía del respaldo que se ha caducado en la cola sin salir (lo llama Net/Transport.lua)
 local lostCWT = -999
 function HU:OnChatLost(raw)
     if type(raw) ~= "string" then return end
@@ -1221,7 +1221,7 @@ local function TryMoveLane(self)
         end
     end
 end
--- (lo llama Comm.lua con el LV del enlace de otra hermandad, ya comprobado)
+-- (lo llama Net/Relay.lua con el LV del enlace de otra hermandad, ya comprobado)
 function HU:OnLaneVote(lane, tag)
     laneVotes[tag] = { lane = lane, t = GetTime() }
     TryMoveLane(self)

@@ -30,6 +30,11 @@ ChatPaint.lua
 PratBridge.lua
 WMPanel.lua
 Comm.lua
+Net\Transport.lua
+Domain\Trust.lua
+Net\Relay.lua
+Net\RosterSync.lua
+Net\Security.lua
 Lists.lua
 Presence.lua
 ChanPresence.lua

@@ -607,7 +607,7 @@ local TTL_SYNC, TTL_ASK = 300, 60
 local CMD_TTL = { V = TTL_SYNC, v = TTL_SYNC, w = TTL_SYNC, S = TTL_SYNC, D = TTL_SYNC, F = TTL_SYNC,
     Q = TTL_ASK, R = TTL_ASK, E = TTL_ASK, X = TTL_ASK, Y = TTL_ASK, Z = TTL_ASK }
 local CLOSER = { w = true, F = true, E = true, Z = true }
--- lo que el juego contesta cuando va saturado (como en Comm.lua): el mensaje se vuelve a probar
+-- lo que el juego contesta cuando va saturado (como en Net/Transport.lua): el mensaje se vuelve a probar
 local THROTTLED = {}
 if Enum and Enum.SendAddonMessageResult then
     for _, k in ipairs({ "AddonMessageThrottle", "ChannelThrottle", "GeneralError" }) do

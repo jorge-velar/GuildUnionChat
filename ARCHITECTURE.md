@@ -526,6 +526,24 @@ llegar al tope, lo que queda espera al siguiente)
 
 ## Comm.lua
 
+> [!note] Comm.lua partido (paso 3 de docs/propuesta-arquitectura.md)
+> Las notas de este apartado son del Comm.lua entero, con sus números de línea de entonces. Hoy está
+> repartido, en este orden de carga y sin cambiar nada del código:
+>
+> | Archivo | Qué hay | Líneas del Comm.lua de antes |
+> |---|---|---|
+> | `Comm.lua` | contactos (`guildPeers`, `remote`, el índice por etiqueta) y las listas guardadas al salir | 1-136 |
+> | `Net/Transport.lua` | la cola de envío, `HU:Send`, los prefijos y los susurros a desconectados | 138-459 |
+> | `Domain/Trust.lua` | estados de las listas (`b`/`m`/`p`/`c`), anclas, contactos comprobados, `SenderKind`, `BestPeers` | 1015-1457 |
+> | `Net/Relay.lua` | el enlace y sus ayudantes, saludos (`HI`/`HR`/`HY`/`RA`), presentaciones, carriles (`LN`…) y los ciclos | 461-1013, 1459-2121 y 3690-4000 |
+> | `Net/RosterSync.lua` | listas de conectados: enteras (`RB`), cambios (`RC`), peticiones (`RF`, `NQ`), huellas | 2123-3386 |
+> | `Net/Security.lua` | `AllowAddonMessage`, `Vouched`, `Hold`/`ReplayHeld`, `Admit`, `PartialAdmit` y la entrada (`HU.OnAddonMessage`) | 3388-3688 |
+>
+> Lo que comparten se pasa por `HU`: `HU.netPerf` (las medidas de este ordenador), `HU.VOUCH_TTL`,
+> `HU.ReshareRoster`, `HU:BulkQueueSize()` y `HU.QueueTick` (el cupo de la cola, que cada segundo
+> llama el temporizador de los ciclos). Los bloques `do … end` que había solo para no pasar de 200
+> variables locales ya no hacen falta y se han quitado.
+
 ### línea 5 · `HU.guildPeers = {}     -- [clave] = { name, last, mod, ver }  usuarios del addon en mi her`
 
 Mensajes de addon (prefijo HUNI, campos separados por "~"):

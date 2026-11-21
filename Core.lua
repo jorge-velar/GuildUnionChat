@@ -184,7 +184,7 @@ local function AnySecret(...)
     return false
 end
 
--- (solo se usa para los mensajes del sistema, Comm.lua: en los chats de jugadores no hay filtros,
+-- (solo se usa para los mensajes del sistema, Net/Transport.lua: en los chats de jugadores no hay filtros,
 -- porque intervenir ahí hacía que el juego no pintara la línea con el chat bloqueado) [+ARCHITECTURE.md]
 function HU.AddChatFilter(event, fn)
     local function safe(frame, ev, ...)
@@ -1018,7 +1018,7 @@ HU:RegisterSlash("confirmar", { aliases = { "confirm" },
     help = "|cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)",
     fn = function(_, rawArg)
         -- (un oficial da por buena la lista que tengo de otra hermandad: el ancla de una comunidad
-        -- nueva, sin contactos comprobados todavía. Ver «Estado de la lista» en Comm.lua)
+        -- nueva, sin contactos comprobados todavía. Ver «Estado de la lista» en Domain/Trust.lua)
         if not HU:CanOfficer() then
             return HU:Print(L("Solo los oficiales pueden confirmar la lista de otra hermandad."))
         end

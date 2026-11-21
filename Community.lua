@@ -41,7 +41,7 @@ function HU:MergeNetGuilds(cfg)
     end
 end
 
--- Ancla de confianza de cada hermandad (ver HU:AnchorValid en Comm.lua): quien aceptó su invitación,
+-- Ancla de confianza de cada hermandad (ver HU:AnchorValid en Domain/Trust.lua): quien aceptó su invitación,
 -- o quien invitó a la mía. Va en la invitación (GA/GL) y, para las demás, en NG (campo 8).
 function HU:Anchors()
     self.db.anchors = self.db.anchors or {}

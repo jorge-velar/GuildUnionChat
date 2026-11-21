@@ -5,7 +5,7 @@ local _, HU = ...
 -- cola se llenaba de saludos que caducaban y se perdía el contacto con las otras hermandades. 11/11)
 local INSTANCE_KINDS = { party = true, raid = true, pvp = true, arena = true }
 local PVP_KINDS = { pvp = true, arena = true }
-local CEDE_PENALTY = 150         -- (lo mismo que resta Busy() en banda: Comm.lua)
+local CEDE_PENALTY = 150         -- (lo mismo que resta Busy() en banda: Net/Relay.lua)
 local CEDE_IN_DUNGEON = true     -- (en banda ya lo resta Busy(); esto lo añade en mazmorra)
 local DRAIN_MS = 0.8             -- trabajo por fotograma al salir de combate
 local REQ_MAX_AGE = 15           -- una petición más vieja que esto ya la ha contestado otro
@@ -97,7 +97,7 @@ end
 -- lo que cuesta procesar cada orden (el más caro de los últimos, que va bajando poco a poco); se mide
 -- siempre, también fuera de combate, para saber si una lista cabe en un fotograma de combate
 local estBy = {}
--- Lo llama la entrada (HU.OnAddonMessage, Comm.lua) con las órdenes que declaran combat = ...:
+-- Lo llama la entrada (HU.OnAddonMessage, Net/Security.lua) con las órdenes que declaran combat = ...:
 -- en combate se guarda para después; si no, se trata ya (h es su manejador)
 function HU.CombatDispatch(h, cmd, sender, f, dist, raw)
     -- (lo del canal no se guarda: al repetirlo faltaría con qué canal llegó)
@@ -289,7 +289,7 @@ if origScore then
     HU.RelayScore = function(self)
         local s = origScore(self)
         if CEDE_IN_DUNGEON and inInst and instKind == "party" then s = s - CEDE_PENALTY end
-        -- (dentro de la partida ya lo resta Busy(), en Comm.lua: aquí solo mientras se espera fuera)
+        -- (dentro de la partida ya lo resta Busy(), en Net/Relay.lua: aquí solo mientras se espera fuera)
         if queued and not inInst then s = s - CEDE_PENALTY end
         return s
     end

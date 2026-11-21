@@ -1,6 +1,6 @@
 # Propuesta: arquitectura para seguir añadiendo funciones
 
-> Estado: **pasos 1 y 2 hechos** en la rama `refactor/arquitectura` (ver [Paso 2 en detalle](#paso-2-en-detalle)). Escrita sobre la 5.4.12 y comprobada de nuevo
+> Estado: **pasos 1, 2 y 3 hechos** en la rama `refactor/arquitectura` (ver [Paso 2 en detalle](#paso-2-en-detalle) y [Paso 3 en detalle](#paso-3-en-detalle)). Escrita sobre la 5.4.12 y comprobada de nuevo
 > sobre la **5.4.41** (las cifras del diagnóstico son de la 5.4.41 salvo donde se indica).
 > La red de pruebas del paso 1 ya está montada (`tests/`, ver [Paso 1 en detalle](#paso-1-en-detalle)).
 
@@ -393,6 +393,54 @@ Comprobado a propósito: borrar `adb.audit` al cargar lo detecta la prueba de ac
 - Falta `HU:Defaults` por módulo. `DEFAULTS` y `PER_CHAR` siguen en Core.lua. Moverlos cambia qué
   se crea al cargar y en qué orden, y no hace falta para el «hecho cuando». Queda para el paso 4,
   con los módulos (C).
+
+## Paso 3 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento. Comm.lua tenía 4.000
+líneas y ahora tiene 135, sin bloques `do`. Las pruebas de seguridad dan lo mismo que antes: no se
+ha tocado ninguna.
+
+**Antes de partir**, como pedía el orden:
+
+- Más escenarios de red (`escenarios_spec`, ver el pendiente 8).
+- Comm.lua al 76 % y Channel.lua al 78 % con Lua 5.1.
+
+**Cómo se ha partido.** Por trozos de líneas, sin cambiar el código. Un script compila cada trozo
+por separado y lista los nombres que en el trozo son globales y en el archivo entero no: son
+variables de otro trozo. Salieron pocas y se pasan por `HU`. Están en ARCHITECTURE.md, «Comm.lua».
+
+El orden de carga solo importa en dos casos:
+
+- el `CHAT_MSG_ADDON` del enlace va antes que el de la entrada;
+- los `OnStart` de la confianza van antes que los de los ciclos.
+
+Por eso el orden es Comm → Transport → Trust → Relay → RosterSync → Security, y los ciclos van con
+Relay. Ninguna función de `HU` se define dos veces y ningún trozo envuelve a otro, así que cambiar el
+orden no cambia quién gana.
+
+Los diez bloques `do` se han quitado con otro script. Comprueba que no se repite ningún nombre de
+variable dentro y fuera de un bloque, y que cada archivo lee y escribe las mismas globales antes y
+después.
+
+**Una pregunta de confianza (`Trust:Level`): estudiada, y mejor no.** Hoy hay 17 funciones y no son
+grados de lo mismo. Responden a cinco preguntas distintas:
+
+| Pregunta | Funciones |
+|---|---|
+| ¿Es de la comunidad? | `Vouched`, `InAnyGuild` |
+| ¿De qué hermandad es? | `MemberOf`, `ListFresh` |
+| ¿Qué rango tiene? | `TrustedOfficer`, `TrustedMaster`, `CheckOfficer`, `CheckOfficerFirm`, `CheckMasterFirm` |
+| ¿Qué papel tiene? | `KnownRelay`, `KnownGuildRelay`, `IsGuildForwarder`, `AnchorValid` |
+| ¿Cuánto me fío de su lista? | `SenderKind`, `FullPeer`, `CheckedOf`, `RosterTrusted` |
+
+Un solo nivel perdería información: un oficial de otra hermandad sin lista confirmada no está ni por
+encima ni por debajo del enlace comprobado de una hermandad sin oficiales. Además abriría mensajes
+sin querer, que es lo que ya advertía A.
+
+Propuesta en su lugar, para el paso 4 con los módulos (C):
+
+- llevar las de Lists.lua (pertenencia y rango) a Domain/Trust.lua, para que estén todas juntas;
+- dejar esta tabla en la documentación (I).
 
 ## Cómo quedaría una función nueva
 

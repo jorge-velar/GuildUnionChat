@@ -1,11 +1,11 @@
 -- Guild Union - registro de las órdenes de red (prefijos HU20 y HU20B) [+ARCHITECTURE.md]
 local _, HU = ...
 
--- [orden] = lo declarado con HU:RegisterMessage. Lo leen la seguridad (Comm.lua, AllowAddonMessage),
+-- [orden] = lo declarado con HU:RegisterMessage. Lo leen la seguridad (Net/Security.lua, AllowAddonMessage),
 -- la cola (HU:Send), el combate (Combat.lua) y /gu diag
 HU.msgs = {}
 
--- Colas de envío (Comm.lua): las de HU20, de más a menos prisa, y las de HU20B (datos grandes)
+-- Colas de envío (Net/Transport.lua): las de HU20, de más a menos prisa, y las de HU20B (datos grandes)
 local QUEUES = { chat = "HU20", normal = "HU20", mid = "HU20", low = "HU20",
     bfast = "HU20B", bulk = "HU20B", bmid = "HU20B", blow = "HU20B" }
 -- Lo que se hace en combate con lo que llega (Combat.lua): "list" = listas de conectados, "req" =
