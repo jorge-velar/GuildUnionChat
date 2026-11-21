@@ -3,9 +3,11 @@
 local red = require("lib.red")
 local A = assert_
 
--- Una comunidad con `n` hermandades (G1..Gn) y `per` jugadores en cada una (el primero, oficial)
-local function Community(n, per)
-    local lines, guilds = { "GU:t:Comunidad de prueba", "GU:c:CanalPrueba:clave" }, {}
+-- Una comunidad con `n` hermandades (G1..Gn) y `per` jugadores en cada una (los `officers` primeros,
+-- oficiales: 1 si no se dice). extra: más líneas para la Información
+local function Community(n, per, officers, extra)
+    officers = officers or 1
+    local lines, guilds = { "GU:t:Comunidad de prueba", "GU:c:CanalPrueba:clave", extra }, {}
     for i = 1, n do
         lines[#lines + 1] = "GU:g:Hermandad " .. i .. ":G" .. i
         guilds["G" .. i] = "Hermandad " .. i
@@ -15,7 +17,7 @@ local function Community(n, per)
     for i = 1, n do
         for j = 1, per do
             local name = "J" .. string.char(96 + i) .. string.char(96 + j) -- (Jaa, Jab, Jba…)
-            local p = net:Player(name, "G" .. i, { rankIndex = j == 1 and 1 or 4 })
+            local p = net:Player(name, "G" .. i, { rankIndex = j <= officers and 1 or 4 })
             -- (el canal de oficiales va en la nota de oficial de un miembro de cada hermandad)
             if j == 1 then p.member.officerNote = "GU:o:CanalOfi:clave2" end
             by[#by + 1] = p
@@ -33,6 +35,19 @@ local function Community(n, per)
     end
     net:Advance(30)
     return net, by
+end
+
+-- En qué sala está cada uno: { [jugador] = carril }, y si están todos en la misma
+local function Lanes(p)
+    local out, first, same = {}, nil, true
+    for _, q in ipairs(p) do
+        if q.online then
+            out[q.name] = q.HU:ChannelLane()
+            first = first or out[q.name]
+            if out[q.name] ~= first then same = false end
+        end
+    end
+    return out, same and first or nil
 end
 
 local function Count(list, text)
@@ -115,6 +130,130 @@ describe("Escenarios: el enlace se va", function()
         p[5]:Say("sigue funcionando")
         net:Advance(5)
         A.equal(1, Count(new:Heard(p[5], "main"), "sigue funcionando"))
+        A.same({}, net:Errors())
+    end)
+end)
+
+-- Lo que el addon le ha escrito en el chat a un jugador, todo junto
+local function ChatOf(q)
+    local t = {}
+    for _, c in ipairs(q.w.chat) do t[#t + 1] = tostring(c.msg) end
+    return table.concat(t, "\n")
+end
+local function LanesText(p)
+    local t = {}
+    for k, v in pairs((Lanes(p))) do t[#t + 1] = k .. "=" .. v end
+    table.sort(t)
+    return table.concat(t, " ")
+end
+
+describe("Escenarios: menciones", function()
+    it("@Nombre-Apellido avisa a esa persona; @todos solo vale de un oficial", function()
+        local net, p = Community(2, 2)
+        local jaa, jab, jba, jbb = p[1], p[2], p[3], p[4]
+        local function Marked(q, mark)
+            for _, c in ipairs(q.w.chat) do
+                if tostring(c.msg):find(q.HU.MENTION_MARK[mark], 1, true) then return true end
+            end
+            return false
+        end
+        jbb:Say("@Jaa-Reino mira esto")
+        net:Advance(5)
+        A.truthy(Marked(jaa, "me"), "a Jaa la mencionan")
+        A.falsy(Marked(jab, "me"), "a Jab no")
+        A.equal("me", jaa.HU:MentionsMe("hola @jaa reino", "Jbb-Reino", "G2"))
+        A.falsy(jaa.HU:MentionsMe("hola @Jaa", "Jbb-Reino", "G2"), "solo con el nombre no")
+        jbb:Say("@todos de un miembro")
+        net:Advance(5)
+        A.falsy(Marked(jab, "all"), "un miembro no puede llamar a todos")
+        jba:Say("@todos de un oficial")
+        net:Advance(5)
+        A.truthy(Marked(jab, "all"), "un oficial sí")
+        -- (y el color de una mención de otro de la comunidad)
+        A.matches("|cff7fd4ff@Jbb%-Reino|r", jaa.HU:HighlightMentions("hola @Jbb-Reino", "Jba-Reino", "G2"))
+        A.same({}, net:Errors())
+    end)
+end)
+
+describe("Escenarios: sonda del canal (/gu sonda)", function()
+    it("cada uno dice cuántos mensajes de la sonda le han llegado", function()
+        local net, p = Community(2, 2)
+        A.matches("Sonda: mandando 5", p[1]:Gu("sonda 5"))
+        net:Advance(30)
+        A.matches("Sonda terminada: el juego aceptó 5 de 5", ChatOf(p[1]))
+        A.matches("te han llegado 5 de 5", ChatOf(p[3]))
+        A.matches("La sonda solo la pueden mandar", p[2]:Gu("sonda 5"))
+        A.same({}, net:Errors())
+    end)
+
+    it("si el juego rechaza el canal, la sonda lo dice", function()
+        local net, p = Community(2, 1)
+        net.channelRefuse = true
+        p[1]:Gu("sonda 3")
+        net:Advance(15)
+        A.matches("aceptó 0 de 3", ChatOf(p[1]))
+        A.falsy(ChatOf(p[2]):find("te han llegado", 1, true))
+    end)
+end)
+
+describe("Escenarios: salas del canal (carriles)", function()
+    it("subir a mano: un oficial lo propone, otro lo confirma y se muda toda la comunidad", function()
+        local net, p = Community(2, 3, 2)
+        local ofi1, ofi2 = p[1], p[2]
+        A.matches("Propuesta enviada", ofi1:Gu("carril subir"))
+        net:Advance(2)
+        A.matches("carril confirmar", ChatOf(ofi2))
+        A.matches("Carril subido", ofi2:Gu("carril confirmar"))
+        local all = net:AdvanceUntil(function() local _, same = Lanes(p) return same == 1 end, 300)
+        A.truthy(all, "no se ha mudado todo el mundo: " .. LanesText(p))
+        -- (en la sala nueva el chat sigue llegando)
+        net:Advance(60)
+        p[5]:Say("desde la sala 1")
+        net:Advance(5)
+        A.equal(1, Count(p[3]:Heard(p[5], "main"), "desde la sala 1"))
+        A.matches("Carril del canal: 1", p[4]:Gu("carril"))
+        A.same({}, net:Errors())
+    end)
+
+    it("sin otro oficial que confirme, «confirmar» no hace nada", function()
+        local net, p = Community(2, 2, 1)
+        A.matches("No hay ninguna propuesta", p[1]:Gu("carril confirmar"))
+        A.matches("Solo los maestros y oficiales", p[2]:Gu("carril subir"))
+        net:Advance(5)
+        local _, same = Lanes(p)
+        A.equal(0, same)
+    end)
+
+    it("reiniciar (escrito dos veces por un oficial) devuelve a todos a la sala principal", function()
+        local net, p = Community(2, 2, 2)
+        p[1]:Gu("carril subir"); net:Advance(2); p[2]:Gu("carril confirmar")
+        A.truthy(net:AdvanceUntil(function() local _, s = Lanes(p) return s == 1 end, 300), LanesText(p))
+        net:Advance(130) -- (como mucho un cambio cada 2 min por lo que digan otros)
+        A.matches("otra vez", p[3]:Gu("carril reiniciar"))
+        A.matches("Carril reiniciado", p[3]:Gu("carril reiniciar"))
+        A.truthy(net:AdvanceUntil(function() local _, s = Lanes(p) return s == 0 end, 300), "no han vuelto todos a la 0: " .. LanesText(p))
+        A.same({}, net:Errors())
+    end)
+
+    it("con la sala fijada en la Información (GU:l:2) todos van a la 2 y no se puede cambiar", function()
+        local net, p = Community(2, 2, 2, "GU:l:2")
+        local _, same = Lanes(p)
+        A.equal(2, same, LanesText(p))
+        A.matches("fijada", p[1]:Gu("carril subir"))
+        net:Advance(5)
+        p[3]:Say("en la sala fijada")
+        net:Advance(5)
+        A.equal(1, Count(p[1]:Heard(p[3], "main"), "en la sala fijada"))
+        A.same({}, net:Errors())
+    end)
+
+    it("si el canal lo rechaza todo 5 minutos y lo confirma el enlace de la otra hermandad, se sube solo", function()
+        local net, p = Community(2, 2, 2)
+        net:Advance(600) -- (los rechazos no cuentan hasta 10 min después de la pantalla de carga)
+        net.channelRefuse = true
+        local moved = net:AdvanceUntil(function() local _, s = Lanes(p) return s == 1 end, 900, 5)
+        A.truthy(moved, "no se ha subido de sala: " .. LanesText(p))
+        net.channelRefuse = false
         A.same({}, net:Errors())
     end)
 end)

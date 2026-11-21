@@ -195,6 +195,9 @@ function Net:Check(_, _, _, dist, target)
         local q = self:Find(target)
         if not q or not q.online then return 12 end
     end
+    -- (net.channelRefuse: el juego rechaza lo del addon por los canales, resultado 7; lo que pasó
+    -- en Forever la noche del lanzamiento y por lo que existen los carriles)
+    if dist == "CHANNEL" and self.channelRefuse then return 7 end
     return 0
 end
 
@@ -335,6 +338,15 @@ end
 -- Escribe en el chat (/g por defecto), como desde la caja de texto: pasa por el SendChatMessage del juego
 function Player:Say(msg, kind, target)
     self.env.SendChatMessage(msg, kind or "GUILD", nil, target)
+end
+
+-- Escribe «/gu texto» y devuelve lo que el addon le ha escrito en el chat
+function Player:Gu(text)
+    local before = #self.w.chat
+    self.env.SlashCmdList.HERMANDADUNIDA(text)
+    local out = {}
+    for i = before + 1, #self.w.chat do out[#out + 1] = tostring(self.w.chat[i].msg) end
+    return table.concat(out, "\n")
 end
 
 -- Las líneas que este jugador tiene en el historial del addon de `author` (otro jugador)

@@ -304,7 +304,7 @@ HU.MAYBE_NIL = {
     presenceWrapped = true, staleCheck = true,
     infoPending = true, keyJPending = true, combatReplay = true, -- (Core, UI y Combat: esperan al fin del combate)
     -- el canal
-    chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true,
+    chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true, laneMoves = true,
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
     offCfg = true,
     -- la configuración de la comunidad

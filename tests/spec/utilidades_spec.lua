@@ -62,6 +62,29 @@ describe("Momentos que llegan por la red", function()
     end)
 end)
 
+describe("SplitMessage (mensajes largos por el canal)", function()
+    it("uno corto sale entero", function()
+        A.same({ "hola" }, HU.SplitMessage("hola", 10))
+    end)
+
+    it("se parte por el último espacio que cabe", function()
+        A.same({ "uno dos", "tres cuatro" }, HU.SplitMessage("uno dos tres cuatro", 12))
+    end)
+
+    it("una palabra más larga que el trozo se corta donde toque, sin partir letras", function()
+        local parts = HU.SplitMessage(string.rep("ñ", 10), 7)
+        A.same({ "ñññ", "ñññ", "ñññ", "ñ" }, parts)
+    end)
+
+    it("un enlace de objeto no se parte nunca", function()
+        local link = "|cff1eff00|Hitem:1234::::::::60:::::|h[Espada larga]|h|r"
+        local parts = HU.SplitMessage("mira " .. link .. " que buena", #link + 3)
+        A.same({ "mira", link, "que buena" }, parts)
+        local bare = "|Hspell:99|h[Golpe]|h"
+        A.same({ "a", bare }, HU.SplitMessage("a " .. bare, #bare + 1))
+    end)
+end)
+
 describe("Utf8Cut", function()
     it("no parte una letra de dos bytes", function()
         A.equal("ma", HU.Utf8Cut("mañana", 3)) -- (ñ ocupa los bytes 3 y 4)
