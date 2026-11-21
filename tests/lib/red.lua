@@ -259,6 +259,9 @@ function Net:DeliverChat(p, s)
     elseif kind == "CHANNEL" then
         local name = p.w.channels[tonumber(s.target)]
         if not name then return end
+        -- (net.channelTextDown: el texto de los canales no le llega a nadie, ni el eco a quien lo
+        -- escribe; lo oculto del addon sí, como lo visto en Forever)
+        if self.channelTextDown then return end
         for _, x in ipairs(self:InChannel(name)) do
             x.q.w:Fire("CHAT_MSG_CHANNEL", s.msg, p.full, "", x.id .. ". " .. name, "", "", 0, x.id, name, 0, self.line, guid)
         end

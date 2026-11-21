@@ -125,6 +125,7 @@ dice: |cff33ff99Comunidad de prueba|r: Tu hermandad: Hermandad Uno <UNO>
 dice: |cff33ff99Comunidad de prueba|r: Hermandades permitidas (2): |cff33ff99Hermandad Uno|r <UNO>, |cff66b7ffHermandad Dos|r <DOS>
 dice: |cff33ff99Comunidad de prueba|r: |cffff8800Aviso: la línea GU:c está en la Información de hermandad y la puede leer cualquiera. Pásala a la nota de oficial del maestro.|r
 dice: |cff33ff99Comunidad de prueba|r: Canal: Ca···· (/1) - |cff44ff44conectado|r
+dice: |cff33ff99Comunidad de prueba|r: Oficiales: sin configurar (nota de oficial GU:o:Canal:clave)
 dice: |cff33ff99Comunidad de prueba|r: Con el addon en tu hermandad: 1.  Enlace de tu hermandad: Tester-Reino
 dice: |cff33ff99Comunidad de prueba|r: Cola de envío: |cff44ff44vacía|r
 dice: |cff33ff99Comunidad de prueba|r:   <DOS> contacto: |cffff8800ninguno todavía|r  - |cffff8800sin lista|r
@@ -135,6 +136,7 @@ dice: |cff33ff99Comunidad de prueba|r: Tu hermandad: Hermandad Uno <UNO>
 dice: |cff33ff99Comunidad de prueba|r: Hermandades permitidas (2): |cff33ff99Hermandad Uno|r <UNO>, |cff66b7ffHermandad Dos|r <DOS>
 dice: |cff33ff99Comunidad de prueba|r: |cffff8800Aviso: la línea GU:c está en la Información de hermandad y la puede leer cualquiera. Pásala a la nota de oficial del maestro.|r
 dice: |cff33ff99Comunidad de prueba|r: Canal: Ca···· (/1) - |cff44ff44conectado|r
+dice: |cff33ff99Comunidad de prueba|r: Oficiales: sin configurar (nota de oficial GU:o:Canal:clave)
 dice: |cff33ff99Comunidad de prueba|r: Con el addon en tu hermandad: 1.  Enlace de tu hermandad: Tester-Reino
 dice: |cff33ff99Comunidad de prueba|r: Cola de envío: |cff44ff44vacía|r
 dice: |cff33ff99Comunidad de prueba|r:   <DOS> contacto: |cffff8800ninguno todavía|r  - |cffff8800sin lista|r
@@ -272,11 +274,11 @@ llama: Trim ShowErrors
 llama: Trim ClearAllErrors
 dice: |cff33ff99Comunidad de prueba|r: Errores borrados: 0 tuyos y 0 recibidos.
 == /gu errores pedir
-llama: Trim CanOfficer Print
-dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden pedir los errores de todos.
+llama: Trim CanOfficer AskErrors Print
+dice: |cff33ff99Comunidad de prueba|r: No se pueden pedir los errores: contraseña incorrecta   (uso: /gu errores pedir contraseña)
 == /gu errores pedir clave
-llama: Trim CanOfficer Print
-dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden pedir los errores de todos.
+llama: Trim CanOfficer Trim AskErrors Print
+dice: |cff33ff99Comunidad de prueba|r: Errores pedidos a todos. Irán llegando en el próximo medio minuto (/gu errores para verlos).
 == /gu diag
 llama: Trim OrdersDiag DiagLines UI.ShowCopy
 dice: |cff33ff99Comunidad de prueba|r: /GINVITE: el juego aún no lo ha cargado
@@ -344,17 +346,17 @@ dice: |cff33ff99Comunidad de prueba|r: Esta versión es solo de chat: las listas
 llama: Trim Print
 dice: |cff33ff99Comunidad de prueba|r: Esta versión es solo de chat: las listas completas no se pueden activar.
 == /gu confirmar
-llama: Trim CanOfficer Print
-dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+llama: Trim CanOfficer Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)
 == /gu confirm DOS
-llama: Trim CanOfficer Print
-dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+llama: Trim CanOfficer Trim ConfirmRoster Print
+dice: |cff33ff99Comunidad de prueba|r: Aún no tengo la lista de <DOS>: espera a que llegue y vuelve a probar.
 == /gu confirmar UNO
-llama: Trim CanOfficer Print
-dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+llama: Trim CanOfficer Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)
 == /gu confirmar dos
-llama: Trim CanOfficer Print
-dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+llama: Trim CanOfficer Trim ConfirmRoster Print
+dice: |cff33ff99Comunidad de prueba|r: Aún no tengo la lista de <DOS>: espera a que llegue y vuelve a probar.
 == /gu version
 llama: Trim Print
 dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu|r  abre o cierra el panel
@@ -508,10 +510,10 @@ llama: Trim RemoveNetGuild Print
 dice: |cff33ff99Comunidad de prueba|r: |cffff6060solo el maestro de la hermandad principal y los gestores pueden hacerlo|r
 == /gu notacanal
 llama: Trim ShowChannelNoteLine
-dice: |cff33ff99Comunidad de prueba|r: Solo para quien puede ver las notas de oficial.
+dice: |cff33ff99Comunidad de prueba|r: No hay canal guardado todavía.
 == /gu channelnote
 llama: Trim ShowChannelNoteLine
-dice: |cff33ff99Comunidad de prueba|r: Solo para quien puede ver las notas de oficial.
+dice: |cff33ff99Comunidad de prueba|r: No hay canal guardado todavía.
 == /gu pasarcanal
 llama: Trim PassChannelTo
 dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no lo puedes pasar.
@@ -522,35 +524,35 @@ dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no
 llama: Trim PerfCommand
 == /gu language es
 llama: Trim SetLang
-======== como oficial ========
+======== como miembro ========
 == /gu errores pedir
-llama: Trim CanOfficer AskErrors Print
-dice: |cff33ff99Comunidad de prueba|r: No se pueden pedir los errores: contraseña incorrecta   (uso: /gu errores pedir contraseña)
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden pedir los errores de todos.
 == /gu errores pedir clave
-llama: Trim CanOfficer Trim AskErrors Print
-dice: |cff33ff99Comunidad de prueba|r: Errores pedidos a todos. Irán llegando en el próximo medio minuto (/gu errores para verlos).
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden pedir los errores de todos.
 == /gu confirmar
-llama: Trim CanOfficer Trim Print
-dice: |cff33ff99Comunidad de prueba|r: Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
 == /gu confirm DOS
-llama: Trim CanOfficer Trim ConfirmRoster Print
-dice: |cff33ff99Comunidad de prueba|r: Aún no tengo la lista de <DOS>: espera a que llegue y vuelve a probar.
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
 == /gu confirmar UNO
-llama: Trim CanOfficer Trim Print
-dice: |cff33ff99Comunidad de prueba|r: Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
 == /gu confirmar dos
-llama: Trim CanOfficer Trim ConfirmRoster Print
-dice: |cff33ff99Comunidad de prueba|r: Aún no tengo la lista de <DOS>: espera a que llegue y vuelve a probar.
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
 == /gu carril
-llama: Trim Me IsOfficerName LaneState Print LaneStatusText Print
+llama: Trim Me IsOfficerName CanOfficer LaneState Print LaneStatusText Print
 dice: |cff33ff99Comunidad de prueba|r: Carril del canal: 0 (generación 0)
 dice: |cff33ff99Comunidad de prueba|r: Subida automática: 0 s seguidos de rechazos (hacen falta 300) · confirmaciones 0 de 1 · rechazos sin contar por acabar de entrar: 0. Órdenes de sala de versiones viejas sin obedecer: 0. Nadie en otra sala, que yo sepa.
 == /gu carril reiniciar
-llama: Trim Me IsOfficerName LaneLock ProposeLane
-dice: |cff33ff99Comunidad de prueba|r: |cffff8800Esto devuelve a TODA la comunidad a la sala principal (la 0).|r Para confirmarlo, escribe lo mismo otra vez antes de 30 segundos.
+llama: Trim Me IsOfficerName CanOfficer LaneLock Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril.
 == /gu carril confirmar
-llama: Trim Me IsOfficerName LaneLock ConfirmLane
-dice: |cff33ff99Comunidad de prueba|r: No hay ninguna propuesta de cambio de sala pendiente.
+llama: Trim Me IsOfficerName CanOfficer LaneLock Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril.
 == /gu sonda 5
 llama: Trim SendProbe
 dice: |cff33ff99Comunidad de prueba|r: Sonda: mandando 5 mensajes ocultos por el canal (unos 6 s)…

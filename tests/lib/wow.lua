@@ -291,7 +291,8 @@ function wow.New(opts)
     end
     api.IsGuildLeader = function() return w.guild and w.guild.rankIndex == 0 or false end
     api.CanEditOfficerNote = function() return false end
-    api.CanViewOfficerNote = function() return false end
+    -- (los oficiales, rangos 0 a 2, ven las notas de oficial: lo mismo que su casilla «Oficial»)
+    api.CanViewOfficerNote = function() return w.guild ~= nil and (w.guild.rankIndex or 4) <= 2 end
     api.CanEditGuildInfo = function() return false end
     api.InCombatLockdown = function() return w.inCombat == true end
     -- (w.instance = "raid", "party", "pvp"...: dentro de una instancia de ese tipo)
@@ -418,7 +419,7 @@ function wow.New(opts)
     local RANK_NAMES = { "Maestro", "Oficial", "Oficial", "Veterano", "Miembro" }
     api.C_GuildInfo = {
         GuildRoster = function() return api.GuildRoster() end,
-        CanViewOfficerNote = function() return false end,
+        CanViewOfficerNote = function() return api.CanViewOfficerNote() end,
         GuildControlGetRankFlags = function(i)
             local flags = {}
             for k = 1, 24 do flags[k] = false end

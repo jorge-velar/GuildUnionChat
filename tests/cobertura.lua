@@ -35,7 +35,7 @@ do
     local i = 1
     while arg and arg[i] do
         local a = arg[i]
-        if a == "--base" or a == "--al-dia" then opts[a:sub(3)] = arg[i + 1]; i = i + 1
+        if a == "--base" or a == "--al-dia" or a == "--sin-probar" then opts[a:sub(3)] = arg[i + 1]; i = i + 1
         elseif a == "--actualizar" then opts.actualizar = true
         elseif a == "--forzar" then opts.forzar = true end
         i = i + 1
@@ -115,6 +115,36 @@ for _, file in ipairs(addon.LuaFiles()) do
 end
 table.sort(rows, function(a, b) return a.t > b.t end)
 local totalPct = 100 * covered / math.max(1, total)
+
+-- --sin-probar Archivo.lua: sus líneas sin probar, por función (de la que más tiene a la que menos)
+if opts["sin-probar"] then
+    local file = opts["sin-probar"]
+    local r = assert(byFile[file], "no conozco " .. file)
+    local src, fnOf, cur = {}, {}, "(fuera de funciones)"
+    local n = 0
+    for line in io.lines(root .. "/" .. file) do
+        n = n + 1
+        src[n] = line
+        local name = line:match("^%s*function%s+([%w_.:]+)") or line:match("^%s*local%s+function%s+([%w_]+)")
+            or line:match("^%s*([%w_.]+)%s*=%s*function") or line:match("RegisterMessage%(\"(%u+)\"")
+        if name then cur = name .. " (" .. n .. ")" end
+        fnOf[n] = cur
+    end
+    local by, order = {}, {}
+    for l in pairs(r.exe) do
+        if not r.hits[l] then
+            local f = fnOf[l]
+            if not by[f] then by[f] = {}; order[#order + 1] = f end
+            table.insert(by[f], l)
+        end
+    end
+    table.sort(order, function(x, y) return #by[x] > #by[y] end)
+    print(string.format("%s: %d de %d líneas sin probar", file, r.t - r.c, r.t))
+    for _, f in ipairs(order) do
+        table.sort(by[f])
+        print(string.format("%4d  %s", #by[f], f))
+    end
+end
 
 ---------------------------------------------------------------------------
 -- Mínimos por archivo

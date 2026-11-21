@@ -39,8 +39,8 @@ local INPUTS = {
     "language es",
 }
 
--- Y otra vez, ahora como oficial (CanOfficer), los que tienen una rama para oficiales
-local AS_OFFICER = {
+-- Y otra vez, ahora como miembro (sin CanOfficer: Tester es oficial), los que tienen una rama para oficiales
+local AS_MEMBER = {
     "errores pedir", "errores pedir clave", "confirmar", "confirm DOS", "confirmar UNO", "confirmar dos",
     "carril", "carril reiniciar", "carril confirmar", "sonda 5", "fijar Hola", "guardia revisar",
 }
@@ -68,13 +68,13 @@ local function Spy(HU)
     return log
 end
 
-local function Run(inputs, officer, out)
+local function Run(inputs, member, out)
     local a = F.Community()
     local HU, w = a.HU, a.w
-    if officer then
-        F.Stub(HU, "CanOfficer", true)
-        F.Stub(HU, "IsOfficerName", true)
-        out[#out + 1] = "======== como oficial ========"
+    if member then
+        F.Stub(HU, "CanOfficer", false)
+        F.Stub(HU, "IsOfficerName", false)
+        out[#out + 1] = "======== como miembro ========"
     end
     local log = Spy(HU)
     for _, input in ipairs(inputs) do
@@ -99,7 +99,7 @@ local function Run(inputs, officer, out)
 end
 local function RunAll()
     local out = Run(INPUTS, false, {})
-    return Run(AS_OFFICER, true, out)
+    return Run(AS_MEMBER, true, out)
 end
 
 local function ReadGolden()

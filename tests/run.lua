@@ -30,6 +30,7 @@ local SPECS = {
     "spec/registro_spec",
     "spec/combate_spec",
     "spec/datos_spec",
+    "spec/escenarios_spec",
     "spec/strict_spec", -- (la última: mira lo que han leído todas las demás)
 }
 for _, name in ipairs(SPECS) do
