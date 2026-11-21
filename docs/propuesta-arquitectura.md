@@ -276,7 +276,7 @@ cierra cuando se cumple su «hecho cuando».
 2. **Completar el formato con mensajes reales**: lo principal ya está (`formato_spec`). Falta añadir
    mensajes grabados en el juego con `/gu registro` (`tests/golden/entrada/`, cada uno con su efecto
    esperado) para las órdenes que el escenario no provoca y para versiones sin etiqueta en git
-   (antes de la 5.4.35).
+   (hay etiquetas de la 5.4.12 a la 5.4.41, con huecos: 5.4.13–5.4.28, 5.4.34, 5.4.38 y 5.4.39).
 3. **G**: borrar las órdenes muertas de las tablas, la rama de `HU.whitelist` y sus pruebas «rama
    muerta», las ramas de `CHAT_ONLY`/`IsTest`/`SimpleMode`/`LaunchPhase` y UIStubs.lua si ya nada lo usa.
 4. `HU.comm = {}` en Core.lua; `CW`/`CG`/`CF` se registran al cargar Channel.lua. Hay que cambiar la
