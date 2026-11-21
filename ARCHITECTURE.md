@@ -64,6 +64,162 @@ vería el chat, el fijado y el canal de la comunidad de otro personaje de la mis
 (dentro de lo de la cuenta, un apartado por personaje: así funciona aunque el juego no se
 haya reiniciado tras actualizar, que es cuando lee los archivos guardados nuevos)
 
+## Protocol.lua
+
+### Registro de órdenes: `HU:RegisterMessage`
+
+Cada orden de red (prefijos HU20 y HU20B) se declara una vez, junto a su manejador, con todo lo
+suyo; lo leen la seguridad (`AllowAddonMessage`), la cola (`HU:Send`), el combate
+(`HU.CombatDispatch`) y `/gu diag`. Antes cada cosa estaba en su tabla (hasta 6 por orden, en
+Comm.lua y Combat.lua) y, si faltaba una, no había error: el mensaje iba a la cola por defecto, se
+rechazaba o en combate se trataba distinto, sin avisar.
+
+```lua
+HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat", ttl = 60,
+    handler = function(self, sender, f, dist) --[[ f.chan, f.author, f.line ]] end })
+```
+
+| Clave | Qué es | Sin declarar |
+|---|---|---|
+| `tagField` | campo con la etiqueta de la hermandad de la que habla el mensaje | sin etiqueta |
+| `bootstrap` | con la etiqueta de otra hermandad, vale de quien es de la comunidad; sin avalar, se retiene | no |
+| `open` | invitaciones de hermandades nuevas: vale de cualquiera por susurro (el manejador comprueba) | no |
+| `channel` | puede llegar por el canal oculto | no |
+| `remoteData` | datos de otra hermandad por GUILD: solo del enlace, sus ayudantes o un oficial | no |
+| `queue` | `chat`, `normal`, `mid`, `low` (HU20) o `bfast`, `bulk`, `bmid`, `blow` (HU20B) | `normal` |
+| `ttl` | segundos que puede esperar en la cola; `false` = no caduca (silencios y vetos) | 300 |
+| `latestWins` | uno nuevo con la misma orden, vía y destino sustituye al que espera | no |
+| `skipLocked` | con el chat bloqueado por el juego no se guarda (saludos y presentaciones) | no |
+| `combat` | en combate dentro de una instancia: `list`, `req`, `data` o `last` | se trata ya |
+| `fields` | nombres de los campos; `f.nombre` es `f[i]`, y el último con `*` es el resto con sus `~` | solo `f[i]` |
+| `handler` | el manejador (si no, el de `HU.comm[orden]` de siempre) | |
+
+- El nombre son 1 o 2 mayúsculas; una clave mal escrita, un valor del tipo que no es, una cola o un
+  tipo de combate desconocidos, `bootstrap`/`remoteData` sin `tagField`, un `*` que no es el último
+  o una orden registrada dos veces dan error al cargar (y las pruebas lo ven).
+- Los campos con nombre no crean otra tabla: la entrada pone una metatabla compartida en la de
+  `HU.Split`. Siguen valiendo `f[i]` y `table.concat(f, "~", i)`.
+- Los manejadores siguen en `HU.comm[orden]`: varios archivos envuelven el de otro (`PQ`, `CP`,
+  `RC`, `HI`...). Por eso el registro no exige `handler`.
+- `tests/spec/registro_spec.lua` fija que lo declarado da exactamente las tablas de la 5.4.41 y que
+  toda orden con manejador está registrada (y al revés).
+
+## Core.lua · módulos y avisos
+
+### Módulos: `HU:Module` al final de cada archivo
+
+Cada archivo del .toc acaba con `HU:Module("Net/Relay", { "Channel", "Comm", … })`: su nombre (la
+ruta sin `.lua`) y los archivos que definen las funciones de `HU` que llama.
+
+- Va **al final** porque así solo consta si el archivo ha cargado entero.
+- Al entrar (`PLAYER_LOGIN`, antes de los `OnStart`), `HU:CheckModules()` mira que esté todo lo
+  necesitado. Lo que falte sale en `/gu errores`, con quién lo necesita.
+- La lista no se escribe a mano: `tests/lib/modulos.lua` la calcula y `modulos_spec` exige que lo
+  declarado sea exactamente eso. Una dependencia nueva hay que declararla, y así se ve en la PR.
+
+Por eso sobran las comprobaciones `HU.X and HU:X()` / `if HU.X then HU:X() end`:
+
+- todos los archivos se cargan siempre, en orden, y lo comprueba `CheckModules`;
+- esconden los nombres mal escritos (la llamada no se hace nunca, sin avisar).
+
+Se han quitado 185. `guardas_spec` no deja que vuelvan sobre una función que siempre existe, salvo
+las de su lista `JUSTIFIED`, con su motivo. Hoy solo hay una: `SyncCharSearch`, que no existe hasta
+que el juego carga su ventana de hermandad. Las de funciones del juego o de sus marcos (`IsShown`,
+`GetAtlasInfo`…) siguen: el juego puede no tenerlas.
+
+### Avisos entre módulos: `HU:Listen` / `HU:Fire`
+
+`HU:Fire("CHANGED", "members")` llama a todo lo que ha hecho `HU:Listen("CHANGED", fn)`, en orden.
+Cada uno va por `SafeCall`, como los eventos del juego: si uno falla, los demás siguen.
+
+Hoy lo usa `HU:Changed`, que antes llamaba a `HU.UI:MarkDirty` directamente y ahora avisa con
+`CHANGED`; lo escucha UI.lua. Los siguientes candidatos son los avisos que hoy son llamadas
+directas entre módulos (`RefreshConfig`, `RetryDeferred`…).
+
+### Lo guardado: `HU:Saved`
+
+Cada módulo declara sus claves al principio de su archivo:
+
+```lua
+HU:Saved({ account = { bans = {}, loginHistory = false }, char = { history = {}, "offlineT" } })
+```
+
+- `account` es para toda la cuenta y `char`, para cada personaje.
+- `clave = valor` le da un valor por defecto; la clave sola, sin valor.
+- Core.lua junta las declaraciones en `HU.PER_CHAR` y en sus valores por defecto. Antes eran dos
+  listas a mano en Core.lua: `DEFAULTS` y `PER_CHAR`.
+- Una clave declarada dos veces es un error.
+- `datos_spec` fija que lo declarado da exactamente lo de la 5.4.41.
+
+## Core.lua · lo que se repite
+
+### Planificador: `HU:Every`
+
+```lua
+HU:Every(15, "listas-ciclo", function() HU:RosterCycle() end, { pauseInCombat = false, maxFailures = nil, times = nil })
+```
+
+Todo lo que se repite pasa por aquí: ya no hay `HU.NewTicker`. Cada tarea lleva un nombre, que sale
+en `/gu errores` si falla y en `/gu perf` con sus veces y su tiempo (`HU:TaskLines()`).
+
+- **Cada tarea sigue teniendo su propio temporizador del juego**, como antes. Uno solo para todas
+  cambiaría en qué momento corre cada una, y eso ya sería un cambio de comportamiento.
+- Un fallo no la para (`SafeCall`), salvo con `maxFailures`. `pauseInCombat` no la hace mientras
+  `HU:CombatHold()`, la regla de combate de siempre.
+- Las 40 que había llevan las dos opciones apagadas, porque hacían lo mismo sin ellas. Las que ya
+  miraban el combate lo siguen haciendo dentro.
+- `HU.After` se queda como está: no se repite y se usa mucho con 0 s para repartir trabajo entre
+  fotogramas.
+
+## Core.lua · lo guardado
+
+### Migraciones: `HU:RegisterMigration` y `HU:RunMigrations`
+
+Lo guardado tiene dos ámbitos con su número de esquema: la cuenta (`adb.schema`, que también es
+`db.schema`) y cada personaje (`cdb.schema`, dentro de `adb.chars`). Cada migración es un paso de
+un número al siguiente:
+
+```lua
+HU:RegisterMigration("char", 1, "de la cuenta al personaje", function(adb, cdb, info)
+    if not info then return false end -- (necesita la Información: se vuelve a probar)
+    …
+    return true
+end)
+```
+
+- Se ejecutan al cargar el addon (`ADDON_LOADED`, con `info = nil`) y cada vez que se lee la
+  Información de la hermandad (`RefreshConfig`, con `info = { guild, text }`). Una que devuelve
+  `false` se queda para la siguiente, y las de detrás esperan.
+- Ejecutar una dos veces no estropea nada.
+- **Lo guardado por una versión más nueva** (un esquema mayor que el número de migraciones que
+  conoce esta) no se toca: se avisa en `/gu errores` y no se migra nada de ese ámbito.
+- La 1 del personaje es la que antes hacía `RefreshConfig` con la marca suelta `cdb.migrated`:
+  copia al personaje lo que versiones viejas guardaban para la cuenta (canal, fijado, notas…), solo
+  si era de su hermandad. Sigue poniendo `cdb.migrated`, que miran las versiones de antes.
+- `tests/spec/datos_spec.lua`: cada caso de la migración 1, la versión más nueva, y lo que guarda
+  la última versión publicada en un rato de juego (`tests/lib/escenario.lua`), que al actualizar no
+  pierde ninguna clave y con lo que se puede volver a la versión de antes.
+
+## Core.lua · comandos
+
+### Registro de los comandos /gu: `HU:RegisterSlash`
+
+```lua
+HU:RegisterSlash("cola", { aliases = { "queue" }, help = "|cffffd100/gu cola|r  …",
+    available = nil, fn = function(arg, rawArg, cmd) … end })
+```
+
+- `fn` recibe el argumento en minúsculas, tal cual y el nombre del comando (no el alias:
+  `/gu search` llega como `buscar`).
+- `available`: el comando depende de algo que puede no estar cargado (`OpenWizard`,
+  `ShowGuildsWindow`…); si devuelve falso, sale la ayuda, como un comando que no existe.
+- La ayuda son las líneas `help` de todos, **en el orden en que se registran**. Una entrada sin `fn`
+  solo pone su línea en la ayuda (`/hg`, que es otro comando, y la segunda línea de `/gu carril`).
+- Un nombre o alias repetido, una clave que no existe o en mayúsculas dan error al cargar.
+- `tests/spec/slash_spec.lua` ejecuta todos los comandos y alias y compara con
+  `tests/golden/comandos.txt` (a qué funciones de `HU` llama cada uno y qué escribe). Un comando
+  nuevo hay que añadirlo a su lista `INPUTS` (una prueba lo exige) y rehacer la referencia.
+
 ## Perf.lua
 
 ### línea 1 · `local _, HU = ...`
@@ -436,6 +592,24 @@ Banco, 3×1000 de la 1145: 32 fotogramas así. Ahora se suma lo gastado en el fo
 llegar al tope, lo que queda espera al siguiente)
 
 ## Comm.lua
+
+> [!note] Comm.lua partido (paso 3 de docs/propuesta-arquitectura.md)
+> Las notas de este apartado son del Comm.lua entero, con sus números de línea de entonces. Hoy está
+> repartido, en este orden de carga y sin cambiar nada del código:
+>
+> | Archivo | Qué hay | Líneas del Comm.lua de antes |
+> |---|---|---|
+> | `Comm.lua` | contactos (`guildPeers`, `remote`, el índice por etiqueta) y las listas guardadas al salir | 1-136 |
+> | `Net/Transport.lua` | la cola de envío, `HU:Send`, los prefijos y los susurros a desconectados | 138-459 |
+> | `Domain/Trust.lua` | estados de las listas (`b`/`m`/`p`/`c`), anclas, contactos comprobados, `SenderKind`, `BestPeers` | 1015-1457 |
+> | `Net/Relay.lua` | el enlace y sus ayudantes, saludos (`HI`/`HR`/`HY`/`RA`), presentaciones, carriles (`LN`…) y los ciclos | 461-1013, 1459-2121 y 3690-4000 |
+> | `Net/RosterSync.lua` | listas de conectados: enteras (`RB`), cambios (`RC`), peticiones (`RF`, `NQ`), huellas | 2123-3386 |
+> | `Net/Security.lua` | `AllowAddonMessage`, `Vouched`, `Hold`/`ReplayHeld`, `Admit`, `PartialAdmit` y la entrada (`HU.OnAddonMessage`) | 3388-3688 |
+>
+> Lo que comparten se pasa por `HU`: `HU.netPerf` (las medidas de este ordenador), `HU.VOUCH_TTL`,
+> `HU.ReshareRoster`, `HU:BulkQueueSize()` y `HU.QueueTick` (el cupo de la cola, que cada segundo
+> llama el temporizador de los ciclos). Los bloques `do … end` que había solo para no pasar de 200
+> variables locales ya no hacen falta y se han quitado.
 
 ### línea 5 · `HU.guildPeers = {}     -- [clave] = { name, last, mod, ver }  usuarios del addon en mi her`
 
@@ -1147,7 +1321,11 @@ terminar de llegar se vuelven a aplicar, porque la entera los pisaría)
 entera ya a quien manda los cambios, en vez de esperar dos presentaciones (~10 min). Solo
 quien recibió el susurro, para no pedirla todos a la vez)
 
-### línea 3582 · `local TAG_FIELD = { HI = 2, HR = 2, WH = 1, WL = 1, WD = 1, RB = 1, RC = 1, RN = 1, PB = 1`
+### `HU:AllowAddonMessage` · las marcas de seguridad
+
+Las marcas (`tagField`, `bootstrap`, `open`, `channel`, `remoteData`) las declara cada orden en su
+`HU:RegisterMessage` (ver Protocol.lua); antes eran las tablas `TAG_FIELD`, `BOOTSTRAP`, `OPEN`,
+`CHANNEL_OK` y `REMOTE_DATA` de Comm.lua.
 
 Seguridad de los mensajes del addon
   * Por GUILD solo llegan mensajes de compañeros de hermandad (lo garantiza el juego).
@@ -1157,7 +1335,7 @@ Seguridad de los mensajes del addon
   * Los datos de una hermandad (listas, rangos, fichas, desconectados) solo se aceptan
     de alguien que está en la lista de ESA hermandad.
 
-### línea 3605 · `local CHANNEL_OK = { RA = true, LP = true }`
+### `channel = true` · lo que puede llegar por el canal oculto (RA y LP)
 
 Por el canal oculto solo van la presentación del enlace y la sonda del carril (el chat va con su
 propio prefijo, en Channel.lua). Nada del addon va por grupo, banda o campo de batalla: antes se
@@ -2073,9 +2251,12 @@ se deja para después; lo que llega se guarda (como mucho la última lista por h
 al salir, por la entrada normal (con todas sus comprobaciones) y en trozos de ≤1 ms por fotograma.
 Además, el enlace o un ayudante que entra en una instancia cede el papel hasta salir de ella.
 
-### línea 20 · `local DEFER_IN = {`
+### `combat = ...` · lo que llega y se aplaza (antes `DEFER_IN`)
 
-lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones
+lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones,
+"last" = de cada uno, la última. Lo declara cada orden en su `HU:RegisterMessage`; la entrada
+(`HU.OnAddonMessage`) llama a `HU.CombatDispatch` con esas órdenes. Antes, Combat.lua envolvía al
+cargarse los manejadores de `HU.comm` de las órdenes de `DEFER_IN`.
 (los cambios pequeños de las listas, RC, NO se aplazan: con ellos llega al momento quién de los que se
 comparten, GM, oficiales, enlace y ayudantes, entra o sale; tiene que verse en <1 s, como el chat)
 

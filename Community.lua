@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "customEmotes", "guildColors", "managers", "netGuilds" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local pending = {}   -- invitaciones que he mandado: [id] = { contact, tag, t }
@@ -41,7 +43,7 @@ function HU:MergeNetGuilds(cfg)
     end
 end
 
--- Ancla de confianza de cada hermandad (ver HU:AnchorValid en Comm.lua): quien aceptó su invitación,
+-- Ancla de confianza de cada hermandad (ver HU:AnchorValid en Domain/Trust.lua): quien aceptó su invitación,
 -- o quien invitó a la mía. Va en la invitación (GA/GL) y, para las demás, en NG (campo 8).
 function HU:Anchors()
     self.db.anchors = self.db.anchors or {}
@@ -120,7 +122,7 @@ function HU:IsPrincipalMaster()
 end
 -- ¿Puedo invitar hermandades? (el maestro de la principal, o un gestor que sea oficial de la suya)
 function HU:CanInvite()
-    if not self.myTag or self:IsTest() then return false end
+    if not self.myTag then return false end
     return self:IsPrincipalMaster() or (self:CanPin() and self:IsManager(self:Me()))
 end
 -- ¿Ese autor (de otra hermandad o de la mía) puede meter o sacar hermandades? Comprobado por rango.
@@ -171,6 +173,7 @@ function HU:SetManager(name, add)
     return true
 end
 
+HU:RegisterMessage("MG")
 HU.comm.MG = function(self, sender, f, dist, raw)
     local t, by, byTag, list = HU.NetT(f[1]), f[2], f[3], f[4] or ""
     if not t or not by or by == "" or not byTag or byTag ~= self:PrincipalTag() then return end
@@ -192,10 +195,11 @@ HU.comm.MG = function(self, sender, f, dist, raw)
         end
     end
     -- (lo que esperaba a saber quién es gestor: altas y bajas de hermandades)
-    if self.RetryDeferred then self:RetryDeferred() end
+    self:RetryDeferred()
     if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
 end
 
+HU:RegisterMessage("NG")
 HU.comm.NG = function(self, sender, f, dist, raw)
     local tag, name, on, by, byTag, t = f[1], CleanName(f[2]), f[3] == "1", f[4], f[5], HU.NetT(f[6])
     if not tag or not tag:match("^%w+$") or #tag > 6 or name == "" or not t then return end
@@ -256,7 +260,6 @@ end
 --   GA~id~1|0~nombre o motivo         respuesta
 ---------------------------------------------------------------------------
 function HU:InviteGuild(contact, tag)
-    if self:IsTest() then return false, L("no se puede en modo prueba") end
     if not self.myTag or not self.cfg then return false, L("tu hermandad no está configurada") end
     if not self:CanInvite() then return false, L("solo el maestro de la hermandad principal y los gestores pueden invitar hermandades") end
     contact = HU.Trim(contact or "")
@@ -285,8 +288,9 @@ function HU:InviteGuild(contact, tag)
 end
 
 -- Me invitan a mí
+HU:RegisterMessage("GV", { open = true })
 HU.comm.GV = function(self, sender, f, dist)
-    if dist ~= "WHISPER" or self:IsTest() then return end
+    if dist ~= "WHISPER" then return end
     local id, tag, title, fromGuild = f[1], (f[2] or ""):upper(), HU.CleanTitle(f[3]), CleanName(f[4])
     if not id or not tag:match("^%w+$") or #tag > 6 then return end
     local function no(why) self:Whisper(sender, table.concat({ "GA", id, "0", why }, "~"), true) end
@@ -324,6 +328,7 @@ HU.Dialogs.GU_JOIN = HU.LT({
 })
 
 -- Respuesta a mi invitación
+HU:RegisterMessage("GA", { open = true })
 HU.comm.GA = function(self, sender, f, dist)
     if dist ~= "WHISPER" then return end
     local id, ok, info = f[1], f[2] == "1", f[3]
@@ -394,6 +399,7 @@ HU.comm.GA = function(self, sender, f, dist)
 end
 
 -- Me llega la configuración después de aceptar
+HU:RegisterMessage("GL", { open = true })
 HU.comm.GL = function(self, sender, f, dist)
     if dist ~= "WHISPER" or not joining or not self:SameName(sender, joining.from) or f[1] ~= joining.id then return end
     local i, n = tonumber(f[2]), tonumber(f[3])
@@ -509,7 +515,7 @@ function HU:ApplyJoin(j, data)
     if chan and chan ~= "" then
         self.db.netChan = { channel = chan, pass = (pass ~= "" and pass) or nil, t = HU.StampNow(), by = self:Me(), tag = self.myTag }
         self:RefreshConfig(true)
-        if self.ShareNetChan then self:ShareNetChan() end
+        self:ShareNetChan()
     end
     self:AddAudit({ tag = self.myTag, actor = self:Me(), text = L("unió la hermandad a la comunidad ") .. (title or "") }, "all")
     self:Print(L("|cff44ff44Tu hermandad ya forma parte de ") .. self:Title() .. L(".|r Los miembros con el addon se conectarán solos."))
@@ -518,7 +524,7 @@ end
 -- el enlace recuerda las hermandades añadidas cada 30 minutos (Guild Union 20) y a quien entra
 HU:OnStart(function()
     -- (una hermandad cada 0,2 s: todas a la vez pasaba de 8 ms con muchas hermandades)
-    HU.NewTicker(1800, function()
+    HU:Every(1800, "comunidad-repartir", function()
         if not HU.myTag or not HU:IsRelay() then return end
         for i, tag in ipairs(HU:OtherTags()) do
             HU.After(i * 0.2, function()
@@ -556,6 +562,7 @@ HU.GUILD_PALETTE = HU.LT({
 
 local function GCMsg(tag, c) return table.concat({ "GC", tag, c.hex or "", c.by or "", c.byTag or "", c.t or 0 }, "~") end
 
+HU:RegisterMessage("GC")
 HU.comm.GC = function(self, sender, f, dist, raw)
     local tag, hex, by, byTag, t = f[1], f[2], f[3], f[4], HU.NetT(f[5])
     if not tag or not t or (hex ~= "" and not hex:match("^%x%x%x%x%x%x$")) then return end
@@ -615,6 +622,7 @@ local function AnnounceAdded(code, path, by)
 end
 HU.AnnounceEmote = AnnounceAdded
 
+HU:RegisterMessage("EM", { queue = "mid" }) -- (los emoticonos pueden ser 150: sin prisa)
 HU.comm.EM = function(self, sender, f, dist, raw)
     local code, path, by, byTag, t = f[1], f[2] or "", f[3], f[4], HU.NetT(f[5])
     if not ValidCode(code) or not t or (path ~= "" and not ValidPath(path)) then return end
@@ -637,7 +645,7 @@ HU.comm.EM = function(self, sender, f, dist, raw)
             if peer then self:Whisper(peer.name, raw) end
         end
     end
-    if self.ResetEmoteCache then self:ResetEmoteCache() end
+    self:ResetEmoteCache()
 end
 
 -- quien entra recibe los emoticonos
@@ -648,3 +656,5 @@ HU.comm.PQ = function(self, sender, ...)
         for code, e in pairs(self.db.customEmotes or {}) do self:Whisper(sender, EMMsg(code, e)) end
     end
 end
+
+HU:Module("Community", { "Audit", "Channel", "Channels", "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "NoteConfig", "Pinned", "Popup", "Protocol" })

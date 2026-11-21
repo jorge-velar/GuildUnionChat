@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "chatShow" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 -- (copia 87: el addon ya no crea pestañas ni cambia la caja de escribir; solo reconoce por su nombre
@@ -132,7 +134,7 @@ local function TabMenu(owner, root)
     end
     item("main", L("Otras hermandades"))
     if HU.offCfg and HU:CanOfficer() then item("off", L("Oficiales de la comunidad")) end
-    for _, x in ipairs(HU.ExtraChannels and HU:ExtraChannels() or {}) do
+    for _, x in ipairs(HU:ExtraChannels() or {}) do
         item("x:" .. x.name, x.name)
     end
 end
@@ -143,6 +145,8 @@ end
 -- Al abrir el chat (pulsar Intro lo hace el jugador): aquí el juego deja cambiar los canales de sitio
 if ChatFrameUtil and ChatFrameUtil.OpenChat then
     hooksecurefunc(ChatFrameUtil, "OpenChat", function()
-        if HU.FixChannelOrder then HU:SafeCall("orden de canales", HU.FixChannelOrder, HU) end
+        HU:SafeCall("orden de canales", HU.FixChannelOrder, HU)
     end)
 end
+
+HU:Module("ChatTabs", { "Channels", "Core", "Roster" })

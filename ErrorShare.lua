@@ -53,10 +53,11 @@ local function MyErrors(self)
     return out
 end
 
+HU:RegisterMessage("EQ")
 HU.comm.EQ = function(self, sender, f, dist, raw)
     local id, by, sig = f[1], f[2], f[3]
     if not id or not by or by == "" or not sig or seen[id] then return end
-    if not self:IsTest() and (self:TrustedOfficer(by) ~= true or not self:MayCarry(by, sender, dist)) then return end
+    if self:TrustedOfficer(by) ~= true or not self:MayCarry(by, sender, dist) then return end
     if not HU.RequestRate("EQ:" .. by) then return end
     seen[id] = true
     local real = Password()
@@ -82,6 +83,7 @@ HU.comm.EQ = function(self, sender, f, dist, raw)
     end)
 end
 
+HU:RegisterMessage("ER")
 HU.comm.ER = function(self, sender, f)
     local id, from, v, where, msg = f[1], f[2], f[3], f[4], f[5]
     if not myAsk or id ~= myAsk.id or time() - myAsk.t > ASK_WINDOW or not msg then return end
@@ -116,3 +118,5 @@ function HU:ClearReceivedErrors()
     if self.db then self.db.errIn = nil end
     return n
 end
+
+HU:Module("ErrorShare", { "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "Protocol" })

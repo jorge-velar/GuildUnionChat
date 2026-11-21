@@ -17,7 +17,7 @@ function HU:ChannelSlotLines()
             local what
             if id == mine then what = "COMUNIDAD (sala " .. tostring(self:ChannelLane()) .. ")"
             elseif kind then what = "nuestro (" .. tostring(kind) .. ")"
-            elseif HU.IsGameChannel and HU.IsGameChannel(name) then what = "del juego: " .. name
+            elseif HU.IsGameChannel(name) then what = "del juego: " .. name
             else what = "otro: " .. HU.MaskChannel(name) end
             out[#out + 1] = "  /" .. id .. "  " .. what
         end
@@ -113,7 +113,7 @@ function HU:ChannelIdLines(res)
     local get = _G.GetChannelName
     for i = 1, (get and (_G.MAX_WOW_CHAT_CHANNELS or 20) or 0) do
         local id, name = get(i)
-        if id and id > 0 and type(name) == "string" and not HU.Secret(name) and HU.IsGameChannel and HU.IsGameChannel(name) then
+        if id and id > 0 and type(name) == "string" and not HU.Secret(name) and HU.IsGameChannel(name) then
             local n = name:match("(%d+)%s*$")
             if n then shard = n break end
         end
@@ -145,15 +145,15 @@ end
 
 local function LaneLines(self, add)
     add("== SALA DEL CANAL ==")
-    local st = self.LaneState and self:LaneState()
+    local st = self:LaneState()
     add("sala " .. tostring(st and st.lane) .. " · generación " .. tostring(st and st.gen) .. " · cambios en esta sesión: " .. tostring(HU.laneMoves or 0))
-    add("sala fijada por la Información de hermandad (GU:l): " .. tostring((HU.LaneLock and HU:LaneLock()) or "no"))
+    add("sala fijada por la Información de hermandad (GU:l): " .. tostring((HU:LaneLock()) or "no"))
     local ls = HU.laneStats or {}
     add("rechazos del canal: " .. (ls.refused or 0) .. " · sin contar por acabar de entrar: " .. (ls.ignored or 0)
         .. " · órdenes de versiones viejas sin obedecer: " .. (ls.oldIgnored or 0))
     local raised = self.db and tonumber(self.db.laneRaisedT)
     add("última subida de sala: " .. (raised and HU.SafeDate("%d/%m %H:%M", raised) or "ninguna apuntada"))
-    local strays = self.LaneStrays and self:LaneStrays() or {}
+    local strays = self:LaneStrays() or {}
     add("en otra sala (oídos en los últimos 10 min): " .. #strays)
     for i = 1, math.min(#strays, 25) do
         local e = strays[i]
@@ -227,19 +227,19 @@ local function ExtraLines(self, add)
     local ps, parts = HU.pratStats or {}, {}
     for k, v in pairs(ps) do parts[#parts + 1] = tostring(k) .. "=" .. tostring(v) end
     table.sort(parts)
-    add("Prat: " .. ((HU.PratActive and HU.PratActive()) and "en uso" or "no") .. "  " .. table.concat(parts, " "))
-    add(tostring(self.WMStatus and self:WMStatus() or "Whisper Messenger: sin pestaña"))
+    add("Prat: " .. ((HU.PratActive()) and "en uso" or "no") .. "  " .. table.concat(parts, " "))
+    add(tostring(self:WMStatus() or "Whisper Messenger: sin pestaña"))
     add("== COLA DE ENVÍO ==")
     local q, qp = HU.qStats or {}, {}
     for k, v in pairs(q) do if type(v) ~= "table" then qp[#qp + 1] = tostring(k) .. "=" .. tostring(v) end end
     table.sort(qp)
-    add("en cola: " .. tostring(self.QueueSize and self:QueueSize() or 0) .. "  " .. table.concat(qp, " "))
+    add("en cola: " .. tostring(self:QueueSize() or 0) .. "  " .. table.concat(qp, " "))
 end
 
 function HU:FullReport()
     self:Print("Preparando el informe completo (3 s)...")
     self:ChannelCheck(function(res)
-        local lines = self.DiagLines and self:DiagLines() or {}
+        local lines = self:DiagLines() or {}
         local function add(l) lines[#lines + 1] = l end
         local function section(name, fn, ...)
             local ok, err = pcall(fn, self, ...)
@@ -256,7 +256,7 @@ function HU:FullReport()
         section("autores", AuthorLines, add)
         add("")
         section("extras", ExtraLines, add)
-        if HU.ReportMore then HU.ReportMore(self, add, section, res) end
+        HU.ReportMore(self, add, section, res)
         if self.UI and self.UI.ShowCopy then self.UI:ShowCopy("Guild Union - informe completo", table.concat(lines, "\n"))
         else for _, l in ipairs(lines) do self:Print(l) end end
     end)
@@ -270,7 +270,7 @@ local function Clock(t) return HU.SafeDate("%H:%M:%S", t) end
 -- Entradas y salidas MÍAS del canal de la comunidad en esta sesión (se mira cada 5 s)
 local chanTrack = { outs = 0, outSecs = 0, log = {} }
 HU:OnStart(function()
-    HU.NewTicker(5, function()
+    HU:Every(5, "informe-canal", function()
         if not HU.ready then return end
         local now, inside = GetTime(), HU:IsJoined("main")
         if chanTrack.state == nil then chanTrack.state, chanTrack.since = inside, now return end
@@ -380,7 +380,7 @@ local function GuildLines(self, add, res)
         else
             local r = self.remoteRoster and self.remoteRoster[tag]
             local contacts = {}
-            for _, p in ipairs((self.BestPeers and self:BestPeers(tag, 2)) or {}) do
+            for _, p in ipairs((self:BestPeers(tag, 2)) or {}) do
                 contacts[#contacts + 1] = tostring(p.name) .. " " .. tostring(p.ver or "?") .. (p.relay and " (enlace)" or "")
             end
             add("<" .. tostring(tag) .. ">: conectados que conozco " .. tostring(r and r.members and #r.members or 0)
@@ -565,3 +565,5 @@ function HU.OnTextProbeMsg(text, sender, localID, chanName)
             .. " · mi eco: " .. o.echo .. "/" .. PROBE_N .. (f[6] == "0" and " · mi aviso oculto no le llegó" or ""))
     end
 end
+
+HU:Module("Report", { "Channel", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "PratBridge", "WMPanel" })

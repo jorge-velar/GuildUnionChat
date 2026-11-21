@@ -81,10 +81,49 @@ function HU:On(event, fn)
     table.insert(handlers[event], fn)
 end
 
+-- Avisos entre módulos (bus interno), con nombres que no son eventos del juego [+ARCHITECTURE.md]
+local listeners = {}
+function HU:Listen(name, fn)
+    listeners[name] = listeners[name] or {}
+    table.insert(listeners[name], fn)
+end
+function HU:Fire(name, ...)
+    local list = listeners[name]
+    if not list then return end
+    for i = 1, #list do HU:SafeCall(name, list[i], ...) end
+end
+
+-- Módulos: cada archivo acaba con HU:Module(nombre, { los que necesita }). Como va al final, solo
+-- consta si el archivo ha cargado entero; al entrar se comprueba que está todo lo necesitado [+ARCHITECTURE.md]
+HU.modules = {} -- [nombre] = { needs }
+function HU:Module(name, needs)
+    if HU.modules[name] then error("módulo repetido: " .. tostring(name), 2) end
+    HU.modules[name] = { needs = needs or {} }
+end
+function HU:CheckModules()
+    local missing = {}
+    for name, m in pairs(HU.modules) do
+        for _, n in ipairs(m.needs) do
+            if not HU.modules[n] then
+                missing[n] = missing[n] or {}
+                table.insert(missing[n], name)
+            end
+        end
+    end
+    for n, by in pairs(missing) do
+        table.sort(by)
+        HU:RecordError({ msg = "El archivo " .. n .. ".lua no ha cargado entero (lo necesitan " .. table.concat(by, ", ") .. "): mira el primer error de Lua al entrar o reinstala el addon.", stack = "" }, "módulos")
+    end
+    return next(missing) == nil
+end
+
 ---------------------------------------------------------------------------
 -- Errores: se guardan para poder copiarlos (/gu errores) y mandarlos
 ---------------------------------------------------------------------------
 HU.errors = {}
+-- Manejadores de las órdenes de red: HU.comm[orden] = function(self, sender, f, dist, raw). Se crea
+-- aquí, en el primer archivo, para que cualquier archivo pueda registrar las suyas al cargarse
+HU.comm = {}
 local function Trace(err)
     local stack = debugstack and debugstack(2, 12, 0) or ""
     return { msg = tostring(err), stack = stack }
@@ -102,7 +141,7 @@ function HU:RecordError(e, where)
         while #self.db.lastErrors > 10 do table.remove(self.db.lastErrors) end
     end
     -- (solo los oficiales ven los errores del addon; a los demás no se les dice nada)
-    if #self.errors == 1 and self.CanOfficer and self:CanOfficer() then
+    if #self.errors == 1 and self:CanOfficer() then
         DEFAULT_CHAT_FRAME:AddMessage("|cffff4444" .. HU.ADDON_TITLE .. ": " .. L("ha habido un error.") .. "|r " .. L("Queda guardado (/gu errores para verlo)."))
     end
 end
@@ -134,7 +173,7 @@ function HU:ErrorReport()
         lines[#lines + 1] = i .. ") [" .. tostring(e.where or "?") .. "] x" .. (e.n or 1) .. "  " .. e.msg
         if e.stack and e.stack ~= "" then lines[#lines + 1] = e.stack end
     end
-    local got = self.ReceivedErrorsText and self:ReceivedErrorsText()
+    local got = self:ReceivedErrorsText()
     if got then lines[#lines + 1] = got end
     return table.concat(lines, "\n")
 end
@@ -181,7 +220,7 @@ local function AnySecret(...)
     return false
 end
 
--- (solo se usa para los mensajes del sistema, Comm.lua: en los chats de jugadores no hay filtros,
+-- (solo se usa para los mensajes del sistema, Net/Transport.lua: en los chats de jugadores no hay filtros,
 -- porque intervenir ahí hacía que el juego no pintara la línea con el chat bloqueado) [+ARCHITECTURE.md]
 function HU.AddChatFilter(event, fn)
     local function safe(frame, ev, ...)
@@ -189,7 +228,7 @@ function HU.AddChatFilter(event, fn)
         -- (se devuelven TODOS los datos del mensaje: si se recortan, el chat normal lo oculta)
         local r = { pcall(fn, frame, ev, ...) }
         if not r[1] then
-            if HU.RecordError then HU:RecordError(r[2], "filter " .. tostring(ev)) end
+            HU:RecordError(r[2], "filter " .. tostring(ev))
             return false
         end
         return unpack(r, 2, select("#", ...) + 2)
@@ -202,8 +241,53 @@ end
 function HU.After(delay, fn)
     return C_Timer.After(delay, function() HU:SafeCall("timer", fn) end)
 end
-function HU.NewTicker(delay, fn, n)
-    return C_Timer.NewTicker(delay, function(t) HU:SafeCall("ticker", fn, t) end, n)
+
+-- Planificador: todo lo que se repite pasa por HU:Every, con un nombre [+ARCHITECTURE.md]
+-- opts: times (cuántas veces; sin él, siempre), pauseInCombat (no se hace mientras HU:CombatHold()),
+-- maxFailures (tras tantos fallos se para, como el cortacircuitos de History). Devuelve el
+-- temporizador del juego (:Cancel() lo para)
+local taskClock = debugprofilestop or function() return GetTime() * 1000 end
+HU.tasks = {} -- [nombre] = { every, n (veces), ms (en total), max, fails, skipped, off }
+function HU:Every(secs, name, fn, opts)
+    if type(name) ~= "string" or name == "" then error("HU:Every: falta el nombre", 2) end
+    if type(fn) ~= "function" then error("HU:Every " .. name .. ": falta la función", 2) end
+    opts = opts or {}
+    local task = HU.tasks[name]
+    if not task then
+        task = { name = name, n = 0, ms = 0, max = 0, fails = 0, skipped = 0 }
+        HU.tasks[name] = task
+    end
+    task.every, task.off = secs, nil
+    local ticker
+    ticker = C_Timer.NewTicker(secs, function()
+        if opts.pauseInCombat and HU:CombatHold() then task.skipped = task.skipped + 1 return end
+        local t0 = taskClock()
+        local ok = HU:SafeCall(name, fn)
+        local ms = taskClock() - t0
+        task.n, task.ms = task.n + 1, task.ms + ms
+        if ms > task.max then task.max = ms end
+        if not ok then
+            task.fails = task.fails + 1
+            if opts.maxFailures and task.fails >= opts.maxFailures then
+                task.off = true
+                ticker:Cancel()
+                HU:Debug("Tarea parada por fallar", task.fails, "veces:", name)
+            end
+        end
+    end, opts.times)
+    return ticker
+end
+-- Las tareas, de la que más tiempo se lleva a la que menos (para /gu perf)
+function HU:TaskLines()
+    local list = {}
+    for _, t in pairs(HU.tasks) do list[#list + 1] = t end
+    table.sort(list, function(a, b) if a.ms ~= b.ms then return a.ms > b.ms end return a.name < b.name end)
+    local out = {}
+    for _, t in ipairs(list) do
+        out[#out + 1] = string.format("%-24s cada %gs  %dx  %.1f ms (peor %.1f)%s%s%s", t.name, t.every or 0, t.n, t.ms, t.max,
+            t.fails > 0 and ("  fallos " .. t.fails) or "", t.skipped > 0 and ("  en combate " .. t.skipped) or "", t.off and "  PARADA" or "")
+    end
+    return out
 end
 
 -- La X de nuestras ventanas. La plantilla del juego cierra con HideUIPanel, que pasa por su gestor
@@ -252,13 +336,13 @@ HU:On("ADDON_RESTRICTION_STATE_CHANGED", function()
     HU.After(1, function()
         if HU.infoPending and not HU:Restricted() then
             HU.infoPending = nil
-            if HU.RefreshConfig then HU:RefreshConfig() end
+            HU:RefreshConfig()
         end
     end)
 end)
 HU:On("PLAYER_REGEN_ENABLED", function()
     if HU.infoPending then HU.After(1, function()
-        if HU.infoPending and not HU:Restricted() then HU.infoPending = nil; if HU.RefreshConfig then HU:RefreshConfig() end end
+        if HU.infoPending and not HU:Restricted() then HU.infoPending = nil; HU:RefreshConfig() end
     end) end
 end)
 
@@ -286,6 +370,40 @@ function HU:Debug(...)
         for i = 1, select("#", ...) do parts[#parts + 1] = tostring(select(i, ...)) end
         DEFAULT_CHAT_FRAME:AddMessage("|cff888888HU:|r " .. table.concat(parts, " "))
     end
+end
+
+---------------------------------------------------------------------------
+-- Metatabla estricta (propuesta C): con /gu debug, leer un campo de HU que no existe y no está en
+-- MAYBE_NIL se apunta en HU.strictMiss (con dónde) y se avisa una vez: suele ser un nombre mal
+-- escrito. Las pruebas la llevan siempre encendida y fallan con cualquier campo nuevo.
+---------------------------------------------------------------------------
+-- El estado de HU que empieza vacío: nil quiere decir «todavía no» o «no hay»
+HU.MAYBE_NIL = {
+    -- quién soy y en qué estado está el addon
+    me = true, myTag = true, cfg = true, paused = true, mustUpdate = true, guildMin = true,
+    replaying = true, weakMsg = true, diagRecv = true, oldAddon = true, badEvents = true,
+    presenceWrapped = true, staleCheck = true,
+    infoPending = true, keyJPending = true, combatReplay = true, -- (Core, UI y Combat: esperan al fin del combate)
+    -- el canal
+    chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true, laneMoves = true,
+    applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
+    offCfg = true,
+    -- la configuración de la comunidad
+    joinedText = true, noteCfgText = true,
+    -- enlace, ayudantes y listas
+    wasRelay = true, aloneRelay = true, myAdvScore = true, advertisedHelpers = true, relayHelpers = true,
+    relayMissing = true, relayRetryT = true, restSince = true, lastSharedPL = true, sendGroup = true,
+    rosterNeed = true, rosterNamesV = true, rosterVersion = true,
+}
+HU.strictMiss = {}
+local function StrictIndex(_, k)
+    if HU.MAYBE_NIL[k] or HU.strictMiss[k] then return nil end
+    local where = debugstack and (debugstack(2, 1, 0) or ""):match("([%w_]+%.lua:%d+)") or "?"
+    HU.strictMiss[k] = where or "?"
+    HU:Debug("Campo de HU que no existe:", tostring(k), where or "?")
+end
+function HU:StrictMode(on)
+    setmetatable(HU, on and { __index = StrictIndex } or nil)
 end
 
 -- Solo WoW Forever: los personajes tienen nombre y apellido, y el apellido va donde en los demás [+ARCHITECTURE.md]
@@ -427,7 +545,6 @@ function HU.Split(text, sep)
 end
 
 -- Midnight: el juego no deja mandar mensajes de chat ni de addon en algunas mazmorras y [+ARCHITECTURE.md]
-function HU:SimpleMode() return false end
 
 -- Dato del juego que puede llegar secreto (combate, jefe, mítica+): secreto → el valor que se pida
 function HU.SafeBool(v, ifSecret)
@@ -561,51 +678,86 @@ function HU:Log(msg)
     if self.UI and self.UI.OnLog then self.UI:OnLog(line) end
 end
 
-function HU:Changed(what)
-    if self.UI and self.UI.MarkDirty then self.UI:MarkDirty(what) end
-end
+-- Algo ha cambiado (miembros, canal, guardia...): lo escucha la interfaz (UI.lua) para redibujar
+function HU:Changed(what) self:Fire("CHANGED", what) end
 
 ---------------------------------------------------------------------------
 -- Base de datos
 ---------------------------------------------------------------------------
--- (lo que se guarda por personaje y no para toda la cuenta)
-HU.PER_CHAR = { history = true, pinned = true, myRole = true, lastSeen = true, pvpSince = true, netChan = true,
-    chatShow = true, netCfg = true, infoBackup = true, noteChanSeen = true, joinedChans = true, extraChans = true, chatTab = true,
-    -- (eran de la cuenta y los heredaba un personaje de otra comunidad: un carril, unas listas o unas
-    -- hermandades añadidas que no eran las suyas)
-    chanLane = true, netGuilds = true, proposals = true, guildColors = true, customEmotes = true, lists = true,
-    rankCache = true, offline = true, offlineT = true, peers = true, chatTabsMade = true, rosterCache = true, remoteRanks = true,
-    quickCfg = true, managers = true, officerRanks = true, myOfficerRanks = true,
-    -- (copia 151: la sala fijada es de la hermandad de cada personaje)
-    laneLock = true, laneMig = true,
-    -- (copia 156: filas silenciadas, ancladas y eliminadas de la pestaña de Whisper Messenger)
-    wmRows = true }
+-- Lo que se guarda: cada módulo declara sus claves con HU:Saved, al principio de su archivo [+ARCHITECTURE.md]
+--   HU:Saved({ account = { grace = 120, "otraClave" }, char = { history = {}, "pinned" } })
+-- account: para toda la cuenta; char: para cada personaje (eran de la cuenta y los heredaba un
+-- personaje de otra comunidad: un carril, unas listas o unas hermandades añadidas que no eran las
+-- suyas). «clave = valor» le da un valor por defecto (una tabla nueva para cada uno si es una tabla);
+-- la clave sola, sin valor por defecto. Una clave declarada dos veces es un error.
+HU.PER_CHAR = {}      -- [clave] = true: va en el personaje
+HU.savedScope = {}    -- [clave] = "account" | "char"
+local DEFAULTS = {}   -- [clave] = valor por defecto
+HU.savedDefaults = DEFAULTS
+function HU:Saved(spec)
+    for scope, t in pairs(spec) do
+        if scope ~= "account" and scope ~= "char" then error("HU:Saved: ámbito desconocido: " .. tostring(scope), 2) end
+        for k, v in pairs(t) do
+            local key, def = k, v
+            if type(k) == "number" then key, def = v, nil end
+            if HU.savedScope[key] then error("HU:Saved: «" .. tostring(key) .. "» ya está declarada", 2) end
+            HU.savedScope[key] = scope
+            if scope == "char" then HU.PER_CHAR[key] = true end
+            if def ~= nil then DEFAULTS[key] = def end
+        end
+    end
+end
+-- Las de Core.lua (las demás, en su módulo)
+HU:Saved({
+    account = {
+        autoGuard = false,    -- expulsar automáticamente a intrusos
+        grace = 120,          -- segundos de margen antes de considerar a alguien intruso
+        debug = false,
+        showChannel = false,  -- mostrar el canal oculto (depuración)
+        log = {},
+        ownPaint = true,      -- adornar las líneas de mi hermandad al escribirlas en la ventana (/gu pintar)
+        -- (restos sin uso: ver docs/fallos-conocidos.md. «theme» se sigue guardando como siempre)
+        theme = "default",
+    },
+    char = {
+        "myRole",
+        -- (restos sin uso: ver docs/fallos-conocidos.md)
+        "chatTab", "chatTabsMade", "proposals",
+    },
+})
 
-local DEFAULTS = {
-    showTag = true,       -- mostrar <ETIQUETA> en la ventana del addon
-    -- Formato de texto del chat (botones de Ajustes) [+ARCHITECTURE.md]
-    chatMark = "dot",     -- delante del nombre: "dot" (punto del color de la hermandad) o "tag" (<ETIQUETA>)
-    chatGuildColor = false, -- [Hermandad] en el color de cada hermandad (false: el color normal del chat)
-    ownPaint = true,      -- adornar las líneas de mi hermandad al escribirlas en la ventana (/gu pintar)
-    autoGuard = false,    -- expulsar automáticamente a intrusos
-    bans = {},            -- vetados del chat: [clave] = { name, on, by, tag, t }
-    grace = 120,          -- segundos de margen antes de considerar a alguien intruso
-    debug = false,
-    showChannel = false,  -- mostrar el canal oculto (depuración)
-    audit = {},
-    history = {},
-    log = {},
-    profiles = {},        -- fichas: [clave] = { race, r (rol), s (rama), p (profesiones), t }
-    offline = {},         -- desconectados de otras hermandades: [tag] = { [clave] = { c, l, s } }
-    mutes = {},           -- silenciados en el chat de la comunidad: [clave] = { name, u (hasta), by, tag, t }
-    extraChans = {},
-    rankCache = {},
-    netChan = nil,        -- canal y contraseña repartidos desde la nota de oficial: { channel, pass, t, by, tag }       -- rangos vistos de otras hermandades: [clave] = { tag, idx, t }      -- canales extra: [nombre] = { name, pass, del, by, tag, t }
-    theme = "default",    -- apariencia: default, classic, modern
-    loginHistory = false, -- al entrar, escribir en el chat del juego el historial y lo de "mientras no estabas"
-    peers = {},           -- contactos de otras hermandades vistos antes: [tag] = {[clave] = {name, t}}
-    point = nil,
-}
+---------------------------------------------------------------------------
+-- Migraciones de lo guardado: adb.schema (la cuenta) y cdb.schema (cada personaje) [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+HU.migrations = { account = {}, char = {} }
+-- n: su número, en orden y sin huecos. fn(adb, cdb, info) hace el cambio (dos veces seguidas no
+-- estropea nada) y devuelve false si aún no puede: info es la de RefreshConfig (Config.lua),
+-- { guild, text }, y al cargar el addon todavía no la hay. Se vuelve a probar en la siguiente.
+function HU:RegisterMigration(scope, n, name, fn)
+    local list = HU.migrations[scope]
+    if not list then error("migración: ámbito desconocido: " .. tostring(scope), 2) end
+    if n ~= #list + 1 then error("migración " .. scope .. " " .. tostring(n) .. ": toca la " .. (#list + 1), 2) end
+    list[n] = { name = name, fn = fn }
+end
+function HU:RunMigrations(info)
+    local adb, cdb = HU.adb, HU.cdb
+    if not (adb and cdb) then return end
+    for _, scope in ipairs({ "account", "char" }) do
+        local list, db = HU.migrations[scope], scope == "account" and adb or cdb
+        local cur = tonumber(db.schema) or 0
+        if cur > #list then
+            -- (lo guardado es de una versión más nueva: no se toca nada; se avisa en /gu errores)
+            HU:RecordError({ msg = string.format("Lo guardado (%s) es de una versión más nueva del addon (esquema %d; esta entiende hasta el %d): no se cambia nada. Actualiza el addon.",
+                scope == "account" and "cuenta" or "personaje", cur, #list), stack = "" }, "migraciones")
+        else
+            for i = cur + 1, #list do
+                if list[i].fn(adb, cdb, info) == false then break end
+                db.schema = i
+            end
+            db.schema = db.schema or cur
+        end
+    end
+end
 
 HU:On("ADDON_LOADED", function(name)
     if name ~= ADDON_NAME then return end
@@ -639,6 +791,8 @@ HU:On("ADDON_LOADED", function(name)
         __index = function(_, k) if HU.PER_CHAR[k] then return cdb[k] end return adb[k] end,
         __newindex = function(_, k, v) if HU.PER_CHAR[k] then cdb[k] = v else adb[k] = v end end,
     })
+    -- (las que no necesitan nada del juego, ya; las demás, cuando se lea la Información)
+    HU:RunMigrations(nil)
     -- (sin elegir a mano: el idioma del juego; castellano solo si el juego está en español)
     if not HU.db.lang or not HU.db.langChosen then
         local loc = GetLocale and GetLocale() or ""
@@ -647,6 +801,7 @@ HU:On("ADDON_LOADED", function(name)
     HU:ApplyLanguage(HU.db.lang)
     -- opciones quitadas del panel: se dejan con su valor normal
     if not HU.db.debug then HU.db.showChannel = false end   -- el canal oculto no se ve en el chat
+    HU:StrictMode(HU.db.debug)
 end)
 
 HU:On("PLAYER_LOGIN", function()
@@ -657,6 +812,7 @@ HU:On("PLAYER_LOGIN", function()
     end
     HU.loginT = GetTime()
     if HU.badEvents then HU:Debug("Eventos que este cliente no tiene:", table.concat(HU.badEvents, ", ")) end
+    HU:CheckModules()
     for _, fn in ipairs(HU.startFns) do HU:SafeCall("inicio", fn) end
 end)
 
@@ -680,42 +836,37 @@ local EXAMPLE = HU.LT({
     "El canal solo admite letras y números. Las etiquetas, hasta 6 letras o números.",
 })
 
-local HELP = HU.LT({
-    "|cffffd100/gu|r  abre o cierra el panel",
-    "|cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia",
-    "|cffffd100/gu config|r  explica cómo configurar las hermandades",
-    "|cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)",
-    "|cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)",
-    "|cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)",
-    "|cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)",
-    "|cffffd100/gu recargar|r  vuelve a leer la configuración",
-    "|cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial",
-    "|cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego",
-    "|cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes",
-    "|cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado",
-    "|cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan",
-    "|cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)",
-    "|cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe",
-    "|cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)",
-    "|cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad",
-    "|cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)",
-    "|cffffd100/gu minimapa on/off|r  muestra u oculta el botón del minimapa",
-    "|cffffd100/gu debug on/off|r  mensajes de depuración y canal visible",
-    "|cffffd100/gu errores|r  muestra los errores guardados del addon  (|cffffd100/gu errores borrar|r: los borra;  |cffffd100/gu errores pedir contraseña|r: oficiales, pide a todos los suyos)",
-    "|cffffd100/gu diag|r  diagnóstico del chat (qué llega del juego y qué guarda el addon)",
-    "|cffffd100/gu memoria|r  memoria que usa el addon y mensajes en cola",
-    "|cffffd100/gu cola|r  mensajes del addon pendientes de enviar  (|cffffd100/gu cola vaciar|r para vaciarla)",
-    "|cffffd100/gu buscar Nombre [texto]|r  oficiales: qué ha dicho alguien en los últimos 30 días (también lo que pasó mientras no estabas)",
-    "|cffffd100/gu historial|r  oficiales: ventana del historial  (|cffffd100/gu historial off|r / |cffffd100on|r para apagarlo o encenderlo)",
-    "|cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento",
-    "|cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)",
-    "|cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)",
-    "|cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)",
-    "|cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)",
-    "|cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)",
-    "|cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve",
-    "|cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña",
-})
+-- Registro de los comandos /gu: cada uno con sus alias, su ayuda y lo que hace [+ARCHITECTURE.md]
+HU.slashCmds = {} -- [nombre o alias] = lo registrado
+HU.slashList = {} -- lo registrado, en orden: la ayuda sale en este orden
+local SLASH_KEYS = { aliases = "table", help = true, fn = "function", available = "function" }
+function HU:RegisterSlash(name, spec)
+    if type(name) ~= "string" or name ~= name:lower() then error("comando no válido: " .. tostring(name), 2) end
+    spec = spec or {}
+    for k, v in pairs(spec) do
+        local want = SLASH_KEYS[k]
+        if not want then error("/gu " .. name .. ": clave desconocida: " .. tostring(k), 2) end
+        if want ~= true and type(v) ~= want then error("/gu " .. name .. ": " .. k .. " tiene que ser " .. want, 2) end
+    end
+    if spec.help then spec.help = HU.LT(type(spec.help) == "table" and spec.help or { spec.help }) end
+    spec.name = name
+    -- (sin fn solo es una línea de la ayuda: /hg, que es otro comando)
+    if spec.fn then
+        local names = { name }
+        for _, a in ipairs(spec.aliases or {}) do names[#names + 1] = a end
+        for _, n in ipairs(names) do
+            if HU.slashCmds[n] then error("/gu " .. n .. ": ya registrado", 2) end
+            HU.slashCmds[n] = spec
+        end
+    end
+    HU.slashList[#HU.slashList + 1] = spec
+    return spec
+end
+local function PrintHelp()
+    for _, spec in ipairs(HU.slashList) do
+        for _, l in ipairs(spec.help or {}) do HU:Print(l) end
+    end
+end
 
 SLASH_HERMANDADUNIDA1 = "/gu"
 SLASH_HERMANDADUNIDA2 = "/guildunion"
@@ -727,82 +878,26 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     local cmd, rawArg = input:match("^(%S*)%s*(.-)$")
     cmd = cmd:lower()
     local arg = rawArg:lower()
-    -- comandos en inglés (los de español siguen valiendo)
-    local ALIAS = { list = "lista", channel = "canal",
-        tag = "etiqueta", guard = "guardia", margin = "margen", role = "rol", minimap = "minimapa",
-        estado = "status", recargar = "reload", queue = "cola", memory = "memoria",
-        search = "buscar", history = "historial", lane = "carril" }
-    cmd = ALIAS[cmd] or cmd
-    if cmd == "perf" and HU.PerfCommand then return HU:PerfCommand(arg) end
-    if (cmd == "notacanal" or cmd == "channelnote") and HU.ShowChannelNoteLine then return HU:ShowChannelNoteLine() end
-    if (cmd == "pasarcanal" or cmd == "sendchannel") and HU.PassChannelTo then return HU:PassChannelTo(rawArg) end
-    -- gestión de hermandades: principal, gestores e invitaciones (Community.lua)
-    if cmd == "invitar" or cmd == "invite" then
-        local who, tag = rawArg:match("^(.-)%s+(%S+)$")
-        if not who or who == "" then return HU:Print(L("Uso: /gu invitar Nombre del maestro (u oficial) ETIQ")) end
-        local ok, why = HU:InviteGuild(who, tag)
-        if not ok and why then HU:Print("|cffff6060" .. why .. "|r") end
-        return
-    end
-    if cmd == "gestor" or cmd == "manager" then
-        local add, who = true, rawArg
-        local q = rawArg:match("^[Qq]uitar%s+(.+)$") or rawArg:match("^[Rr]emove%s+(.+)$")
-        if q then add, who = false, q end
-        if HU.Trim(who) == "" then return HU:Print(L("Uso: /gu gestor Nombre  ·  /gu gestor quitar Nombre")) end
-        local ok, why = HU:SetManager(who, add)
-        if ok then HU:Print((add and L("Gestor añadido: ") or L("Gestor quitado: ")) .. HU:Short(HU:FullName(who) or who))
-        elseif why then HU:Print("|cffff6060" .. why .. "|r") end
-        return
-    end
-    if cmd == "gestores" or cmd == "managers" then
-        local list = HU:Managers()
-        HU:Print(L("Hermandad principal: ") .. (HU:PrincipalTag() and ("<" .. HU:PrincipalTag() .. ">") or "?")
-            .. L("  ·  Gestores: ") .. (#list > 0 and table.concat(list, ", ") or L("ninguno")))
-        return
-    end
-    if cmd == "quitarhermandad" or cmd == "removeguild" then
-        local ok, why = HU:RemoveNetGuild(rawArg)
-        if ok then HU:Print(L("Hermandad quitada de la comunidad: <") .. HU.Trim(rawArg):upper() .. ">")
-        elseif why then HU:Print("|cffff6060" .. why .. "|r") end
-        return
-    end
-    if (cmd == "hermandades" or cmd == "guilds") and HU.ShowGuildsWindow then return HU:ShowGuildsWindow() end
-    -- asistente «Crear comunidad» (y modo prueba, que no toca nada: /gu asistente prueba)
-    if (cmd == "asistente" or cmd == "wizard" or cmd == "crear" or cmd == "create") and HU.OpenWizard then
-        return HU:OpenWizard(arg == "prueba" or arg == "test")
-    end
-    -- (la ventana de hermandad del juego: por si la J abre GuildUnion; ahí se edita la Información)
-    if cmd == "hermandad" or cmd == "guild" then
-        -- (no se abre desde el addon: el juego bloquearía luego cambiar rangos y notas; ver BlizzTab.lua)
-        HU:Print(L("Pulsa J (o el botón de Hermandad) para abrir la ventana de hermandad."))
-        return
-    end
-    -- (la J abre la ventana de hermandad del juego en el chat; /gu tecla on hace que abra GuildUnion)
-    if cmd == "tecla" or cmd == "key" then
-        if arg == "off" then HU.db.keyJ = nil elseif arg == "on" then HU.db.keyJ = true end
-        if HU.ApplyKeyJ then HU:ApplyKeyJ() end
-        HU:Print(not HU.db.keyJ and L("La J abre la ventana de hermandad del juego en su pestaña de siempre (/gu tecla on para que se abra en la pestaña GuildUnion).")
-            or L("La J abre la ventana de hermandad del juego en la pestaña GuildUnion (/gu tecla off para que se abra como siempre)."))
-        return
-    end
-    if cmd == "rol" then
-        local R = { tank = "tanque", healer = "sanador" }
-        arg = R[arg] or arg
-    end
-    if cmd == "" or cmd == "panel" or cmd == "lista" then
-        HU.UI:Toggle()
-    elseif cmd == "test" then
-        -- franja de prueba del mensaje fijado, solo en mi ventana (no se manda ni se guarda)
-        if arg == "off" then
-            HU.pinPreview = nil
-            HU:Print(L("Prueba del mensaje fijado quitada."))
-        else
-            local text = rawArg ~= "" and rawArg or L("Esto es un mensaje fijado de prueba: así se verá arriba del chat de la hermandad.")
-            HU.pinPreview = { text = text, author = HU:Me(), tag = HU.myTag, t = HU.StampNow() }
-            HU:Print(L("Prueba del mensaje fijado: abre la ventana de hermandad (J) en el chat. /gu test off la quita."))
-        end
-        if HU.UI and HU.UI.UpdatePinned then HU.UI:UpdatePinned() end
-    elseif cmd == "fijar" or cmd == "pin" then
+    local spec = HU.slashCmds[cmd]
+    -- (available: el comando depende de un archivo que puede no estar; sin él, la ayuda)
+    if spec and (not spec.available or spec.available()) then return spec.fn(arg, rawArg, spec.name) end
+    PrintHelp()
+end
+
+-- Los comandos, en el orden de la ayuda (los que no tienen ayuda, al final)
+HU:RegisterSlash("panel", { aliases = { "", "lista", "list" },
+    help = "|cffffd100/gu|r  abre o cierra el panel",
+    fn = function() HU.UI:Toggle() end })
+HU:RegisterSlash("estado", { aliases = { "status" },
+    help = "|cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia",
+    fn = function() HU:PrintStatus() end })
+HU:RegisterSlash("config", {
+    help = "|cffffd100/gu config|r  explica cómo configurar las hermandades",
+    fn = function() for _, l in ipairs(EXAMPLE) do HU:Print(l) end end })
+HU:RegisterSlash("/hg", { help = "|cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)" })
+HU:RegisterSlash("fijar", { aliases = { "pin" },
+    help = "|cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)",
+    fn = function(arg, rawArg)
         if arg == "" then
             local p = HU.db.pinned
             HU:Print((p and (p.text or "") ~= "") and (L("Mensaje fijado: ") .. p.text) or L("No hay mensaje fijado. Oficiales: /gu fijar texto"))
@@ -811,16 +906,20 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         else
             HU:SetPinned(rawArg)
         end
-    elseif cmd == "canal" then
-        HU:PrintChannelRoster()
-    elseif cmd == "carril" then
+    end })
+HU:RegisterSlash("canal", { aliases = { "channel" },
+    help = "|cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)",
+    fn = function() HU:PrintChannelRoster() end })
+HU:RegisterSlash("carril", { aliases = { "lane" },
+    help = "|cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)",
+    fn = function(arg)
         -- (copia 118: subir y reiniciar mueven a toda la comunidad: hace falta que lo confirme otro
         -- oficial, o el maestro escribiéndolo dos veces; ver HU:ProposeLane en Channel.lua)
-        local officer = (HU.IsOfficerName and HU:IsOfficerName(HU:Me())) or HU:CanOfficer()
+        local officer = (HU:IsOfficerName(HU:Me())) or HU:CanOfficer()
         local act = ((arg == "reiniciar" or arg == "reset") and "reset") or ((arg == "subir" or arg == "up") and "up")
             or ((arg == "juntar" or arg == "aqui" or arg == "here" or arg == "gather") and "here") or nil
         if act or arg == "confirmar" or arg == "confirm" then
-            if HU.LaneLock and HU:LaneLock() then
+            if HU:LaneLock() then
                 HU:Print(string.format(L("La sala está fijada en la %d por la Información de hermandad (línea GU:l). Mientras esté esa línea no se puede cambiar."), HU:LaneLock()))
             elseif not officer or not HU.cfg then
                 HU:Print(L("Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril."))
@@ -836,59 +935,62 @@ SlashCmdList.HERMANDADUNIDA = function(input)
                 .. (left and (L(". Vuelve al principal en ") .. left .. " min") or ""))
             if HU.LaneStatusText and HU.cfg then HU:Print(HU:LaneStatusText()) end
         end
-    elseif cmd == "estado" or cmd == "status" then
-        HU:PrintStatus()
-    elseif cmd == "config" then
-        for _, l in ipairs(EXAMPLE) do HU:Print(l) end
-    elseif cmd == "recargar" or cmd == "reload" then
+    end })
+HU:RegisterSlash("recargar", { aliases = { "reload" },
+    help = "|cffffd100/gu recargar|r  vuelve a leer la configuración",
+    fn = function()
         HU:RequestRoster(true)
         HU:RefreshConfig(true)
         HU:Print(L("Configuración recargada."))
-    elseif cmd == "invitaciones" or cmd == "invites" then
-        if HU.ShowInviteLog then HU:ShowInviteLog() end
-    elseif cmd == "listanegra" or cmd == "blacklist" then
-        if HU.ShowBlacklist then HU:ShowBlacklist() end
-    elseif (cmd == "version" or cmd == "versión") and rawArg ~= "" then
+    end })
+HU:RegisterSlash("notacanal", { aliases = { "channelnote" },
+    help = "|cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial",
+    available = function() return HU.ShowChannelNoteLine ~= nil end,
+    fn = function() return HU:ShowChannelNoteLine() end })
+-- (la ventana de hermandad del juego: por si la J abre GuildUnion; ahí se edita la Información)
+HU:RegisterSlash("hermandad", { aliases = { "guild" },
+    help = "|cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego",
+    fn = function()
+        -- (no se abre desde el addon: el juego bloquearía luego cambiar rangos y notas; ver BlizzTab.lua)
+        HU:Print(L("Pulsa J (o el botón de Hermandad) para abrir la ventana de hermandad."))
+    end })
+HU:RegisterSlash("etiqueta", { aliases = { "tag" },
+    help = "|cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes",
+    fn = function(arg)
+        -- (lo mismo que el botón de Ajustes: etiqueta en vez de punto)
+        HU.db.chatMark = onoff(arg, HU.db.chatMark == "tag") and "tag" or "dot"
+        HU:Print(L("Etiqueta de hermandad: ") .. (HU.db.chatMark == "tag" and "sí" or "no"))
+    end })
+HU:RegisterSlash("visto", { aliases = { "seen" },
+    help = "|cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado",
+    fn = function(arg, rawArg) HU:PrintSeen(rawArg ~= "" and rawArg or arg) end })
+HU:RegisterSlash("sonda", { aliases = { "probe" },
+    help = "|cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan",
+    fn = function(arg) HU:SendProbe(tonumber(arg) or 30) end })
+-- (una línea más de la ayuda de /gu carril, en su sitio de siempre)
+HU:RegisterSlash("carril juntar", { help = "|cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)" })
+HU:RegisterSlash("version", { aliases = { "versión" },
+    help = "|cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe",
+    fn = function(_, rawArg)
+        if rawArg == "" then return PrintHelp() end
         -- (copia 114: la versión del addon de otro jugador. Solo se sabe de quien me ha saludado: los
         -- compañeros de mi hermandad con el addon y mis contactos de las otras)
         local k = HU:Key(rawArg)
         local p = k and ((HU.guildPeers and HU.guildPeers[k]) or (HU.remote and HU.remote[k]))
         if p and p.ver then HU:Print(HU:Nice(rawArg) .. ": " .. L("versión ") .. tostring(p.ver))
         else HU:Print(HU:Nice(rawArg) .. ": " .. L("no sé su versión. Solo la conozco de quien me ha saludado con el addon: los de mi hermandad y mis contactos de las otras. Pídele que mire el título de su pestaña de GuildUnion.")) end
-    elseif cmd == "sonda" or cmd == "probe" then
-        HU:SendProbe(tonumber(arg) or 30)
-    elseif cmd == "visto" or cmd == "seen" then
-        HU:PrintSeen(rawArg ~= "" and rawArg or arg)
-    elseif cmd == "prat" then
-        -- (copia 121, de prueba: usar o no el formato de Prat, y cómo va)
-        if arg == "on" or arg == "off" or arg == "si" or arg == "no" then HU.db.pratOff = (arg == "off" or arg == "no") or nil end
-        local st = HU.pratStats or {}
-        HU:Print("Formato de Prat: " .. (HU.db.pratOff and "apagado" or "encendido")
-            .. " · Prat: " .. ((HU.UsingPrat and HU.UsingPrat()) and "cargado" or "no está")
-            .. " · enganchado: " .. ((HU.PratActive and HU.PratActive()) and "sí" or "no")
-            .. " · líneas de otras hermandades con su formato: " .. (st.ok or 0)
-            .. " · con el de siempre: " .. (st.fallback or 0)
-            .. " · de mi hermandad adornadas: " .. (st.own or 0)
-            .. " · con nivel sabido: " .. (st.level or 0)
-            .. " · fallos: " .. (st.err or 0) .. (st.last and (" (" .. st.last .. ")") or ""))
-    elseif cmd == "wm" then
-        -- (copia 125, de prueba: cómo va la pestaña dentro de Whisper Messenger)
-        HU:Print(HU.WMStatus and HU:WMStatus() or "sin pestaña de Whisper Messenger")
-    elseif cmd == "pintar" or cmd == "paint" then
-        -- (copia 94, de prueba: enciende o apaga el adorno de las líneas de mi hermandad)
-        HU.db.ownPaint = onoff(arg, HU.db.ownPaint)
-        HU:Print("Adorno de mi hermandad: " .. (HU.db.ownPaint and "sí" or "no"))
-    elseif cmd == "etiqueta" then
-        -- (lo mismo que el botón de Ajustes: etiqueta en vez de punto)
-        HU.db.chatMark = onoff(arg, HU.db.chatMark == "tag") and "tag" or "dot"
-        HU:Print(L("Etiqueta de hermandad: ") .. (HU.db.chatMark == "tag" and "sí" or "no"))
-    elseif cmd == "guardia" and (arg == "revisar" or arg == "review") then
-        HU:GuardReview()
-    elseif cmd == "guardia" then
+    end })
+HU:RegisterSlash("guardia", { aliases = { "guard" },
+    help = "|cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)",
+    fn = function(arg)
+        if arg == "revisar" or arg == "review" then return HU:GuardReview() end
         HU.db.autoGuard = onoff(arg, HU.db.autoGuard)
         HU:Print(L("Expulsión automática: ") .. (HU.db.autoGuard and "activada" or "desactivada"))
         HU:Changed("guard")
-    elseif cmd == "margen" then
+    end })
+HU:RegisterSlash("margen", { aliases = { "margin" },
+    help = "|cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad",
+    fn = function(arg)
         local n = tonumber(arg)
         if n and n >= 30 and n <= 1800 then
             HU.db.grace = n
@@ -896,22 +998,61 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         else
             HU:Print(L("Indica un número de segundos entre 30 y 1800."))
         end
-    elseif cmd == "prueba" then
-        -- (copia 148: ¿le llega a esa persona mi texto por el canal?)
-        if HU.TextProbe then HU:TextProbe(rawArg) end
-    elseif cmd == "ids" then
-        -- (copia 147: el número del canal en mi juego frente a lo que dice el servidor)
-        if HU.PrintChannelIds then HU:PrintChannelIds() end
-    elseif cmd == "todo" or cmd == "informe" or cmd == "all" or cmd == "report" then
-        -- (copia 147: todo lo que sabe el addon, en una ventana para copiar)
-        if HU.FullReport then HU:FullReport() end
-    elseif cmd == "diag" then
+    end })
+HU:RegisterSlash("rol", { aliases = { "role" },
+    help = "|cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)",
+    fn = function(arg)
+        arg = ({ tank = "tanque", healer = "sanador" })[arg] or arg
+        local map = { tanque = "T", sanador = "H", healer = "H", dps = "D", feral = "F" }
+        if arg == "auto" or arg == "" then HU.db.myRole = nil
+        elseif map[arg] then HU.db.myRole = map[arg]
+        else return HU:Print(L("Uso: /gu rol tanque | sanador | dps | feral | auto")) end
+        HU:UpdateMyProfile(true)
+        HU:Print(L("Tu rol: ") .. (HU.db.myRole and HU.ROLES[HU.db.myRole].name or L("automático (por tus talentos)")))
+    end })
+HU:RegisterSlash("minimapa", { aliases = { "minimap" },
+    help = "|cffffd100/gu minimapa on/off|r  muestra u oculta el botón del minimapa",
+    fn = function(arg)
+        local show = onoff(arg, not HU.db.minimapHidden)
+        HU:ShowMinimapButton(show)
+        HU:Print(L("Botón del minimapa: ") .. (show and "visible" or "oculto"))
+    end })
+HU:RegisterSlash("debug", {
+    help = "|cffffd100/gu debug on/off|r  mensajes de depuración y canal visible",
+    fn = function(arg)
+        HU.db.debug = onoff(arg, HU.db.debug)
+        HU.db.showChannel = HU.db.debug
+        HU:StrictMode(HU.db.debug)
+        HU:Print(L("Depuración: ") .. (HU.db.debug and L("activada (canal visible)") or "desactivada"))
+    end })
+HU:RegisterSlash("errores", { aliases = { "errors" },
+    help = "|cffffd100/gu errores|r  muestra los errores guardados del addon  (|cffffd100/gu errores borrar|r: los borra;  |cffffd100/gu errores pedir contraseña|r: oficiales, pide a todos los suyos)",
+    fn = function(arg, rawArg)
+        if arg:match("^pedir") or arg:match("^ask") then
+            if not HU:CanOfficer() then return HU:Print(L("Solo los oficiales pueden pedir los errores de todos.")) end
+            -- pedir a todos sus errores guardados (con la contraseña del chat unido)
+            local pass = rawArg:match("^%S+%s+(.+)$")
+            local ok, why = HU:AskErrors(pass and HU.Trim(pass))
+            HU:Print(ok and L("Errores pedidos a todos. Irán llegando en el próximo medio minuto (/gu errores para verlos).")
+                or (L("No se pueden pedir los errores: ") .. tostring(why) .. L("   (uso: /gu errores pedir contraseña)")))
+        elseif arg == "borrar" or arg == "clear" then
+            HU:ClearAllErrors()
+        else
+            HU:ShowErrors()
+        end
+    end })
+HU:RegisterSlash("diag", {
+    help = "|cffffd100/gu diag|r  diagnóstico del chat (qué llega del juego y qué guarda el addon)",
+    fn = function()
         -- (primero, si el juego tiene bloqueados /ginvite, /gpromote…)
-        if HU.OrdersDiag then HU:OrdersDiag() end
+        HU:OrdersDiag()
         local lines = HU:DiagLines()
         if HU.UI and HU.UI.ShowCopy then HU.UI:ShowCopy("Guild Union - diagnóstico", table.concat(lines, "\n"))
         else for _, l in ipairs(lines) do HU:Print(l) end end
-    elseif cmd == "memoria" then
+    end })
+HU:RegisterSlash("memoria", { aliases = { "memory" },
+    help = "|cffffd100/gu memoria|r  memoria que usa el addon y mensajes en cola",
+    fn = function()
         -- cuánta memoria usa el addon (para ver que no crece sin parar en sesiones largas)
         local upd = UpdateAddOnMemoryUsage or (C_AddOns and C_AddOns.UpdateAddOnMemoryUsage)
         local get = GetAddOnMemoryUsage or (C_AddOns and C_AddOns.GetAddOnMemoryUsage)
@@ -920,10 +1061,13 @@ SlashCmdList.HERMANDADUNIDA = function(input)
             local ok, kb = pcall(get, ADDON_NAME)
             if ok and kb then
                 HU.memPeak = math.max(HU.memPeak or 0, kb)
-                HU:Print(string.format(L("Memoria del addon: %.1f MB (máximo en esta sesión: %.1f MB). Cola: %d mensajes."), kb / 1024, HU.memPeak / 1024, HU.QueueSize and HU:QueueSize() or 0))
+                HU:Print(string.format(L("Memoria del addon: %.1f MB (máximo en esta sesión: %.1f MB). Cola: %d mensajes."), kb / 1024, HU.memPeak / 1024, HU:QueueSize() or 0))
             end
         end
-    elseif cmd == "cola" then
+    end })
+HU:RegisterSlash("cola", { aliases = { "queue" },
+    help = "|cffffd100/gu cola|r  mensajes del addon pendientes de enviar  (|cffffd100/gu cola vaciar|r para vaciarla)",
+    fn = function(arg)
         if arg == "vaciar" or arg == "clear" or arg == "limpiar" then
             local n = HU:ClearQueue()
             HU:Print(L("Cola de envío vaciada (") .. n .. L(" mensajes). Lo pendiente se volverá a pedir y mandar solo."))
@@ -931,22 +1075,19 @@ SlashCmdList.HERMANDADUNIDA = function(input)
             HU:Print(HU:QueueText() .. L("   (/gu cola vaciar para vaciarla)"))
         end
         if HU.UI and HU.UI.UpdateOfficers then HU.UI:UpdateOfficers() end
-    elseif (cmd == "errores" or cmd == "errors") and (arg:match("^pedir") or arg:match("^ask")) and not HU:CanOfficer() then
-        HU:Print(L("Solo los oficiales pueden pedir los errores de todos."))
-    elseif (cmd == "errores" or cmd == "errors") and (arg:match("^pedir") or arg:match("^ask")) then
-        -- pedir a todos sus errores guardados (con la contraseña del chat unido)
-        local pass = rawArg:match("^%S+%s+(.+)$")
-        local ok, why = HU:AskErrors(pass and HU.Trim(pass))
-        HU:Print(ok and L("Errores pedidos a todos. Irán llegando en el próximo medio minuto (/gu errores para verlos).")
-            or (L("No se pueden pedir los errores: ") .. tostring(why) .. L("   (uso: /gu errores pedir contraseña)")))
-    elseif (cmd == "errores" or cmd == "errors") and (arg == "borrar" or arg == "clear") then
-        HU:ClearAllErrors()
-    elseif cmd == "errores" or cmd == "errors" then
-        HU:ShowErrors()
-    elseif cmd == "ordenes" or cmd == "órdenes" then
-        -- ¿tiene el juego bloqueados /ginvite, /gpromote…? (los bloquea si un addon toca la caja del chat)
-        HU:OrdersDiag()
-    elseif cmd == "idioma" or cmd == "lang" or cmd == "language" then
+    end })
+HU:RegisterSlash("buscar", { aliases = { "search" },
+    help = "|cffffd100/gu buscar Nombre [texto]|r  oficiales: qué ha dicho alguien en los últimos 30 días (también lo que pasó mientras no estabas)",
+    fn = function(_, rawArg, cmd) HU:HistCommand(cmd, rawArg) end })
+HU:RegisterSlash("historial", { aliases = { "history" },
+    help = "|cffffd100/gu historial|r  oficiales: ventana del historial  (|cffffd100/gu historial off|r / |cffffd100on|r para apagarlo o encenderlo)",
+    fn = function(_, rawArg, cmd) HU:HistCommand(cmd, rawArg) end })
+HU:RegisterSlash("registro", {
+    help = "|cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento",
+    fn = function(_, rawArg, cmd) HU:TestLogCommand(cmd, rawArg) end })
+HU:RegisterSlash("idioma", { aliases = { "lang", "language" },
+    help = "|cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)",
+    fn = function(arg)
         if arg == "en" or arg == "english" or arg == "ingles" or arg == "inglés" then return HU:SetLang("en") end
         if arg == "es" or arg == "español" or arg == "espanol" or arg == "spanish" then return HU:SetLang("es") end
         local miss = {}
@@ -956,39 +1097,13 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         if HU.lang == "en" then
             HU.UI:ShowCopy("Untranslated texts seen so far: " .. #miss, #miss > 0 and table.concat(miss, "\n") or "None.")
         end
-    elseif cmd == "rol" then
-        local map = { tanque = "T", sanador = "H", healer = "H", dps = "D", feral = "F" }
-        if arg == "auto" or arg == "" then HU.db.myRole = nil
-        elseif map[arg] then HU.db.myRole = map[arg]
-        else return HU:Print(L("Uso: /gu rol tanque | sanador | dps | feral | auto")) end
-        HU:UpdateMyProfile(true)
-        HU:Print(L("Tu rol: ") .. (HU.db.myRole and HU.ROLES[HU.db.myRole].name or L("automático (por tus talentos)")))
-    elseif cmd == "minimapa" then
-        local show = onoff(arg, not HU.db.minimapHidden)
-        HU:ShowMinimapButton(show)
-        HU:Print(L("Botón del minimapa: ") .. (show and "visible" or "oculto"))
-    elseif cmd == "nota" or cmd == "registro" then
-        HU:TestLogCommand(cmd, rawArg)
-    elseif cmd == "fase" or cmd == "phase" then
-        -- (para probar: launch = solo oficiales entre hermandades; full = todos los conectados)
-        -- (versión solo chat: no se puede cambiar)
-        if HU.CHAT_ONLY then
-            HU.db.phase = nil
-            return HU:Print(L("Esta versión es solo de chat: las listas completas no se pueden activar."))
-        end
-        if arg == "full" or arg == "completa" then HU.db.phase = "full"
-        elseif arg == "launch" or arg == "lanzamiento" then HU.db.phase = nil end
-        HU:Print(L("Fase: ") .. (HU:LaunchPhase() and L("lanzamiento") or L("completa")) .. "   (/gu fase lanzamiento | completa)")
-    elseif cmd == "buscar" or cmd == "historial" then
-        HU:HistCommand(cmd, rawArg)
-    elseif cmd == "debug" then
-        HU.db.debug = onoff(arg, HU.db.debug)
-        HU.db.showChannel = HU.db.debug
-        HU:Print(L("Depuración: ") .. (HU.db.debug and L("activada (canal visible)") or "desactivada"))
-    elseif cmd == "confirmar" or cmd == "confirm" then
+    end })
+HU:RegisterSlash("confirmar", { aliases = { "confirm" },
+    help = "|cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)",
+    fn = function(_, rawArg)
         -- (un oficial da por buena la lista que tengo de otra hermandad: el ancla de una comunidad
-        -- nueva, sin contactos comprobados todavía. Ver «Estado de la lista» en Comm.lua)
-        if not HU:CanOfficer() and not HU:IsTest() then
+        -- nueva, sin contactos comprobados todavía. Ver «Estado de la lista» en Domain/Trust.lua)
+        if not HU:CanOfficer() then
             return HU:Print(L("Solo los oficiales pueden confirmar la lista de otra hermandad."))
         end
         local tag = HU.Trim(rawArg or "")
@@ -996,15 +1111,125 @@ SlashCmdList.HERMANDADUNIDA = function(input)
         if tag == "" or tag == HU.myTag or not (HU.cfg and HU.cfg.byTag[tag]) then
             return HU:Print(L("Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)"))
         end
-        local before = HU.ConfirmRoster and HU:ConfirmRoster(tag)
+        local before = HU:ConfirmRoster(tag)
         if not before then
             return HU:Print(string.format(L("Aún no tengo la lista de <%s>: espera a que llegue y vuelve a probar."), tag))
         end
         HU:Print(string.format(L("Lista de <%s> confirmada (antes: %s). Sus rangos ya cuentan."), tag, L(HU.RosterStateName(before) or "?")))
-    else
-        for _, l in ipairs(HELP) do HU:Print(l) end
-    end
-end
+    end })
+-- asistente «Crear comunidad» (y modo prueba, que no toca nada: /gu asistente prueba)
+HU:RegisterSlash("asistente", { aliases = { "wizard", "crear", "create" },
+    help = "|cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)",
+    available = function() return HU.OpenWizard ~= nil end,
+    fn = function(arg) return HU:OpenWizard(arg == "prueba" or arg == "test") end })
+HU:RegisterSlash("hermandades", { aliases = { "guilds" },
+    help = "|cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)",
+    available = function() return HU.ShowGuildsWindow ~= nil end,
+    fn = function() return HU:ShowGuildsWindow() end })
+-- gestión de hermandades: principal, gestores e invitaciones (Community.lua)
+HU:RegisterSlash("invitar", { aliases = { "invite" },
+    help = "|cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)",
+    fn = function(_, rawArg)
+        local who, tag = rawArg:match("^(.-)%s+(%S+)$")
+        if not who or who == "" then return HU:Print(L("Uso: /gu invitar Nombre del maestro (u oficial) ETIQ")) end
+        local ok, why = HU:InviteGuild(who, tag)
+        if not ok and why then HU:Print("|cffff6060" .. why .. "|r") end
+    end })
+HU:RegisterSlash("gestor", { aliases = { "manager" },
+    help = "|cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve",
+    fn = function(_, rawArg)
+        local add, who = true, rawArg
+        local q = rawArg:match("^[Qq]uitar%s+(.+)$") or rawArg:match("^[Rr]emove%s+(.+)$")
+        if q then add, who = false, q end
+        if HU.Trim(who) == "" then return HU:Print(L("Uso: /gu gestor Nombre  ·  /gu gestor quitar Nombre")) end
+        local ok, why = HU:SetManager(who, add)
+        if ok then HU:Print((add and L("Gestor añadido: ") or L("Gestor quitado: ")) .. HU:Short(HU:FullName(who) or who))
+        elseif why then HU:Print("|cffff6060" .. why .. "|r") end
+    end })
+HU:RegisterSlash("pasarcanal", { aliases = { "sendchannel" },
+    help = "|cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña",
+    available = function() return HU.PassChannelTo ~= nil end,
+    fn = function(_, rawArg) return HU:PassChannelTo(rawArg) end })
+
+-- (sin ayuda)
+HU:RegisterSlash("perf", { available = function() return HU.PerfCommand ~= nil end,
+    fn = function(arg) return HU:PerfCommand(arg) end })
+HU:RegisterSlash("gestores", { aliases = { "managers" },
+    fn = function()
+        local list = HU:Managers()
+        HU:Print(L("Hermandad principal: ") .. (HU:PrincipalTag() and ("<" .. HU:PrincipalTag() .. ">") or "?")
+            .. L("  ·  Gestores: ") .. (#list > 0 and table.concat(list, ", ") or L("ninguno")))
+    end })
+HU:RegisterSlash("quitarhermandad", { aliases = { "removeguild" },
+    fn = function(_, rawArg)
+        local ok, why = HU:RemoveNetGuild(rawArg)
+        if ok then HU:Print(L("Hermandad quitada de la comunidad: <") .. HU.Trim(rawArg):upper() .. ">")
+        elseif why then HU:Print("|cffff6060" .. why .. "|r") end
+    end })
+-- (la J abre la ventana de hermandad del juego en el chat; /gu tecla on hace que abra GuildUnion)
+HU:RegisterSlash("tecla", { aliases = { "key" },
+    fn = function(arg)
+        if arg == "off" then HU.db.keyJ = nil elseif arg == "on" then HU.db.keyJ = true end
+        HU:ApplyKeyJ()
+        HU:Print(not HU.db.keyJ and L("La J abre la ventana de hermandad del juego en su pestaña de siempre (/gu tecla on para que se abra en la pestaña GuildUnion).")
+            or L("La J abre la ventana de hermandad del juego en la pestaña GuildUnion (/gu tecla off para que se abra como siempre)."))
+    end })
+HU:RegisterSlash("test", {
+    fn = function(arg, rawArg)
+        -- franja de prueba del mensaje fijado, solo en mi ventana (no se manda ni se guarda)
+        if arg == "off" then
+            HU.pinPreview = nil
+            HU:Print(L("Prueba del mensaje fijado quitada."))
+        else
+            local text = rawArg ~= "" and rawArg or L("Esto es un mensaje fijado de prueba: así se verá arriba del chat de la hermandad.")
+            HU.pinPreview = { text = text, author = HU:Me(), tag = HU.myTag, t = HU.StampNow() }
+            HU:Print(L("Prueba del mensaje fijado: abre la ventana de hermandad (J) en el chat. /gu test off la quita."))
+        end
+        if HU.UI and HU.UI.UpdatePinned then HU.UI:UpdatePinned() end
+    end })
+HU:RegisterSlash("invitaciones", { aliases = { "invites" },
+    fn = function() HU:ShowInviteLog() end })
+HU:RegisterSlash("listanegra", { aliases = { "blacklist" },
+    fn = function() HU:ShowBlacklist() end })
+HU:RegisterSlash("prat", {
+    fn = function(arg)
+        -- (copia 121, de prueba: usar o no el formato de Prat, y cómo va)
+        if arg == "on" or arg == "off" or arg == "si" or arg == "no" then HU.db.pratOff = (arg == "off" or arg == "no") or nil end
+        local st = HU.pratStats or {}
+        HU:Print("Formato de Prat: " .. (HU.db.pratOff and "apagado" or "encendido")
+            .. " · Prat: " .. ((HU.UsingPrat()) and "cargado" or "no está")
+            .. " · enganchado: " .. ((HU.PratActive()) and "sí" or "no")
+            .. " · líneas de otras hermandades con su formato: " .. (st.ok or 0)
+            .. " · con el de siempre: " .. (st.fallback or 0)
+            .. " · de mi hermandad adornadas: " .. (st.own or 0)
+            .. " · con nivel sabido: " .. (st.level or 0)
+            .. " · fallos: " .. (st.err or 0) .. (st.last and (" (" .. st.last .. ")") or ""))
+    end })
+HU:RegisterSlash("wm", {
+    -- (copia 125, de prueba: cómo va la pestaña dentro de Whisper Messenger)
+    fn = function() HU:Print(HU:WMStatus() or "sin pestaña de Whisper Messenger") end })
+HU:RegisterSlash("pintar", { aliases = { "paint" },
+    fn = function(arg)
+        -- (copia 94, de prueba: enciende o apaga el adorno de las líneas de mi hermandad)
+        HU.db.ownPaint = onoff(arg, HU.db.ownPaint)
+        HU:Print("Adorno de mi hermandad: " .. (HU.db.ownPaint and "sí" or "no"))
+    end })
+-- (copia 148: ¿le llega a esa persona mi texto por el canal?)
+HU:RegisterSlash("prueba", { fn = function(_, rawArg) HU:TextProbe(rawArg) end })
+-- (copia 147: el número del canal en mi juego frente a lo que dice el servidor)
+HU:RegisterSlash("ids", { fn = function() HU:PrintChannelIds() end })
+-- (copia 147: todo lo que sabe el addon, en una ventana para copiar)
+HU:RegisterSlash("todo", { aliases = { "informe", "all", "report" },
+    fn = function() HU:FullReport() end })
+-- ¿tiene el juego bloqueados /ginvite, /gpromote…? (los bloquea si un addon toca la caja del chat)
+HU:RegisterSlash("ordenes", { aliases = { "órdenes" }, fn = function() HU:OrdersDiag() end })
+HU:RegisterSlash("nota", { fn = function(_, rawArg, cmd) HU:TestLogCommand(cmd, rawArg) end })
+HU:RegisterSlash("fase", { aliases = { "phase" },
+    fn = function()
+        -- (versión solo chat: ya no hay fases; se borra la que pudiera haber guardada)
+        HU.db.phase = nil
+        HU:Print(L("Esta versión es solo de chat: las listas completas no se pueden activar."))
+    end })
 
 function HU:PrintStatus()
     for _, line in ipairs(self:StatusLines()) do self:Print(line) end
@@ -1055,17 +1280,24 @@ function HU:DiagLines()
         local np, rel = 0, {}
         for _, p in pairs(HU.guildPeers or {}) do np = np + 1; if p.relay then rel[#rel + 1] = p.name end end
         lines[#lines + 1] = "addon en mi hermandad: " .. np .. "  enlace: " .. (HU:IsRelay() and "yo" or (table.concat(rel, ",") ~= "" and table.concat(rel, ",") or "?"))
-            .. "  cola: " .. (HU.QueueSize and HU:QueueSize() or 0)
+            .. "  cola: " .. (HU:QueueSize() or 0)
         local pin = HU.db.pinned
         lines[#lines + 1] = "fijado: " .. (pin and ((pin.text or "") ~= "" and ("sí, de " .. tostring(pin.author) .. " " .. HU.SafeDate("%d/%m %H:%M", pin.t)) or "vacío") or "no ha llegado")
-        local rec = {}
-        for k in pairs(HU.diagRecv or {}) do rec[#rec + 1] = k .. "=" .. HU.diagRecv[k] end
+        -- (las órdenes, del registro: HU:RegisterMessage, Protocol.lua. Las que no conoce esta versión, con ?)
+        local rec, none, seen, total = {}, {}, HU.diagRecv or {}, 0
+        for k in pairs(HU.msgs) do
+            total = total + 1
+            if seen[k] then rec[#rec + 1] = k .. "=" .. seen[k] else none[#none + 1] = k end
+        end
+        for k, n in pairs(seen) do if not HU.msgs[k] then rec[#rec + 1] = k .. "?=" .. n end end
         table.sort(rec)
+        table.sort(none)
         lines[#lines + 1] = "recibido: " .. table.concat(rec, " ")
+        lines[#lines + 1] = "sin recibir (de " .. total .. " órdenes): " .. table.concat(none, " ")
         -- (copia 109: el carril y el chat, por dónde sale y por dónde llega)
         local dc = HU.diagChat
         if dc then
-            local st = HU.LaneState and HU:LaneState()
+            local st = HU:LaneState()
             local ls = HU.laneStats or {}
             lines[#lines + 1] = "carril: " .. tostring(st and st.lane) .. "  generación: " .. tostring(st and st.gen)
                 .. "   rechazos del canal: " .. (ls.refused or 0) .. " (sin contar por acabar de entrar: " .. (ls.ignored or 0) .. ")"
@@ -1088,3 +1320,5 @@ function HU:DiagLines()
         end
         return lines
 end
+
+HU:Module("Core", { "Blacklist", "BlizzTab", "Channel", "Channels", "Combat", "Community", "Config", "Domain/Trust", "ErrorShare", "Guard", "GuardKeeper", "History", "InviteLog", "Minimap", "Net/Relay", "Net/Transport", "Orders", "Perf", "Pinned", "Popup", "PratBridge", "Report", "Roster", "Social", "TestLog", "UI", "WMPanel", "Wizard" })

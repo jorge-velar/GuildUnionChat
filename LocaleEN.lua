@@ -809,3 +809,5 @@ E["Clic derecho: Gestión de hermandades"] = "Right click: guild management"
 -- (5.4.29: campos de batalla y arenas)
 E["En combate dentro de un campo de batalla o una arena el juego bloquea el chat unido: no ves a las otras hermandades ni les llega lo que escribes. Vuelve solo al acabar el combate."] = "While in combat inside a battleground or an arena the game blocks the united chat: you don't see the other guilds and they don't get what you write. It comes back on its own when combat ends."
 E["El juego tiene bloqueado el chat ahora (combate en una instancia o un campo de batalla): el addon no puede enviar ni leer. Se reanuda solo al acabar."] = "The game has chat locked right now (combat in an instance or a battleground): the addon can neither send nor read. It resumes on its own when it ends."
+
+HU:Module("LocaleEN", { })

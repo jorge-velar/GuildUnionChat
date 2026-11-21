@@ -64,8 +64,10 @@ UI.Kit = { T = T, Box = Box, Label = Label, Inset = Inset, RedButton = RedButton
 -- Sin ventana principal (GuildUnion Reduce): todo está en la ventana de hermandad de Blizzard
 -- (BlizzTab.lua). Quedan estas tres para quien todavía las llama.
 ---------------------------------------------------------------------------
-function UI:Toggle() if HU.OpenReduce then HU:OpenReduce() end end
-function UI:MarkDirty() end
+function UI:Toggle() HU:OpenReduce() end
+function UI:MarkDirty(_) end
+-- (el aviso de HU:Changed: hoy no hay nada que redibujar, pero quien lo necesite escucha aquí)
+HU:Listen("CHANGED", function(what) UI:MarkDirty(what) end)
 function UI:Refresh() end
 
 
@@ -86,3 +88,5 @@ function HU:ApplyKeyJ()
 end
 HU:OnStart(function() HU:ApplyKeyJ() end)
 HU:On("PLAYER_REGEN_ENABLED", function() if HU.keyJPending then HU:ApplyKeyJ() end end)
+
+HU:Module("UI", { "BlizzTab", "Core" })

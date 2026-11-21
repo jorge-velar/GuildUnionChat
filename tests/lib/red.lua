@@ -15,6 +15,7 @@
 -- Lo que manda un jugador llega a los demás en el paso siguiente (net.step, 0,1 s por defecto).
 -- Lo propio también vuelve (como en el juego: GUILD y CHANNEL devuelven el eco).
 local addon = require("lib.addon")
+local wow = require("lib.wow")
 local fixtures = require("lib.fixtures")
 
 local R = {}
@@ -42,7 +43,7 @@ function R.New(opts)
     for tag, name in pairs(opts.guilds or { UNO = "Hermandad Uno", DOS = "Hermandad Dos" }) do
         net:Guild(tag, name)
     end
-    math.randomseed(opts.seed or 1)
+    wow.Seed(opts.seed or 1) -- (los números al azar del WoW de mentira: iguales en todas las versiones de Lua)
     return net
 end
 
@@ -194,6 +195,9 @@ function Net:Check(_, _, _, dist, target)
         local q = self:Find(target)
         if not q or not q.online then return 12 end
     end
+    -- (net.channelRefuse: el juego rechaza lo del addon por los canales, resultado 7; lo que pasó
+    -- en Forever la noche del lanzamiento y por lo que existen los carriles)
+    if dist == "CHANNEL" and self.channelRefuse then return 7 end
     return 0
 end
 
@@ -258,6 +262,9 @@ function Net:DeliverChat(p, s)
     elseif kind == "CHANNEL" then
         local name = p.w.channels[tonumber(s.target)]
         if not name then return end
+        -- (net.channelTextDown: el texto de los canales no le llega a nadie, ni el eco a quien lo
+        -- escribe; lo oculto del addon sí, como lo visto en Forever)
+        if self.channelTextDown then return end
         for _, x in ipairs(self:InChannel(name)) do
             x.q.w:Fire("CHAT_MSG_CHANNEL", s.msg, p.full, "", x.id .. ". " .. name, "", "", 0, x.id, name, 0, self.line, guid)
         end
@@ -331,6 +338,15 @@ end
 -- Escribe en el chat (/g por defecto), como desde la caja de texto: pasa por el SendChatMessage del juego
 function Player:Say(msg, kind, target)
     self.env.SendChatMessage(msg, kind or "GUILD", nil, target)
+end
+
+-- Escribe «/gu texto» y devuelve lo que el addon le ha escrito en el chat
+function Player:Gu(text)
+    local before = #self.w.chat
+    self.env.SlashCmdList.HERMANDADUNIDA(text)
+    local out = {}
+    for i = before + 1, #self.w.chat do out[#out + 1] = tostring(self.w.chat[i].msg) end
+    return table.concat(out, "\n")
 end
 
 -- Las líneas que este jugador tiene en el historial del addon de `author` (otro jugador)

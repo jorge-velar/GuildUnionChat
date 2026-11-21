@@ -1,9 +1,12 @@
 -- Guild Union - listas completas de miembros (lista blanca del canal)
 local ADDON_NAME, HU = ...
 
+HU:Saved({ char = { "lists" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
-HU.whitelist = {}          -- [tag] = { list = {nombres}, set = {[clave]=true}, hash, count, t }
+-- (las listas completas de las otras hermandades, HU.whitelist, ya no existen desde ReduceClean:
+-- de las otras solo se tiene la lista de conectados, HU.remoteRoster)
 local FRESH = 30 * 60      -- una lista sin confirmar en 30 min deja de valer (GU20: se confirma cada 10)
 
 function HU.Hash(s)
@@ -31,7 +34,7 @@ function HU:ListFor(tag)
         local m = self:MyList()
         return { list = m.list, hash = m.hash, count = m.count, t = time() }
     end
-    return self.whitelist[tag]
+    return nil -- (de las otras hermandades no hay lista completa)
 end
 
 function HU:ListFresh(tag)
@@ -44,16 +47,12 @@ function HU:InAnyGuild(name)
     local k = self:Key(name)
     if not k then return false end
     if self.roster[k] then return true end
-    for _, L in pairs(self.whitelist) do
-        if L.set[k] then return true end
-    end
-    -- (también los conectados de las otras hermandades, aunque su lista
-    -- completa aún no haya llegado o no tenga todavía a alguien que acaba de entrar)
+    -- (los conectados de las otras hermandades)
     for _, r in pairs(self.remoteRoster) do
         if r.byKey and r.byKey[k] and not r.byKey[k].weak then return true end
     end
     -- confirmado por su hermandad (la guardia le preguntó) o en sus inactivos
-    if self.GuardKnown and self:GuardKnown(name) then return true end
+    if self:GuardKnown(name) then return true end
     for _, list in pairs(self.db.offline or {}) do
         if list[k] then return true end
     end
@@ -67,10 +66,8 @@ function HU:MemberOf(name, tag)
     if not k or not tag then return false end
     if tag == self.myTag then
         if self.roster[k] then return true end
-        return self:IsTest() and (k == self:MeKey() or (self.db.test and self.db.test.allow[k] ~= nil)) or false
+        return false
     end
-    local L = self.whitelist[tag]
-    if L and L.set and L.set[k] then return true end
     local r = self.remoteRoster[tag]
     if r and r.byKey then return r.byKey[k] ~= nil and not r.byKey[k].weak end
     if r then
@@ -109,7 +106,7 @@ function HU:TrustedOfficer(author, tag)
     if not author or author == "" then return false end
     if not self:InAnyGuild(author) then
         -- todavía no tengo la lista de su hermandad (acabo de entrar): se espera a tenerla
-        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and not self.whitelist[tag] then
+        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] then
             return false, "unknown"
         end
         return false
@@ -123,7 +120,7 @@ end
 function HU:TrustedMaster(author, tag)
     if not author or author == "" then return false end
     if not self:InAnyGuild(author) then
-        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] and not self.whitelist[tag] then
+        if tag and tag ~= "" and tag ~= self.myTag and self.cfg and self.cfg.byTag[tag] then
             return false, "unknown"
         end
         return false
@@ -173,7 +170,7 @@ function HU:IsGuildForwarder(sender)
     local e = sk and self.roster[sk]
     if not e then return false end
     if self:RankRole(self.myTag, e.rankIndex) then return true end
-    local relay = self.RelayName and self:RelayName()
+    local relay = self:RelayName()
     if relay and self:Key(relay) == sk then return true end
     local short = self:Short(sender):lower()
     local h = self.relayHelpers
@@ -181,7 +178,7 @@ function HU:IsGuildForwarder(sender)
         if h.relay and self:Key(h.relay) == sk then return true end
         for _, n in ipairs(h.list) do if self:Short(n):lower() == short then return true end end
     end
-    if self.IsRelay and self:IsRelay() then
+    if self:IsRelay() then
         for _, n in ipairs(self.advertisedHelpers or {}) do if self:Short(n):lower() == short then return true end end
     end
     return false
@@ -216,7 +213,7 @@ end
 
 -- sender == nil: la llamada no viene de la red (la hace el propio addon)
 function HU:MayCarry(author, sender, dist, tag)
-    if sender == nil or self:IsTest() then return true end
+    if sender == nil then return true end
     local sk = self:Key(sender)
     if not sk then return false end
     if author and author ~= "" and self:Key(author) == sk then return true end
@@ -238,7 +235,7 @@ function HU:MayCarryOrDefer(author, tag, retry, sender, dist)
     if self:MayCarry(author, sender, dist, tag) then return true end
     if retry and dist == "GUILD" and self.KnownGuildRelay and not self:KnownGuildRelay() then self:Defer(retry)
     elseif retry and dist == "WHISPER" and not self:MemberOf(sender, (tag and tag ~= "") and tag or "") then self:Defer(retry) end
-    if self.Debug then self:Debug("Acción de oficial rechazada (" .. tostring(HU.curCmd or "reintento") .. "): la trae", sender, "firmada por", author) end
+    self:Debug("Acción de oficial rechazada (" .. tostring(HU.curCmd or "reintento") .. "): la trae", sender, "firmada por", author)
     return false
 end
 
@@ -261,14 +258,14 @@ local function FirmRank(self, author)
 end
 function HU:CheckOfficerFirm(author, tag, retry, sender, dist)
     if not self:CheckOfficer(author, tag, retry, sender, dist) then return false end
-    if self:IsTest() or FirmRank(self, author) then return true end
+    if FirmRank(self, author) then return true end
     if retry then self:Defer(retry) end
-    if self.Debug then self:Debug("Acción de estructura en espera (lista sin confirmar):", author) end
+    self:Debug("Acción de estructura en espera (lista sin confirmar):", author)
     return false
 end
 function HU:CheckMasterFirm(author, tag, retry, sender, dist)
     if not self:CheckMaster(author, tag, retry, sender, dist) then return false end
-    if self:IsTest() or FirmRank(self, author) then return true end
+    if FirmRank(self, author) then return true end
     if retry then self:Defer(retry) end
     return false
 end
@@ -278,20 +275,9 @@ function HU:BigCommunity()
     return self.cfg ~= nil
 end
 
--- Fase de lanzamiento: a las otras hermandades solo van el maestro, los oficiales, el enlace y sus [+ARCHITECTURE.md]
-HU.PHASE = "launch"
--- Versión «solo chat» (5.4.11): siempre fase de lanzamiento. Por dentro solo viaja la lista pequeña [+ARCHITECTURE.md]
-HU.CHAT_ONLY = true
-function HU:LaunchPhase()
-    if HU.CHAT_ONLY then return true end
-    local p = (self.db and self.db.phase) or HU.PHASE
-    return p ~= "full"
-end
-
--- (ReduceClean: sin listas completas de miembros —WH, WQ, WL, WD, envío por trozos y ciclo de 3 min—:
--- estaban siempre cortadas por BigCommunity. Quedan vacías estas dos, que aún llaman Comm.lua)
-function HU:AnnounceList() end
-function HU:SendList() end
+-- (versión «solo chat», desde la 5.4.11: siempre la antigua «fase de lanzamiento». A las otras
+-- hermandades solo van el maestro, los oficiales, el enlace y sus ayudantes; ya no hay HU.PHASE,
+-- HU.CHAT_ONLY ni HU:LaunchPhase)
 
 -- avisos del juego de altas y bajas en la hermandad: se pide la lista de la hermandad enseguida
 local joinPat
@@ -313,7 +299,7 @@ HU:On("CHAT_MSG_SYSTEM", function(text)
     if type(text) ~= "string" or not HU.myTag then return end
     for _, pat in ipairs(GuildChangePatterns()) do
         if text:find(pat) then
-            if HU.RequestRoster then HU:RequestRoster(true) end
+            HU:RequestRoster(true)
             return
         end
     end
@@ -329,3 +315,4 @@ HU:On("ADDON_LOADED", function(name)
     HU.db.lists = {}
 end)
 
+HU:Module("Lists", { "Config", "Core", "Guard", "Net/Relay", "Roster" })

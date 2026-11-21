@@ -4,6 +4,20 @@ Addon de WoW (destino principal WoW Forever, Lua 5.1). Código, comentarios y te
 textos que ve el jugador van con `L()` y su inglés en LocaleEN.lua. Los comentarios largos van a
 ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`).
 
+Durante el refactor de arquitectura (docs/propuesta-arquitectura.md) el addon funciona igual que
+antes: un fallo o una mejora que aparezca se apunta en docs/fallos-conocidos.md y se arregla aparte.
+
+## Código nuevo: los registros
+
+- Una orden de red: `HU:RegisterMessage` junto a su manejador (Protocol.lua). Un comando `/gu`:
+  `HU:RegisterSlash`, y añadirlo a `INPUTS` de `slash_spec` y rehacer la referencia. Algo que se
+  repite: `HU:Every(segs, "nombre", fn)` (no hay `NewTicker`). Lo que se guarda: `HU:Saved` al
+  principio del archivo; si cambia de forma, una migración (`HU:RegisterMigration`).
+- Cada archivo acaba con `HU:Module(nombre, { necesita })`; si `modulos_spec` dice que no cuadra,
+  se copia la línea que propone.
+- Se llama directamente a las funciones de `HU` (nada de `if HU.X then HU:X() end`); `guardas_spec`
+  lo vigila.
+
 ## Pruebas (obligatorio)
 
 - Todo cambio de código del addon llega con pruebas en `tests/spec/`. Sin dependencias: el ejecutor
@@ -24,3 +38,6 @@ ARCHITECTURE.md (en el código queda la primera línea con `[+ARCHITECTURE.md]`)
 - Si falta una función del juego en el WoW de mentira, se añade a `tests/lib/wow.lua` con el valor
   más neutro posible.
 - luacheck solo corre en el CI (aquí no se puede instalar): no añadir avisos nuevos.
+- Metatabla estricta: si `strict_spec` falla con un campo de `HU`, o es un nombre mal escrito (se
+  arregla) o es estado que empieza vacío (se añade a `HU.MAYBE_NIL` en Core.lua). Nunca se añade un
+  campo a esa lista sin comprobar que algo lo asigna.

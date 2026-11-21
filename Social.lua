@@ -3,6 +3,20 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({
+    account = {
+        bans = {},            -- vetados del chat: [clave] = { name, on, by, tag, t }
+        mutes = {},           -- silenciados en el chat de la comunidad: [clave] = { name, u (hasta), by, tag, t }
+        profiles = {},        -- fichas: [clave] = { race, r (rol), s (rama), p (profesiones), t }
+        loginHistory = false, -- al entrar, escribir en el chat del juego el historial y lo de "mientras no estabas"
+    },
+    char = {
+        history = {},
+        offline = {},         -- desconectados de otras hermandades: [tag] = { [clave] = { c, l, s } }
+        "offlineT", "lastSeen",
+    },
+})
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local function Clean(s) return (tostring(s or ""):gsub("[~:;,%.|\r\n]", " ")) end
@@ -136,13 +150,14 @@ function HU:UpdateMyProfile(force)
     local same = old and old.race == p.race and old.r == p.r and old.s == p.s and old.p == p.p
     if same then p.t = old.t end
     self.db.profiles[k] = p
-    if (not same or force) and IsInGuild() and not self:IsTest() then
+    if (not same or force) and IsInGuild() then
         local race, r, s, profs = ProfileMsgFields(p)
         self:Send(table.concat({ "PF", race, r, s, profs }, "~"), "GUILD")
     end
     if not same then self:Changed("members") end
 end
 
+HU:RegisterMessage("PF")
 HU.comm.PF = function(self, sender, f)
     self.db.profiles[sender:lower()] = { race = f[1] or "", r = f[2] or "", s = f[3] or "", p = f[4] or "", t = time() }
     self:Changed("members")
@@ -159,7 +174,7 @@ function HU:SendProfilesTo(target, since)
     local function Step()
         if not self.myTag then return end
         -- (fase de lanzamiento: solo las de quien sale en las listas que ven las otras hermandades)
-        local extra = self.SharedExtraSet and self:SharedExtraSet()
+        local extra = self:SharedExtraSet()
         local last = math.min(#keys, i + PROFILE_STEP - 1)
         for j = i, last do
             local k = keys[j]
@@ -190,12 +205,13 @@ function HU:SendProfileEntries(target, entries)
     flush()
 end
 
+HU:RegisterMessage("PB", { tagField = 1, remoteData = true, queue = "bmid", ttl = 900, combat = "data" })
 HU.comm.PB = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
     for en in (f[2] or ""):gmatch("[^;]+") do
         local name, race, r, s, profs = en:match("^([^:]*):([^:]*):([^:]*):([^:]*):?(.*)$")
-        local known = self.whitelist[tag] or self.remoteRoster[tag]
+        local known = self.remoteRoster[tag]
         if HU.SafeName(name) and (not known or self:MemberOf(name, tag)) then
             local function c(v) return (v:gsub("[|%c]", "")) end
             self.db.profiles[self:Key(name)] = { race = c(race), r = c(r), s = c(s), p = c(profs), t = time() }
@@ -213,11 +229,10 @@ HU.demoOffline = nil
 function HU:SendOfflineTo(target, urgent)
     if not self.myTag then return end
     local entries = {}
-    -- (fase de lanzamiento: de las otras hermandades solo se ven maestro y oficiales, así que de
-    -- inactivos también van solo ellos; antes iban cientos de nombres en decenas de mensajes)
-    local onlyOff = self.LaunchPhase and self:LaunchPhase()
+    -- (de las otras hermandades solo se ven maestro y oficiales, así que de inactivos también van
+    -- solo ellos; antes iban cientos de nombres en decenas de mensajes)
     for _, e in ipairs(self.rosterList) do
-        if not e.online and (not onlyOff or self:RankRole(self.myTag, e.rankIndex)) then
+        if not e.online and self:RankRole(self.myTag, e.rankIndex) then
             local hours = e.offSecs and math.floor(e.offSecs / 3600) or ""
             entries[#entries + 1] = table.concat({ Clean(self:Short(e.name)), HU.CLASS_INDEX[e.class or ""] or 0, e.level or 0, hours }, ",")
         end
@@ -236,10 +251,11 @@ function HU:SendOfflineTo(target, urgent)
     flush()
 end
 
+HU:RegisterMessage("OD", { tagField = 1, remoteData = true, queue = "blow", ttl = 900, combat = "data" })
 HU.comm.OD = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
-    if dist == "WHISPER" and not self:IsTest() and not self:IsRemoteForwarder(sender, tag) then return end
+    if dist == "WHISPER" and not self:IsRemoteForwarder(sender, tag) then return end
     local list = self.db.offline[tag] or {}
     self.db.offline[tag] = list
     local now = time()
@@ -256,6 +272,7 @@ HU.comm.OD = function(self, sender, f, dist, raw)
     HU.offlineVer = (HU.offlineVer or 0) + 1
     self:Changed("members")
 end
+HU:RegisterMessage("OE", { tagField = 1, remoteData = true, queue = "mid", combat = "data" })
 HU.comm.OE = function(...) return HU.comm.OD(...) end
 
 -- Al mandar la lista de conectados, el enlace añade las fichas y (de vez en cuando) los desconectados
@@ -284,7 +301,7 @@ end
 local oqAsked = {}
 -- urgent = alguien lo está mirando (ha elegido Inactivos o Todos): se pide ya y llega antes
 function HU:WantOfflineInfo(tag, urgent)
-    if not tag or tag == self.myTag or self:IsTest() then return end
+    if not tag or tag == self.myTag then return end
     local t = self.db.offlineT and self.db.offlineT[tag]
     if t and time() - t < 12 * 3600 then return end
     if oqAsked[tag] and GetTime() - oqAsked[tag] < (urgent and 60 or 120) then return end
@@ -302,9 +319,9 @@ end
 -- ¿Faltan aún los inactivos de alguna hermandad? (para el aviso "cargando" de la lista) [+ARCHITECTURE.md]
 HU:OnStart(function()
     -- (solo el enlace, una hermandad cada 2 minutos y solo si no tiene nada urgente que mandar) [+ARCHITECTURE.md]
-    HU.After(math.random() * 120, function() HU.NewTicker(120, function()
-        if not HU.myTag or HU:IsTest() or not HU:IsRelay() then return end
-        if HU.MainQueueSize and HU:MainQueueSize() > 30 then return end
+    HU.After(math.random() * 120, function() HU:Every(120, "desconectados-repartir", function()
+        if not HU.myTag or not HU:IsRelay() then return end
+        if HU:MainQueueSize() > 30 then return end
         for _, tag in ipairs(HU:OtherTags()) do
             local t = HU.db.offlineT and HU.db.offlineT[tag]
             if (not t or time() - t > 12 * 3600) and HU:BestPeer(tag) then
@@ -315,6 +332,7 @@ HU:OnStart(function()
     end) end)
 end)
 
+HU:RegisterMessage("OQ", { combat = "req" })
 HU.comm.OQ = function(self, sender, f, dist)
     if dist ~= "WHISPER" or f[2] ~= self.myTag then return end
     -- a cada hermandad, como mucho una vez cada 10 minutos
@@ -423,6 +441,7 @@ function HU:ShareMute(k, m, target)
     end
 end
 
+HU:RegisterMessage("MZ", { queue = "chat", ttl = false })
 HU.comm.MZ = function(self, sender, f, dist, raw)
     for en in (f[1] or ""):gmatch("[^;]+") do
         local p = HU.Split(en, ",")
@@ -486,7 +505,7 @@ function HU:SetMute(name, seconds, reason)
     HU.After(0.06, function()
         if m.u == -1 then
             if HU.OfferRestoreRank and not HU:IsMuted(full) then HU:OfferRestoreRank(full, true) end
-        elseif HU.OfferPunish then
+        else
             HU:OfferPunish(full)
         end
     end)
@@ -519,6 +538,7 @@ function HU.DurationText(secs)
     return math.floor(secs / 60 + 0.5) .. " min"
 end
 
+HU:RegisterMessage("MU", { queue = "chat", ttl = false })
 HU.comm.MU = function(self, sender, f, dist, raw)
     local name, secs, by, tag, t = f[1], tonumber(f[2]), f[3], f[4], NetStamp(f[5])
     local why = HU.CleanReason(f[6])
@@ -602,6 +622,7 @@ function HU:SetBan(name, on, reason)
     self:Changed("members")
 end
 
+HU:RegisterMessage("BN", { queue = "chat", ttl = false })
 HU.comm.BN = function(self, sender, f, dist, raw)
     local name, on, by, tag, t = f[1], f[2] == "1", f[3], f[4], NetStamp(f[5])
     local why = HU.CleanReason(f[6])
@@ -667,9 +688,6 @@ end
 function HU:AfterGuildKick(name)
     local k = self:Key(name)
     if self.roster[k] then self.roster[k] = nil end
-    for _, W in pairs(self.whitelist) do
-        if W.set then W.set[k] = nil end
-    end
     HU.After(1, function() HU:KickPlayer(name, false, true) end)
     self:Changed("members")
 end
@@ -679,7 +697,7 @@ HU.Dialogs["WELOVEPVP_GKICK"] = HU.LT({
     button1 = "Aceptar",
     button2 = "Rechazar",
     secure = function(data)
-        if data and not HU:IsTest() and HU:CanKickMember(data.target) then return HU.GuildCmd("gremove", data.target) end
+        if data and HU:CanKickMember(data.target) then return HU.GuildCmd("gremove", data.target) end
     end,
     OnAccept = function(_, data) HU:AnswerKick(data, true) end,
     OnCancel = function(_, data, reason) if reason == "clicked" then HU:AnswerKick(data, false) end end,
@@ -690,11 +708,12 @@ HU.Dialogs["WELOVEPVP_GKICK"] = HU.LT({
 })
 
 -- Echar a varios a la vez (pide confirmación con la lista de nombres)
+HU:RegisterMessage("GK", { queue = "chat", ttl = 600 })
 HU.comm.GK = function(self, sender, f, dist, raw)
     local id, tag, target, requester, reqTag = f[1], f[2], f[3], f[4], f[5]
     if not (id and tag and target and requester) then return end
     if tag ~= self.myTag or seenKicks[id] then return end
-    if not self:IsTest() and not self:InAnyGuild(requester) then return end
+    if not self:InAnyGuild(requester) then return end
     -- (antes, cualquiera ponía el nombre de otro como solicitante: ahora lo tiene que traer él o
     -- quien reparte, la etiqueta es la suya de verdad y como mucho 3 peticiones por minuto)
     if not self:MayCarry(requester, sender, dist, reqTag) or not HU.RequestRate(requester) then return end
@@ -728,6 +747,7 @@ function HU:AnswerKick(data, accept)
     end
 end
 
+HU:RegisterMessage("GD")
 HU.comm.GD = function(self, _, f)
     local id = f[1]
     if not id then return end
@@ -735,6 +755,7 @@ HU.comm.GD = function(self, _, f)
     HU:HideDialogs("WELOVEPVP_GKICK", function(d) return d and d.id == id end)
 end
 
+HU:RegisterMessage("GR")
 HU.comm.GR = function(self, _, f)
     local id, result, who, target, why = f[1], f[2], f[3], f[4], f[5]
     local req = id and myKicks[id]
@@ -939,6 +960,7 @@ function HU:FlushHistoryBatch()
     end
 end
 
+HU:RegisterMessage("HQ", { combat = "req" })
 HU.comm.HQ = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local since = tonumber(f[1])
@@ -998,14 +1020,15 @@ local function HasEntry(h, t, a, m)
     return false
 end
 
+HU:RegisterMessage("HL", { queue = "blow", ttl = 900, combat = "data" })
 HU.comm.HL = function(self, sender, f, dist)
     -- llega a toda la hermandad (lo de todos) o por susurro (lo de oficiales)
     if dist ~= "WHISPER" and dist ~= "GUILD" then return end
     -- solo lo manda alguien de mi hermandad (contesta a la petición de alguien al entrar)
     local sk = self:Key(sender)
     if not (sk and self.roster[sk]) then return end
-    if dist == "GUILD" and not self:IsTest() and not HLSourceOK(self, sender) then
-        if self.Debug then self:Debug("Historial rechazado (no le toca contestar):", sender) end
+    if dist == "GUILD" and not HLSourceOK(self, sender) then
+        self:Debug("Historial rechazado (no le toca contestar):", sender)
         return
     end
     if dist == "GUILD" then lastHeard = GetTime() end
@@ -1078,7 +1101,7 @@ function HU:RestoreChat()
     for i = #h, 1, -1 do
         local e = h[i]
         local k = e.k or "main"
-        if (k ~= "off" or self:CanOfficer() or self:IsTest()) and (count[k] or 0) < per then
+        if (k ~= "off" or self:CanOfficer()) and (count[k] or 0) < per then
             count[k] = (count[k] or 0) + 1
             table.insert(shown, 1, e)
         end
@@ -1108,7 +1131,7 @@ end
 HU:OnStart(function()
     local since = HU.db.lastSeen
     HU.db.lastSeen = time()
-    HU.NewTicker(30, function() HU.db.lastSeen = time() end)
+    HU:Every(30, "ultima-vez", function() HU.db.lastSeen = time() end)
     -- limpiar lo viejo (así lo guardado no crece sin parar y el juego carga más rápido al entrar)
     local now = time()
     local db, adb = HU.db, HU.adb or {}
@@ -1131,14 +1154,14 @@ HU:OnStart(function()
     end
     HU.After(6, function() HU:RestoreChat() end)
     HU.After(12, function() HU:UpdateMyProfile(true) end)
-    HU.NewTicker(120, function() HU:UpdateMyProfile() end)
+    HU:Every(120, "ficha", function() HU:UpdateMyProfile() end)
     -- lo escrito mientras no estabas (si hace más de un minuto)
     HU.After(25, function()
         if since and time() - since > 60 then HU:AskMissedChat(since) end
     end)
     -- el enlace repasa con las otras hermandades los silencios y vetos de la suya cada 5 min. Con [+ARCHITECTURE.md]
     local resync = {} -- [etiqueta] = { sig, peer, t }
-    HU.NewTicker(300, function()
+    HU:Every(300, "silencios-repasar", function()
         if not HU.myTag or not HU:IsRelay() then return end
         -- (solo los de oficiales de mi hermandad: los de otra los reparte su enlace, que es de quien
         -- los aceptan las demás; y de los vetos, los vigentes o levantados hace menos de 3 días)
@@ -1188,3 +1211,5 @@ function HU:TypeLines(macro, title)
     if #lines == 0 then return end
     self:RunOrders({ title = title or L("Órdenes de hermandad"), text = lines[1] .. (#lines > 1 and (" (+" .. (#lines - 1) .. ")") or ""), lines = lines })
 end
+
+HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })

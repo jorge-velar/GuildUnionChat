@@ -56,7 +56,7 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
     -- esto sustituye a «ha hablado por el canal oculto» para arrancar con otra hermandad: HU:Vouched)
     if kind == "main" and keys then
         self.chanRosterKeys, self.chanRosterKeysT = keys, GetTime()
-        if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld() end) end
+        HU.After(0, function() HU:ReplayHeld() end)
     end
     if not found then
         local me = self:MeKey()
@@ -73,7 +73,7 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
             local k = m.name and m.name:lower()
             if k then self.chanSeen[k] = now end
         end
-        if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld() end) end
+        HU.After(0, function() HU:ReplayHeld() end)
     end
     if kind == "main" then
         -- quiénes son moderadores (para saludarlos)
@@ -227,7 +227,7 @@ end
 
 function HU:MissingLists()
     local missing = {}
-    if not self.cfg or self:IsTest() then return missing end
+    if not self.cfg then return missing end
     -- con más de 6 hermandades las listas completas no se reparten; quien está en el canal está
     -- conectado, así que basta con la lista de conectados de su hermandad
     for _, g in ipairs(self.cfg.guilds) do
@@ -338,7 +338,7 @@ function HU:GuardAsk(names, tags)
         local p = self:BestPeer(tag)
         if not p then return end -- sin contacto en alguna: no se puede saber, no se pregunta
         q.wait[tag] = p.name
-        q.wit[tag] = self.GuardWitness and self:GuardWitness(tag, p.name) or nil
+        q.wit[tag] = self:GuardWitness(tag, p.name) or nil
         q.left = q.left + 1
     end
     queries[id] = q
@@ -352,6 +352,7 @@ function HU:GuardAsk(names, tags)
     HU.After(QUERY_TTL, function() queries[id] = nil end)
 end
 
+HU:RegisterMessage("MQ", { queue = "mid" })
 HU.comm.MQ = function(self, sender, f, dist)
     if dist ~= "WHISPER" or not self.myTag or not f[1] then return end
     -- sin la lista de mi hermandad cargada (acabo de entrar) no contesto: diría que nadie es mío
@@ -389,9 +390,9 @@ local function FinishTag(self, id, q, tag)
             if not wit or wit[k] then
                 self.guardKnown[k] = { tag = tag, t = now }
                 verdict[k] = { intruder = false, t = now }
-                -- (su chat del respaldo que estaba retenido ya se puede enseñar: Comm.lua, VerifyChatSender)
-                if self.ReplayHeld then HU.After(0, function() HU:ReplayHeld(k) end) end
-            elseif self.Debug then self:Debug("Guardia: el testigo de", tag, "no confirma a", k) end
+                -- (su chat del respaldo que estaba retenido ya se puede enseñar: Net/Security.lua, VerifyChatSender)
+                HU.After(0, function() HU:ReplayHeld(k) end)
+            else self:Debug("Guardia: el testigo de", tag, "no confirma a", k) end
             q.names[k] = nil
         end
     end
@@ -405,6 +406,7 @@ local function FinishTag(self, id, q, tag)
     end
 end
 
+HU:RegisterMessage("MA")
 HU.comm.MA = function(self, sender, f, dist)
     local id = f[1]
     local q = id and queries[id]
@@ -414,8 +416,8 @@ HU.comm.MA = function(self, sender, f, dist)
     if not tag then for t, name in pairs(q.wit or {}) do if self:SameName(name, sender) then tag, role = t, "wit" end end end
     if not tag then return end
     -- (contesta por X solo quien está en la lista buena de X: antes valía el «mejor contacto», que [+ARCHITECTURE.md]
-    if not self:IsTest() and not self:MemberOf(sender, tag) then
-        if self.Debug then self:Debug("Respuesta de la guardia no aceptada:", sender, tag) end
+    if not self:MemberOf(sender, tag) then
+        self:Debug("Respuesta de la guardia no aceptada:", sender, tag)
         return
     end
     local set = {}
@@ -453,9 +455,6 @@ end
 local function KnownSet(self)
     local set, now = {}, GetTime()
     for k in pairs(self.roster) do set[k] = true end
-    for _, W in pairs(self.whitelist) do
-        if W.set then for k in pairs(W.set) do set[k] = true end end
-    end
     -- (los de una lista de arranque o débil no cuentan como conocidos: los ha puesto quien la manda,
     -- que puede ser un intruso con sus amigos. Quedan de sospechosos y se pregunta por ellos)
     for _, r in pairs(self.remoteRoster) do
@@ -476,7 +475,7 @@ HU.GuardKnownSet = KnownSet -- (lo usa la revisión a petición: GuardKeeper.lua
 -- (desde la 5.4.8 el canal principal solo se revisa a petición y los vetados los echa un encargado:
 -- GuardKeeper.lua. Aquí estaba la revisión periódica del canal entero; se quitó en la 58)
 function HU:GuardTick(full)
-    if self.GuardRedirect then return self:GuardRedirect(full) end
+    return self:GuardRedirect(full)
 end
 
 -- Agrupa ráfagas de eventos: una sola revisión por lote, no una por evento
@@ -533,7 +532,7 @@ function HU:CheckImpostor(author)
     local k = self:Key(author)
     if not k or not self.myTag then return end
     if self:GuildVerified(k) or self:InMyGuild(author) then return true end
-    if not (self.CanPin and self:CanPin()) then return end
+    if not (self:CanPin()) then return end
     local now = GetTime()
     local a = impAsk[k]
     if a and now - a.t < 300 then return end
@@ -551,7 +550,7 @@ function HU:CheckImpostor(author)
             if HU:ChannelHas(author) == false then return end
             HU:SetMute(author, 3600, L("Se hace pasar por <") .. HU.myTag .. ">")
             if HU:AmIModFast() then HU:KickPlayer(author, false, nil, true) end
-            if HU.DropHeldChat then HU:DropHeldChat(k) end
+            HU:DropHeldChat(k)
         end)
     end
     -- (la espera al azar es para que, si hay varios oficiales, pregunte solo el primero: los demás
@@ -572,7 +571,7 @@ end
 
 local OWNER_STEP, OWNER_FIND_STEP = 100, 400
 function HU:CheckChannelOwner(force)
-    if self:IsTest() or not self.myTag then return end
+    if not self.myTag then return end
     -- (sin la lista de mi hermandad no sé quién es oficial: se le quitaría el moderador a todos)
     if not self.rosterList or #self.rosterList == 0 then return end
     if not force and GetTime() - lastOwnerCheck < 60 then return end
@@ -676,9 +675,9 @@ function HU:OnChannelRolesChanged()
 end
 
 HU:OnStart(function()
-    HU.NewTicker(15, function() HU:GuardTick() end)
+    HU:Every(15, "guardia", function() HU:GuardTick() end)
     -- (con retraso al azar, para no coincidir con los demás relojes en el mismo fotograma)
-    HU.After(math.random() * 60, function() HU.NewTicker(60, function() HU:CheckChannelOwner() end) end)
+    HU.After(math.random() * 60, function() HU:Every(60, "guardia-dueno-canal", function() HU:CheckChannelOwner() end) end)
 end)
 
 ---------------------------------------------------------------------------
@@ -743,25 +742,25 @@ function HU:StatusLines(compact)
         -- (lo de abajo —contactos, «sin confirmar»— puede salir en naranja por esto, no por un fallo)
         Lines[#Lines + 1] = "|cffff8800" .. L("El juego tiene bloqueado el chat ahora (combate en una instancia o un campo de batalla): el addon no puede enviar ni leer. Se reanuda solo al acabar.") .. "|r"
     end
-    local old = self.OldVersions and self.OldVersions() or {}
+    local old = self.OldVersions() or {}
     if #old > 0 then
         Lines[#Lines + 1] = "|cffff8800" .. L("Versiones viejas en tu hermandad: ") .. "|r" .. table.concat(old, ", ", 1, math.min(#old, 8)) .. (#old > 8 and "..." or "")
     end
     if many then
-        local others, contact, online, full = self:OtherTags(), {}, {}, {}
-        local noContact, noOnline, noFull = {}, {}, {}
+        local others, contact, online = self:OtherTags(), {}, {}
+        local noContact, noOnline = {}, {}
         for _, tag in ipairs(others) do
             if self:BestPeer(tag) then contact[#contact + 1] = tag else noContact[#noContact + 1] = tag end
             if self.remoteRoster[tag] then online[#online + 1] = tag else noOnline[#noOnline + 1] = tag end
-            if self:ListFresh(tag) then full[#full + 1] = tag else noFull[#noFull + 1] = tag end
         end
         local function missing(list)
             if #list == 0 then return "" end
             return "  |cffff8800(" .. L("faltan: ") .. table.concat(list, ", ", 1, math.min(#list, 6)) .. (#list > 6 and "..." or "") .. ")|r"
         end
         Lines[#Lines + 1] = L("Otras hermandades: ") .. #others .. L(".  Con contacto: ") .. #contact .. missing(noContact)
-        Lines[#Lines + 1] = L("  Lista de conectados: ") .. #online .. missing(noOnline)
-        Lines[#Lines + 1] = L("  Lista completa: ") .. #full .. missing(noFull) .. L("   (detalle: /gu estado)")
+        -- (la línea «Lista completa» ya no sale: las listas completas no existen desde ReduceClean y
+        -- siempre decía que faltaban todas)
+        Lines[#Lines + 1] = L("  Lista de conectados: ") .. #online .. missing(noOnline) .. L("   (detalle: /gu estado)")
     end
     for _, tag in ipairs(many and {} or self:OtherTags()) do
         local p = self:BestPeer(tag)
@@ -793,3 +792,5 @@ function HU:StatusLines(compact)
     Lines[#Lines + 1] = L("Guardia: ") .. (self.guardStatus or "?")
     return Lines
 end
+
+HU:Module("Guard", { "Audit", "Channel", "Config", "Core", "Domain/Trust", "GuardKeeper", "Lists", "Net/Relay", "Net/Security", "Net/Transport", "Pinned", "Protocol", "Roster", "Social" })

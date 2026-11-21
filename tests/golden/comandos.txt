@@ -1,0 +1,565 @@
+# Qué hace cada /gu (tests/spec/slash_spec.lua): a qué funciones de HU llama directamente y qué
+# escribe en el chat, en orden. Se rehace con:  lua tests/run.lua Comandos --actualizar
+== /gu 
+llama: Trim UI.Toggle
+ERROR en BlizzTab.lua
+== /gu panel
+llama: Trim UI.Toggle
+ERROR en BlizzTab.lua
+== /gu lista
+llama: Trim UI.Toggle
+== /gu list
+llama: Trim UI.Toggle
+ERROR en BlizzTab.lua
+== /gu ayuda
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu|r  abre o cierra el panel
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu config|r  explica cómo configurar las hermandades
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu recargar|r  vuelve a leer la configuración
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu minimapa on/off|r  muestra u oculta el botón del minimapa
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu debug on/off|r  mensajes de depuración y canal visible
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu errores|r  muestra los errores guardados del addon  (|cffffd100/gu errores borrar|r: los borra;  |cffffd100/gu errores pedir contraseña|r: oficiales, pide a todos los suyos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu diag|r  diagnóstico del chat (qué llega del juego y qué guarda el addon)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu memoria|r  memoria que usa el addon y mensajes en cola
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu cola|r  mensajes del addon pendientes de enviar  (|cffffd100/gu cola vaciar|r para vaciarla)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu buscar Nombre [texto]|r  oficiales: qué ha dicho alguien en los últimos 30 días (también lo que pasó mientras no estabas)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu historial|r  oficiales: ventana del historial  (|cffffd100/gu historial off|r / |cffffd100on|r para apagarlo o encenderlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña
+== /gu help
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu|r  abre o cierra el panel
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu config|r  explica cómo configurar las hermandades
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu recargar|r  vuelve a leer la configuración
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu minimapa on/off|r  muestra u oculta el botón del minimapa
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu debug on/off|r  mensajes de depuración y canal visible
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu errores|r  muestra los errores guardados del addon  (|cffffd100/gu errores borrar|r: los borra;  |cffffd100/gu errores pedir contraseña|r: oficiales, pide a todos los suyos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu diag|r  diagnóstico del chat (qué llega del juego y qué guarda el addon)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu memoria|r  memoria que usa el addon y mensajes en cola
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu cola|r  mensajes del addon pendientes de enviar  (|cffffd100/gu cola vaciar|r para vaciarla)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu buscar Nombre [texto]|r  oficiales: qué ha dicho alguien en los últimos 30 días (también lo que pasó mientras no estabas)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu historial|r  oficiales: ventana del historial  (|cffffd100/gu historial off|r / |cffffd100on|r para apagarlo o encenderlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña
+== /gu loquesea
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu|r  abre o cierra el panel
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu config|r  explica cómo configurar las hermandades
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu recargar|r  vuelve a leer la configuración
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu minimapa on/off|r  muestra u oculta el botón del minimapa
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu debug on/off|r  mensajes de depuración y canal visible
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu errores|r  muestra los errores guardados del addon  (|cffffd100/gu errores borrar|r: los borra;  |cffffd100/gu errores pedir contraseña|r: oficiales, pide a todos los suyos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu diag|r  diagnóstico del chat (qué llega del juego y qué guarda el addon)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu memoria|r  memoria que usa el addon y mensajes en cola
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu cola|r  mensajes del addon pendientes de enviar  (|cffffd100/gu cola vaciar|r para vaciarla)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu buscar Nombre [texto]|r  oficiales: qué ha dicho alguien en los últimos 30 días (también lo que pasó mientras no estabas)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu historial|r  oficiales: ventana del historial  (|cffffd100/gu historial off|r / |cffffd100on|r para apagarlo o encenderlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña
+== /gu estado
+llama: Trim PrintStatus
+dice: |cff33ff99Comunidad de prueba|r: Tu hermandad: Hermandad Uno <UNO>
+dice: |cff33ff99Comunidad de prueba|r: Hermandades permitidas (2): |cff33ff99Hermandad Uno|r <UNO>, |cff66b7ffHermandad Dos|r <DOS>
+dice: |cff33ff99Comunidad de prueba|r: |cffff8800Aviso: la línea GU:c está en la Información de hermandad y la puede leer cualquiera. Pásala a la nota de oficial del maestro.|r
+dice: |cff33ff99Comunidad de prueba|r: Canal: Ca···· (/1) - |cff44ff44conectado|r
+dice: |cff33ff99Comunidad de prueba|r: Oficiales: sin configurar (nota de oficial GU:o:Canal:clave)
+dice: |cff33ff99Comunidad de prueba|r: Con el addon en tu hermandad: 1.  Enlace de tu hermandad: Tester-Reino
+dice: |cff33ff99Comunidad de prueba|r: Cola de envío: |cff44ff44vacía|r
+dice: |cff33ff99Comunidad de prueba|r:   <DOS> contacto: |cffff8800ninguno todavía|r  - |cffff8800sin lista|r
+dice: |cff33ff99Comunidad de prueba|r: Guardia: A petición (/gu guardia revisar). Vetados: los echa el encargado
+== /gu status
+llama: Trim PrintStatus
+dice: |cff33ff99Comunidad de prueba|r: Tu hermandad: Hermandad Uno <UNO>
+dice: |cff33ff99Comunidad de prueba|r: Hermandades permitidas (2): |cff33ff99Hermandad Uno|r <UNO>, |cff66b7ffHermandad Dos|r <DOS>
+dice: |cff33ff99Comunidad de prueba|r: |cffff8800Aviso: la línea GU:c está en la Información de hermandad y la puede leer cualquiera. Pásala a la nota de oficial del maestro.|r
+dice: |cff33ff99Comunidad de prueba|r: Canal: Ca···· (/1) - |cff44ff44conectado|r
+dice: |cff33ff99Comunidad de prueba|r: Oficiales: sin configurar (nota de oficial GU:o:Canal:clave)
+dice: |cff33ff99Comunidad de prueba|r: Con el addon en tu hermandad: 1.  Enlace de tu hermandad: Tester-Reino
+dice: |cff33ff99Comunidad de prueba|r: Cola de envío: |cff44ff44vacía|r
+dice: |cff33ff99Comunidad de prueba|r:   <DOS> contacto: |cffff8800ninguno todavía|r  - |cffff8800sin lista|r
+dice: |cff33ff99Comunidad de prueba|r: Guardia: A petición (/gu guardia revisar). Vetados: los echa el encargado
+== /gu config
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Pon estas líneas en la |cffffd100Información de hermandad|r de CADA hermandad (las mismas en todas):
+dice: |cff33ff99Comunidad de prueba|r:    GU:g:Nombre Hermandad Uno:HU1
+dice: |cff33ff99Comunidad de prueba|r:    GU:g:Nombre Hermandad Dos:HU2
+dice: |cff33ff99Comunidad de prueba|r: Canal y contraseña, en la |cffffd100nota de oficial|r del maestro (máx. 31 letras; nadie más la ve):
+dice: |cff33ff99Comunidad de prueba|r:    GU:c:Canal:clave
+dice: |cff33ff99Comunidad de prueba|r: El addon los reparte solo a todos. Para el chat de oficiales, en la nota de oficial de otro miembro:
+dice: |cff33ff99Comunidad de prueba|r:    GU:o:CanalOfi:clave2
+dice: |cff33ff99Comunidad de prueba|r: El canal solo admite letras y números. Las etiquetas, hasta 6 letras o números.
+== /gu recargar
+llama: Trim RequestRoster RefreshConfig Print
+dice: |cff33ff99Comunidad de prueba|r: Configuración recargada.
+== /gu reload
+llama: Trim RequestRoster RefreshConfig Print
+dice: |cff33ff99Comunidad de prueba|r: Configuración recargada.
+== /gu canal
+llama: Trim PrintChannelRoster
+dice: |cff33ff99Comunidad de prueba|r: Canal CanalPrueba (número 1): 0 personas. Tu nombre: Tester-Reino
+== /gu channel
+llama: Trim PrintChannelRoster
+dice: |cff33ff99Comunidad de prueba|r: Canal CanalPrueba (número 1): 0 personas. Tu nombre: Tester-Reino
+== /gu carril
+llama: Trim Me IsOfficerName LaneState Print LaneStatusText Print
+dice: |cff33ff99Comunidad de prueba|r: Carril del canal: 0 (generación 0)
+dice: |cff33ff99Comunidad de prueba|r: Subida automática: 0 s seguidos de rechazos (hacen falta 300) · confirmaciones 0 de 1 · rechazos sin contar por acabar de entrar: 0. Órdenes de sala de versiones viejas sin obedecer: 0. Nadie en otra sala, que yo sepa.
+== /gu lane
+llama: Trim Me IsOfficerName LaneState Print LaneStatusText Print
+dice: |cff33ff99Comunidad de prueba|r: Carril del canal: 0 (generación 0)
+dice: |cff33ff99Comunidad de prueba|r: Subida automática: 0 s seguidos de rechazos (hacen falta 300) · confirmaciones 0 de 1 · rechazos sin contar por acabar de entrar: 0. Órdenes de sala de versiones viejas sin obedecer: 0. Nadie en otra sala, que yo sepa.
+== /gu carril reiniciar
+llama: Trim Me IsOfficerName LaneLock ProposeLane
+dice: |cff33ff99Comunidad de prueba|r: |cffff8800Esto devuelve a TODA la comunidad a la sala principal (la 0).|r Para confirmarlo, escribe lo mismo otra vez antes de 30 segundos.
+== /gu carril subir
+llama: Trim Me IsOfficerName LaneLock ProposeLane
+dice: |cff33ff99Comunidad de prueba|r: Propuesta enviada a los oficiales de tu hermandad. Solo se hará si otro oficial escribe /gu carril confirmar antes de 2 minutos.
+== /gu carril juntar
+llama: Trim Me IsOfficerName LaneLock ProposeLane
+dice: |cff33ff99Comunidad de prueba|r: |cffff8800Esto trae a TODA la comunidad a tu sala (la 0).|r Para confirmarlo, escribe lo mismo otra vez antes de 30 segundos.
+== /gu carril confirmar
+llama: Trim Me IsOfficerName LaneLock ConfirmLane
+dice: |cff33ff99Comunidad de prueba|r: No hay ninguna propuesta de cambio de sala pendiente.
+== /gu fijar
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: No hay mensaje fijado. Oficiales: /gu fijar texto
+== /gu pin
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: No hay mensaje fijado. Oficiales: /gu fijar texto
+== /gu fijar Hola a todos
+llama: Trim SetPinned
+dice: |cff33ff99Comunidad de prueba|r: Mensaje fijado para toda la comunidad.
+== /gu fijar borrar
+llama: Trim SetPinned
+dice: |cff33ff99Comunidad de prueba|r: Mensaje fijado quitado.
+== /gu test
+llama: Trim Me StampNow Print UI.UpdatePinned
+dice: |cff33ff99Comunidad de prueba|r: Prueba del mensaje fijado: abre la ventana de hermandad (J) en el chat. /gu test off la quita.
+== /gu test Prueba de fijado
+llama: Trim Me StampNow Print UI.UpdatePinned
+dice: |cff33ff99Comunidad de prueba|r: Prueba del mensaje fijado: abre la ventana de hermandad (J) en el chat. /gu test off la quita.
+== /gu test off
+llama: Trim Print UI.UpdatePinned
+dice: |cff33ff99Comunidad de prueba|r: Prueba del mensaje fijado quitada.
+== /gu etiqueta on
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Etiqueta de hermandad: sí
+== /gu tag off
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Etiqueta de hermandad: no
+== /gu pintar on
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Adorno de mi hermandad: sí
+== /gu paint off
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Adorno de mi hermandad: no
+== /gu guardia revisar
+llama: Trim GuardReview
+dice: |cff33ff99Comunidad de prueba|r: Revisando el canal (por partes, puede tardar unos segundos)...
+dice: |cff33ff99Comunidad de prueba|r: La lista del canal no está disponible (abre Social > Chat una vez)
+== /gu guard review
+llama: Trim GuardReview
+dice: |cff33ff99Comunidad de prueba|r: Revisando el canal (por partes, puede tardar unos segundos)...
+dice: |cff33ff99Comunidad de prueba|r: La lista del canal no está disponible (abre Social > Chat una vez)
+== /gu guardia off
+llama: Trim Print Changed
+dice: |cff33ff99Comunidad de prueba|r: Expulsión automática: desactivada
+== /gu guardia on
+llama: Trim Print Changed
+dice: |cff33ff99Comunidad de prueba|r: Expulsión automática: activada
+== /gu margen 120
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Margen: 120 s
+== /gu margin 5
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Indica un número de segundos entre 30 y 1800.
+== /gu margen
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Indica un número de segundos entre 30 y 1800.
+== /gu rol tank
+llama: Trim UpdateMyProfile Print
+dice: |cff33ff99Comunidad de prueba|r: Tu rol: Tanque
+== /gu role healer
+llama: Trim UpdateMyProfile Print
+dice: |cff33ff99Comunidad de prueba|r: Tu rol: Sanador
+== /gu rol dps
+llama: Trim UpdateMyProfile Print
+dice: |cff33ff99Comunidad de prueba|r: Tu rol: DPS
+== /gu rol auto
+llama: Trim UpdateMyProfile Print
+dice: |cff33ff99Comunidad de prueba|r: Tu rol: automático (por tus talentos)
+== /gu rol nada
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu rol tanque | sanador | dps | feral | auto
+== /gu minimapa off
+llama: Trim ShowMinimapButton Print
+dice: |cff33ff99Comunidad de prueba|r: Botón del minimapa: oculto
+== /gu minimap on
+llama: Trim ShowMinimapButton Print
+dice: |cff33ff99Comunidad de prueba|r: Botón del minimapa: visible
+== /gu debug on
+llama: Trim StrictMode Print
+dice: |cff33ff99Comunidad de prueba|r: Depuración: activada (canal visible)
+== /gu debug off
+llama: Trim StrictMode Print
+dice: |cff33ff99Comunidad de prueba|r: Depuración: desactivada
+== /gu errores
+llama: Trim ShowErrors
+== /gu errors
+llama: Trim ShowErrors
+== /gu errores borrar
+llama: Trim ClearAllErrors
+dice: |cff33ff99Comunidad de prueba|r: Errores borrados: 0 tuyos y 0 recibidos.
+== /gu errores pedir
+llama: Trim CanOfficer AskErrors Print
+dice: |cff33ff99Comunidad de prueba|r: No se pueden pedir los errores: contraseña incorrecta   (uso: /gu errores pedir contraseña)
+== /gu errores pedir clave
+llama: Trim CanOfficer Trim AskErrors Print
+dice: |cff33ff99Comunidad de prueba|r: Errores pedidos a todos. Irán llegando en el próximo medio minuto (/gu errores para verlos).
+== /gu diag
+llama: Trim OrdersDiag DiagLines UI.ShowCopy
+dice: |cff33ff99Comunidad de prueba|r: /GINVITE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GPROMOTE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GDEMOTE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GREMOVE: el juego aún no lo ha cargado
+== /gu memoria
+llama: Trim QueueSize Print
+dice: |cff33ff99Comunidad de prueba|r: Memoria del addon: 0.0 MB (máximo en esta sesión: 0.0 MB). Cola: 0 mensajes.
+== /gu memory
+llama: Trim QueueSize Print
+dice: |cff33ff99Comunidad de prueba|r: Memoria del addon: 0.0 MB (máximo en esta sesión: 0.0 MB). Cola: 0 mensajes.
+== /gu cola
+llama: Trim QueueText Print
+dice: |cff33ff99Comunidad de prueba|r: Cola de envío: |cff44ff44vacía|r   (/gu cola vaciar para vaciarla)
+== /gu queue
+llama: Trim QueueText Print
+dice: |cff33ff99Comunidad de prueba|r: Cola de envío: |cff44ff44vacía|r   (/gu cola vaciar para vaciarla)
+== /gu cola vaciar
+llama: Trim ClearQueue Print
+dice: |cff33ff99Comunidad de prueba|r: Cola de envío vaciada (0 mensajes). Lo pendiente se volverá a pedir y mandar solo.
+== /gu ordenes
+llama: Trim OrdersDiag
+dice: |cff33ff99Comunidad de prueba|r: /GINVITE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GPROMOTE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GDEMOTE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GREMOVE: el juego aún no lo ha cargado
+== /gu órdenes
+llama: Trim OrdersDiag
+dice: |cff33ff99Comunidad de prueba|r: /GINVITE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GPROMOTE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GDEMOTE: el juego aún no lo ha cargado
+dice: |cff33ff99Comunidad de prueba|r: /GREMOVE: el juego aún no lo ha cargado
+== /gu idioma
+llama: Trim LangName Print
+dice: |cff33ff99Comunidad de prueba|r: Español  -  /gu idioma en | es
+== /gu lang en
+llama: Trim SetLang
+== /gu idioma es
+llama: Trim SetLang
+== /gu buscar
+llama: Trim HistCommand
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu buscar Nombre [texto]
+== /gu search Compi
+llama: Trim HistCommand
+== /gu historial
+llama: Trim HistCommand
+dice: |cff33ff99Comunidad de prueba|r: Historial de oficiales: 0 mensajes de 0 días (0.0 MB). Cola: 0.
+== /gu history off
+llama: Trim HistCommand
+dice: |cff33ff99Comunidad de prueba|r: Historial de oficiales: apagado
+== /gu historial on
+llama: Trim HistCommand
+dice: |cff33ff99Comunidad de prueba|r: Historial de oficiales: encendido
+== /gu registro
+llama: Trim TestLogCommand
+dice: |cff33ff99Comunidad de prueba|r: Registro de pruebas: off, 0 apuntes. /gu registro on [quien dirige] | pasar | off | borrar
+== /gu nota algo
+llama: Trim TestLogCommand
+dice: |cff33ff99Comunidad de prueba|r: El registro de pruebas está apagado (/gu registro on).
+== /gu fase
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Esta versión es solo de chat: las listas completas no se pueden activar.
+== /gu phase completa
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Esta versión es solo de chat: las listas completas no se pueden activar.
+== /gu confirmar
+llama: Trim CanOfficer Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)
+== /gu confirm DOS
+llama: Trim CanOfficer Trim ConfirmRoster Print
+dice: |cff33ff99Comunidad de prueba|r: Aún no tengo la lista de <DOS>: espera a que llegue y vuelve a probar.
+== /gu confirmar UNO
+llama: Trim CanOfficer Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu confirmar ETIQUETA   (la de otra hermandad de la comunidad)
+== /gu confirmar dos
+llama: Trim CanOfficer Trim ConfirmRoster Print
+dice: |cff33ff99Comunidad de prueba|r: Aún no tengo la lista de <DOS>: espera a que llegue y vuelve a probar.
+== /gu version
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu|r  abre o cierra el panel
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu estado|r  muestra el estado del canal, los contactos y la guardia
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu config|r  explica cómo configurar las hermandades
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/hg mensaje|r  escribe en el chat de hermandad unido (en modo prueba sustituye a /g)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu fijar texto|r  maestro u oficial: fija un mensaje arriba del chat de la ventana de hermandad, para toda la comunidad  (|cffffd100/gu fijar borrar|r para quitarlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu canal|r  lista quién está en el canal (propietario y moderadores)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué carril del canal está la comunidad (|cffffd100reiniciar|r: oficiales, todos al principal)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu recargar|r  vuelve a leer la configuración
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu notacanal|r  oficiales: la línea GU:c (canal y contraseña) para volver a ponerla en la nota de oficial
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandad|r  abre la ventana de hermandad del juego (ahí se edita la Información). La J abre GuildUnion; /gu tecla off la devuelve a la ventana del juego
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu etiqueta on/off|r  muestra la etiqueta de la hermandad en los mensajes
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu visto Nombre|r  cuántas líneas de ese jugador te han llegado por el canal y cuántas se te han enseñado
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu sonda 30|r  oficiales: manda 30 mensajes ocultos de prueba por el canal; cada uno ve cuántos le llegan
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu carril|r  en qué sala del canal estás y si hay gente en otra · oficiales: /gu carril juntar (todos a tu sala)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu version Nombre|r  qué versión del addon tiene ese jugador, si se sabe
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu guardia revisar|r  maestro u oficial: busca en el canal a quien no es de ninguna hermandad (tú decides a quién echar)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu margen <segundos>|r  espera antes de echar a quien no está en ninguna hermandad
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu rol tanque/sanador/dps/auto|r  tu rol en tu ficha (por defecto, según tus talentos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu minimapa on/off|r  muestra u oculta el botón del minimapa
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu debug on/off|r  mensajes de depuración y canal visible
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu errores|r  muestra los errores guardados del addon  (|cffffd100/gu errores borrar|r: los borra;  |cffffd100/gu errores pedir contraseña|r: oficiales, pide a todos los suyos)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu diag|r  diagnóstico del chat (qué llega del juego y qué guarda el addon)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu memoria|r  memoria que usa el addon y mensajes en cola
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu cola|r  mensajes del addon pendientes de enviar  (|cffffd100/gu cola vaciar|r para vaciarla)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu buscar Nombre [texto]|r  oficiales: qué ha dicho alguien en los últimos 30 días (también lo que pasó mientras no estabas)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu historial|r  oficiales: ventana del historial  (|cffffd100/gu historial off|r / |cffffd100on|r para apagarlo o encenderlo)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu registro on [quien dirige]|r  registro de pruebas (apagado por defecto)  ·  |cffffd100/gu nota texto|r  apunta una nota con los números del momento
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu idioma en/es|r  cambia el idioma (English / Español)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu confirmar ETIQUETA|r  oficiales: da por buena la lista de otra hermandad (sus rangos cuentan ya)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu asistente|r  crear la comunidad o invitar paso a paso  (|cffffd100/gu asistente prueba|r: verlo sin tocar nada)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu hermandades|r  ventana de Gestión de hermandades (principal, gestores e invitaciones)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu invitar Nombre ETIQ|r  maestro de la principal y gestores: invita a una hermandad (al maestro u oficial que pueda editar su Información)
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu gestor Nombre|r  /  |cffffd100/gu gestor quitar Nombre|r  maestro de la principal: quién puede invitar  ·  |cffffd100/gu gestores|r  los ve
+dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu pasarcanal Nombre|r  le pasa el canal a quien lo está esperando (de tu hermandad o de la comunidad), sin enseñar la contraseña
+== /gu version Compi-Reino
+llama: Trim Key Nice Print
+dice: |cff33ff99Comunidad de prueba|r: Compi Reino: no sé su versión. Solo la conozco de quien me ha saludado con el addon: los de mi hermandad y mis contactos de las otras. Pídele que mire el título de su pestaña de GuildUnion.
+== /gu versión Nadie-Reino
+llama: Trim Key Nice Print
+dice: |cff33ff99Comunidad de prueba|r: Nadie Reino: no sé su versión. Solo la conozco de quien me ha saludado con el addon: los de mi hermandad y mis contactos de las otras. Pídele que mire el título de su pestaña de GuildUnion.
+== /gu sonda 5
+llama: Trim SendProbe
+dice: |cff33ff99Comunidad de prueba|r: Sonda: mandando 5 mensajes ocultos por el canal (unos 6 s)…
+== /gu probe
+llama: Trim SendProbe
+dice: |cff33ff99Comunidad de prueba|r: Ya hay una sonda tuya en marcha.
+== /gu visto Compi
+llama: Trim PrintSeen
+dice: |cff33ff99Comunidad de prueba|r: Compi Reino, desde tu último /reload: 0 líneas llegadas por el canal (última -) y 0 enseñadas (última -).
+== /gu seen
+llama: Trim PrintSeen
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu visto Nombre Apellido
+== /gu prat
+llama: Trim UsingPrat PratActive Print
+dice: |cff33ff99Comunidad de prueba|r: Formato de Prat: encendido · Prat: no está · enganchado: no · líneas de otras hermandades con su formato: 0 · con el de siempre: 0 · de mi hermandad adornadas: 0 · con nivel sabido: 0 · fallos: 0
+== /gu prat off
+llama: Trim UsingPrat PratActive Print
+dice: |cff33ff99Comunidad de prueba|r: Formato de Prat: apagado · Prat: no está · enganchado: no · líneas de otras hermandades con su formato: 0 · con el de siempre: 0 · de mi hermandad adornadas: 0 · con nivel sabido: 0 · fallos: 0
+== /gu wm
+llama: Trim WMStatus Print
+dice: |cff33ff99Comunidad de prueba|r: Whisper Messenger: no está · pestaña registrada: no · intentos: 5 · sin leer: 0 · burbujas: 0 · estilo: ? · tema: (el suyo por defecto) · color de burbuja: default · letra: 12 · borde de la caja: ?
+== /gu prueba Compi
+llama: Trim TextProbe
+dice: |cff33ff99Comunidad de prueba|r: Prueba con compi reino: enviadas 3 líneas por el canal. Resultado en unos 10 s...
+== /gu ids
+llama: Trim PrintChannelIds
+dice: |cff33ff99Comunidad de prueba|r: Preguntando al servidor por el canal (3 s)...
+dice: |cff33ff99Comunidad de prueba|r: canal de la comunidad: /1 · intercambio de canales: apagado en esta versión
+dice: |cff33ff99Comunidad de prueba|r:   /1  COMUNIDAD (sala 0)
+dice: |cff33ff99Comunidad de prueba|r:   copia del mundo (número del canal de Comercio): no se ve desde aquí (solo en ciudades)
+dice: |cff33ff99Comunidad de prueba|r:   gente dentro según el juego: 0
+dice: |cff33ff99Comunidad de prueba|r:   servidor: este juego no deja preguntar al servidor por un canal
+== /gu todo
+llama: Trim FullReport
+dice: |cff33ff99Comunidad de prueba|r: Preparando el informe completo (3 s)...
+== /gu informe
+llama: Trim FullReport
+dice: |cff33ff99Comunidad de prueba|r: Preparando el informe completo (3 s)...
+== /gu all
+llama: Trim FullReport
+dice: |cff33ff99Comunidad de prueba|r: Preparando el informe completo (3 s)...
+== /gu report
+llama: Trim FullReport
+dice: |cff33ff99Comunidad de prueba|r: Preparando el informe completo (3 s)...
+== /gu invitaciones
+llama: Trim ShowInviteLog
+== /gu invites
+llama: Trim ShowInviteLog
+== /gu listanegra
+llama: Trim ShowBlacklist
+== /gu blacklist
+llama: Trim ShowBlacklist
+== /gu hermandad
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Pulsa J (o el botón de Hermandad) para abrir la ventana de hermandad.
+== /gu guild
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Pulsa J (o el botón de Hermandad) para abrir la ventana de hermandad.
+== /gu tecla on
+llama: Trim ApplyKeyJ Print
+dice: |cff33ff99Comunidad de prueba|r: La J abre la ventana de hermandad del juego en la pestaña GuildUnion (/gu tecla off para que se abra como siempre).
+== /gu key off
+llama: Trim ApplyKeyJ Print
+dice: |cff33ff99Comunidad de prueba|r: La J abre la ventana de hermandad del juego en su pestaña de siempre (/gu tecla on para que se abra en la pestaña GuildUnion).
+== /gu hermandades
+llama: Trim ShowGuildsWindow
+== /gu guilds
+llama: Trim ShowGuildsWindow
+== /gu asistente
+llama: Trim OpenWizard
+dice: |cff33ff99Comunidad de prueba|r: Solo el maestro de la hermandad principal y sus gestores pueden invitar hermandades.
+== /gu wizard prueba
+llama: Trim OpenWizard
+== /gu crear
+llama: Trim OpenWizard
+dice: |cff33ff99Comunidad de prueba|r: Solo el maestro de la hermandad principal y sus gestores pueden invitar hermandades.
+== /gu create
+llama: Trim OpenWizard
+dice: |cff33ff99Comunidad de prueba|r: Solo el maestro de la hermandad principal y sus gestores pueden invitar hermandades.
+== /gu invitar
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu invitar Nombre del maestro (u oficial) ETIQ
+== /gu invitar Jefa-Reino TRES
+llama: Trim InviteGuild Print
+dice: |cff33ff99Comunidad de prueba|r: |cffff6060solo el maestro de la hermandad principal y los gestores pueden invitar hermandades|r
+== /gu invite Nadie
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu invitar Nombre del maestro (u oficial) ETIQ
+== /gu gestor
+llama: Trim Print
+dice: |cff33ff99Comunidad de prueba|r: Uso: /gu gestor Nombre  ·  /gu gestor quitar Nombre
+== /gu gestor Compi-Reino
+llama: Trim SetManager Print
+dice: |cff33ff99Comunidad de prueba|r: |cffff6060solo el maestro de la hermandad principal puede nombrar gestores|r
+== /gu manager remove Compi-Reino
+llama: Trim SetManager Print
+dice: |cff33ff99Comunidad de prueba|r: |cffff6060solo el maestro de la hermandad principal puede nombrar gestores|r
+== /gu gestores
+llama: Trim Managers PrincipalTag Print
+dice: |cff33ff99Comunidad de prueba|r: Hermandad principal: <UNO>  ·  Gestores: ninguno
+== /gu managers
+llama: Trim Managers PrincipalTag Print
+dice: |cff33ff99Comunidad de prueba|r: Hermandad principal: <UNO>  ·  Gestores: ninguno
+== /gu quitarhermandad
+llama: Trim RemoveNetGuild Print
+dice: |cff33ff99Comunidad de prueba|r: |cffff6060solo el maestro de la hermandad principal y los gestores pueden hacerlo|r
+== /gu removeguild TRES
+llama: Trim RemoveNetGuild Print
+dice: |cff33ff99Comunidad de prueba|r: |cffff6060solo el maestro de la hermandad principal y los gestores pueden hacerlo|r
+== /gu notacanal
+llama: Trim ShowChannelNoteLine
+dice: |cff33ff99Comunidad de prueba|r: No hay canal guardado todavía.
+== /gu channelnote
+llama: Trim ShowChannelNoteLine
+dice: |cff33ff99Comunidad de prueba|r: No hay canal guardado todavía.
+== /gu pasarcanal
+llama: Trim PassChannelTo
+dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no lo puedes pasar.
+== /gu sendchannel Compi-Reino
+llama: Trim PassChannelTo
+dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no lo puedes pasar.
+== /gu perf
+llama: Trim PerfCommand
+== /gu language es
+llama: Trim SetLang
+======== como miembro ========
+== /gu errores pedir
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden pedir los errores de todos.
+== /gu errores pedir clave
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden pedir los errores de todos.
+== /gu confirmar
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+== /gu confirm DOS
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+== /gu confirmar UNO
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+== /gu confirmar dos
+llama: Trim CanOfficer Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden confirmar la lista de otra hermandad.
+== /gu carril
+llama: Trim Me IsOfficerName CanOfficer LaneState Print LaneStatusText Print
+dice: |cff33ff99Comunidad de prueba|r: Carril del canal: 0 (generación 0)
+dice: |cff33ff99Comunidad de prueba|r: Subida automática: 0 s seguidos de rechazos (hacen falta 300) · confirmaciones 0 de 1 · rechazos sin contar por acabar de entrar: 0. Órdenes de sala de versiones viejas sin obedecer: 0. Nadie en otra sala, que yo sepa.
+== /gu carril reiniciar
+llama: Trim Me IsOfficerName CanOfficer LaneLock Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril.
+== /gu carril confirmar
+llama: Trim Me IsOfficerName CanOfficer LaneLock Print
+dice: |cff33ff99Comunidad de prueba|r: Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril.
+== /gu sonda 5
+llama: Trim SendProbe
+dice: |cff33ff99Comunidad de prueba|r: Sonda: mandando 5 mensajes ocultos por el canal (unos 6 s)…
+== /gu fijar Hola
+llama: Trim SetPinned
+dice: |cff33ff99Comunidad de prueba|r: Mensaje fijado para toda la comunidad.
+== /gu guardia revisar
+llama: Trim GuardReview
+dice: |cff33ff99Comunidad de prueba|r: Revisando el canal (por partes, puede tardar unos segundos)...
+dice: |cff33ff99Comunidad de prueba|r: La lista del canal no está disponible (abre Social > Chat una vez)

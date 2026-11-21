@@ -12,6 +12,7 @@ HU20  HI GUILD   HI~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
 HU20  HI WHISPER HI~<ver>~<etiq>~<n>~<n>~<nombre>~<n>~<n>~<n>~<n>~<ver>
 HU20  HI WHISPER HI~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
 HU20  HQ GUILD   HQ~<n>~<n>
+HU20  HR GUILD   HR~<ver>~<etiq>~<n>~<n>~<nombre>~<n>~<n>~<n>~<n>~<ver>
 HU20  HR GUILD   HR~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
 HU20  HR WHISPER HR~<ver>~<etiq>~<n>~<n>~<nombre>~<n>~<n>~<n>~<n>~<ver>
 HU20  HR WHISPER HR~<ver>~<etiq>~<n>~<n>~~<n>~<n>~<n>~<n>~<ver>
@@ -34,10 +35,8 @@ HU20  RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre
 HU20  RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre>~c
 HU20  RC GUILD   RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~+<nombre>,<n>,<n>,<n>,~<nombre>~<x>~c
 HU20  RC GUILD   RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~-<nombre>~<nombre>~<x>~c
-HU20  RF WHISPER RF~<etiq>~<n>
 HU20  RN GUILD   RN~<etiq>~Maestro,Oficial,Oficial,Veterano,Miembro~<n>,<n>
 HU20  RN WHISPER RN~<etiq>~Maestro,Oficial,Oficial,Veterano,Miembro~<n>,<n>
-HU20  RQ GUILD   RQ
 HU20B PB WHISPER PB~<etiq>~<nombre>:Human:::
 HU20B RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre>~c~<x>
 HU20B RB WHISPER RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,

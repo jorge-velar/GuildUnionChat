@@ -1,6 +1,6 @@
 # Propuesta: arquitectura para seguir añadiendo funciones
 
-> Estado: **revisada y lista para empezar el paso 1**. Escrita sobre la 5.4.12 y comprobada de nuevo
+> Estado: **pasos 1 a 4 hechos** en la rama `refactor/arquitectura` (ver [Paso 2](#paso-2-en-detalle), [Paso 3](#paso-3-en-detalle) y [Paso 4 en detalle](#paso-4-en-detalle)). Falta el 5 (documentación). Escrita sobre la 5.4.12 y comprobada de nuevo
 > sobre la **5.4.41** (las cifras del diagnóstico son de la 5.4.41 salvo donde se indica).
 > La red de pruebas del paso 1 ya está montada (`tests/`, ver [Paso 1 en detalle](#paso-1-en-detalle)).
 
@@ -199,7 +199,7 @@ cierra cuando se cumple su «hecho cuando».
 | 1 | **H + G + arreglos rápidos**: pruebas, luacheck con lista de conocidos, borrar restos de Reduce, `HU.comm` en Core, metatabla estricta | CI en verde con pruebas y luacheck que paran; ninguna orden sin manejador en las tablas; `CW`/`CG`/`CF` registrados al cargar |
 | 2 | **A** (con las marcas de hoy), **F** y **E**. Primera prueba: `CW`, `CG` y `CF` | Ninguna tabla suelta de órdenes en Comm.lua ni en Combat.lua; `/gu diag` lista las órdenes desde el registro; la ayuda de `/gu` sale del registro; `db.schema` existe con su primera migración (`cdb.migrated`) |
 | 3 | **B**, y se estudia `Trust:Level` | Comm.lua por debajo de 1.000 líneas y sin bloques `do` para las variables locales; las pruebas de seguridad dan lo mismo que antes |
-| 4 | **C + D**: módulos, bus interno y planificador | Ningún `HU.NewTicker` fuera del planificador; los `if HU.X then` que quedan están justificados |
+| 4 | **C + D**: módulos, bus interno y planificador, y `HU:Defaults` (lo que quedó de E) | Ningún `HU.NewTicker` fuera del planificador; los `if HU.X then` que quedan están justificados |
 | 5 | **I** | ARCHITECTURE.md sin números de línea; tabla del protocolo generada |
 
 ## Paso 1 en detalle
@@ -222,7 +222,10 @@ cierra cuando se cumple su «hecho cuando».
   ninguna carpeta, y lo guardado se conserva al salir y volver a entrar.
 - `tests/lib/escenario.lua`: un rato de juego fijo con la red (chat de hermandad y de oficiales, un
   silencio, una búsqueda en el historial, alguien que sale y vuelve).
-- 83 pruebas en `tests/spec/`:
+- Números al azar propios en el WoW de mentira (`wow.Seed`, Park-Miller), iguales con Lua 5.1 y 5.4:
+  con el `math.random` de cada versión el escenario seguía otro camino en el CI que en local, y
+  History.lua salía 10 puntos más bajo en local.
+- 107 pruebas en `tests/spec/`:
   - `carga_spec`: carga, arranque y órdenes registradas (incluido el problema #4);
   - `utilidades_spec`: `Split`, `SafeText`, `SafeName`, `NetT`, `NetStamp`, `Utf8Cut`,
     `VersionGreater`, `ParseConfigText` y `ParseChannelNote`;
@@ -234,6 +237,11 @@ cierra cuando se cumple su «hecho cuando».
     el chat de `/g` llega a la otra hermandad una sola vez, en los dos sentidos y en orden; no se
     repite en la propia; quien entra tarde también lo recibe; y cada uno tiene la lista de la otra
     hermandad antes de 90 s (hoy, 36 s);
+  - `listas_spec`: de quién se sabe que es de una hermandad (`ListFresh`, `InAnyGuild`, `MemberOf`, `TrustedOfficer`/`TrustedMaster`) y la raza y profesiones de los demás (`PB`);
+  - `comandos_spec`: `/gu fase` y `/gu confirmar`, las comprobaciones «firmes» de oficial y maestro, `MissingLists` y `PL` por susurro de alguien no comprobado;
+  - `strict_spec` (la última): ninguna prueba ha leído un campo de `HU` que no existe (metatabla estricta);
+  - `chat_spec`: emoticonos, qué líneas de otras hermandades se enseñan (`[ETIQ:B]`, `[ETIQ:O]`, las
+    de mi hermandad, los canales extra) y el historial rellenado por otros (`HistInsert`);
   - `formato_spec`, con el escenario:
     - **ninguna forma de mensaje nueva** fuera de `tests/golden/formato.txt` (47 formas de 5
       prefijos). Se guardan los tipos de los campos (`<ver>`, `<n>`, `<nombre>`, `<etiq>`, `<x>`), no
@@ -242,7 +250,7 @@ cierra cuando se cumple su «hecho cuando».
       así que `--actualizar` añade y no quita (lo viejo se borra a mano). Si el cambio es a
       propósito: `lua tests/run.lua Formato --actualizar`, y queda a la vista en el diff;
     - **ida y vuelta:** todo lo que se manda por `HU20`/`HU20B` lo acepta la seguridad de alguna otra
-      copia. Las excepciones van en `NOBODY_ACCEPTS` con su motivo; hoy, solo `PB` (ver pendiente 10);
+      copia. Las excepciones van en `NOBODY_ACCEPTS` con su motivo; hoy, solo `PB` (ver [fallos-conocidos.md](fallos-conocidos.md), 1);
     - **versiones mezcladas:** Ana y Blas con la última versión publicada (la etiqueta `v*` más alta)
       y Alba y Bea con la de la carpeta. Sin errores, el chat en los dos sentidos, las listas, el
       silencio y la ida y vuelta.
@@ -251,12 +259,14 @@ cierra cuando se cumple su «hecho cuando».
     silenciado al escribir y al leer (la forma no cambia: los dos son nombres) lo detecta solo la red
     mezclada.
 - CI (`.github/workflows/ci.yml`): pruebas con Lua 5.1, informe de traducciones y luacheck que
-  para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
+  para con cualquier aviso (`tests/luacheck-conocidos.txt` está vacía desde el paso 1). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 - Cobertura (`tests/cobertura.lua`, trabajo `cobertura` del CI): mide las líneas por las que pasa
   alguna prueba, **sin contar lo que se ejecuta solo al cargar el addon** (era casi la mitad de lo
   «cubierto»). Hoy, 33,7 % con Lua 5.1 (26,2 % antes de las pruebas de formato). Para el CI en dos
   casos:
-  - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen). Los mínimos
+  - un archivo baja de su mínimo (`tests/cobertura-minima.txt`, con 1 punto de margen) **y además**
+    tiene más líneas sin probar que antes. Así, borrar código muerto que sí se probaba (el % baja sin
+    que falte ninguna prueba) no para el CI; añadir código sin probar o quitar pruebas, sí. Los mínimos
     se miden con Lua 5.1: con la 5.4, luac reparte las instrucciones por líneas de otra forma y cada
     archivo sale hasta 1,2 puntos arriba o abajo, así que en local el margen es de 2 puntos y
     `--actualizar` solo guarda con 5.1. Los mínimos solo suben: cuando un archivo mejora, se copia el
@@ -269,25 +279,48 @@ cierra cuando se cumple su «hecho cuando».
 
 ### Pendiente
 
-1. **Ir quitando los 18 avisos conocidos de luacheck** (`tests/luacheck-conocidos.txt`: sombras de
-   variables, ramas `if` vacías, valores sin usar). Al arreglar uno, se rehace la lista con
-   `--actualizar` o se descarga el artefacto `luacheck-conocidos` del CI. Las 15 funciones del juego
-   que daban W113 ya están en `read_globals`.
+1. ~~Quitar los 18 avisos conocidos de luacheck~~ **Hecho** (rama `refactor/arquitectura`): nombres
+   que tapaban a otros (`R` y `b` de fuera de Comm.lua renombrados a `SEND_RESULT` y `Bit`; los `L`
+   y `c` de dentro, a `wl` y `col`), `if` vacíos reescritos con la condición al revés, una resta que
+   no se usaba y dos `local` repetidos. La lista de conocidos está vacía: cualquier aviso para el CI.
+   Las líneas tocadas que ninguna prueba ejecutaba tienen ahora `chat_spec`.
 2. **Completar el formato con mensajes reales**: lo principal ya está (`formato_spec`). Falta añadir
    mensajes grabados en el juego con `/gu registro` (`tests/golden/entrada/`, cada uno con su efecto
    esperado) para las órdenes que el escenario no provoca y para versiones sin etiqueta en git
    (hay etiquetas de la 5.4.12 a la 5.4.41, con huecos: 5.4.13–5.4.28, 5.4.34, 5.4.38 y 5.4.39).
-3. **G**: borrar las órdenes muertas de las tablas, la rama de `HU.whitelist` y sus pruebas «rama
-   muerta», las ramas de `CHAT_ONLY`/`IsTest`/`SimpleMode`/`LaunchPhase` y UIStubs.lua si ya nada lo usa.
-4. `HU.comm = {}` en Core.lua; `CW`/`CG`/`CF` se registran al cargar Channel.lua. Hay que cambiar la
-   prueba «CW, CG y CF se registran al entrar al juego».
-5. Metatabla estricta sobre `HU` con `/gu debug` encendido. Antes, arreglar lo que encuentre al
-   pasar las pruebas con ella activa.
-6. **A confirmar:** con `HU.paused` (versión mínima), lo que sale de la cola se pierde en vez de
-   esperar (`SendOne` devuelve `false`). La prueba lo fija tal como está; si no es lo que se quiere,
-   se cambia la prueba junto con el código.
+3. ~~**G**~~ **Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento:
+   - fuera WL/WH/WD/WQ/FQ/LG de las tablas de Comm.lua y Combat.lua;
+   - fuera `HU.whitelist` (siempre vacía) y todo lo que la leía en 9 archivos, con
+     `AnyListMissing`, `AnnounceList`/`SendList` vacías y la línea «Lista completa» de `/gu estado`,
+     que siempre decía que faltaban todas;
+   - fuera `IsTest()` (siempre falso: 48 sitios, y Test.lua), `SimpleMode()` (siempre falso) y
+     `CHAT_ONLY`/`HU.PHASE`/`LaunchPhase()` (siempre verdadero). `PresenceSchedule` ya solo tiene la
+     vía rápida, y `/gu fase` solo dice que esta versión es solo de chat;
+   - fuera UIStubs.lua: todos los que llaman a esos métodos del panel antiguo comprueban antes que
+     existan.
+
+   Las pruebas de la «rama muerta» se han quitado; las líneas tocadas que no ejecutaba ninguna
+   prueba tienen ahora `listas_spec` y `comandos_spec`.
+4. ~~`HU.comm = {}` en Core.lua~~ **Hecho**: Core.lua crea `HU.comm` y Channel.lua registra
+   `CW`/`CG`/`CF` al cargarse (antes, en `OnStart`). La prueba de carga ahora exige que estén ya al
+   cargar (diagnóstico #4 arreglado).
+5. ~~Metatabla estricta~~ **Hecho**: `HU:StrictMode` (Core.lua), encendida con `/gu debug`. Leer
+   un campo de `HU` que no existe y no está en `HU.MAYBE_NIL` (el estado que empieza vacío, 40
+   campos) se apunta en `HU.strictMiss` con archivo y línea, y se avisa una vez. En las pruebas va
+   siempre encendida y `strict_spec`, la última, falla con cualquier campo nuevo. Al activarla salieron
+   dos restos más del eco quitado en la 5.4.32 (`HU.echoSending` y `HU:EchoStarName`, que nadie
+   asignaba), ya borrados. Comprobado a propósito: `self.myTagg` en `HelloCycle` hace fallar la prueba
+   con «myTagg (Comm.lua:3694)».
+6. ~~A confirmar: `HU.paused` pierde la cola~~ **Decidido: se queda como está** (el refactor no
+   cambia el comportamiento). Documentado en [fallos-conocidos.md](fallos-conocidos.md), 3.
 7. Ir traduciendo los 54 textos que faltan y después pasar `tests/traducciones.lua --estricto`.
-8. **Más escenarios de red** (`red_spec`): topes de tráfico por jugador y minuto con
+8. **Más escenarios de red.** En parte **hecho** (`escenarios_spec`, antes del paso 3): canal de
+   texto caído (chat y oficiales por el respaldo, y vuelta al canal), seis hermandades (reparto con
+   `CF`), relevo del enlace, carriles (subir con dos oficiales, reiniciar, sala fijada con `GU:l` y
+   subida automática con el canal rechazado), menciones y `/gu sonda`. Con ellos, Comm.lua (76 %) y
+   Channel.lua (78 %) pasan del 75 % con Lua 5.1, y la cobertura total del 35 % al 51 %. El WoW de
+   mentira ya deja ver las notas de oficial a los rangos 0 a 2: antes nadie era oficial para el
+   addon. Falta: topes de tráfico por jugador y minuto con
    `net:Traffic`; una entrada masiva (150 jugadores en 60 s tras un reinicio) con tope de cola y
    sin nadie sin lista; conexiones y desconexiones vistas desde la otra hermandad; silencios
    repartidos; y el chat por el respaldo cuando el canal falla. Con lo que se mida en cada sesión
@@ -298,11 +331,14 @@ cierra cuando se cumple su «hecho cuando».
    Community.lua (4 %) y Orders.lua (1 %). De vez en cuando, una prueba de mutaciones sobre Comm.lua
    (cambiar a propósito `>` por `>=` o `true` por `false` y ver que alguna prueba falla) para saber
    si lo cubierto está probado de verdad.
-10. **Hallazgo de la red: `PB` se pierde al principio.** La raza y las profesiones salen por
-    susurro a la vez que la primera lista (a los ~36 s), cuando quien las recibe todavía no se fía del
-    remitente. `RB` se retiene y se aplica después; `PB` no (no está en `BOOTSTRAP`), se rechaza y
-    no se repite en al menos 6 minutos. Decidir si se retiene o se manda después de la lista; al
-    arreglarlo, quitar `PB` de `NOBODY_ACCEPTS` en `formato_spec` (una prueba avisa).
+10. ~~Hallazgo de la red: `PB` se pierde al principio~~ **Decidido: se queda como está.**
+    Documentado en [fallos-conocidos.md](fallos-conocidos.md), 1.
+11. ~~Hallazgo de G: `db.rankCache` se guarda pero no se usa~~ **Decidido: se queda como está.**
+    Documentado en [fallos-conocidos.md](fallos-conocidos.md), 2.
+
+Regla para el resto del refactor: cualquier fallo o mejora que aparezca se apunta en
+[fallos-conocidos.md](fallos-conocidos.md) y no se arregla dentro de los pasos; se arregla aparte,
+en su propia PR.
 
 ### Cómo se prueba
 
@@ -315,6 +351,127 @@ lua tests/cobertura.lua --base origin/main   # cobertura, y lo nuevo desde main
 
 Cuando una prueba falla por una función del juego que falta en el WoW de mentira, se añade a
 `tests/lib/wow.lua` con el valor más neutro posible (lo que devolvería un cliente sin datos).
+
+## Paso 2 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento. Se cumple el «hecho
+cuando»: no queda ninguna tabla suelta de órdenes en Comm.lua ni en Combat.lua, `/gu diag` y la
+ayuda de `/gu` salen de los registros y `db.schema` existe con su primera migración. Los detalles
+de cada registro están en ARCHITECTURE.md.
+
+- **A, `HU:RegisterMessage`** (Protocol.lua, detrás de Core.lua). Las 63 órdenes con manejador
+  están registradas junto a él, con las marcas de antes. CW, CG y CF, las primeras, ya usan campos
+  con nombre. El combate ya no envuelve manejadores al cargar: la entrada llama a
+  `HU.CombatDispatch`.
+- **F, `HU:RegisterSlash`** (Core.lua). Sustituye el `if/elseif` de 280 líneas, los alias y `HELP`.
+- **E, `HU:RegisterMigration` y `HU:RunMigrations`** (Core.lua). Hay dos esquemas, el de la cuenta y
+  el de cada personaje. La 1 del personaje es la de `cdb.migrated`, en Config.lua.
+
+Pruebas nuevas (de 107 a 133):
+
+- `registro_spec`: lo declarado da exactamente las tablas de la 5.4.41.
+- `combate_spec`: Combat.lua no tenía ninguna.
+- `slash_spec`: los 130 comandos y alias, comparados con `tests/golden/comandos.txt`.
+- `datos_spec`: las migraciones. Incluye actualizar desde la última versión publicada sin perder
+  ninguna clave guardada y volver a ella. Usa lo que guarda esa versión en el escenario de red, así
+  que no hacen falta archivos de jugadores.
+
+Comprobado a propósito: borrar `adb.audit` al cargar lo detecta la prueba de actualizar
+(«audit.1»).
+
+**Distinto de lo propuesto, y por qué:**
+
+- Los manejadores siguen en `HU.comm[orden]` y `handler` es opcional. Varios archivos envuelven el
+  manejador de otro (`PQ` hasta seis veces, `CP`, `RC`, `HI`…), y meterlo en el registro obligaba a
+  rehacer esas cadenas.
+- `channel = true` en vez de `via = {…}`. Es la marca que existía (`CHANNEL_OK`): GUILD y WHISPER
+  siempre se han mirado en `AllowAddonMessage`, no por orden.
+- Sin `since`. La primera versión que entiende cada orden no está apuntada en ningún sitio, y
+  inventarla no sirve.
+- Las migraciones pueden esperar a la Información de la hermandad (`info`). La de `cdb.migrated`
+  la necesita y en `ADDON_LOADED` aún no se conoce.
+- Falta `HU:Defaults` por módulo. `DEFAULTS` y `PER_CHAR` siguen en Core.lua. Moverlos cambia qué
+  se crea al cargar y en qué orden, y no hace falta para el «hecho cuando». Queda para el paso 4,
+  con los módulos (C).
+
+## Paso 3 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento. Comm.lua tenía 4.000
+líneas y ahora tiene 135, sin bloques `do`. Las pruebas de seguridad dan lo mismo que antes: no se
+ha tocado ninguna.
+
+**Antes de partir**, como pedía el orden:
+
+- Más escenarios de red (`escenarios_spec`, ver el pendiente 8).
+- Comm.lua al 76 % y Channel.lua al 78 % con Lua 5.1.
+
+**Cómo se ha partido.** Por trozos de líneas, sin cambiar el código. Un script compila cada trozo
+por separado y lista los nombres que en el trozo son globales y en el archivo entero no: son
+variables de otro trozo. Salieron pocas y se pasan por `HU`. Están en ARCHITECTURE.md, «Comm.lua».
+
+El orden de carga solo importa en dos casos:
+
+- el `CHAT_MSG_ADDON` del enlace va antes que el de la entrada;
+- los `OnStart` de la confianza van antes que los de los ciclos.
+
+Por eso el orden es Comm → Transport → Trust → Relay → RosterSync → Security, y los ciclos van con
+Relay. Ninguna función de `HU` se define dos veces y ningún trozo envuelve a otro, así que cambiar el
+orden no cambia quién gana.
+
+Los diez bloques `do` se han quitado con otro script. Comprueba que no se repite ningún nombre de
+variable dentro y fuera de un bloque, y que cada archivo lee y escribe las mismas globales antes y
+después.
+
+**Una pregunta de confianza (`Trust:Level`): estudiada, y mejor no.** Hoy hay 17 funciones y no son
+grados de lo mismo. Responden a cinco preguntas distintas:
+
+| Pregunta | Funciones |
+|---|---|
+| ¿Es de la comunidad? | `Vouched`, `InAnyGuild` |
+| ¿De qué hermandad es? | `MemberOf`, `ListFresh` |
+| ¿Qué rango tiene? | `TrustedOfficer`, `TrustedMaster`, `CheckOfficer`, `CheckOfficerFirm`, `CheckMasterFirm` |
+| ¿Qué papel tiene? | `KnownRelay`, `KnownGuildRelay`, `IsGuildForwarder`, `AnchorValid` |
+| ¿Cuánto me fío de su lista? | `SenderKind`, `FullPeer`, `CheckedOf`, `RosterTrusted` |
+
+Un solo nivel perdería información: un oficial de otra hermandad sin lista confirmada no está ni por
+encima ni por debajo del enlace comprobado de una hermandad sin oficiales. Además abriría mensajes
+sin querer, que es lo que ya advertía A.
+
+Propuesta en su lugar, para el paso 4 con los módulos (C):
+
+- llevar las de Lists.lua (pertenencia y rango) a Domain/Trust.lua, para que estén todas juntas;
+- dejar esta tabla en la documentación (I).
+
+## Paso 4 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), sin cambios de comportamiento. Se cumple el «hecho
+cuando»:
+
+- no queda ningún `HU.NewTicker`;
+- de las 200 comprobaciones `if HU.X then` de funciones de `HU`, quedan las de funciones del juego y
+  una justificada (`guardas_spec`).
+
+Los detalles están en ARCHITECTURE.md.
+
+- **D, `HU:Every`**: las 40 tareas que se repiten llevan nombre y su tiempo en `/gu perf`. Cada una
+  sigue con su temporizador del juego, para no mover en qué momento corre. `pauseInCombat` y
+  `maxFailures` existen, pero están apagadas en todas.
+- **C, módulos**: cada archivo acaba con `HU:Module(nombre, necesita)`, calculado y comprobado por
+  `modulos_spec`. Al entrar, el núcleo mira que haya cargado todo. Con eso se han quitado 185
+  comprobaciones que sobraban.
+- **C, avisos**: `HU:Listen` y `HU:Fire`. Por ahora solo lo usa `HU:Changed`.
+- **E, `HU:Saved`**: cada módulo declara lo que guarda. `DEFAULTS` y `PER_CHAR` ya no son listas a
+  mano.
+
+Distinto de lo propuesto:
+
+- Sin `OnInit`/`OnLogin` por módulo: `HU:On("ADDON_LOADED")` y `HU:OnStart` ya hacen eso, y cambiarlos
+  movería el orden de arranque.
+- El bus no sustituye todavía las llamadas directas (`RefreshConfig`, `RetryDeferred`…). Cada una
+  cambia quién decide cuándo pasa, y conviene hacerlas una a una, cuando se toque cada módulo.
+
+Hallazgo, apuntado en [fallos-conocidos.md](fallos-conocidos.md), 4: hay cuatro claves guardadas que
+nadie usa (`theme`, `chatTab`, `chatTabsMade`, `proposals`).
 
 ## Cómo quedaría una función nueva
 

@@ -30,12 +30,8 @@ describe("Carga", function()
         A.truthy(n > 30, "se esperaban más de 30 órdenes y hay " .. n)
     end)
 
-    it("CW, CG y CF se registran al entrar al juego, no al cargar (orden del .toc)", function()
-        -- (diagnóstico #4: Channel.lua va antes que Comm.lua, que crea HU.comm. Al arreglarlo, esta
-        -- prueba cambia: entonces deben estar ya al cargar)
+    it("CW, CG y CF ya están al cargar (HU.comm lo crea Core.lua: diagnóstico #4 arreglado)", function()
         local a = addon.Load({ guild = GUILD })
-        A.is_nil(a.HU.comm.CW)
-        a:Login(5)
-        A.equal("function", type(a.HU.comm.CW))
+        for _, cmd in ipairs({ "CW", "CG", "CF" }) do A.equal("function", type(a.HU.comm[cmd]), cmd) end
     end)
 end)
