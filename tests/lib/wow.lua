@@ -90,9 +90,11 @@ end
 function wow.New(opts)
     opts = opts or {}
     local w = {
-        now = 1000,                 -- GetTime()
+        now = opts.now or 1000,     -- GetTime() (la red, tests/lib/red.lua, arranca a todos con su reloj)
         epoch = 1800000000,         -- time() = epoch + now
         timers = {}, frames = {}, chat = {}, sent = {}, said = {},
+        channels = {},              -- [número] = nombre de los canales en los que estoy
+        net = nil,                  -- la red (tests/lib/red.lua): decide si un susurro llega o el canal deja entrar
         player = opts.player or "Tester",
         surname = opts.surname or "Reino",
         realm = opts.realm or "Reino",
@@ -104,7 +106,9 @@ function wow.New(opts)
     }
     local env = {}
     w.env = env
-    math.randomseed(opts.seed or 1) -- (el addon usa math.random para repartir saludos: que sea siempre igual)
+    if not opts.keepRandom then
+        math.randomseed(opts.seed or 1) -- (el addon usa math.random para repartir saludos: que sea siempre igual)
+    end
     w.frameMeta = FrameMeta(w)
 
     -- Reloj y temporizadores ------------------------------------------------
@@ -200,6 +204,12 @@ function wow.New(opts)
     api.DEFAULT_CHAT_FRAME = NewFrame(w, "ScrollingMessageFrame", "ChatFrame1")
     api.NUM_CHAT_WINDOWS = 10
     for i = 2, 10 do NewFrame(w, "ScrollingMessageFrame", "ChatFrame" .. i) end
+    -- (lo que enseña cada ventana: la 1 lo de siempre, las demás nada)
+    for i = 1, 10 do
+        local f = w.env["ChatFrame" .. i]
+        f.messageTypeList = i == 1 and { "SAY", "GUILD", "OFFICER", "WHISPER", "SYSTEM" } or {}
+        f.channelList, f.zoneChannelList = {}, {}
+    end
     api.GameTooltip = NewFrame(w, "GameTooltip", "GameTooltip")
     api.Minimap = NewFrame(w, "Minimap", "Minimap")
     api.ChatFontNormal = NewFrame(w, "Font", "ChatFontNormal")
@@ -254,8 +264,69 @@ function wow.New(opts)
     api.IsInRaid = function() return false end
     api.GetNumGroupMembers = function() return 0 end
     api.GetZoneText = function() return "Ventormenta" end
-    api.GetChannelName = function() return 0 end
-    api.GetNumDisplayChannels = function() return 0 end
+    -- Canales: GetChannelName(número o nombre) -> número, nombre
+    api.GetChannelName = function(x)
+        if type(x) == "number" then
+            local n = w.channels[x]
+            if n then return x, n end
+            return 0
+        end
+        if type(x) == "string" then
+            for id, n in pairs(w.channels) do
+                if n:lower() == x:lower() then return id, n end
+            end
+        end
+        return 0
+    end
+    -- (como el juego: se entra un momento después y llega el aviso YOU_JOINED, o WRONG_PASSWORD)
+    api.JoinTemporaryChannel = function(name, pass)
+        if type(name) ~= "string" or api.GetChannelName(name) > 0 then return end
+        AddTimer(0.2, function()
+            if api.GetChannelName(name) > 0 then return end
+            local ok = not w.net or w.net:CanJoin(w, name, pass)
+            local id = 1
+            while w.channels[id] do id = id + 1 end
+            if not ok then
+                return w:Fire("CHAT_MSG_CHANNEL_NOTICE", "WRONG_PASSWORD", "", "", id .. ". " .. name, "", "", 0, id, name)
+            end
+            w.channels[id] = name
+            if w.net then w.net:Joined(w, name) end
+            w:Fire("CHAT_MSG_CHANNEL_NOTICE", "YOU_JOINED", "", "", id .. ". " .. name, "", "", 0, id, name)
+        end)
+    end
+    api.LeaveChannelByName = function(name)
+        local id = api.GetChannelName(name)
+        if id == 0 then return end
+        w.channels[id] = nil
+        if w.net then w.net:Left(w, name) end
+        w:Fire("CHAT_MSG_CHANNEL_NOTICE", "YOU_LEFT", "", "", id .. ". " .. name, "", "", 0, id, name)
+    end
+    api.GetNumChannelMembers = function(id)
+        local n = w.channels[id]
+        return n and w.net and w.net:ChannelCount(n) or 0
+    end
+    -- La ventana de canales del juego: una fila por canal, en orden de número (sin cabeceras)
+    local function DisplayIds()
+        local ids = {}
+        for id in pairs(w.channels) do ids[#ids + 1] = id end
+        table.sort(ids)
+        return ids
+    end
+    api.GetNumDisplayChannels = function() return #DisplayIds() end
+    -- -> nombre, cabecera, plegado, número, miembros, activo, categoría, tipo
+    api.GetChannelDisplayInfo = function(i)
+        local id = DisplayIds()[i]
+        if not id then return end
+        return w.channels[id], false, false, id, api.GetNumChannelMembers(id), true, "CHANNEL_CATEGORY_CUSTOM", 0
+    end
+    api.SetSelectedDisplayChannel = function(i) w.selectedChannel = i end
+    -- (los miembros del canal de esa fila: nombre, dueño, moderador, guid. Solo los da la red)
+    local function ChannelRosterInfo(i, j)
+        local id = DisplayIds()[i]
+        local list = id and w.net and w.net:ChannelMembers(w.channels[id])
+        local m = list and list[j]
+        if m then return m.name, m.owner, m.moderator, m.guid end
+    end
     api.GetFramerate = function() return 60 end
     api.GetNetStats = function() return 0, 0, 50, 50 end
     api.IsShiftKeyDown = function() return false end
@@ -267,22 +338,35 @@ function wow.New(opts)
     api.GetCurrentKeyBoardFocus = function() end
     api.GetCursorPosition = function() return 0, 0 end
     api.IsResting = function() return true end
+    -- (ventanas de chat: solo la 1, la General, como en un cliente recién instalado)
+    api.GetChatWindowInfo = function(i)
+        if i == 1 then return "General", 14, 1, 1, 1, 1, true, false, 1, false end
+        return "", 14, 1, 1, 1, 1, false, false, nil, false
+    end
     api.SOUNDKIT = setmetatable({}, { __index = function() return 0 end })
     api.SendChatMessage = function(msg, kind, lang, target) w.said[#w.said + 1] = { msg = msg, kind = kind, target = target } end
     api.Enum = { SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, ChannelThrottle = 8,
         GeneralError = 9, AddOnMessageLockdown = 11, TargetOffline = 12 } }
 
+    local function SendAddon(prefix, text, dist, target, logged)
+        if w.failSend then
+            local r = w.failSend(prefix, text, dist, target)
+            if r ~= nil then return r end
+        end
+        -- (la red dice si sale: el susurro a quien no está conectado da TargetOffline, el juego saturado...)
+        if w.net then
+            local r = w.net:Check(w, prefix, text, dist, target)
+            if r ~= 0 then return r end
+        end
+        w.sent[#w.sent + 1] = { prefix = prefix, text = text, dist = dist, target = target, logged = logged }
+        return 0
+    end
     api.C_ChatInfo = {
         RegisterAddonMessagePrefix = function() return true end,
         IsAddonMessagePrefixRegistered = function() return true end,
-        SendAddonMessage = function(prefix, text, dist, target)
-            if w.failSend then
-                local r = w.failSend(prefix, text, dist, target)
-                if r ~= nil then return r end
-            end
-            w.sent[#w.sent + 1] = { prefix = prefix, text = text, dist = dist, target = target }
-            return 0
-        end,
+        SendAddonMessage = function(prefix, text, dist, target) return SendAddon(prefix, text, dist, target) end,
+        SendAddonMessageLogged = function(prefix, text, dist, target) return SendAddon(prefix, text, dist, target, true) end,
+        GetChannelRosterInfo = ChannelRosterInfo,
         InChatMessagingLockdown = function() return w.lockdown == true end,
     }
     api.C_AddOns = {

@@ -47,6 +47,24 @@ local function LoadWithEnv(src, name, env)
 end
 M.LoadWithEnv = LoadWithEnv
 
+-- (compilar el addon entero cuesta ~0,3 s y las pruebas de red cargan muchas copias: cada archivo
+-- se compila una vez y luego se carga ya compilado, con los números de línea intactos)
+local compiled = {}
+local function LoadFile(file, env)
+    local bc = compiled[file]
+    if not bc then
+        local src = assert(ReadFile(M.root .. "/" .. file), "no encuentro " .. file)
+        local fn, err = LoadWithEnv(src, "@" .. file, env)
+        if not fn then return nil, err end
+        compiled[file] = string.dump(fn)
+        return fn
+    end
+    if setfenv and loadstring then
+        return setfenv(assert(loadstring(bc, "@" .. file)), env)
+    end
+    return assert(load(bc, "@" .. file, "b", env))
+end
+
 -- Un .xml del .toc (p. ej. Libs/LibDBIcon-1.0/lib.xml): solo importan sus <Script file> e
 -- <Include file>, en orden y relativos a la carpeta del .xml. Los marcos en XML no se crean.
 local function XmlFiles(path, out)
@@ -90,8 +108,7 @@ function M.Load(opts)
     w.env.GuildUnionCharDB = opts.charDb
     local HU = {}
     for _, file in ipairs(opts.only or files) do
-        local src = assert(ReadFile(M.root .. "/" .. file), "no encuentro " .. file)
-        local fn, err = LoadWithEnv(src, "@" .. file, w.env)
+        local fn, err = LoadFile(file, w.env)
         if not fn then error("no compila " .. file .. ": " .. tostring(err), 0) end
         local ok, e = pcall(fn, ADDON_NAME, HU)
         if not ok then error("falla al cargar " .. file .. ": " .. tostring(e), 0) end

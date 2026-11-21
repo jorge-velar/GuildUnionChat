@@ -211,14 +211,23 @@ cierra cuando se cumple su «hecho cuando».
   de los .xml, como el de LibDBIcon), lanza `ADDON_LOADED` y,
   con `:Login()`, `PLAYER_LOGIN`. Arranca y pasa un minuto sin errores guardados.
 - `tests/lib/fixtures.lua`: una comunidad de dos hermandades (UNO y DOS) ya configurada.
-- 67 pruebas en `tests/spec/`:
+- `tests/lib/red.lua`: **varios jugadores a la vez**, cada uno con su copia del addon, unidos por
+  una red de mentira con reloj común. Reparte GUILD (a su hermandad), CHANNEL (a los del canal, con
+  contraseña, dueño y lista de miembros) y WHISPER (el desconectado da `TargetOffline`), con el eco
+  de lo propio como en el juego. Lleva la cuenta del tráfico de cada jugador por orden
+  (`net:Traffic`). Es lo que hoy se prueba a mano con varias personas y `/gu registro`.
+- 74 pruebas en `tests/spec/`:
   - `carga_spec`: carga, arranque y órdenes registradas (incluido el problema #4);
   - `utilidades_spec`: `Split`, `SafeText`, `SafeName`, `NetT`, `NetStamp`, `Utf8Cut`,
     `VersionGreater`, `ParseConfigText` y `ParseChannelNote`;
   - `seguridad_spec`: la tabla de decisiones de `AllowAddonMessage` por vía y caso, la recepción,
     `Hold`/`ReplayHeld` y la admisión con cupo;
   - `cola_spec`: prefijos, prioridades, saturación, bloqueo del chat, «gana el último», caducidad,
-    silencios que no caducan y la pausa por versión mínima.
+    silencios que no caducan y la pausa por versión mínima;
+  - `red_spec`: dos hermandades con dos jugadores cada una. Arrancan sin errores y entran al canal;
+    el chat de `/g` llega a la otra hermandad una sola vez, en los dos sentidos y en orden; no se
+    repite en la propia; quien entra tarde también lo recibe; y cada uno tiene la lista de la otra
+    hermandad antes de 90 s (hoy, 36 s).
 - CI (`.github/workflows/ci.yml`): pruebas con Lua 5.1, informe de traducciones y luacheck que
   para con avisos nuevos (los 18 que ya había están en `tests/luacheck-conocidos.txt`). `tests/` queda fuera del zip del release y del paquete de CurseForge.
 
@@ -241,6 +250,12 @@ cierra cuando se cumple su «hecho cuando».
    esperar (`SendOne` devuelve `false`). La prueba lo fija tal como está; si no es lo que se quiere,
    se cambia la prueba junto con el código.
 7. Ir traduciendo los 54 textos que faltan y después pasar `tests/traducciones.lua --estricto`.
+8. **Más escenarios de red** (`red_spec`): topes de tráfico por jugador y minuto con
+   `net:Traffic`; una entrada masiva (150 jugadores en 60 s tras un reinicio) con tope de cola y
+   sin nadie sin lista; conexiones y desconexiones vistas desde la otra hermandad; silencios
+   repartidos; y el chat por el respaldo cuando el canal falla. Con lo que se mida en cada sesión
+   real de `/gu registro` se ajustan los umbrales y las suposiciones de la red (p. ej. el límite de
+   envío del servidor de Forever, que la red todavía no simula).
 
 ### Cómo se prueba
 
