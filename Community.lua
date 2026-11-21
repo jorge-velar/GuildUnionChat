@@ -171,6 +171,7 @@ function HU:SetManager(name, add)
     return true
 end
 
+HU:RegisterMessage("MG")
 HU.comm.MG = function(self, sender, f, dist, raw)
     local t, by, byTag, list = HU.NetT(f[1]), f[2], f[3], f[4] or ""
     if not t or not by or by == "" or not byTag or byTag ~= self:PrincipalTag() then return end
@@ -196,6 +197,7 @@ HU.comm.MG = function(self, sender, f, dist, raw)
     if self.UI and self.UI.UpdateGuildsWindow then self.UI:UpdateGuildsWindow() end
 end
 
+HU:RegisterMessage("NG")
 HU.comm.NG = function(self, sender, f, dist, raw)
     local tag, name, on, by, byTag, t = f[1], CleanName(f[2]), f[3] == "1", f[4], f[5], HU.NetT(f[6])
     if not tag or not tag:match("^%w+$") or #tag > 6 or name == "" or not t then return end
@@ -284,6 +286,7 @@ function HU:InviteGuild(contact, tag)
 end
 
 -- Me invitan a mí
+HU:RegisterMessage("GV", { open = true })
 HU.comm.GV = function(self, sender, f, dist)
     if dist ~= "WHISPER" then return end
     local id, tag, title, fromGuild = f[1], (f[2] or ""):upper(), HU.CleanTitle(f[3]), CleanName(f[4])
@@ -323,6 +326,7 @@ HU.Dialogs.GU_JOIN = HU.LT({
 })
 
 -- Respuesta a mi invitación
+HU:RegisterMessage("GA", { open = true })
 HU.comm.GA = function(self, sender, f, dist)
     if dist ~= "WHISPER" then return end
     local id, ok, info = f[1], f[2] == "1", f[3]
@@ -393,6 +397,7 @@ HU.comm.GA = function(self, sender, f, dist)
 end
 
 -- Me llega la configuración después de aceptar
+HU:RegisterMessage("GL", { open = true })
 HU.comm.GL = function(self, sender, f, dist)
     if dist ~= "WHISPER" or not joining or not self:SameName(sender, joining.from) or f[1] ~= joining.id then return end
     local i, n = tonumber(f[2]), tonumber(f[3])
@@ -555,6 +560,7 @@ HU.GUILD_PALETTE = HU.LT({
 
 local function GCMsg(tag, c) return table.concat({ "GC", tag, c.hex or "", c.by or "", c.byTag or "", c.t or 0 }, "~") end
 
+HU:RegisterMessage("GC")
 HU.comm.GC = function(self, sender, f, dist, raw)
     local tag, hex, by, byTag, t = f[1], f[2], f[3], f[4], HU.NetT(f[5])
     if not tag or not t or (hex ~= "" and not hex:match("^%x%x%x%x%x%x$")) then return end
@@ -614,6 +620,7 @@ local function AnnounceAdded(code, path, by)
 end
 HU.AnnounceEmote = AnnounceAdded
 
+HU:RegisterMessage("EM", { queue = "mid" }) -- (los emoticonos pueden ser 150: sin prisa)
 HU.comm.EM = function(self, sender, f, dist, raw)
     local code, path, by, byTag, t = f[1], f[2] or "", f[3], f[4], HU.NetT(f[5])
     if not ValidCode(code) or not t or (path ~= "" and not ValidPath(path)) then return end

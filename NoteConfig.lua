@@ -117,6 +117,7 @@ function HU:ShareNetCfg(target)
 end
 
 local parts = {}
+HU:RegisterMessage("NF")
 HU.comm.NF = function(self, sender, f, dist)
     if dist ~= "GUILD" and dist ~= "WHISPER" then return end
     -- solo de mi propia hermandad (por susurro, de alguien de mi hermandad)
@@ -145,6 +146,7 @@ HU.comm.NF = function(self, sender, f, dist)
     self:RefreshConfig(true)
 end
 
+HU:RegisterMessage("NK")
 HU.comm.NK = function(self, sender, f, dist)
     if dist ~= "GUILD" or not self:CanOfficer() or not self.db.netCfg then return end
     HU.After(math.random() * 4, function()

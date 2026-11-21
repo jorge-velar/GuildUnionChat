@@ -17,14 +17,8 @@ local INBOX_MAX = 2000
 local ENC_MAX = 900              -- (por si no llega el fin del encuentro)
 
 -- lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones [+ARCHITECTURE.md]
-local DEFER_IN = {
-    RB = "list",
-    RF = "req", NQ = "req", HQ = "req", OQ = "req",
-    HL = "data", PB = "data", OD = "data", OE = "data",
-    -- (quién es el enlace o los ayudantes de otra hermandad, contado por mi hermandad: vale el último)
-    PH = "last", PL = "last",
-}
-local BULK_PREFIX = { RB = true, RC = true, PB = true, OD = true, HL = true }
+-- (lo declara cada orden con combat = ... en su HU:RegisterMessage, Protocol.lua)
+local function DeferKind(cmd) local s = HU.msgs[cmd] return s and s.combat end
 
 local clock = debugprofilestop or function() return GetTime() * 1000 end
 local inInst, instKind, regen, enc, encT = false, nil, false, false, 0
@@ -59,7 +53,7 @@ end
 
 local function Store(cmd, sender, f, dist, raw)
     if rawSeen[raw] then return end -- (la misma copia por otra vía o de otro ayudante)
-    local kind = DEFER_IN[cmd]
+    local kind = DeferKind(cmd)
     local e = { cmd = cmd, sender = sender, dist = dist, raw = raw }
     if kind == "list" then
         local tag = f[1] or ""
@@ -103,20 +97,17 @@ end
 -- lo que cuesta procesar cada orden (el más caro de los últimos, que va bajando poco a poco); se mide
 -- siempre, también fuera de combate, para saber si una lista cabe en un fotograma de combate
 local estBy = {}
-for cmd in pairs(DEFER_IN) do
-    local orig = HU.comm[cmd]
-    if orig then
-        HU.comm[cmd] = function(self, sender, f, dist, raw, ...)
-            -- (lo del canal no se guarda: al repetirlo faltaría con qué canal llegó)
-            if hold and not HU.combatReplay and dist ~= "CHANNEL" and type(raw) == "string" and sender then
-                return Store(cmd, sender, f, dist, raw)
-            end
-            if cmd ~= "RB" then return orig(self, sender, f, dist, raw, ...) end
-            local t0 = clock()
-            orig(self, sender, f, dist, raw, ...)
-            estBy.RB = math.max(clock() - t0, (estBy.RB or 0) * 0.9)
-        end
+-- Lo llama la entrada (HU.OnAddonMessage, Comm.lua) con las órdenes que declaran combat = ...:
+-- en combate se guarda para después; si no, se trata ya (h es su manejador)
+function HU.CombatDispatch(h, cmd, sender, f, dist, raw)
+    -- (lo del canal no se guarda: al repetirlo faltaría con qué canal llegó)
+    if hold and not HU.combatReplay and dist ~= "CHANNEL" and type(raw) == "string" and sender then
+        return Store(cmd, sender, f, dist, raw)
     end
+    if cmd ~= "RB" then return h(HU, sender, f, dist, raw) end
+    local t0 = clock()
+    h(HU, sender, f, dist, raw)
+    estBy.RB = math.max(clock() - t0, (estBy.RB or 0) * 0.9)
 end
 
 ---------------------------------------------------------------------------
@@ -133,7 +124,7 @@ local function NextInbox()
         pos = pos + 1
         if not e.dead then
             Kill(e)
-            if DEFER_IN[e.cmd] ~= "req" or GetTime() - e.t <= REQ_MAX_AGE then return e end
+            if DeferKind(e.cmd) ~= "req" or GetTime() - e.t <= REQ_MAX_AGE then return e end
         end
     end
     return nil
@@ -159,7 +150,7 @@ local function Replay(e)
     local t0 = clock()
     HU.combatReplay = true
     -- (por la entrada normal: vuelve a pasar el tope por remitente y la seguridad de siempre)
-    HU:SafeCall("combate", HU.OnAddonMessage, BULK_PREFIX[e.cmd] and HU.PREFIX_B or HU.PREFIX, raw, e.dist, e.sender)
+    HU:SafeCall("combate", HU.OnAddonMessage, HU:MessagePrefix(e.cmd), raw, e.dist, e.sender)
     HU.combatReplay = nil
     local ms = clock() - t0
     est = math.max(ms, est * 0.9)

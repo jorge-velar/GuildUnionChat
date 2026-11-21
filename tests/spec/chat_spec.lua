@@ -86,3 +86,30 @@ describe("Chat: historial rellenado por otros (HistInsert)", function()
         A.falsy(HU:HistInsert({ a = "Bea-Reino", m = "x", t = HU.StampNow() - 400 * 86400, k = "main", g = "DOS" }), "muy viejo")
     end)
 end)
+
+describe("Chat: lo que un compañero no puede mandar por el canal (CF)", function()
+    before_each(function()
+        Fresh()
+        F.Stub(HU, "HandlesTag", true)
+        F.Stub(HU, "BestPeers", { { name = "Bea-Reino" } })
+        a.w:TakeSent()
+    end)
+    local function ToBea()
+        local out = {}
+        for _, s in ipairs(a.w:TakeSent()) do if s.target == "Bea-Reino" then out[#out + 1] = s.text end end
+        return out
+    end
+
+    it("lo reparto a la otra hermandad por susurro, con el compañero de autor", function()
+        a.w:Receive("HU20", "CF~m~[UNO] hola~que tal", "GUILD", "Compi-Reino")
+        A.same({ "CW~m~Compi-Reino~[UNO] hola~que tal" }, ToBea())
+    end)
+
+    it("no reparto lo de oficiales, lo de otra hermandad ni lo de quien no es de la mía", function()
+        a.w:Receive("HU20", "CF~o~[UNO] secreto", "GUILD", "Compi-Reino")
+        a.w:Receive("HU20", "CF~m~[DOS] hola", "GUILD", "Compi-Reino")
+        a.w:Receive("HU20", "CF~m~[UNO] hola", "GUILD", "Extraño-Reino")
+        a.w:Receive("HU20", "CF~m~[UNO] hola", "WHISPER", "Compi-Reino")
+        A.same({}, ToBea())
+    end)
+end)

@@ -43,6 +43,7 @@ function HU:ShareAudit(e, share)
     end
 end
 
+HU:RegisterMessage("AU")
 HU.comm.AU = function(self, sender, f, dist, raw)
     local id, t, tag, actor, text = f[1], HU.NetT(f[2]), f[3], f[4], f[5]
     if not id or not text or seen[id] then return end

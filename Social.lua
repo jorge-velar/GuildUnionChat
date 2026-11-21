@@ -143,6 +143,7 @@ function HU:UpdateMyProfile(force)
     if not same then self:Changed("members") end
 end
 
+HU:RegisterMessage("PF")
 HU.comm.PF = function(self, sender, f)
     self.db.profiles[sender:lower()] = { race = f[1] or "", r = f[2] or "", s = f[3] or "", p = f[4] or "", t = time() }
     self:Changed("members")
@@ -190,6 +191,7 @@ function HU:SendProfileEntries(target, entries)
     flush()
 end
 
+HU:RegisterMessage("PB", { tagField = 1, remoteData = true, queue = "bmid", ttl = 900, combat = "data" })
 HU.comm.PB = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
@@ -235,6 +237,7 @@ function HU:SendOfflineTo(target, urgent)
     flush()
 end
 
+HU:RegisterMessage("OD", { tagField = 1, remoteData = true, queue = "blow", ttl = 900, combat = "data" })
 HU.comm.OD = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
@@ -255,6 +258,7 @@ HU.comm.OD = function(self, sender, f, dist, raw)
     HU.offlineVer = (HU.offlineVer or 0) + 1
     self:Changed("members")
 end
+HU:RegisterMessage("OE", { tagField = 1, remoteData = true, queue = "mid", combat = "data" })
 HU.comm.OE = function(...) return HU.comm.OD(...) end
 
 -- Al mandar la lista de conectados, el enlace añade las fichas y (de vez en cuando) los desconectados
@@ -314,6 +318,7 @@ HU:OnStart(function()
     end) end)
 end)
 
+HU:RegisterMessage("OQ", { combat = "req" })
 HU.comm.OQ = function(self, sender, f, dist)
     if dist ~= "WHISPER" or f[2] ~= self.myTag then return end
     -- a cada hermandad, como mucho una vez cada 10 minutos
@@ -422,6 +427,7 @@ function HU:ShareMute(k, m, target)
     end
 end
 
+HU:RegisterMessage("MZ", { queue = "chat", ttl = false })
 HU.comm.MZ = function(self, sender, f, dist, raw)
     for en in (f[1] or ""):gmatch("[^;]+") do
         local p = HU.Split(en, ",")
@@ -518,6 +524,7 @@ function HU.DurationText(secs)
     return math.floor(secs / 60 + 0.5) .. " min"
 end
 
+HU:RegisterMessage("MU", { queue = "chat", ttl = false })
 HU.comm.MU = function(self, sender, f, dist, raw)
     local name, secs, by, tag, t = f[1], tonumber(f[2]), f[3], f[4], NetStamp(f[5])
     local why = HU.CleanReason(f[6])
@@ -601,6 +608,7 @@ function HU:SetBan(name, on, reason)
     self:Changed("members")
 end
 
+HU:RegisterMessage("BN", { queue = "chat", ttl = false })
 HU.comm.BN = function(self, sender, f, dist, raw)
     local name, on, by, tag, t = f[1], f[2] == "1", f[3], f[4], NetStamp(f[5])
     local why = HU.CleanReason(f[6])
@@ -686,6 +694,7 @@ HU.Dialogs["WELOVEPVP_GKICK"] = HU.LT({
 })
 
 -- Echar a varios a la vez (pide confirmación con la lista de nombres)
+HU:RegisterMessage("GK", { queue = "chat", ttl = 600 })
 HU.comm.GK = function(self, sender, f, dist, raw)
     local id, tag, target, requester, reqTag = f[1], f[2], f[3], f[4], f[5]
     if not (id and tag and target and requester) then return end
@@ -724,6 +733,7 @@ function HU:AnswerKick(data, accept)
     end
 end
 
+HU:RegisterMessage("GD")
 HU.comm.GD = function(self, _, f)
     local id = f[1]
     if not id then return end
@@ -731,6 +741,7 @@ HU.comm.GD = function(self, _, f)
     HU:HideDialogs("WELOVEPVP_GKICK", function(d) return d and d.id == id end)
 end
 
+HU:RegisterMessage("GR")
 HU.comm.GR = function(self, _, f)
     local id, result, who, target, why = f[1], f[2], f[3], f[4], f[5]
     local req = id and myKicks[id]
@@ -935,6 +946,7 @@ function HU:FlushHistoryBatch()
     end
 end
 
+HU:RegisterMessage("HQ", { combat = "req" })
 HU.comm.HQ = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local since = tonumber(f[1])
@@ -994,6 +1006,7 @@ local function HasEntry(h, t, a, m)
     return false
 end
 
+HU:RegisterMessage("HL", { queue = "blow", ttl = 900, combat = "data" })
 HU.comm.HL = function(self, sender, f, dist)
     -- llega a toda la hermandad (lo de todos) o por susurro (lo de oficiales)
     if dist ~= "WHISPER" and dist ~= "GUILD" then return end

@@ -53,6 +53,7 @@ function HU:RankNamesMessage()
     return head .. HU.Utf8Cut(table.concat(names, ","), room) .. "~" .. officers
 end
 
+HU:RegisterMessage("RN", { tagField = 1, bootstrap = true, remoteData = true })
 HU.comm.RN = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
@@ -155,12 +156,14 @@ function HU:AnswerRank(data, accept)
     end
 end
 
+HU:RegisterMessage("RD")
 HU.comm.RD = function(self, _, f)
     local id = f[1]
     if not id then return end
     HU:HideDialogs("HERMANDADUNIDA_RANK", function(d) return d and d.id == id end)
 end
 
+HU:RegisterMessage("RR")
 HU.comm.RR = function(self, _, f)
     local id, result, who, target, why = f[1], f[2], f[3], f[4], f[5]
     local req = id and myRequests[id]
@@ -219,6 +222,7 @@ local function SharePunish(name, rank, by)
     HU:Send(table.concat({ "KS", HU:FullName(name) or name, rank, by or "", HU.StampNow() }, "~"), "GUILD", nil, true)
 end
 
+HU:RegisterMessage("KS")
 HU.comm.KS = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local name, rank, by, t = HU.SafeName(f[1]), tonumber(f[2]), f[3], HU.NetStamp(f[4])

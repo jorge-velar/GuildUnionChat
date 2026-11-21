@@ -302,6 +302,7 @@ HU.MAYBE_NIL = {
     me = true, myTag = true, cfg = true, paused = true, mustUpdate = true, guildMin = true,
     replaying = true, weakMsg = true, diagRecv = true, oldAddon = true, badEvents = true,
     presenceWrapped = true, staleCheck = true,
+    infoPending = true, keyJPending = true, combatReplay = true, -- (Core, UI y Combat: esperan al fin del combate)
     -- el canal
     chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true,
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
@@ -1089,10 +1090,17 @@ function HU:DiagLines()
             .. "  cola: " .. (HU.QueueSize and HU:QueueSize() or 0)
         local pin = HU.db.pinned
         lines[#lines + 1] = "fijado: " .. (pin and ((pin.text or "") ~= "" and ("sí, de " .. tostring(pin.author) .. " " .. HU.SafeDate("%d/%m %H:%M", pin.t)) or "vacío") or "no ha llegado")
-        local rec = {}
-        for k in pairs(HU.diagRecv or {}) do rec[#rec + 1] = k .. "=" .. HU.diagRecv[k] end
+        -- (las órdenes, del registro: HU:RegisterMessage, Protocol.lua. Las que no conoce esta versión, con ?)
+        local rec, none, seen, total = {}, {}, HU.diagRecv or {}, 0
+        for k in pairs(HU.msgs) do
+            total = total + 1
+            if seen[k] then rec[#rec + 1] = k .. "=" .. seen[k] else none[#none + 1] = k end
+        end
+        for k, n in pairs(seen) do if not HU.msgs[k] then rec[#rec + 1] = k .. "?=" .. n end end
         table.sort(rec)
+        table.sort(none)
         lines[#lines + 1] = "recibido: " .. table.concat(rec, " ")
+        lines[#lines + 1] = "sin recibir (de " .. total .. " órdenes): " .. table.concat(none, " ")
         -- (copia 109: el carril y el chat, por dónde sale y por dónde llega)
         local dc = HU.diagChat
         if dc then

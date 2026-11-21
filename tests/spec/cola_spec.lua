@@ -126,6 +126,20 @@ describe("Cola de envío", function()
         A.equal("MU~Alguien-Reino~1~x", s[1].text) -- (600 - 700 s: como mínimo 1)
     end)
 
+    it("con la cola llena sale el más viejo que pueda caducar; si todos son silencios, el nuevo no entra", function()
+        Saturate()
+        HU:Send("CW~a~viejo", "WHISPER", DEST)
+        local accepted = 0
+        for i = 1, 2000 do
+            if not HU:Send("MU~Alguien" .. i .. "-Reino~0~x", "WHISPER", DEST) then break end
+            accepted = accepted + 1
+        end
+        A.equal(1, HU.qStats.dropped.CW) -- (el único que podía caducar)
+        A.equal(1, HU.qStats.dropped.MU) -- (el que ya no ha entrado)
+        A.truthy(accepted >= 1499 and accepted < 2000, "entraron " .. accepted)
+        A.truthy(HU:Send("MU~Urgente-Reino~0~x", "WHISPER", DEST, true)) -- (urgente: entra igual)
+    end)
+
     it("en pausa (versión mínima): lo que sale de la cola se pierde", function()
         -- (comportamiento de hoy: SendOne devuelve false sin mandar y el mensaje no vuelve a la cola)
         HU.paused = true

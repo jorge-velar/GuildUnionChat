@@ -55,6 +55,7 @@ function HU:SetPinned(text)
     self:Print(text ~= "" and L("Mensaje fijado para toda la comunidad.") or L("Mensaje fijado quitado."))
 end
 
+HU:RegisterMessage("PN", { queue = "chat", ttl = 600 })
 HU.comm.PN = function(self, sender, f, dist, raw)
     local t, author, tag, text = HU.NetT(f[1]), f[2], f[3], f[4] or ""
     text = HU.SafeText(text, true)
@@ -72,6 +73,7 @@ HU.comm.PN = function(self, sender, f, dist, raw)
     end
 end
 
+HU:RegisterMessage("PQ")
 HU.comm.PQ = function(self, sender)
     if not self.db.pinned then return end
     if self:IsRelay() then return self:SharePinned(sender) end

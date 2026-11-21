@@ -64,6 +64,46 @@ vería el chat, el fijado y el canal de la comunidad de otro personaje de la mis
 (dentro de lo de la cuenta, un apartado por personaje: así funciona aunque el juego no se
 haya reiniciado tras actualizar, que es cuando lee los archivos guardados nuevos)
 
+## Protocol.lua
+
+### Registro de órdenes: `HU:RegisterMessage`
+
+Cada orden de red (prefijos HU20 y HU20B) se declara una vez, junto a su manejador, con todo lo
+suyo; lo leen la seguridad (`AllowAddonMessage`), la cola (`HU:Send`), el combate
+(`HU.CombatDispatch`) y `/gu diag`. Antes cada cosa estaba en su tabla (hasta 6 por orden, en
+Comm.lua y Combat.lua) y, si faltaba una, no había error: el mensaje iba a la cola por defecto, se
+rechazaba o en combate se trataba distinto, sin avisar.
+
+```lua
+HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat", ttl = 60,
+    handler = function(self, sender, f, dist) --[[ f.chan, f.author, f.line ]] end })
+```
+
+| Clave | Qué es | Sin declarar |
+|---|---|---|
+| `tagField` | campo con la etiqueta de la hermandad de la que habla el mensaje | sin etiqueta |
+| `bootstrap` | con la etiqueta de otra hermandad, vale de quien es de la comunidad; sin avalar, se retiene | no |
+| `open` | invitaciones de hermandades nuevas: vale de cualquiera por susurro (el manejador comprueba) | no |
+| `channel` | puede llegar por el canal oculto | no |
+| `remoteData` | datos de otra hermandad por GUILD: solo del enlace, sus ayudantes o un oficial | no |
+| `queue` | `chat`, `normal`, `mid`, `low` (HU20) o `bfast`, `bulk`, `bmid`, `blow` (HU20B) | `normal` |
+| `ttl` | segundos que puede esperar en la cola; `false` = no caduca (silencios y vetos) | 300 |
+| `latestWins` | uno nuevo con la misma orden, vía y destino sustituye al que espera | no |
+| `skipLocked` | con el chat bloqueado por el juego no se guarda (saludos y presentaciones) | no |
+| `combat` | en combate dentro de una instancia: `list`, `req`, `data` o `last` | se trata ya |
+| `fields` | nombres de los campos; `f.nombre` es `f[i]`, y el último con `*` es el resto con sus `~` | solo `f[i]` |
+| `handler` | el manejador (si no, el de `HU.comm[orden]` de siempre) | |
+
+- El nombre son 1 o 2 mayúsculas; una clave mal escrita, un valor del tipo que no es, una cola o un
+  tipo de combate desconocidos, `bootstrap`/`remoteData` sin `tagField`, un `*` que no es el último
+  o una orden registrada dos veces dan error al cargar (y las pruebas lo ven).
+- Los campos con nombre no crean otra tabla: la entrada pone una metatabla compartida en la de
+  `HU.Split`. Siguen valiendo `f[i]` y `table.concat(f, "~", i)`.
+- Los manejadores siguen en `HU.comm[orden]`: varios archivos envuelven el de otro (`PQ`, `CP`,
+  `RC`, `HI`...). Por eso el registro no exige `handler`.
+- `tests/spec/registro_spec.lua` fija que lo declarado da exactamente las tablas de la 5.4.41 y que
+  toda orden con manejador está registrada (y al revés).
+
 ## Perf.lua
 
 ### línea 1 · `local _, HU = ...`
@@ -1147,7 +1187,11 @@ terminar de llegar se vuelven a aplicar, porque la entera los pisaría)
 entera ya a quien manda los cambios, en vez de esperar dos presentaciones (~10 min). Solo
 quien recibió el susurro, para no pedirla todos a la vez)
 
-### línea 3582 · `local TAG_FIELD = { HI = 2, HR = 2, WH = 1, WL = 1, WD = 1, RB = 1, RC = 1, RN = 1, PB = 1`
+### `HU:AllowAddonMessage` · las marcas de seguridad
+
+Las marcas (`tagField`, `bootstrap`, `open`, `channel`, `remoteData`) las declara cada orden en su
+`HU:RegisterMessage` (ver Protocol.lua); antes eran las tablas `TAG_FIELD`, `BOOTSTRAP`, `OPEN`,
+`CHANNEL_OK` y `REMOTE_DATA` de Comm.lua.
 
 Seguridad de los mensajes del addon
   * Por GUILD solo llegan mensajes de compañeros de hermandad (lo garantiza el juego).
@@ -1157,7 +1201,7 @@ Seguridad de los mensajes del addon
   * Los datos de una hermandad (listas, rangos, fichas, desconectados) solo se aceptan
     de alguien que está en la lista de ESA hermandad.
 
-### línea 3605 · `local CHANNEL_OK = { RA = true, LP = true }`
+### `channel = true` · lo que puede llegar por el canal oculto (RA y LP)
 
 Por el canal oculto solo van la presentación del enlace y la sonda del carril (el chat va con su
 propio prefijo, en Channel.lua). Nada del addon va por grupo, banda o campo de batalla: antes se
@@ -2073,9 +2117,12 @@ se deja para después; lo que llega se guarda (como mucho la última lista por h
 al salir, por la entrada normal (con todas sus comprobaciones) y en trozos de ≤1 ms por fotograma.
 Además, el enlace o un ayudante que entra en una instancia cede el papel hasta salir de ella.
 
-### línea 20 · `local DEFER_IN = {`
+### `combat = ...` · lo que llega y se aplaza (antes `DEFER_IN`)
 
-lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones
+lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones,
+"last" = de cada uno, la última. Lo declara cada orden en su `HU:RegisterMessage`; la entrada
+(`HU.OnAddonMessage`) llama a `HU.CombatDispatch` con esas órdenes. Antes, Combat.lua envolvía al
+cargarse los manejadores de `HU.comm` de las órdenes de `DEFER_IN`.
 (los cambios pequeños de las listas, RC, NO se aplazan: con ellos llega al momento quién de los que se
 comparten, GM, oficiales, enlace y ayudantes, entra o sale; tiene que verse en <1 s, como el chat)
 

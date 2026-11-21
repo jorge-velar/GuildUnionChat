@@ -53,6 +53,7 @@ local function MyErrors(self)
     return out
 end
 
+HU:RegisterMessage("EQ")
 HU.comm.EQ = function(self, sender, f, dist, raw)
     local id, by, sig = f[1], f[2], f[3]
     if not id or not by or by == "" or not sig or seen[id] then return end
@@ -82,6 +83,7 @@ HU.comm.EQ = function(self, sender, f, dist, raw)
     end)
 end
 
+HU:RegisterMessage("ER")
 HU.comm.ER = function(self, sender, f)
     local id, from, v, where, msg = f[1], f[2], f[3], f[4], f[5]
     if not myAsk or id ~= myAsk.id or time() - myAsk.t > ASK_WINDOW or not msg then return end

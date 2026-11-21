@@ -35,6 +35,7 @@ function HU:ShareExtra(x, target)
 end
 
 -- Devuelve true o false y el motivo
+HU:RegisterMessage("CX", { queue = "chat", ttl = 600 })
 HU.comm.CX = function(self, sender, f, dist, raw)
     local name, pass, del, by, tag, t = f[1], f[2], f[3] == "1", f[4], f[5], HU.NetT(f[6])
     if not name or not name:match("^%w+$") or #name > 25 or not t then return end
@@ -158,6 +159,7 @@ end
 
 -- Me pasan el canal a mano (/gu pasarcanal): solo si no tengo uno bueno, y como provisional (el de mi
 -- hermandad lo sustituye)
+HU:RegisterMessage("CK", { open = true }) -- (canal pasado a mano: solo vale de provisional)
 HU.comm.CK = function(self, sender, f, dist)
     if dist ~= "WHISPER" then return end
     local cur = self.db.netChan
@@ -343,9 +345,11 @@ CPCore = function(self, sender, f, dist, raw, fromPending)
     Adopt(self, { channel = channel, pass = (pass ~= "") and pass or nil, t = t, by = by, tag = (tag ~= "" and tag) or nil })
     if dist == "WHISPER" then self:Send(raw, "GUILD") end
 end
+HU:RegisterMessage("CP", { queue = "chat", ttl = 600 })
 HU.comm.CP = function(self, sender, f, dist, raw) return CPCore(self, sender, f, dist, raw) end
 
 -- Al entrar, quien no tenga el canal lo pide (contesta el primero conectado que lo tenga)
+HU:RegisterMessage("CQ", { queue = "chat", ttl = 600 })
 HU.comm.CQ = function(self, sender, f, dist)
     -- (con un canal provisional no se contesta: contaría como un segundo voto para el siguiente)
     if dist ~= "GUILD" or not self.db.netChan or self.db.netChan.prov then return end

@@ -783,14 +783,15 @@ local function TokenKind(token)
     if type(token) == "string" and token:sub(1, 2) == "x:" then return token end
     return nil
 end
--- (HU.comm lo crea Core.lua: las órdenes se registran al cargar este archivo)
+-- (las órdenes se registran al cargar este archivo: HU:RegisterMessage, Protocol.lua)
 do
     -- CW~canal~autor~[ETIQ] mensaje : por susurro, del autor o de un compañero suyo que lo reparte
-    HU.comm.CW = function(self, sender, f, dist)
+    HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat", ttl = 60,
+        handler = function(self, sender, f, dist)
         if dist ~= "WHISPER" or not self.myTag or not self.cfg then return end
-        local kind = TokenKind(f[1])
-        local author = HU.SafeName(f[2]) and self:FullName(f[2])
-        local line = table.concat(f, "~", 3)
+        local kind = TokenKind(f.chan)
+        local author = HU.SafeName(f.author) and self:FullName(f.author)
+        local line = f.line
         local tag = line:match("^%[(%w+)")
         if not kind or not author or not tag or tag == self.myTag or not self.cfg.byTag[tag] then return end
         -- (copia 151: de un canal extra en el que no estoy, nada; como ya hacía CG)
@@ -836,39 +837,41 @@ do
             if self.QueueSize and self:QueueSize() > 60 then
                 HU.ChatDrop("reparto: mi cola de envío está cargada, no lo reparto yo", author)
             else
-                self:Send("CG~" .. f[1] .. "~" .. author .. "~" .. line, "GUILD", nil, true)
+                self:Send("CG~" .. f.chan .. "~" .. author .. "~" .. line, "GUILD", nil, true)
             end
         end
-    end
+    end })
     -- CF~canal~[ETIQ] mensaje : por GUILD, de un compañero cuyo texto no sale por el canal
-    HU.comm.CF = function(self, sender, f, dist)
+    HU:RegisterMessage("CF", { fields = { "chan", "line*" }, queue = "chat", ttl = 60,
+        handler = function(self, sender, f, dist)
         if dist ~= "GUILD" or not self.myTag or not self.cfg then return end
         if not self.roster[self:Key(sender) or ""] then return end
-        if f[1] == "o" or not TokenKind(f[1]) then return end
-        local line = table.concat(f, "~", 2)
+        if f.chan == "o" or not TokenKind(f.chan) then return end
+        local line = f.line
         if line:match("^%[(%w+)") ~= self.myTag then return end
         if not CWAllowed("f:" .. sender) then return HU.ChatDrop("reparto: tope de mensajes por remitente", sender) end
         for _, tag in ipairs(self:OtherTags()) do
-            if self:HandlesTag(tag) then SendCW(self, tag, f[1], sender, line) end
+            if self:HandlesTag(tag) then SendCW(self, tag, f.chan, sender, line) end
         end
-    end
+    end })
     -- CG~canal~autor~[ETIQ] mensaje : por GUILD, de un compañero que lo recibió por susurro [+ARCHITECTURE.md]
-    HU.comm.CG = function(self, sender, f, dist)
+    HU:RegisterMessage("CG", { fields = { "chan", "author", "line*" }, queue = "chat", ttl = 20,
+        handler = function(self, sender, f, dist)
         if dist ~= "GUILD" or not self.myTag then return end
         -- (copia 150: aquí se tiraba si quien reparte no salía en mi lista de hermandad. Por GUILD solo
         -- llega lo de mi hermandad, así que sobraba, y recién entrado, con la lista vacía, lo tiraba todo)
-        local kind = TokenKind(f[1])
+        local kind = TokenKind(f.chan)
         if not kind or kind == "off" then return end
         if HU.IsExtra(kind) and not self:IsJoined(kind) then return end
-        local author = HU.SafeName(f[2]) and self:FullName(f[2])
+        local author = HU.SafeName(f.author) and self:FullName(f.author)
         if not author then return end
-        local line = table.concat(f, "~", 3)
+        local line = f.line
         local inner = line:match("^%[%w+:E%] ([^:]+): ")
         if not CWAllowed("g:" .. sender .. "|" .. author .. (inner and (">" .. inner) or "")) or not CarrierAllowed("gs:" .. sender) then
             return HU.ChatDrop("reparto: tope de mensajes por remitente", sender)
         end
         if self:OnUnionChat(kind, line, author, nil, "w", sender) then self:AuditRelayedLine(sender, author, line) end
-    end
+    end })
 end
 
 ---------------------------------------------------------------------------

@@ -292,7 +292,8 @@ function wow.New(opts)
     api.CanViewOfficerNote = function() return false end
     api.CanEditGuildInfo = function() return false end
     api.InCombatLockdown = function() return w.inCombat == true end
-    api.IsInInstance = function() return false, "none" end
+    -- (w.instance = "raid", "party", "pvp"...: dentro de una instancia de ese tipo)
+    api.IsInInstance = function() if w.instance then return true, w.instance end return false, "none" end
     api.IsInGroup = function() return false end
     api.IsInRaid = function() return false end
     api.GetNumGroupMembers = function() return 0 end

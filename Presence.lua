@@ -235,6 +235,7 @@ function HU:PresenceNotFound(who)
     end
 end
 
+HU:RegisterMessage("PX")
 HU.comm.PX = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local tag, name = f[1], f[2]
@@ -267,6 +268,7 @@ local function MarkGuildmate(k, on)
     HU:PresenceSchedule(true)
 end
 
+HU:RegisterMessage("PV")
 HU.comm.PV = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local k = self:Key(sender)
@@ -274,6 +276,7 @@ HU.comm.PV = function(self, sender, f, dist)
     leavingPeers[k] = GetTime()
     MarkGuildmate(k, false)
 end
+HU:RegisterMessage("PW")
 HU.comm.PW = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local k = self:Key(sender)

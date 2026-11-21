@@ -352,6 +352,7 @@ function HU:GuardAsk(names, tags)
     HU.After(QUERY_TTL, function() queries[id] = nil end)
 end
 
+HU:RegisterMessage("MQ", { queue = "mid" })
 HU.comm.MQ = function(self, sender, f, dist)
     if dist ~= "WHISPER" or not self.myTag or not f[1] then return end
     -- sin la lista de mi hermandad cargada (acabo de entrar) no contesto: diría que nadie es mío
@@ -405,6 +406,7 @@ local function FinishTag(self, id, q, tag)
     end
 end
 
+HU:RegisterMessage("MA")
 HU.comm.MA = function(self, sender, f, dist)
     local id = f[1]
     local q = id and queries[id]
