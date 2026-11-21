@@ -427,7 +427,6 @@ function HU.Split(text, sep)
 end
 
 -- Midnight: el juego no deja mandar mensajes de chat ni de addon en algunas mazmorras y [+ARCHITECTURE.md]
-function HU:SimpleMode() return false end
 
 -- Dato del juego que puede llegar secreto (combate, jefe, mítica+): secreto → el valor que se pida
 function HU.SafeBool(v, ifSecret)
@@ -970,15 +969,9 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     elseif cmd == "nota" or cmd == "registro" then
         HU:TestLogCommand(cmd, rawArg)
     elseif cmd == "fase" or cmd == "phase" then
-        -- (para probar: launch = solo oficiales entre hermandades; full = todos los conectados)
-        -- (versión solo chat: no se puede cambiar)
-        if HU.CHAT_ONLY then
-            HU.db.phase = nil
-            return HU:Print(L("Esta versión es solo de chat: las listas completas no se pueden activar."))
-        end
-        if arg == "full" or arg == "completa" then HU.db.phase = "full"
-        elseif arg == "launch" or arg == "lanzamiento" then HU.db.phase = nil end
-        HU:Print(L("Fase: ") .. (HU:LaunchPhase() and L("lanzamiento") or L("completa")) .. "   (/gu fase lanzamiento | completa)")
+        -- (versión solo chat: ya no hay fases; se borra la que pudiera haber guardada)
+        HU.db.phase = nil
+        HU:Print(L("Esta versión es solo de chat: las listas completas no se pueden activar."))
     elseif cmd == "buscar" or cmd == "historial" then
         HU:HistCommand(cmd, rawArg)
     elseif cmd == "debug" then
@@ -988,7 +981,7 @@ SlashCmdList.HERMANDADUNIDA = function(input)
     elseif cmd == "confirmar" or cmd == "confirm" then
         -- (un oficial da por buena la lista que tengo de otra hermandad: el ancla de una comunidad
         -- nueva, sin contactos comprobados todavía. Ver «Estado de la lista» en Comm.lua)
-        if not HU:CanOfficer() and not HU:IsTest() then
+        if not HU:CanOfficer() then
             return HU:Print(L("Solo los oficiales pueden confirmar la lista de otra hermandad."))
         end
         local tag = HU.Trim(rawArg or "")

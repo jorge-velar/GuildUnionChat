@@ -17,7 +17,6 @@ function HU:TagOf(name)
     if not name then return nil end
     local k = self:Key(name)
     if self.roster[k] then return self.myTag end
-    if self:IsTest() and k == self:MeKey() then return self.myTag end
     return nil
 end
 
@@ -135,7 +134,7 @@ local SYSTEM = {
 }
 
 HU:On("CHAT_MSG_SYSTEM", function(text)
-    if not HU.myTag or HU:IsTest() or type(text) ~= "string" then return end
+    if not HU.myTag or type(text) ~= "string" then return end
     for _, s in ipairs(SYSTEM) do
         local args = Match(text, _G[s.key])
         if args then

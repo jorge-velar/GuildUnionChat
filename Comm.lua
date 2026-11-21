@@ -899,7 +899,6 @@ function HU:BulkWhisper(target, msg, fast)
     local tag = p and p.tag
     local h = tag and self.helpers[tag]
     -- (cambio pequeño: a dos de esa hermandad, por las dos vías, que tienen cupo aparte (1 mensaje por [+ARCHITECTURE.md]
-    if fast and self:SimpleMode() then fast = nil end
     if fast then
         local R = tag and self.remoteRoster[tag]
         local off
@@ -1658,7 +1657,7 @@ function HU:AnnounceByWhisper(text, target)
 end
 function HU:AnnounceRelay(force)
     if self:IsChatLockedDown() then return end
-    if not self.myTag or self:IsTest() or not self:IsRelay() or not self:IsJoined("main") then return end
+    if not self.myTag or not self:IsRelay() or not self:IsJoined("main") then return end
     local id = self:ChannelId("main")
     if not id then return end
     -- (los 2 min después de un cambio, los mismos que en el saludo: antes la presentación los volvía a
@@ -1885,7 +1884,7 @@ HU.comm.PH = function(self, sender, f, dist)
     local tag, relay = f[1], f[2]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
     -- Seguridad: de mi enlace, sus ayudantes o un oficial, como antes. De otro compañero, solo si el [+ARCHITECTURE.md]
-    local strict = not self:IsTest() and not self:IsGuildForwarder(sender)
+    local strict = not self:IsGuildForwarder(sender)
     if strict and not (relay and relay ~= "" and self:MemberOf(relay, tag)) then
         if self.Debug then self:Debug("PH no aceptado:", sender, tag, relay) end
         return
@@ -1908,7 +1907,7 @@ HU.comm.PH = function(self, sender, f, dist)
         if not p then self.remote[k] = { name = relay, tag = tag, last = GetTime() - 300, relay = true }
         elseif p.tag == tag then p.relay = true end
         -- (PH lo manda quien acaba de recibir el saludo del propio enlace: vale como dicho por él, pero [+ARCHITECTURE.md]
-        local firm = self:IsTest() or self:CheckedOf(relay, tag) or self:FullPeer(relay, tag) or self:VouchedOf(relay, tag)
+        local firm = self:CheckedOf(relay, tag) or self:FullPeer(relay, tag) or self:VouchedOf(relay, tag)
         MarkRelay(tag, relay, firm and true or nil)
     end
 end
@@ -2039,16 +2038,14 @@ HU.comm.PL = function(self, sender, f, dist, raw)
     if dist ~= "GUILD" and dist ~= "WHISPER" then return end
     -- Seguridad: por susurro solo lo presenta el enlace (o un ayudante u oficial) comprobado de otra [+ARCHITECTURE.md]
     local strict = false
-    if not self:IsTest() then
-        if dist == "WHISPER" then
-            local sp = self.remote[sender:lower()]
-            if not (sp and sp.tag and self:IsRemoteForwarder(sender, sp.tag)) then
-                if self.Debug then self:Debug("PL por susurro no aceptado:", sender) end
-                return
-            end
-        else
-            strict = not self:IsGuildForwarder(sender)
+    if dist == "WHISPER" then
+        local sp = self.remote[sender:lower()]
+        if not (sp and sp.tag and self:IsRemoteForwarder(sender, sp.tag)) then
+            if self.Debug then self:Debug("PL por susurro no aceptado:", sender) end
+            return
         end
+    else
+        strict = not self:IsGuildForwarder(sender)
     end
     for pair in (f[1] or ""):gmatch("[^,]+") do
         local tag, name = pair:match("^(%w+):(.+)$")
@@ -2452,7 +2449,7 @@ local savedAsked = {}
 -- late = la vuelta de los rasos: solo si a esas alturas sigue sin confirmar (lo normal es que antes la
 -- haya confirmado y repartido un enlace, ayudante u oficial), y a un solo contacto comprobado
 function HU:AskSavedContacts(late)
-    if not self.myTag or not IsInGuild() or self:IsTest() or not self.cfg or not self.db then return end
+    if not self.myTag or not IsInGuild() or not self.cfg or not self.db then return end
     local _, onlineNow = GetNumGuildMembers()
     -- (quien puede repartir la lista confirmada a su hermandad pregunta primero; los rasos, después)
     local sharer = self:CanOfficer() or self:IsRelay() or (self.RosterSlot and self:RosterSlot() ~= nil)
@@ -2525,7 +2522,7 @@ end
 function HU:AskGuildForMissing()
     -- (el primer minuto tras entrar, como mucho cada 5 s: las listas tienen que llegar pronto)
     local brake = (GetTime() - (self.loginT or 0) < 60) and 5 or 20
-    if not self.myTag or not IsInGuild() or self:IsTest() or GetTime() - lastNQ < brake then return end
+    if not self.myTag or not IsInGuild() or GetTime() - lastNQ < brake then return end
     local r, w = {}, {}
     local need = self.rosterNeed or {}
     local now = GetTime()
@@ -2623,7 +2620,7 @@ do -- (en un bloque: la parte principal del archivo no puede pasar de 200 variab
 local WELCOME_DELAY, WELCOME_GAP = 1, 10
 local welcomeAt = {}   -- [tag] = cuándo sale (o salió) el último reparto por bienvenida
 function HU:WelcomeGuildmate()
-    if not self.myTag or not self.cfg or self:IsTest() then return end
+    if not self.myTag or not self.cfg then return end
     local now = GetTime()
     for _, tag in ipairs(self:OtherTags()) do
         local r = self.remoteRoster[tag]
@@ -2954,7 +2951,7 @@ HU.comm.RB = function(self, sender, f, dist, raw)
         local short = raw .. "~0~~" .. fwdFlag
         -- (la lista de lanzamiento, 1-3 trozos, también al momento: es la que llega cuando cambia
         -- quién manda los cambios)
-        local fast = (nparts <= 3 and not self:SimpleMode()) or nil
+        local fast = (nparts <= 3) or nil
         if #full <= 250 then self:Send(full, "GUILD", nil, nil, nil, fast)
         elseif #short <= 250 then self:Send(short, "GUILD", nil, nil, nil, fast)
         elseif fwdFlag == "c" then self:Send(raw, "GUILD", nil, nil, nil, fast) end
@@ -3290,7 +3287,7 @@ HU.comm.RC = function(self, sender, f, dist, raw)
         local fl = HU.RosterStateOf(self.remoteRoster[tag]) or "b"
         local withState = raw .. "~" .. fl
         -- (los cambios pequeños, a mi hermandad al momento y por delante: conectado/desconectado)
-        local fast = (nparts <= 2 and not self:SimpleMode()) or nil
+        local fast = (nparts <= 2) or nil
         if #withState <= 250 then self:Send(withState, "GUILD", nil, nil, nil, fast) elseif fl == "c" then self:Send(raw, "GUILD", nil, nil, nil, fast) end
     end
     local key = tag .. ":" .. new

@@ -1145,7 +1145,7 @@ end
 -- (want: seguir con ese compañero si sigue conectado; skip: no ese, que se acaba de callar)
 local syncTurn = 0
 function HU:HistStartSync(force, want, skip)
-    if not self:HistEnabled() or not IAmOfficer() or sync or self:IsTest() then return false end
+    if not self:HistEnabled() or not IAmOfficer() or sync then return false end
     if not force and GetTime() - lastSync < SYNC_EVERY * 0.9 then return false end
     lastSync = GetTime()
     -- (una vuelta normal, no de seguida: se vuelven a permitir las rápidas)

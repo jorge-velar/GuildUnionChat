@@ -163,7 +163,7 @@ end
 HU:OnStart(function()
     HU.StampFix(HU.db.netCfg)
     HU.After(25, function()
-        if HU:IsTest() or not IsInGuild() or HU:CanOfficer() then return end
+        if not IsInGuild() or HU:CanOfficer() then return end
         -- solo si la Información dice que hay líneas en notas de oficial y me faltan
         -- (sin nada en la Información: quizá el juego no dejó escribirla; se pide la copia)
         if not HU.cfg then

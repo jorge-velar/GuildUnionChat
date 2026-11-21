@@ -136,7 +136,7 @@ function HU:UpdateMyProfile(force)
     local same = old and old.race == p.race and old.r == p.r and old.s == p.s and old.p == p.p
     if same then p.t = old.t end
     self.db.profiles[k] = p
-    if (not same or force) and IsInGuild() and not self:IsTest() then
+    if (not same or force) and IsInGuild() then
         local race, r, s, profs = ProfileMsgFields(p)
         self:Send(table.concat({ "PF", race, r, s, profs }, "~"), "GUILD")
     end
@@ -213,11 +213,10 @@ HU.demoOffline = nil
 function HU:SendOfflineTo(target, urgent)
     if not self.myTag then return end
     local entries = {}
-    -- (fase de lanzamiento: de las otras hermandades solo se ven maestro y oficiales, así que de
-    -- inactivos también van solo ellos; antes iban cientos de nombres en decenas de mensajes)
-    local onlyOff = self.LaunchPhase and self:LaunchPhase()
+    -- (de las otras hermandades solo se ven maestro y oficiales, así que de inactivos también van
+    -- solo ellos; antes iban cientos de nombres en decenas de mensajes)
     for _, e in ipairs(self.rosterList) do
-        if not e.online and (not onlyOff or self:RankRole(self.myTag, e.rankIndex)) then
+        if not e.online and self:RankRole(self.myTag, e.rankIndex) then
             local hours = e.offSecs and math.floor(e.offSecs / 3600) or ""
             entries[#entries + 1] = table.concat({ Clean(self:Short(e.name)), HU.CLASS_INDEX[e.class or ""] or 0, e.level or 0, hours }, ",")
         end
@@ -239,7 +238,7 @@ end
 HU.comm.OD = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
-    if dist == "WHISPER" and not self:IsTest() and not self:IsRemoteForwarder(sender, tag) then return end
+    if dist == "WHISPER" and not self:IsRemoteForwarder(sender, tag) then return end
     local list = self.db.offline[tag] or {}
     self.db.offline[tag] = list
     local now = time()
@@ -284,7 +283,7 @@ end
 local oqAsked = {}
 -- urgent = alguien lo está mirando (ha elegido Inactivos o Todos): se pide ya y llega antes
 function HU:WantOfflineInfo(tag, urgent)
-    if not tag or tag == self.myTag or self:IsTest() then return end
+    if not tag or tag == self.myTag then return end
     local t = self.db.offlineT and self.db.offlineT[tag]
     if t and time() - t < 12 * 3600 then return end
     if oqAsked[tag] and GetTime() - oqAsked[tag] < (urgent and 60 or 120) then return end
@@ -303,7 +302,7 @@ end
 HU:OnStart(function()
     -- (solo el enlace, una hermandad cada 2 minutos y solo si no tiene nada urgente que mandar) [+ARCHITECTURE.md]
     HU.After(math.random() * 120, function() HU.NewTicker(120, function()
-        if not HU.myTag or HU:IsTest() or not HU:IsRelay() then return end
+        if not HU.myTag or not HU:IsRelay() then return end
         if HU.MainQueueSize and HU:MainQueueSize() > 30 then return end
         for _, tag in ipairs(HU:OtherTags()) do
             local t = HU.db.offlineT and HU.db.offlineT[tag]
@@ -676,7 +675,7 @@ HU.Dialogs["WELOVEPVP_GKICK"] = HU.LT({
     button1 = "Aceptar",
     button2 = "Rechazar",
     secure = function(data)
-        if data and not HU:IsTest() and HU:CanKickMember(data.target) then return HU.GuildCmd("gremove", data.target) end
+        if data and HU:CanKickMember(data.target) then return HU.GuildCmd("gremove", data.target) end
     end,
     OnAccept = function(_, data) HU:AnswerKick(data, true) end,
     OnCancel = function(_, data, reason) if reason == "clicked" then HU:AnswerKick(data, false) end end,
@@ -691,7 +690,7 @@ HU.comm.GK = function(self, sender, f, dist, raw)
     local id, tag, target, requester, reqTag = f[1], f[2], f[3], f[4], f[5]
     if not (id and tag and target and requester) then return end
     if tag ~= self.myTag or seenKicks[id] then return end
-    if not self:IsTest() and not self:InAnyGuild(requester) then return end
+    if not self:InAnyGuild(requester) then return end
     -- (antes, cualquiera ponía el nombre de otro como solicitante: ahora lo tiene que traer él o
     -- quien reparte, la etiqueta es la suya de verdad y como mucho 3 peticiones por minuto)
     if not self:MayCarry(requester, sender, dist, reqTag) or not HU.RequestRate(requester) then return end
@@ -1001,7 +1000,7 @@ HU.comm.HL = function(self, sender, f, dist)
     -- solo lo manda alguien de mi hermandad (contesta a la petición de alguien al entrar)
     local sk = self:Key(sender)
     if not (sk and self.roster[sk]) then return end
-    if dist == "GUILD" and not self:IsTest() and not HLSourceOK(self, sender) then
+    if dist == "GUILD" and not HLSourceOK(self, sender) then
         if self.Debug then self:Debug("Historial rechazado (no le toca contestar):", sender) end
         return
     end
@@ -1075,7 +1074,7 @@ function HU:RestoreChat()
     for i = #h, 1, -1 do
         local e = h[i]
         local k = e.k or "main"
-        if (k ~= "off" or self:CanOfficer() or self:IsTest()) and (count[k] or 0) < per then
+        if (k ~= "off" or self:CanOfficer()) and (count[k] or 0) < per then
             count[k] = (count[k] or 0) + 1
             table.insert(shown, 1, e)
         end

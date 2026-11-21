@@ -160,7 +160,7 @@ function HU:ChannelRosterChanged(kind)
 end
 -- ¿Necesito leer la lista entera del canal por mi cuenta? Solo el enlace (busca moderadores a los [+ARCHITECTURE.md]
 function HU:NeedsChannelList()
-    if self:IsTest() or self.chanIAmMod == true or self:IsRelay() then return true end
+    if self.chanIAmMod == true or self:IsRelay() then return true end
     local idx = self.MyRankIndex and self:MyRankIndex()
     return idx ~= nil and self.myTag ~= nil and self:RankRole(self.myTag, idx) ~= nil
 end
@@ -530,7 +530,7 @@ local lastSig, lastTime = nil, 0
 function HU:Forward(kind, msg)
     if not self.myTag then return end
     -- antes de enviar: comprobar que de verdad estoy en mi hermandad (y que es una de las unidas)
-    if not self:IsTest() then
+    do
         -- (recién entrado con la configuración guardada, el juego aún puede no dar la hermandad ni la [+ARCHITECTURE.md]
         local quick = self.cfg and self.cfg.quick
         local gameGuild = IsInGuild() and GetGuildInfo("player")
@@ -544,20 +544,15 @@ function HU:Forward(kind, msg)
         self:Print(L("|cffff4444Estás silenciado en el chat de ") .. HU:Title() .. "|r (" .. (self:MuteLeftText(self:Me()) or "") .. L("): tu mensaje no ha llegado a las otras hermandades."))
         return
     end
-    local sub = ""
     local id = self:ChannelId(kind == "off" and "off" or (HU.IsExtra(kind) and kind or "main"))
-    if kind == "off" and not id and self:IsTest() then
-        -- en modo prueba no hay canal de oficiales: va por el canal de prueba marcado
-        id, sub = self:ChannelId("main"), ":O"
-    end
     -- (todavía no estoy en el canal, recién entrado: antes se perdía; ahora va por el respaldo)
-    if not id and kind ~= "off" and not HU.IsExtra(kind) and self.cfg and not self:IsTest() then
-        local prefix0 = "[" .. self.myTag .. sub .. "] "
+    if not id and kind ~= "off" and not HU.IsExtra(kind) and self.cfg then
+        local prefix0 = "[" .. self.myTag .. "] "
         for _, part in ipairs(HU.SplitMessage(msg, 255 - #prefix0 - 1 - 60)) do self:ChatFallback("m", prefix0 .. part) end
         return
     end
     if not id then return end
-    local prefix = "[" .. self.myTag .. sub .. "] "
+    local prefix = "[" .. self.myTag .. "] "
     local chanKind = (kind == "off" and id ~= self:ChannelId("main")) and "off" or (HU.IsExtra(kind) and kind or "main")
     local token = (chanKind == "main" and "m") or (chanKind == "off" and "o") or chanKind
     -- (por si hay que mandarlo por el respaldo: "CG~canal~autor~" delante, que también tiene que caber)
@@ -848,7 +843,7 @@ HU:OnStart(function()
     -- CF~canal~[ETIQ] mensaje : por GUILD, de un compañero cuyo texto no sale por el canal
     HU.comm.CF = function(self, sender, f, dist)
         if dist ~= "GUILD" or not self.myTag or not self.cfg then return end
-        if not self:IsTest() and not self.roster[self:Key(sender) or ""] then return end
+        if not self.roster[self:Key(sender) or ""] then return end
         if f[1] == "o" or not TokenKind(f[1]) then return end
         local line = table.concat(f, "~", 2)
         if line:match("^%[(%w+)") ~= self.myTag then return end
@@ -2085,7 +2080,7 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         return
     end
     -- seguridad: quien escribe tiene que estar de verdad en la hermandad de la etiqueta [+ARCHITECTURE.md]
-    if tag == HU.myTag and not HU:IsTest() and not HU:MemberOf(author, tag) and not (HU.GuildVerified and HU:GuildVerified(author:lower())) then
+    if tag == HU.myTag and not HU:MemberOf(author, tag) and not (HU.GuildVerified and HU:GuildVerified(author:lower())) then
         -- (no está en mi lista ni ha hablado por la hermandad: se le pregunta por la vía GUILD del
         -- juego y el mensaje queda retenido hasta la respuesta; ver Guard.lua)
         if HU.CheckImpostor then HU:CheckImpostor(author) end
@@ -2093,7 +2088,7 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         HU.ChatDrop("retenido: usa mi etiqueta y no sale en mi lista", author)
         return
     end
-    if not HU:IsTest() and not HU:MemberOf(author, tag) then
+    if not HU:MemberOf(author, tag) then
         local reject = nil
         if HU.remoteRoster[tag] then
             local g = HU.guardKnown and HU.guardKnown[HU:Key(author) or ""]
@@ -2120,9 +2115,8 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
         if sub == "B" then
             return -- «Buscar grupo» de una versión vieja: ya no existe, no se muestra
         elseif sub == "O" then
-            if not HU:IsTest() then return end
-            kind = "off"
-        elseif tag == HU.myTag and not HU:IsTest() then
+            return -- (oficiales por el canal principal: solo valía en el modo prueba, que ya no existe)
+        elseif tag == HU.myTag then
             return -- los de mi hermandad ya lo vieron en /g
         end
     end
@@ -2245,7 +2239,7 @@ local function OnHiddenChat(prefix, text, dist, sender, _, _, localID, chanName)
     -- (y que venga de verdad de ese canal: antes valía desde cualquier canal compartido, como el
     -- de otro addon; en modo prueba el de oficiales va por el principal)
     local from = HU:OurChannelKind(localID, chanName)
-    if from ~= true and from ~= kind and not (kind == "off" and from == "main" and HU:IsTest()) then return end
+    if from ~= true and from ~= kind then return end
     if HU.MarkChannelSeen then HU:MarkChannelSeen(HU:FullName(sender)) end
     HU:OnUnionChat(kind, body, sender, nil)
 end
@@ -2317,7 +2311,7 @@ end)
 local noChanT, outSince = -999, nil
 HU:OnStart(function()
     HU.NewTicker(60, function()
-        if not HU.ready or not IsInGuild() or HU:IsTest() or HU.paused
+        if not HU.ready or not IsInGuild() or HU.paused
             or GetTime() - (HU.loginT or 0) < 90 or not HU:CanJoinNow() or HU:IsJoined("main") then
             outSince = nil
             return

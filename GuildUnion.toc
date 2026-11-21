@@ -36,7 +36,6 @@ Ranks.lua
 Audit.lua
 Pinned.lua
 ChatTabs.lua
-Test.lua
 Guard.lua
 GuardKeeper.lua
 Social.lua
@@ -52,7 +51,6 @@ MemGuard.lua
 Combat.lua
 UI.lua
 UIWindows.lua
-UIStubs.lua
 Minimap.lua
 BlizzTab.lua
 ListWindow.lua

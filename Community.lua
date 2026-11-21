@@ -120,7 +120,7 @@ function HU:IsPrincipalMaster()
 end
 -- ¿Puedo invitar hermandades? (el maestro de la principal, o un gestor que sea oficial de la suya)
 function HU:CanInvite()
-    if not self.myTag or self:IsTest() then return false end
+    if not self.myTag then return false end
     return self:IsPrincipalMaster() or (self:CanPin() and self:IsManager(self:Me()))
 end
 -- ¿Ese autor (de otra hermandad o de la mía) puede meter o sacar hermandades? Comprobado por rango.
@@ -256,7 +256,6 @@ end
 --   GA~id~1|0~nombre o motivo         respuesta
 ---------------------------------------------------------------------------
 function HU:InviteGuild(contact, tag)
-    if self:IsTest() then return false, L("no se puede en modo prueba") end
     if not self.myTag or not self.cfg then return false, L("tu hermandad no está configurada") end
     if not self:CanInvite() then return false, L("solo el maestro de la hermandad principal y los gestores pueden invitar hermandades") end
     contact = HU.Trim(contact or "")
@@ -286,7 +285,7 @@ end
 
 -- Me invitan a mí
 HU.comm.GV = function(self, sender, f, dist)
-    if dist ~= "WHISPER" or self:IsTest() then return end
+    if dist ~= "WHISPER" then return end
     local id, tag, title, fromGuild = f[1], (f[2] or ""):upper(), HU.CleanTitle(f[3]), CleanName(f[4])
     if not id or not tag:match("^%w+$") or #tag > 6 then return end
     local function no(why) self:Whisper(sender, table.concat({ "GA", id, "0", why }, "~"), true) end

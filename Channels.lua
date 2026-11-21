@@ -172,7 +172,7 @@ end
 
 -- Lo llama la lista de la hermandad cuando un oficial ve la línea en una nota de oficial
 function HU:OnChannelNote(channel, pass)
-    if self:IsTest() or not self.myTag then return end
+    if not self.myTag then return end
     local n = self.db.netChan
     if n and n.channel == channel and (n.pass or nil) == (pass or nil) then return end
     -- Solo cuenta como cambio si la nota cambia después de haberla visto. La primera vez que un
@@ -191,7 +191,7 @@ end
 local noteMissT, noteMissWarned
 -- (bad: la línea está, pero con algo pegado detrás que no cuadra; tampoco se usa ni se reparte)
 function HU:OnChannelNoteMissing(bad)
-    if self:IsTest() or not self.myTag or noteMissWarned then return end
+    if not self.myTag or noteMissWarned then return end
     local n = self.db.netChan
     -- (solo si en esta hermandad la línea estuvo: si el canal llegó de otra, aquí no falta nada)
     if not n or n.prov or not self.db.noteChanSeen then return end
@@ -335,7 +335,7 @@ CPCore = function(self, sender, f, dist, raw, fromPending)
         return
     end
     local cur = self.db.netChan
-    if viaCQ and not self:IsTest() then
+    if viaCQ then
         if cur and not cur.prov then return end
         return CQVote(self, sender, { channel = channel, pass = (pass ~= "") and pass or nil, t = t, by = by, tag = (tag ~= "" and tag) or nil })
     end

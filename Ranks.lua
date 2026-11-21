@@ -243,7 +243,7 @@ local OFFER_AGAIN = 600
 function HU:OfferRestoreRank(name, force)
     local k = self:Key(name)
     local p = k and self.db.punished and self.db.punished[k]
-    if not p or self:IsTest() or not self:InMyGuild(name) then return end
+    if not p or not self:InMyGuild(name) then return end
     local idx = self:PunishRank()
     local _, cur = FindRosterIndex(name)
     if not cur or (idx and cur ~= idx) then self.db.punished[k] = nil return end -- (ya le han cambiado el rango)

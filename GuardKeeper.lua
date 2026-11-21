@@ -129,7 +129,7 @@ local function ListsFirm(self)
 end
 
 local function OfficerGuard(self, now, force)
-    if self:IsTest() or not self:IsJoined("off") or not self:CanOfficer() then return end
+    if not self:IsJoined("off") or not self:CanOfficer() then return end
     if not force and now - lastOffScan < OFF_EVERY then return end
     lastOffScan = now
     -- (el chat de oficiales es pequeño: se lee de una vez y done se llama enseguida)

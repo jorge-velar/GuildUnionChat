@@ -56,7 +56,7 @@ end
 HU.comm.EQ = function(self, sender, f, dist, raw)
     local id, by, sig = f[1], f[2], f[3]
     if not id or not by or by == "" or not sig or seen[id] then return end
-    if not self:IsTest() and (self:TrustedOfficer(by) ~= true or not self:MayCarry(by, sender, dist)) then return end
+    if self:TrustedOfficer(by) ~= true or not self:MayCarry(by, sender, dist) then return end
     if not HU.RequestRate("EQ:" .. by) then return end
     seen[id] = true
     local real = Password()

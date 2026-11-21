@@ -227,7 +227,7 @@ end
 
 function HU:MissingLists()
     local missing = {}
-    if not self.cfg or self:IsTest() then return missing end
+    if not self.cfg then return missing end
     -- con más de 6 hermandades las listas completas no se reparten; quien está en el canal está
     -- conectado, así que basta con la lista de conectados de su hermandad
     for _, g in ipairs(self.cfg.guilds) do
@@ -414,7 +414,7 @@ HU.comm.MA = function(self, sender, f, dist)
     if not tag then for t, name in pairs(q.wit or {}) do if self:SameName(name, sender) then tag, role = t, "wit" end end end
     if not tag then return end
     -- (contesta por X solo quien está en la lista buena de X: antes valía el «mejor contacto», que [+ARCHITECTURE.md]
-    if not self:IsTest() and not self:MemberOf(sender, tag) then
+    if not self:MemberOf(sender, tag) then
         if self.Debug then self:Debug("Respuesta de la guardia no aceptada:", sender, tag) end
         return
     end
@@ -569,7 +569,7 @@ end
 
 local OWNER_STEP, OWNER_FIND_STEP = 100, 400
 function HU:CheckChannelOwner(force)
-    if self:IsTest() or not self.myTag then return end
+    if not self.myTag then return end
     -- (sin la lista de mi hermandad no sé quién es oficial: se le quitaría el moderador a todos)
     if not self.rosterList or #self.rosterList == 0 then return end
     if not force and GetTime() - lastOwnerCheck < 60 then return end

@@ -204,7 +204,7 @@ end
 
 -- Arranque rápido: al entrar, el juego tarda unos segundos en dar la Información de hermandad y la [+ARCHITECTURE.md]
 function HU:QuickConfig()
-    if self:IsTest() or self.cfg or not IsInGuild() then return false end
+    if self.cfg or not IsInGuild() then return false end
     local q = self.db.quickCfg
     if type(q) ~= "table" or type(q.text) ~= "string" or type(q.guild) ~= "string" then return false end
     -- (si el juego ya dice la hermandad y no es la de entonces, no vale. Si es la misma, vale [+ARCHITECTURE.md]

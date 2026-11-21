@@ -64,7 +64,7 @@ function HU:MemberOf(name, tag)
     if not k or not tag then return false end
     if tag == self.myTag then
         if self.roster[k] then return true end
-        return self:IsTest() and (k == self:MeKey() or (self.db.test and self.db.test.allow[k] ~= nil)) or false
+        return false
     end
     local r = self.remoteRoster[tag]
     if r and r.byKey then return r.byKey[k] ~= nil and not r.byKey[k].weak end
@@ -211,7 +211,7 @@ end
 
 -- sender == nil: la llamada no viene de la red (la hace el propio addon)
 function HU:MayCarry(author, sender, dist, tag)
-    if sender == nil or self:IsTest() then return true end
+    if sender == nil then return true end
     local sk = self:Key(sender)
     if not sk then return false end
     if author and author ~= "" and self:Key(author) == sk then return true end
@@ -256,14 +256,14 @@ local function FirmRank(self, author)
 end
 function HU:CheckOfficerFirm(author, tag, retry, sender, dist)
     if not self:CheckOfficer(author, tag, retry, sender, dist) then return false end
-    if self:IsTest() or FirmRank(self, author) then return true end
+    if FirmRank(self, author) then return true end
     if retry then self:Defer(retry) end
     if self.Debug then self:Debug("Acción de estructura en espera (lista sin confirmar):", author) end
     return false
 end
 function HU:CheckMasterFirm(author, tag, retry, sender, dist)
     if not self:CheckMaster(author, tag, retry, sender, dist) then return false end
-    if self:IsTest() or FirmRank(self, author) then return true end
+    if FirmRank(self, author) then return true end
     if retry then self:Defer(retry) end
     return false
 end
@@ -273,15 +273,9 @@ function HU:BigCommunity()
     return self.cfg ~= nil
 end
 
--- Fase de lanzamiento: a las otras hermandades solo van el maestro, los oficiales, el enlace y sus [+ARCHITECTURE.md]
-HU.PHASE = "launch"
--- Versión «solo chat» (5.4.11): siempre fase de lanzamiento. Por dentro solo viaja la lista pequeña [+ARCHITECTURE.md]
-HU.CHAT_ONLY = true
-function HU:LaunchPhase()
-    if HU.CHAT_ONLY then return true end
-    local p = (self.db and self.db.phase) or HU.PHASE
-    return p ~= "full"
-end
+-- (versión «solo chat», desde la 5.4.11: siempre la antigua «fase de lanzamiento». A las otras
+-- hermandades solo van el maestro, los oficiales, el enlace y sus ayudantes; ya no hay HU.PHASE,
+-- HU.CHAT_ONLY ni HU:LaunchPhase)
 
 -- avisos del juego de altas y bajas en la hermandad: se pide la lista de la hermandad enseguida
 local joinPat
