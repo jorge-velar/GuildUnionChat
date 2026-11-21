@@ -96,6 +96,8 @@ local function FrameMeta(w)
             if type(k) == "string" and k:sub(1, 6) == "Create" then
                 return function(self, name) return NewFrame(w, k:sub(7), name, self) end
             end
+            -- (un campo del addon que aún no se ha puesto, en minúscula: nada, como en el juego)
+            if type(k) ~= "string" or not k:match("^%u") then return nil end
             -- (cualquier otro método: no hace nada, como un «Set…» del juego)
             return function() end
         end,
