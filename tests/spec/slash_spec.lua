@@ -36,6 +36,7 @@ local INPUTS = {
     "gestor", "gestor Compi-Reino", "manager remove Compi-Reino", "gestores", "managers",
     "quitarhermandad", "removeguild TRES",
     "notacanal", "channelnote", "pasarcanal", "sendchannel Compi-Reino", "perf",
+    "language es",
 }
 
 -- Y otra vez, ahora como oficial (CanOfficer), los que tienen una rama para oficiales
@@ -87,8 +88,11 @@ local function Run(inputs, officer, out)
         for _, c in ipairs(log) do if c ~= last then calls[#calls + 1] = c; last = c end end
         out[#out + 1] = "llama: " .. table.concat(calls, " ")
         for i = before + 1, #w.chat do out[#out + 1] = "dice: " .. tostring(w.chat[i].msg) end
-        if not ok then out[#out + 1] = "ERROR: " .. tostring(err):gsub("^[^:]+:%d+: ", "") end
-        if #a:Errors() > errBefore then out[#out + 1] = "ERROR guardado: " .. tostring(a:Errors()[#a:Errors()]) end
+        -- (solo en qué archivo: el texto del error no es el mismo en Lua 5.1 y 5.4. Hoy son los de UI.lua,
+        -- que el WoW de mentira no imita entero)
+        local function Where(e) return tostring(tostring(e):match("([%w_]+%.lua):%d+") or "?") end
+        if not ok then out[#out + 1] = "ERROR en " .. Where(err) end
+        if #a:Errors() > errBefore then out[#out + 1] = "ERROR guardado en " .. Where(a:Errors()[#a:Errors()]) end
         w:Advance(1)
     end
     return out
@@ -116,6 +120,51 @@ local function WriteGolden(lines)
     for _, l in ipairs(lines) do f:write(l, "\n") end
     f:close()
 end
+
+describe("Comandos /gu: registro", function()
+    local a, HU
+    before_each(function()
+        a = F.Community()
+        HU = a.HU
+    end)
+
+    it("todo comando y alias registrado está en la referencia (INPUTS)", function()
+        local tried = {}
+        for _, input in ipairs(INPUTS) do tried[(input:match("^(%S*)") or ""):lower()] = true end
+        local missing = {}
+        for name in pairs(HU.slashCmds) do if not tried[name] then missing[#missing + 1] = name end end
+        table.sort(missing)
+        A.same({}, missing, "añádelos a INPUTS y rehaz la referencia")
+    end)
+
+    it("rechaza nombres, claves y alias repetidos", function()
+        local function Fails(name, spec, what)
+            local ok, err = pcall(HU.RegisterSlash, HU, name, spec)
+            A.falsy(ok, "debía fallar: " .. what)
+            A.truthy(tostring(err):find(what, 1, true), "error: " .. tostring(err))
+        end
+        Fails("Mayus", { fn = print }, "comando no válido")
+        Fails("nuevo", { fn = print, ayuda = "x" }, "clave desconocida")
+        Fails("nuevo", { fn = "x" }, "fn tiene que ser function")
+        Fails("otro", { aliases = { "status" }, fn = print }, "ya registrado")
+    end)
+
+    it("un comando sin lo que necesita (available) da la ayuda, y uno nuevo sale en ella", function()
+        local ran = false
+        HU:RegisterSlash("sinarchivo", { available = function() return false end, fn = function() ran = true end })
+        local before = #a.w.chat
+        a.env.SlashCmdList.HERMANDADUNIDA("sinarchivo")
+        A.falsy(ran)
+        A.truthy(#a.w.chat - before > 30, "la ayuda")
+        local got
+        HU:RegisterSlash("hola", { aliases = { "hi" }, help = "|cffffd100/gu hola|r  saluda", fn = function(arg, raw, cmd) got = { arg, raw, cmd } end })
+        a.env.SlashCmdList.HERMANDADUNIDA("HI  Que Tal")
+        A.same({ "que tal", "Que Tal", "hola" }, got)
+        before = #a.w.chat
+        a.env.SlashCmdList.HERMANDADUNIDA("ayuda")
+        A.matches("/gu hola", tostring(a.w.chat[#a.w.chat].msg))
+    end)
+end)
 
 describe("Comandos /gu: referencia", function()
     it("cada comando hace lo mismo que en tests/golden/comandos.txt", function()

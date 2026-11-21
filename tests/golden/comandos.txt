@@ -2,15 +2,15 @@
 # escribe en el chat, en orden. Se rehace con:  lua tests/run.lua Comandos --actualizar
 == /gu 
 llama: Trim UI.Toggle
-ERROR: attempt to index a function value (field 'Bg')
+ERROR en BlizzTab.lua
 == /gu panel
 llama: Trim UI.Toggle
-ERROR: attempt to index a nil value (field 'status')
+ERROR en BlizzTab.lua
 == /gu lista
 llama: Trim UI.Toggle
 == /gu list
 llama: Trim UI.Toggle
-ERROR: attempt to index a nil value (field 'status')
+ERROR en BlizzTab.lua
 == /gu ayuda
 llama: Trim Print
 dice: |cff33ff99Comunidad de prueba|r: |cffffd100/gu|r  abre o cierra el panel
@@ -520,6 +520,8 @@ llama: Trim PassChannelTo
 dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no lo puedes pasar.
 == /gu perf
 llama: Trim PerfCommand
+== /gu language es
+llama: Trim SetLang
 ======== como oficial ========
 == /gu errores pedir
 llama: Trim CanOfficer AskErrors Print

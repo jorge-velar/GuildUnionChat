@@ -104,6 +104,26 @@ HU:RegisterMessage("CW", { fields = { "chan", "author", "line*" }, queue = "chat
 - `tests/spec/registro_spec.lua` fija que lo declarado da exactamente las tablas de la 5.4.41 y que
   toda orden con manejador está registrada (y al revés).
 
+## Core.lua · comandos
+
+### Registro de los comandos /gu: `HU:RegisterSlash`
+
+```lua
+HU:RegisterSlash("cola", { aliases = { "queue" }, help = "|cffffd100/gu cola|r  …",
+    available = nil, fn = function(arg, rawArg, cmd) … end })
+```
+
+- `fn` recibe el argumento en minúsculas, tal cual y el nombre del comando (no el alias:
+  `/gu search` llega como `buscar`).
+- `available`: el comando depende de algo que puede no estar cargado (`OpenWizard`,
+  `ShowGuildsWindow`…); si devuelve falso, sale la ayuda, como un comando que no existe.
+- La ayuda son las líneas `help` de todos, **en el orden en que se registran**. Una entrada sin `fn`
+  solo pone su línea en la ayuda (`/hg`, que es otro comando, y la segunda línea de `/gu carril`).
+- Un nombre o alias repetido, una clave que no existe o en mayúsculas dan error al cargar.
+- `tests/spec/slash_spec.lua` ejecuta todos los comandos y alias y compara con
+  `tests/golden/comandos.txt` (a qué funciones de `HU` llama cada uno y qué escribe). Un comando
+  nuevo hay que añadirlo a su lista `INPUTS` (una prueba lo exige) y rehacer la referencia.
+
 ## Perf.lua
 
 ### línea 1 · `local _, HU = ...`
