@@ -535,6 +535,7 @@ local function BuildPanel()
     bOff:SetPoint("TOPLEFT", panel, "TOP", 10, -66)
     local bMem = Button(panel, L("Miembros"), 100, bOff, 4)
     bMem:SetHeight(20)
+    panel.offBtn, panel.memBtn = bOff, bMem
     -- (la hermandad que se mira, con un menú; y cómo va su lista)
     panel.memPick = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     panel.memPick:SetSize(90, 20)

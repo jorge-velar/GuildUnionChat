@@ -224,7 +224,17 @@ function wow.New(opts)
         NewTicker = function(d, fn, n) return AddTimer(d, fn, d, n) end,
     }
 
-    api.CreateFrame = function(kind, name, parent) return NewFrame(w, kind, name, parent) end
+    api.CreateFrame = function(kind, name, parent, template)
+        local f = NewFrame(w, kind, name, parent)
+        -- (las piezas que traen las plantillas del juego y que el addon toca: el fondo de InsetFrameTemplate)
+        if type(template) == "string" and template:find("InsetFrameTemplate", 1, true) then f.Bg = NewFrame(w, "Texture", nil, f) end
+        return f
+    end
+    -- (las listas con barra de la interfaz del juego: solo recuerdan por dónde van)
+    api.FauxScrollFrame_Update = function() end
+    api.FauxScrollFrame_GetOffset = function(f) return f and f._offset or 0 end
+    api.FauxScrollFrame_SetOffset = function(f, n) if f then f._offset = n end end
+    api.FauxScrollFrame_OnVerticalScroll = function(_, _, _, fn) if fn then fn() end end
     api.CreateFont = function(name) return NewFrame(w, "Font", name) end
     api.UIParent = NewFrame(w, "Frame", "UIParent")
     api.DEFAULT_CHAT_FRAME = NewFrame(w, "ScrollingMessageFrame", "ChatFrame1")
