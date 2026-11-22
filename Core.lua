@@ -383,11 +383,14 @@ HU.MAYBE_NIL = {
     me = true, myTag = true, cfg = true, paused = true, mustUpdate = true, guildMin = true,
     replaying = true, weakMsg = true, diagRecv = true, oldAddon = true, badEvents = true,
     presenceWrapped = true, staleCheck = true,
+    newerWarned = true, -- (ya se ha dicho que hay una versión más nueva: Net/Relay.lua)
     infoPending = true, keyJPending = true, combatReplay = true, -- (Core, UI y Combat: esperan al fin del combate)
     -- el canal
     chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true, laneMoves = true,
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
-    offCfg = true, chanMembersSeen = true, -- (la lista del canal, la primera vez que se lee: Guard.lua)
+    offCfg = true, chatServerUpT = true, -- (cuándo volvió el servidor de chat: Channel.lua)
+    hlHeard = true, -- (cuántas respuestas de «mientras no estabas» han llegado: Social.lua)
+    chanMembersSeen = true, -- (la lista del canal, la primera vez que se lee: Guard.lua)
     -- la configuración de la comunidad
     joinedText = true, noteCfgText = true,
     -- enlace, ayudantes y listas

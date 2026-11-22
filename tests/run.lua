@@ -31,6 +31,7 @@ local SPECS = {
     "spec/combate_spec",
     "spec/datos_spec",
     "spec/escenarios_spec",
+    "spec/novedades_spec",
     "spec/planificador_spec",
     "spec/guardas_spec",
     "spec/modulos_spec",
