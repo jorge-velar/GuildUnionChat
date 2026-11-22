@@ -41,9 +41,15 @@ HU:On("CHAT_MSG_CHANNEL_LIST", function(text, _, _, fullName, _, _, _, num, base
     if type(num) == "number" then c.num = num end
     if type(base) == "string" and base ~= "" then c.base = base
     elseif type(fullName) == "string" and fullName ~= "" then c.base = fullName end
+    -- (copia 162: sin repetidos. La respuesta tardía a una pregunta anterior se sumaba a esta y salía
+    -- «nombra a 320 personas» con 160 dentro)
     for raw in text:gmatch("[^,]+") do
         local name = HU.Trim(raw):gsub("^[%*@]+", "")
-        if name ~= "" then c.names[#c.names + 1] = name end
+        local k = name:lower()
+        if name ~= "" and not c.seen[k] then
+            c.seen[k] = true
+            c.names[#c.names + 1] = name
+        end
     end
 end)
 
@@ -60,7 +66,7 @@ function HU:ChannelCheck(fn)
     local ask = _G.ListChannelByName
     if not ask then return fn({ err = "este juego no deja preguntar al servidor por un canal", id = id }) end
     if self:ChannelApiBlocked() then return fn({ err = "ahora el juego no deja preguntar por el canal (campo de batalla, arena o jefe)", id = id }) end
-    check = { names = {}, events = 0, id = id }
+    check = { names = {}, seen = {}, events = 0, id = id }
     local ok = pcall(ask, tostring(id))
     if not ok then check = nil; return fn({ err = "el juego ha rechazado la pregunta", id = id }) end
     HU.After(3, function()
@@ -121,6 +127,20 @@ function HU:ChannelIdLines(res)
     out[#out + 1] = "  copia del mundo (número del canal de Comercio): " .. (shard or "no se ve desde aquí (solo en ciudades)")
     local _, num = self:ChannelRoster("main")
     out[#out + 1] = "  gente dentro según el juego: " .. tostring(num or "?")
+    -- (copia 162: si el canal tiene número pero no sale en la lista, es un canal fantasma)
+    local mainId = self:ChannelId("main")
+    if mainId and HU.ChannelListed then
+        local listed = HU.ChannelListed(mainId)
+        local c = self.chan.main or {}
+        out[#out + 1] = "  en la lista de canales: " .. (listed == true and "SÍ" or listed == false and "NO (canal fantasma)" or "no se sabe (grupo plegado)")
+            .. " · reentradas: " .. tostring(c.rejoinN or 0)
+    end
+    -- (copia 167: la última caída del servidor de chat del juego)
+    if HU.chatServerDownT then
+        local down = math.floor((GetTime() - HU.chatServerDownT) / 60)
+        local up = HU.chatServerUpT and HU.chatServerUpT >= HU.chatServerDownT and math.floor((GetTime() - HU.chatServerUpT) / 60)
+        out[#out + 1] = "  servidor de chat del juego: caído hace " .. down .. " min" .. (up and (", vuelto hace " .. up .. " min") or ", sin volver")
+    end
     for _, l in ipairs(self:ChannelCheckLines(res)) do out[#out + 1] = l end
     return out
 end
@@ -408,6 +428,14 @@ local function ConfigLines(self, add)
     add("en pausa por versión mínima: " .. tostring(HU.paused and true or false))
 end
 
+-- (copia 175) Los avisos de fallos que ya no salen en el chat (HU:Notice, Core.lua)
+local function NoticeLines(self, add)
+    add("== AVISOS DE ESTA SESIÓN (no se enseñan en el chat) ==")
+    local n = self.notices or {}
+    if #n == 0 then return add("  ninguno") end
+    for _, e in ipairs(n) do add("  " .. date("%H:%M:%S", e.t) .. "  " .. e.text) end
+end
+
 local function SessionLines(self, add)
     add("== SESIÓN ==")
     local now = GetTime()
@@ -454,6 +482,8 @@ function HU.ReportMore(self, add, section, res)
     section("por hermandad", GuildLines, add, res)
     add("")
     section("configuración", ConfigLines, add)
+    add("")
+    section("avisos", NoticeLines, add)
     add("")
     section("sesión", SessionLines, add)
     add("")

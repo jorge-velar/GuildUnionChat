@@ -39,6 +39,28 @@ local function WholeName(m, nice)
     HU.pratStats.whole = (HU.pratStats.whole or 0) + 1
 end
 
+-- (copia 161) Prat pinta el nombre con el color de la clase solo si la sabe él (su lista de la
+-- hermandad o el identificador del jugador); si no, lo deja en su color común, gris, y así salían
+-- todos. GuildUnion sabe más (listas de las hermandades y lo que recuerda): se le pone ese color,
+-- solo si el jugador tiene Prat en «color por clase».
+local function ClassName(m, author, guid)
+    local P = _G.Prat
+    local pn = type(P.GetModule) == "function" and P:GetModule("PlayerNames", true)
+    local prof = type(pn) == "table" and type(pn.db) == "table" and pn.db.profile
+    if type(prof) ~= "table" or prof.colormode ~= "CLASS" then return end
+    local player = m.PLAYER
+    if type(player) ~= "string" or player == "" or HU.Secret(player) then return end
+    if HU.Secret(guid) then guid = nil end
+    local class = HU:ClassFor(author, guid)
+    if type(class) ~= "string" or HU.Secret(class) then return end
+    local plain = (player:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+    -- (el mismo color que sin Prat)
+    local r, g, b = HU.ClassRGB(class)
+    if not r then return end
+    m.PLAYER = string.format("|cff%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255)) .. plain .. "|r"
+    HU.pratStats.class = (HU.pratStats.class or 0) + 1
+end
+
 local function Pre(m, event)
     if type(m) ~= "table" or (event ~= "CHAT_MSG_GUILD" and event ~= "CHAT_MSG_OFFICER") then return end
     if not HU.PratActive() or not HU.myTag then return end
@@ -47,6 +69,7 @@ local function Pre(m, event)
     if ctx then
         -- (una línea de otra hermandad que he pedido yo: HU:PratLine)
         WholeName(m, HU:Nice(ctx.author))
+        ClassName(m, ctx.author, ctx.guid)
         m.pP = HU:NamePrefix(ctx.tag, ctx.author, ctx.mark) .. (m.pP or "")
         m.MESSAGE = HU:Emotes(text)
         return
@@ -56,6 +79,7 @@ local function Pre(m, event)
     local raw, author = type(args) == "table" and args[1], type(args) == "table" and args[2]
     if type(raw) ~= "string" or type(author) ~= "string" or HU.Secret(raw) or HU.Secret(author) then return end
     WholeName(m, HU:Nice(HU:FullName(author) or author))
+    ClassName(m, HU:FullName(author) or author, args[12])
     if not HU.db.ownPaint then return end
     if event == "CHAT_MSG_GUILD" and HU:GuildLineHidden(raw, author) then
         m.DONOTPROCESS = true -- (silenciados y eco de versiones viejas: Prat no la escribe)
@@ -98,7 +122,7 @@ end
 function HU:PratLine(f, kind, tag, author, msg, guid, mark)
     local ev = EVENT[kind]
     if not ev or not HU.PratActive() then return nil end
-    ctx = { tag = tag, author = author, mark = mark }
+    ctx = { tag = tag, author = author, mark = mark, guid = guid }
     -- (copia 122: el nombre como lo da el juego en una línea de hermandad, «Nombre Apellido» con
     -- espacio. Con «Nombre-Apellido» Prat tomaba el apellido por un reino y lo pintaba aparte)
     local shown = self:Nice(author)
