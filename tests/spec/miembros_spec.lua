@@ -450,3 +450,74 @@ describe("Miembros de la unión: /who al hacer clic y sin la ventana del juego",
         A.same({}, a:Errors())
     end)
 end)
+
+describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", function()
+    local BEA = { fullName = "Bea-Reino", fullGuildName = "Hermandad Dos", level = 30, filename = "MAGE", area = "Ventormenta" }
+    -- (la ventana de hermandad del juego, lo justo: su lista de miembros con la casilla de desconectados)
+    local function GuildWindow(a)
+        local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
+        f.GuildInfoTab = false -- (sin pestañas: la de GuildUnion, BlizzTab.lua, no se monta)
+        f.MemberList = a.env.CreateFrame("Frame", nil, f)
+        local chk = a.env.CreateFrame("CheckButton", nil, f.MemberList)
+        f.MemberList.ShowOfflineButton = chk
+        chk.visible = true
+        chk.IsVisible = function(self) return self.visible end
+        a.w:Fire("ADDON_LOADED", "Blizzard_Communities")
+        return f
+    end
+    local function Click(name, a) local b = a.env[name]; return b:GetScript("OnClick")(b, "LeftButton") end
+
+    it("todos juntos: primero mi hermandad, por rango, y luego las otras", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "IsGuildForwarder", true)
+        a.w:Receive("HU20B", "ML~DOS~id1~1~1~Blas,1,60,4,Ventormenta", "GUILD", "Compi-Reino")
+        local list = HU:UnionRosterEntries()
+        local names = {}
+        for i, e in ipairs(list) do names[i] = e.name:match("^([^-]+)") .. "/" .. e.tag end
+        A.same({ "Jefa/UNO", "Tester/UNO", "Compi/UNO", "Blas/DOS" }, names)
+        A.truthy(list[1].own)
+        A.falsy(list[4].own)
+    end)
+
+    it("el interruptor sale en la vista de miembros; «Unión» tapa la lista del juego con la de todos", function()
+        local a = F.Community()
+        local HU = a.HU
+        GuildWindow(a)
+        local switch, cover = a.env.GuildUnionRosterSwitch, a.env.GuildUnionUnionRoster
+        A.truthy(switch and switch:IsShown(), "el interruptor")
+        A.falsy(cover:IsShown(), "al principio, la del juego")
+        Click("GuildUnionRosterUnion", a)
+        A.truthy(cover:IsShown())
+        A.matches("Jefa", cover.rows[1].cells[1]:GetText())
+        A.matches("Hermandad Uno", cover.rows[1].cells[5]:GetText())
+        -- (el clic ha buscado con /who la hermandad que no tiene lista)
+        A.same({ 'g-"Hermandad Dos"' }, a.w.whoSent)
+        a.w.who = { BEA }
+        a.w:Fire("WHO_LIST_UPDATE")
+        A.matches("Bea", cover.rows[4].cells[1]:GetText())
+        A.equal("30", cover.rows[4].cells[2]:GetText())
+        A.equal("Ventormenta", cover.rows[4].cells[3]:GetText())
+        A.matches("4 conectados", cover.status:GetText())
+        cover.rows[1]:GetScript("OnClick")(cover.rows[1], "LeftButton")
+        Click("GuildUnionRosterGuild", a)
+        A.falsy(cover:IsShown(), "«Mi hermandad»: la del juego, tal cual")
+        A.same({}, a:Errors())
+    end)
+
+    it("fuera de la vista de miembros no sale nada", function()
+        local a = F.Community()
+        local f = GuildWindow(a)
+        Click("GuildUnionRosterUnion", a)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.MemberList.ShowOfflineButton:GetScript("OnHide")()
+        a.w:Advance(0.1)
+        A.falsy(a.env.GuildUnionRosterSwitch:IsShown())
+        A.falsy(a.env.GuildUnionUnionRoster:IsShown())
+        -- (y al volver, sigue en «Unión»)
+        f.MemberList.ShowOfflineButton.visible = true
+        f.MemberList.ShowOfflineButton:GetScript("OnShow")()
+        a.w:Advance(0.1)
+        A.truthy(a.env.GuildUnionUnionRoster:IsShown())
+    end)
+end)

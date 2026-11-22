@@ -2476,6 +2476,24 @@ Blizzard no se filtra (tocar sus datos bloquea sus botones).
 contaminaría la lista y bloquearía sus botones—; se hace brillar para que la marques tú, y
 al marcarla se marca a la persona)
 
+## UnionRoster.lua
+
+### Qué hay en el archivo
+
+«Unión» en la lista de miembros del juego (la pestaña de miembros de la ventana de hermandad): un
+interruptor «Mi hermandad | Unión» a la izquierda del buscador de personajes y, con «Unión», una
+lista nuestra con todos los conectados (los de mi hermandad, de la lista del juego, y los de las
+otras, de Miembros o del /who: `HU:UnionRosterEntries`), con nombre, nivel, zona, rango y hermandad.
+
+**La lista del juego no se toca.** La nuestra es hija de la ventana (no de su lista) y va encima,
+tapándola; con «Mi hermandad» se esconde y la del juego queda tal cual. Si se metieran filas en la
+lista del juego, su ventana quedaría «contaminada» y el juego bloquearía lo que solo puede hacer su
+interfaz: ascender, degradar, expulsar o guardar notas (lo mismo que se vio con la ventana entera:
+BlizzTab.lua). Clic: susurrar; clic derecho: el menú de GuildUnion (`HU.PlayerMenu`), no el del
+juego. Los clics en ella valen para el /who (`HU:UnionWhoTick`). Solo sale en la vista de miembros
+(la casilla de desconectados se ve: `IsVisible`, como el buscador). Lo elegido no se guarda: al
+entrar, «Mi hermandad».
+
 ## ChatTabs.lua · Chattynator
 
 Chattynator (addon de chat de otro autor, con versión para Forever) esconde las ventanas y pestañas de

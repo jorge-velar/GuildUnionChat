@@ -60,6 +60,7 @@ UI.lua
 UIWindows.lua
 Minimap.lua
 BlizzTab.lua
+UnionRoster.lua
 ListWindow.lua
 Blacklist.lua
 InviteLog.lua

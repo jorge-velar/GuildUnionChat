@@ -422,6 +422,27 @@ function HU:UnionMemberEntries(tag)
     return out
 end
 
+-- «Unión» en la lista de miembros del juego (UnionRoster.lua): los conectados de mi hermandad (de la
+-- lista del juego, con su rango) y los de las otras, todos juntos; primero la mía, luego por hermandad,
+-- rango y nombre
+function HU:UnionRosterEntries()
+    local out = {}
+    for _, e in ipairs(self.rosterList or {}) do
+        if e.online and e.name then
+            out[#out + 1] = { name = e.name, tag = self.myTag, class = e.class, level = e.level, zone = e.zone,
+                afk = e.afk, ri = e.rankIndex or 99, rank = e.rank or "", online = true, own = true }
+        end
+    end
+    for _, e in ipairs(self:UnionMemberEntries(nil)) do out[#out + 1] = e end
+    table.sort(out, function(a, b)
+        if (a.own or false) ~= (b.own or false) then return a.own == true end
+        if a.tag ~= b.tag then return tostring(a.tag) < tostring(b.tag) end
+        if a.ri ~= b.ri then return a.ri < b.ri end
+        return a.name:lower() < b.name:lower()
+    end)
+    return out
+end
+
 -- Cómo va la lista de esa hermandad, en pocas palabras
 function HU:UnionMembersStatus(tag)
     local st = self.unionMembers[tag]

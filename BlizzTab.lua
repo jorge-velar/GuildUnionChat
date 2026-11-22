@@ -176,6 +176,10 @@ local function PlayerMenu(owner, e)
     end)
 end
 
+-- (también los usa «Unión» en la lista de miembros, UnionRoster.lua)
+function HU.WhisperTo(name) return Whisper(name) end
+function HU.PlayerMenu(owner, e) return PlayerMenu(owner, e) end
+
 -- Clic derecho en la lista de miembros de Blizzard: las opciones de oficial de GuildUnion, al final
 local function AddToGuildMemberMenu(_, root, ctx)
     local name = ctx and ctx.name

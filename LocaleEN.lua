@@ -829,6 +829,12 @@ E["no contesta: un clic en la lista lo busca con /who"] = "no answer: a click on
 E["con /who, hace %d s"] = "with /who, %d s ago"
 E[" (%d de %d)"] = " (%d of %d)"
 E["Nivel "] = "Level "
+E["Nivel"] = "Level"
+E["Zona"] = "Zone"
+E["%d conectados"] = "%d online"
+E["Mi hermandad"] = "My guild"
+E["Unión"] = "Union"
+E["Los conectados de todas las hermandades de la comunidad en una lista. La del juego sigue debajo, sin tocar: para ascender, expulsar o las notas, «Mi hermandad»."] = "Everyone online in all the community's guilds, in one list. The game's list stays underneath, untouched: to promote, remove or edit notes, use «My guild»."
 E["Ausente"] = "Away"
 
 HU:Module("LocaleEN", { })
