@@ -281,20 +281,66 @@ end
 -- Con /who: los conectados de una hermandad aunque nadie de ella tenga Miembros [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local WHO_WAIT = 15     -- la respuesta del /who que pedí llega antes de esto; luego ya no es mía
+local WHO_GAP = 5       -- entre un /who y el siguiente (el servidor no deja más seguidos)
+local WHO_FRESH = 60    -- un /who de menos de esto no se repite solo
 local whoAsk            -- { tag, guild, t }: el /who que he pedido y espero
+local lastWhoT = -1e9
 
--- Solo desde un clic: el juego no deja a un addon hacer /who por su cuenta. Devuelve si se ha pedido
+-- Mientras espero la respuesta de MI /who, las ventanas del juego que escuchan WHO_LIST_UPDATE (la
+-- de búsqueda) no la oyen: así no se abren. Vuelven a escuchar en cuanto llega, o a los WHO_WAIT si no
+-- llega; un /who escrito a mano sigue abriéndolas como siempre
+local muted, muteN = nil, 0
+local function Unmute()
+    if not muted then return end
+    for _, f in ipairs(muted) do pcall(f.RegisterEvent, f, "WHO_LIST_UPDATE") end
+    muted = nil
+end
+local function Mute()
+    if muted or not GetFramesRegisteredForEvent then return end
+    local ok, frames = pcall(function() return { GetFramesRegisteredForEvent("WHO_LIST_UPDATE") } end)
+    if not ok then return end
+    muted = {}
+    for _, f in ipairs(frames) do
+        if f ~= HU.eventFrame and type(f) == "table" and f.UnregisterEvent and pcall(f.UnregisterEvent, f, "WHO_LIST_UPDATE") then
+            muted[#muted + 1] = f
+        end
+    end
+    -- (por si no llega: solo deshace ESTE silencio, no el de un /who posterior)
+    muteN = muteN + 1
+    local mine = muteN
+    HU.After(WHO_WAIT, function() if muteN == mine then Unmute() end end)
+end
+
+-- Solo desde un clic: el juego no deja a un addon hacer /who por su cuenta (probado en Forever el
+-- 23/11: desde un temporizador no hace nada). Devuelve si se ha pedido
 function HU:WhoUnionMembers(tag)
     local FL = C_FriendList
     if not Known(self, tag) or not (FL and FL.SendWho) then return false end
+    local now = GetTime()
+    if now - lastWhoT < WHO_GAP or (whoAsk and now - whoAsk.t < WHO_WAIT) then return false end
     local guild = self:GuildName(tag)
-    -- (que la respuesta vaya a la ventana del juego y avise con WHO_LIST_UPDATE, también si son pocos)
+    -- (que la respuesta avise con WHO_LIST_UPDATE y no salga en el chat, también si son pocos)
     if FL.SetWhoToUi then pcall(FL.SetWhoToUi, true) end
-    whoAsk = { tag = tag, guild = guild, t = GetTime() }
-    if not pcall(FL.SendWho, 'g-"' .. guild .. '"') then whoAsk = nil return false end
-    State(tag).whoAskT = GetTime()
+    whoAsk = { tag = tag, guild = guild, t = now }
+    Mute()
+    if not pcall(FL.SendWho, 'g-"' .. guild .. '"') then whoAsk = nil; Unmute() return false end
+    lastWhoT = now
+    State(tag).whoAskT = now
     self:Changed("unionMembers")
     return true
+end
+
+-- Un clic en la pestaña (el juego solo deja hacer /who desde un clic): si alguna hermandad de las que
+-- se miran no tiene lista (ni la de Miembros ni un /who reciente), se busca una con /who
+function HU:UnionWhoTick(tag)
+    local now = GetTime()
+    for _, t in ipairs(tag and { tag } or self:OtherTags()) do
+        local st = self.unionMembers[t]
+        local has = st and (st.members or st.cur)
+        local fresh = st and st.who and now - st.who.t < WHO_FRESH
+        if Known(self, t) and not has and not fresh then return self:WhoUnionMembers(t) end
+    end
+    return false
 end
 
 local function Plain(v)
@@ -328,6 +374,8 @@ HU:On("WHO_LIST_UPDATE", function()
     local ask = whoAsk
     if not ask or GetTime() - ask.t > WHO_WAIT then return end
     whoAsk = nil
+    -- (en el fotograma siguiente: si vuelven a escuchar mientras se reparte este mismo aviso, aún lo oyen)
+    HU.After(0, Unmute)
     local n, total = WhoCount()
     if type(n) ~= "number" or HU.Secret(n) then return end
     local list, want = {}, ask.guild:lower()
@@ -388,7 +436,7 @@ function HU:UnionMembersStatus(tag)
         if st.who.total > st.who.shown then s = s .. string.format(L(" (%d de %d)"), st.who.shown, st.who.total) end
         return s
     end
-    if st.failed then return L("no contesta (¿versión antigua?)") end
+    if st.failed then return L("no contesta: un clic en la lista lo busca con /who") end
     if st.fetch or st.guildAskT then return L("pidiendo…") end
     return ""
 end

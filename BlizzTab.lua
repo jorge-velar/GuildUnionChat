@@ -318,6 +318,12 @@ local function RefreshOfficers()
     panel.offEmpty:SetShown(#list == 0)
 end
 
+-- Un clic del jugador en la pestaña: el único momento en que el juego deja hacer /who. Si alguna
+-- hermandad de las que se miran no tiene lista, se busca con /who sin abrir la ventana del juego
+local function WhoTick()
+    if view == "members" and panel and panel:IsShown() and HU:UnionWhoTick(memberTag) then RefreshOfficers() end
+end
+
 local function RefreshStatus()
     if not panel then return end
     local chan = HU:IsJoined("main")
@@ -375,7 +381,7 @@ local function ShowPanel(on)
     panel:SetShown(on)
     if tab then tab:SetChecked(on) end
     if HU.SyncCharSearch then HU.SyncCharSearch() end
-    if on then RefreshStatus(); RefreshOfficers() end
+    if on then RefreshStatus(); RefreshOfficers(); WhoTick() end
 end
 
 local function BuildPanel()
@@ -581,11 +587,12 @@ local function BuildPanel()
         if panel.offScroll then FauxScrollFrame_SetOffset(panel.offScroll, 0); RefreshOfficers() end
     end
     bOff:SetScript("OnClick", function() SetView("officers") end)
-    bMem:SetScript("OnClick", function() SetView("members") end)
+    bMem:SetScript("OnClick", function() SetView("members"); WhoTick() end)
     local function PickTag(t)
         memberTag = t
         if panel.offScroll then FauxScrollFrame_SetOffset(panel.offScroll, 0) end
         RefreshOfficers()
+        WhoTick()
     end
     panel.memPick:SetScript("OnClick", function(s)
         local tags = HU:OtherTags()
@@ -612,7 +619,7 @@ local function BuildPanel()
     local sf = CreateFrame("ScrollFrame", "GuildUnionReduceOffScroll", panel, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -2)
     sf:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 12)
-    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, RefreshOfficers) end)
+    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, RefreshOfficers); WhoTick() end)
     -- (la ventana cambia de alto, o la lista empieza más abajo en «Miembros»: caben otras filas)
     sf:SetScript("OnSizeChanged", function() RefreshOfficers() end)
     panel.offScroll = sf
@@ -644,6 +651,7 @@ local function BuildPanel()
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row:SetScript("OnClick", function(s, button)
             if not s.entry then return end
+            WhoTick()
             if button == "RightButton" then PlayerMenu(s, s.entry) else Whisper(s.entry.name) end
         end)
         row:SetScript("OnEnter", function(s)
@@ -673,6 +681,8 @@ local function BuildPanel()
         RefreshStatus(); RefreshOfficers()
     end)
     panel:RegisterEvent("GUILD_ROSTER_UPDATE")
+    -- (un clic en cualquier parte de la pestaña también vale para el /who)
+    panel:HookScript("OnMouseDown", function() WhoTick() end)
     panel:SetScript("OnEvent", function() RefreshOfficers() end)
     -- (viendo «Miembros»: lo que llega se pinta al momento, y cada 2 s se mira si toca pedir otra vez)
     HU:Listen("CHANGED", function(what) if what == "unionMembers" and view == "members" then RefreshOfficers() end end)

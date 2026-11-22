@@ -375,6 +375,12 @@ function wow.New(opts)
         local m = list and list[j]
         if m then return m.name, m.owner, m.moderator, m.guid end
     end
+    -- (los marcos que escuchan un evento, como el del juego)
+    api.GetFramesRegisteredForEvent = function(ev)
+        local out = {}
+        for _, f in ipairs(w.frames) do if f._events[ev] then out[#out + 1] = f end end
+        return unpack(out)
+    end
     -- (/who: se apunta lo buscado y la respuesta la pone la prueba en w.who, con w:Fire("WHO_LIST_UPDATE"))
     api.C_FriendList = {
         SendWho = function(filter) w.whoSent[#w.whoSent + 1] = filter end,

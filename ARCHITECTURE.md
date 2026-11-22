@@ -2119,13 +2119,21 @@ es aparte, no toca `RB`/`RC` ni la confianza, y las versiones de antes no la con
 
 ### Con /who
 
-Para una hermandad en la que nadie tiene Miembros (o nadie conectado): el botón «Buscar con /who» de
-la pestaña hace `/who g-"Nombre de la hermandad"` (`HU:WhoUnionMembers`) y, cuando el juego avisa
+Para una hermandad en la que nadie tiene Miembros (o nadie conectado). El juego solo deja hacer /who
+desde un clic (probado en Forever el 23/11: desde un temporizador no hace nada), así que se
+aprovechan los de la pestaña: abrirla, «Miembros», elegir hermandad, mover la lista o hacer clic en
+ella llaman a `HU:UnionWhoTick`, que busca una hermandad sin lista (ni de Miembros ni un /who de menos
+de 1 min), como mucho un /who cada 5 s. Mientras se espera la respuesta, las ventanas del juego que
+escuchan `WHO_LIST_UPDATE` (`GetFramesRegisteredForEvent`, salvo `HU.eventFrame`) dejan de
+escucharlo: así la de búsqueda no se abre. Vuelven a escuchar en el fotograma siguiente a la
+respuesta, o a los 15 s si no llega; un /who escrito a mano las abre como siempre. El botón «Buscar
+con /who» fuerza una búsqueda.
+
+`/who g-"Nombre de la hermandad"` (`HU:WhoUnionMembers`) y, cuando el juego avisa
 (`WHO_LIST_UPDATE`), se guardan los de esa hermandad (el nombre tiene que coincidir entero: el /who
 también trae nombres parecidos). Solo desde un clic: el juego no deja a un addon hacer /who por su
 cuenta. Solo se toma la respuesta al /who que he pedido, si llega en 15 s. No trae rangos; si llega la
-lista de Miembros, se enseña esa. Si el juego no los da todos, el estado dice «N de M». La ventana de
-búsqueda del juego se abre: cerrarla desde el addon sería tocar una ventana de Blizzard (taint).
+lista de Miembros, se enseña esa. Si el juego no los da todos, el estado dice «N de M».
 
 ## History.lua
 

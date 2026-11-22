@@ -372,3 +372,81 @@ describe("Miembros de la unión: la pestaña", function()
         A.same({}, a:Errors())
     end)
 end)
+
+describe("Miembros de la unión: /who al hacer clic y sin la ventana del juego", function()
+    local BEA = { fullName = "Bea-Reino", fullGuildName = "Hermandad Dos", level = 30, filename = "MAGE", area = "Ventormenta" }
+    -- (una ventana del juego que escucha el /who, como la de búsqueda)
+    local function GameWindow(a)
+        local win = { opened = 0 }
+        win.f = a.env.CreateFrame("Frame", "VentanaDeBusqueda")
+        win.f:RegisterEvent("WHO_LIST_UPDATE")
+        win.f:SetScript("OnEvent", function() win.opened = win.opened + 1 end)
+        return win
+    end
+
+    it("un clic busca con /who la hermandad que no tiene lista; no más de uno cada 5 s", function()
+        local a = F.Community()
+        local HU = a.HU
+        A.truthy(HU:UnionWhoTick(nil))
+        A.same({ 'g-"Hermandad Dos"' }, a.w.whoSent)
+        a.w.who = { BEA }
+        a.w:Fire("WHO_LIST_UPDATE")
+        A.falsy(HU:UnionWhoTick(nil), "con un /who reciente, no")
+        a.w:Advance(61)
+        A.truthy(HU:UnionWhoTick("DOS"), "pasado el minuto, otra vez")
+        A.falsy(HU:UnionWhoTick("DOS"), "pero no dos seguidos")
+    end)
+
+    it("con la lista de Miembros no hace falta /who", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "IsGuildForwarder", true)
+        a.w:Receive("HU20B", "ML~DOS~id1~1~1~Blas,1,60,4,", "GUILD", "Compi-Reino")
+        A.falsy(HU:UnionWhoTick(nil))
+        A.same({}, a.w.whoSent)
+    end)
+
+    it("la ventana del juego no se entera de MI /who, y luego vuelve a escuchar", function()
+        local a = F.Community()
+        local HU = a.HU
+        local win = GameWindow(a)
+        HU:WhoUnionMembers("DOS")
+        A.falsy(win.f._events.WHO_LIST_UPDATE, "mientras espero, no escucha")
+        A.truthy(HU.eventFrame._events.WHO_LIST_UPDATE, "el addon sí")
+        a.w.who = { BEA }
+        a.w:Fire("WHO_LIST_UPDATE")
+        A.equal(0, win.opened, "no se ha abierto")
+        A.same({ "Bea" }, Names(HU:UnionMemberEntries("DOS")))
+        a.w:Advance(0.1)
+        A.truthy(win.f._events.WHO_LIST_UPDATE, "vuelve a escuchar")
+        -- (un /who escrito a mano: la ventana se abre como siempre)
+        a.w:Fire("WHO_LIST_UPDATE")
+        A.equal(1, win.opened)
+    end)
+
+    it("si la respuesta no llega, la ventana vuelve a escuchar a los 15 s", function()
+        local a = F.Community()
+        local win = GameWindow(a)
+        a.HU:WhoUnionMembers("DOS")
+        A.falsy(win.f._events.WHO_LIST_UPDATE)
+        a.w:Advance(16)
+        A.truthy(win.f._events.WHO_LIST_UPDATE)
+    end)
+
+    it("en la pestaña basta con abrir «Miembros»: busca sola con /who", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU:OpenMainWindow()
+        local panel = a.env.GuildUnionReducePanel
+        panel.memBtn:GetScript("OnClick")(panel.memBtn)
+        A.same({ 'g-"Hermandad Dos"' }, a.w.whoSent)
+        a.w.who = { BEA }
+        a.w:Fire("WHO_LIST_UPDATE")
+        A.matches("Bea", panel.offRows[1].name:GetText())
+        -- (un clic en la lista, pasado el minuto, la refresca)
+        a.w:Advance(61)
+        panel:GetScript("OnMouseDown")(panel)
+        A.equal(2, #a.w.whoSent)
+        A.same({}, a:Errors())
+    end)
+end)

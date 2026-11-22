@@ -65,6 +65,8 @@ _G.GuildUnionInternal = HU
 -- Eventos
 ---------------------------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
+-- (el del addon: lo que silencia las ventanas del juego no lo toca a él, UnionMembers.lua)
+HU.eventFrame = eventFrame
 local handlers = {}
 
 function HU:On(event, fn)
