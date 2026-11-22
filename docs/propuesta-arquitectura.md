@@ -1,6 +1,6 @@
 # Propuesta: arquitectura para seguir añadiendo funciones
 
-> Estado: **pasos 1 a 4 hechos** en la rama `refactor/arquitectura` (ver [Paso 2](#paso-2-en-detalle), [Paso 3](#paso-3-en-detalle) y [Paso 4 en detalle](#paso-4-en-detalle)). Falta el 5 (documentación). Escrita sobre la 5.4.12 y comprobada de nuevo
+> Estado: **los cinco pasos hechos** en la rama `refactor/arquitectura` (ver [Paso 2](#paso-2-en-detalle), [Paso 3](#paso-3-en-detalle), [Paso 4](#paso-4-en-detalle) y [Paso 5 en detalle](#paso-5-en-detalle)). Escrita sobre la 5.4.12 y comprobada de nuevo
 > sobre la **5.4.41** (las cifras del diagnóstico son de la 5.4.41 salvo donde se indica).
 > La red de pruebas del paso 1 ya está montada (`tests/`, ver [Paso 1 en detalle](#paso-1-en-detalle)).
 
@@ -407,7 +407,7 @@ ha tocado ninguna.
 
 **Cómo se ha partido.** Por trozos de líneas, sin cambiar el código. Un script compila cada trozo
 por separado y lista los nombres que en el trozo son globales y en el archivo entero no: son
-variables de otro trozo. Salieron pocas y se pasan por `HU`. Están en ARCHITECTURE.md, «Comm.lua».
+variables de otro trozo. Salieron pocas y se pasan por `HU`. Están en ARCHITECTURE.md, «Las piezas».
 
 El orden de carga solo importa en dos casos:
 
@@ -473,10 +473,29 @@ Distinto de lo propuesto:
 Hallazgo, apuntado en [fallos-conocidos.md](fallos-conocidos.md), 4: hay cuatro claves guardadas que
 nadie usa (`theme`, `chatTab`, `chatTabsMade`, `proposals`).
 
+## Paso 5 en detalle
+
+**Hecho** (rama `refactor/arquitectura`), solo documentación y pruebas: no cambia nada del addon. Se
+cumple el «hecho cuando»:
+
+- **ARCHITECTURE.md sin números de línea.** Cada nota va en el apartado del archivo donde está hoy su
+  marca `[+ARCHITECTURE.md]` (las de Comm.lua, en los seis archivos en que se partió), en el orden del
+  código, y con el nombre de la función o la primera línea de código que sigue a la marca. Se han
+  emparejado con un script: primero por el texto del comentario y, si no, por esa línea de código.
+- **Tabla del protocolo generada**: [docs/protocolo.md](protocolo.md) sale de `HU.msgs` con
+  `tests/lib/protocolo.lua`. `protocolo_spec` falla si no está al día o si una orden no tiene
+  descripción, así que una orden nueva no se puede olvidar en la documentación.
+- **Apartados por conceptos** al principio de ARCHITECTURE.md: las piezas (con la tabla de Comm.lua
+  partido), el protocolo, los cinco prefijos y quién comprueba cada uno, el modelo de confianza y la
+  elección del enlace.
+
+Quitadas, porque el código del que hablaban ya no existe: las notas de Echo.lua, Notes.lua, Test.lua y
+UIStubs.lua (archivos borrados) y la de `WH` (orden que ya no existe). Siguen en el historial de git.
+
 ## Cómo quedaría una función nueva
 
 Un archivo que declara sus mensajes (`RegisterMessage`), sus comandos (`RegisterSlash`), sus datos
-guardados (`Defaults`) y sus temporizadores (`Every`), y escucha los avisos que necesita
+guardados (`Saved`) y sus temporizadores (`Every`), y escucha los avisos que necesita
 (`Listen`). Sin tocar Core, Comm ni Combat. Y un archivo de pruebas en `tests/spec/` que, al menos,
 mande sus mensajes con `w:Receive` y compruebe lo que sale en `w.sent`.
 

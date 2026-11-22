@@ -9,7 +9,8 @@ antes: un fallo o una mejora que aparezca se apunta en docs/fallos-conocidos.md 
 
 ## Código nuevo: los registros
 
-- Una orden de red: `HU:RegisterMessage` junto a su manejador (Protocol.lua). Un comando `/gu`:
+- Una orden de red: `HU:RegisterMessage` junto a su manejador (Protocol.lua), su descripción en
+  `tests/lib/protocolo.lua` y rehacer la tabla (`lua tests/run.lua Protocolo --actualizar`). Un comando `/gu`:
   `HU:RegisterSlash`, y añadirlo a `INPUTS` de `slash_spec` y rehacer la referencia. Algo que se
   repite: `HU:Every(segs, "nombre", fn)` (no hay `NewTicker`). Lo que se guarda: `HU:Saved` al
   principio del archivo; si cambia de forma, una migración (`HU:RegisterMigration`).
