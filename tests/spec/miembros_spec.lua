@@ -482,7 +482,6 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
 
     it("el interruptor sale en la vista de miembros; «Unión» tapa la lista del juego con la de todos", function()
         local a = F.Community()
-        local HU = a.HU
         GuildWindow(a)
         local switch, cover = a.env.GuildUnionRosterSwitch, a.env.GuildUnionUnionRoster
         A.truthy(switch and switch:IsShown(), "el interruptor")
