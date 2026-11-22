@@ -38,6 +38,8 @@ M.DESC = {
     LX = "`LX~carril~gen~hora~ETIQ~contacto`: un compañero me pasa el aviso de carril de otra hermandad",
     MA = "`MA~id~nombre,nombre`: respuesta de la guardia, los que sí son de mi hermandad",
     MG = "`MG~t~autor~etiqAutor~nombres`: lista de gestores (la firma el maestro de la principal)",
+    ML = "`ML~etiq~id~parte~partes~datos`: un trozo de la lista de todos los conectados de una hermandad, solo para verla (Miembros de la unión)",
+    MP = "`MP~miEtiq~suEtiq`: pide esa lista (por GUILD, a quien se encarga de esa hermandad; por susurro, a alguien de ella; se contesta con `ML`)",
     MQ = "`MQ~id~nombre,nombre`: la guardia pregunta a una hermandad si son suyos",
     MU = "`MU~nombre~segundos~autor~etiq~t`: silenciar (0 = para siempre, -1 = quitar el silencio)",
     MZ = "varios silencios juntos (las entradas de `MU`, separadas por `;`)",

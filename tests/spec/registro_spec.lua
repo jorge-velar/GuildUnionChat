@@ -24,6 +24,23 @@ local OLD = {
         HL = "data", PB = "data", OD = "data", OE = "data", PH = "last", PL = "last" },
 }
 local BULK_PREFIX = { RB = true, RC = true, PB = true, OD = true, HL = true }
+local OLD_COUNT = 63
+
+-- Órdenes nuevas desde la 5.4.41, con sus marcas (las de antes no cambian: la tabla OLD sigue igual)
+local NEW = {
+    -- (Miembros de la unión, UnionMembers.lua)
+    MP = { open = true, combat = "req" },
+    ML = { tagField = 1, remoteData = true, open = true, queue = "bmid", ttl = 120, combat = "data" },
+}
+for cmd, marks in pairs(NEW) do
+    for key, v in pairs(marks) do
+        OLD[key] = OLD[key] or {}
+        OLD[key][cmd] = v
+    end
+    if marks.queue and marks.queue:sub(1, 1) == "b" then BULK_PREFIX[cmd] = true end
+end
+local COUNT = OLD_COUNT
+for _ in pairs(NEW) do COUNT = COUNT + 1 end
 
 local function Sorted(t) local l = {} for k in pairs(t) do l[#l + 1] = k end table.sort(l) return l end
 
@@ -53,7 +70,7 @@ describe("Registro de órdenes", function()
 
     it("toda orden con manejador está registrada, y al revés", function()
         A.same(Sorted(HU.comm), Sorted(HU.msgs))
-        A.equal(63, #Sorted(HU.msgs))
+        A.equal(COUNT, #Sorted(HU.msgs))
     end)
 
     it("rechaza nombres, claves y valores que no valen", function()
@@ -93,7 +110,7 @@ describe("Registro de órdenes", function()
         local rec, none
         for _, l in ipairs(HU:DiagLines()) do
             rec = rec or l:match("^recibido: (.*)$")
-            none = none or l:match("^sin recibir %(de 63 órdenes%): (.*)$")
+            none = none or l:match("^sin recibir %(de " .. COUNT .. " órdenes%): (.*)$")
         end
         A.truthy(rec and rec:find("PR=1", 1, true) and rec:find("QZ?=1", 1, true), "recibido: " .. tostring(rec))
         A.truthy(none and none:find("CW", 1, true) and not none:find("PR", 1, true), "sin recibir: " .. tostring(none))

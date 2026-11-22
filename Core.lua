@@ -387,7 +387,7 @@ HU.MAYBE_NIL = {
     -- el canal
     chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true, laneMoves = true,
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
-    offCfg = true,
+    offCfg = true, chanMembersSeen = true, -- (la lista del canal, la primera vez que se lee: Guard.lua)
     -- la configuración de la comunidad
     joinedText = true, noteCfgText = true,
     -- enlace, ayudantes y listas

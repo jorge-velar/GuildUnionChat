@@ -144,6 +144,16 @@ El canal de la comunidad tiene además **carriles** (salas numeradas, `LN`, `LO`
 deja de llevar texto, la comunidad se puede mudar a otro. Sus reglas están en las notas de
 Net/Relay.lua y en los apartados de las copias 117 a 120, al final.
 
+### Las dos listas de las otras hermandades
+
+- **La pequeña** (`RB`/`RC`, siempre): su maestro, sus oficiales, su enlace y sus ayudantes conectados.
+  Es la que usa la confianza (de quién se aceptan sus datos) y la guardia.
+- **La de todos los conectados** («Miembros» en la pestaña, UnionMembers.lua: `MP`/`ML`): solo para
+  verla, **no cuenta para nada de la confianza**. No se manda sola; se pide al mirarla, porque son
+  decenas de mensajes por hermandad y el juego deja uno por segundo. En cada hermandad la pide una
+  sola persona (quien se encarga de esa hermandad, `HU:ResponsibleFor`) y la reparte por GUILD.
+  Contesta alguien de la otra hermandad, solo a quien es de la comunidad (lleva la zona de cada uno).
+
 ## Los registros
 
 Cómo se declara cada cosa nueva (la lista corta está en CLAUDE.md).
@@ -2075,6 +2085,33 @@ de poca prisa, y a cada hermandad solo si algo ha cambiado, si su contacto es ot
 Comandos (de una o varias líneas: echar, ascender, degradar) que tienes que escribir tú en el
 chat: van a la ventana de órdenes (Orders.lua). Antes el addon los escribía en la caja del chat
 al abrirla tú, y eso en Forever contamina esos comandos y el juego los bloquea hasta /reload.
+
+## UnionMembers.lua
+
+### Qué hay en el archivo
+
+Miembros de la unión: todos los conectados de otra hermandad, solo para verlos en la pestaña
+(«Miembros», BlizzTab.lua). Desde la 5.4.11 a las otras hermandades solo va la lista pequeña; esta
+es aparte, no toca `RB`/`RC` ni la confianza, y las versiones de antes no la conocen (no contestan).
+
+- **Pedirla** (`HU:WantUnionMembers`, que la pestaña llama cada 2 s mientras se ve): con una copia
+  de menos de 1 min, nada. Si me toca a mí (`HU:ResponsibleFor`) o mi hermandad no tiene enlace, la
+  pido yo por susurro (`MP`); si no, la pido a mi hermandad por GUILD y la pide quien se encarga. Si
+  a los 40 s no ha llegado (quizá nuestro enlace tiene una versión de antes), la pido yo.
+- **A quién**: a alguien de esa hermandad, primero los que tienen mi versión o una más nueva: su
+  enlace, sus ayudantes, sus mejores contactos y los de la lista pequeña que tengo. Si no contesta en
+  20 s, a otro; tras 3, «no contesta».
+- **Contestar** (`HU.comm.MP`): solo por mi propia hermandad y a quien es de la comunidad (está en
+  alguna lista o avalado); a cada uno una lista por minuto y como mucho 3 por minuto en total, y nada
+  con la cola llena. La lista son todos mis conectados (`HU:OnlineEntries`, sin el filtro de la fase
+  de lanzamiento), en trozos que se entienden solos (`HU.PackMembers`: los códigos de zona van en el
+  mismo trozo).
+- **Recibir** (`HU.comm.ML`): por susurro, solo de a quien se la pedí; quien la pide la pasa a su
+  hermandad por GUILD, donde vale solo de quien reparte por ella (`remoteData`). Mientras llega se
+  enseña lo que hay; la anterior se sigue enseñando hasta que la nueva está entera; a los 10 min
+  deja de enseñarse.
+- **Todas las hermandades** a la vez (`HU:WantUnionMembers(nil)`): de una en una, y cada una como
+  mucho cada 5 min, para no pedir las 19 a la vez.
 
 ## History.lua
 
