@@ -6,8 +6,9 @@ local _, HU = ...
 local L = HU.L
 
 local FRESH = 60        -- una copia de menos de esto no se vuelve a pedir
-local WAIT = 20         -- sin nada en este tiempo, se pregunta a otro
-local TRIES = 3         -- a cuántos de esa hermandad se pregunta antes de darla por perdida
+local WAIT = 20         -- una lista que estaba llegando y lleva esto parada, ya no llega
+local ASK_WAIT = 10     -- quien no ha empezado a contestar en esto, no la tiene: se pregunta a otro
+local TRIES = 8         -- a cuántos de esa hermandad se pregunta antes de darla por perdida
 local GUILD_WAIT = 40   -- si mi hermandad no la trae en este tiempo, la pido yo mismo
 local ALL_FRESH = 300   -- viendo todas las hermandades, cada una se refresca como mucho cada tanto
 local KEEP = 600        -- una copia de más de esto ya no se enseña
@@ -17,6 +18,7 @@ local RESHARE_GAP = 30  -- la copia que ya tengo, a mi hermandad como mucho cada
 local CHUNK = 190       -- bytes de datos por trozo (el mensaje entero no pasa de 255)
 
 HU.unionMembers = {}    -- [etiqueta] = estado de su lista (ver State)
+HU.unionAnswered = {}   -- [nombre en minúsculas] = true: ya me ha contestado una vez (tiene Miembros)
 
 local function State(tag)
     local st = HU.unionMembers[tag]
@@ -90,8 +92,11 @@ end
 ---------------------------------------------------------------------------
 -- Pedirla
 ---------------------------------------------------------------------------
--- A quién de esa hermandad: su enlace, sus ayudantes y sus mejores contactos; primero los que
--- tienen mi versión o una más nueva (los de antes no conocen MP), luego los que no sé
+-- A quién de esa hermandad: su enlace, sus ayudantes, sus mejores contactos y los de su lista pequeña.
+-- Primero quien ya me ha contestado alguna vez; luego aquellos de los que no sé la versión; al final
+-- los contactos con la versión sabida. (El número de versión no dice si alguien tiene Miembros: una
+-- copia de prueba puede decir el mismo número que la publicada, o uno más viejo. Visto el 22/11: los
+-- contactos de WLP3 con la 5.4.43 iban siempre delante y su maestro, que la tenía, nunca se preguntaba)
 local function Candidates(self, tag)
     local seen, list = {}, {}
     local function add(name)
@@ -99,9 +104,7 @@ local function Candidates(self, tag)
         if k and not seen[k] then
             seen[k] = true
             local p = self.remote[k]
-            local ver = p and p.ver
-            local known = type(ver) == "string" and ver:match("^[%d%.]+$") ~= nil
-            local rank = (known and not HU.VersionGreater(self.version, ver)) and 0 or (known and 2 or 1)
+            local rank = HU.unionAnswered[k] and 0 or ((p and p.ver) and 2 or 1)
             list[#list + 1] = { name = name, rank = rank, r = math.random() }
         end
     end
@@ -126,11 +129,12 @@ local function GiveUp(self, st)
     self:Changed("unionMembers")
 end
 
--- La pido yo a alguien de esa hermandad (si no contesta en WAIT, a otro; como mucho TRIES)
+-- La pido yo a alguien de esa hermandad (si no empieza a contestar en ASK_WAIT, a otro; como mucho
+-- TRIES, y si ya está llegando se espera a que llegue)
 local function Fetch(self, tag)
     local st, now = State(tag), GetTime()
     local fx = st.fetch
-    if fx and now - fx.t < WAIT then return end
+    if fx and now - fx.t < (fx.started and WAIT or ASK_WAIT) then return end
     if not fx then fx = { tries = 0, tried = {} }; st.fetch = fx end
     if fx.tries >= TRIES then return GiveUp(self, st) end
     local target
@@ -263,7 +267,9 @@ HU.comm.ML = function(self, sender, f, dist, raw)
     if dist == "WHISPER" then
         local fx = st.fetch
         if not (fx and fx.target == sender:lower()) then return end
-        fx.t = GetTime()
+        fx.t, fx.started = GetTime(), true
+        -- (tiene Miembros: la próxima vez se le pregunta el primero)
+        HU.unionAnswered[sender:lower()] = true
         if self:IsGuildForwarder(self:Me()) then self:Send(raw, "GUILD") end
     elseif dist ~= "GUILD" then
         return

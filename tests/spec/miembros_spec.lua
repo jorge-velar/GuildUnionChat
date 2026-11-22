@@ -111,6 +111,35 @@ describe("Miembros de la unión", function()
         A.same({}, net:Errors(), "errores")
     end)
 
+    it("en la otra hermandad solo la tiene su maestro, que no es su enlace: se le acaba preguntando", function()
+        -- (lo visto en el juego el 22/11: en WLP3 el enlace y sus ayudantes, contactos con la 5.4.43,
+        -- iban siempre los primeros; el maestro, con la copia nueva, nunca llegaba a preguntarse)
+        local net = red.New()
+        local p = {
+            ana = net:Player("Ana", "UNO", { rankIndex = 1 }),
+            alba = net:Player("Alba", "UNO"),
+            boss = net:Player("Boss", "DOS", { rankIndex = 0 }),
+        }
+        local old = {}
+        for i, n in ipairs({ "Blas", "Bruno", "Berta", "Bego", "Benito" }) do
+            old[i] = net:Player(n, "DOS", { rankIndex = 4, ref = "v5.4.43" })
+        end
+        for _, x in ipairs({ p.ana, p.alba }) do net:Login(x) end
+        for _, x in ipairs(old) do net:Login(x) end
+        net:Login(p.boss)
+        -- (el maestro no es el enlace: como si estuviera en un campo de batalla)
+        p.boss.HU.RelayScore = function() return -500 end
+        net:Advance(120)
+        A.falsy(p.boss.HU:IsRelay(), "el maestro no tiene que ser el enlace")
+        -- (y Alba los tiene de contactos, con su versión, como en el juego)
+        for _, x in ipairs(old) do
+            p.alba.HU.remote[x.key] = { name = x.full, tag = "DOS", ver = "5.4.43", last = p.alba.env.GetTime() }
+        end
+        A.truthy(Look(net, p.alba, "DOS", function() return #p.alba.HU:UnionMemberEntries("DOS") == 6 end, 180),
+            "estado: " .. p.alba.HU:UnionMembersStatus("DOS"))
+        A.same({}, net:Errors(), "errores")
+    end)
+
     it("el enlace de mi hermandad con la versión de antes: la pido yo y me llega", function()
         local net, p = Union({ unoRef = "v5.4.41" })
         A.truthy(Look(net, p.alba, "DOS", function() return #p.alba.HU:UnionMemberEntries("DOS") == 4 end, 150),

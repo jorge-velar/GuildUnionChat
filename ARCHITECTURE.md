@@ -2098,9 +2098,13 @@ es aparte, no toca `RB`/`RC` ni la confianza, y las versiones de antes no la con
   de menos de 1 min, nada. Si me toca a mí (`HU:ResponsibleFor`) o mi hermandad no tiene enlace, la
   pido yo por susurro (`MP`); si no, la pido a mi hermandad por GUILD y la pide quien se encarga. Si
   a los 40 s no ha llegado (quizá nuestro enlace tiene una versión de antes), la pido yo.
-- **A quién**: a alguien de esa hermandad, primero los que tienen mi versión o una más nueva: su
-  enlace, sus ayudantes, sus mejores contactos y los de la lista pequeña que tengo. Si no contesta en
-  20 s, a otro; tras 3, «no contesta».
+- **A quién**: a alguien de esa hermandad: su enlace, sus ayudantes, sus mejores contactos y los de
+  la lista pequeña que tengo. Primero quien ya me ha contestado alguna vez (`HU.unionAnswered`), luego
+  aquellos de los que no sé la versión y al final los contactos con la versión sabida: el número de
+  versión no dice si alguien tiene Miembros (una copia de prueba puede llevar el mismo que la
+  publicada). Si no empieza a contestar en 10 s, a otro; tras 8, «no contesta». (Visto el 22/11: con
+  la versión ordenando y solo 3 intentos, el maestro de WLP3, el único con Miembros, nunca se
+  preguntaba.)
 - **Contestar** (`HU.comm.MP`): solo por mi propia hermandad y a quien es de la comunidad (está en
   alguna lista o avalado); a cada uno una lista por minuto y como mucho 3 por minuto en total, y nada
   con la cola llena. La lista son todos mis conectados (`HU:OnlineEntries`, sin el filtro de la fase
