@@ -113,6 +113,7 @@ function wow.New(opts)
         now = opts.now or 1000,     -- GetTime() (la red, tests/lib/red.lua, arranca a todos con su reloj)
         epoch = 1800000000,         -- time() = epoch + now
         timers = {}, frames = {}, chat = {}, sent = {}, said = {},
+        who = {}, whoSent = {}, -- (/who: lo que devuelve, w.who = { {fullName, fullGuildName, level, filename, area} }, y lo buscado)
         channels = {},              -- [número] = nombre de los canales en los que estoy
         net = nil,                  -- la red (tests/lib/red.lua): decide si un susurro llega o el canal deja entrar
         player = opts.player or "Tester",
@@ -364,6 +365,13 @@ function wow.New(opts)
         local m = list and list[j]
         if m then return m.name, m.owner, m.moderator, m.guid end
     end
+    -- (/who: se apunta lo buscado y la respuesta la pone la prueba en w.who, con w:Fire("WHO_LIST_UPDATE"))
+    api.C_FriendList = {
+        SendWho = function(filter) w.whoSent[#w.whoSent + 1] = filter end,
+        SetWhoToUi = function() end,
+        GetNumWhoResults = function() return #w.who, w.whoTotal or #w.who end,
+        GetWhoInfo = function(i) return w.who[i] end,
+    }
     api.GetFramerate = function() return 60 end
     api.GetNetStats = function() return 0, 0, 50, 50 end
     api.IsShiftKeyDown = function() return false end

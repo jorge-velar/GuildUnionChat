@@ -2117,6 +2117,16 @@ es aparte, no toca `RB`/`RC` ni la confianza, y las versiones de antes no la con
 - **Todas las hermandades** a la vez (`HU:WantUnionMembers(nil)`): de una en una, y cada una como
   mucho cada 5 min, para no pedir las 19 a la vez.
 
+### Con /who
+
+Para una hermandad en la que nadie tiene Miembros (o nadie conectado): el botón «Buscar con /who» de
+la pestaña hace `/who g-"Nombre de la hermandad"` (`HU:WhoUnionMembers`) y, cuando el juego avisa
+(`WHO_LIST_UPDATE`), se guardan los de esa hermandad (el nombre tiene que coincidir entero: el /who
+también trae nombres parecidos). Solo desde un clic: el juego no deja a un addon hacer /who por su
+cuenta. Solo se toma la respuesta al /who que he pedido, si llega en 15 s. No trae rangos; si llega la
+lista de Miembros, se enseña esa. Si el juego no los da todos, el estado dice «N de M». La ventana de
+búsqueda del juego se abre: cerrarla desde el addon sería tocar una ventana de Blizzard (taint).
+
 ## History.lua
 
 ### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)

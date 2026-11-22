@@ -278,6 +278,78 @@ HU.comm.ML = function(self, sender, f, dist, raw)
 end
 
 ---------------------------------------------------------------------------
+-- Con /who: los conectados de una hermandad aunque nadie de ella tenga Miembros [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local WHO_WAIT = 15     -- la respuesta del /who que pedí llega antes de esto; luego ya no es mía
+local whoAsk            -- { tag, guild, t }: el /who que he pedido y espero
+
+-- Solo desde un clic: el juego no deja a un addon hacer /who por su cuenta. Devuelve si se ha pedido
+function HU:WhoUnionMembers(tag)
+    local FL = C_FriendList
+    if not Known(self, tag) or not (FL and FL.SendWho) then return false end
+    local guild = self:GuildName(tag)
+    -- (que la respuesta vaya a la ventana del juego y avise con WHO_LIST_UPDATE, también si son pocos)
+    if FL.SetWhoToUi then pcall(FL.SetWhoToUi, true) end
+    whoAsk = { tag = tag, guild = guild, t = GetTime() }
+    if not pcall(FL.SendWho, 'g-"' .. guild .. '"') then whoAsk = nil return false end
+    State(tag).whoAskT = GetTime()
+    self:Changed("unionMembers")
+    return true
+end
+
+local function Plain(v)
+    if type(v) ~= "string" or HU.Secret(v) then return nil end
+    return (v:gsub("[|%c]", ""))
+end
+
+-- Una fila del /who como tabla (C_FriendList.GetWhoInfo; o la GetWhoInfo de antes, que devuelve
+-- nombre, hermandad, nivel, raza, clase, zona y clase en inglés)
+local function WhoInfo(i)
+    local FL = C_FriendList
+    if FL and FL.GetWhoInfo then
+        local ok, info = pcall(FL.GetWhoInfo, i)
+        return ok and type(info) == "table" and info or nil
+    end
+    if not GetWhoInfo then return nil end
+    local ok, name, guild, level, _, _, zone, file = pcall(GetWhoInfo, i)
+    if not ok then return nil end
+    return { fullName = name, fullGuildName = guild, level = level, area = zone, filename = file }
+end
+local function WhoCount()
+    local FL = C_FriendList
+    local fn = (FL and FL.GetNumWhoResults) or GetNumWhoResults
+    if not fn then return nil end
+    local ok, n, total = pcall(fn)
+    if not ok then return nil end
+    return n, total
+end
+
+HU:On("WHO_LIST_UPDATE", function()
+    local ask = whoAsk
+    if not ask or GetTime() - ask.t > WHO_WAIT then return end
+    whoAsk = nil
+    local n, total = WhoCount()
+    if type(n) ~= "number" or HU.Secret(n) then return end
+    local list, want = {}, ask.guild:lower()
+    for i = 1, n do
+        local info = WhoInfo(i)
+        local name = info and Plain(info.fullName)
+        local guild = name and Plain(info.fullGuildName)
+        -- (solo los de esa hermandad: el /who puede traer a alguien de otra con un nombre parecido)
+        if name and name ~= "" and guild and guild:lower() == want then
+            local level = info.level
+            list[#list + 1] = { name = HU:FullName(name) or name, class = Plain(info.filename),
+                level = (type(level) == "number" and not HU.Secret(level)) and level or 0,
+                zone = Plain(info.area), tag = ask.tag, online = true }
+        end
+    end
+    local st = State(ask.tag)
+    total = (type(total) == "number" and not HU.Secret(total)) and total or n
+    st.who, st.whoAskT = { members = list, t = GetTime(), shown = n, total = total }, nil
+    HU:Changed("unionMembers")
+end)
+
+---------------------------------------------------------------------------
 -- Para la ventana
 ---------------------------------------------------------------------------
 -- Las filas: de una hermandad o de todas, por hermandad, rango y nombre
@@ -286,7 +358,9 @@ function HU:UnionMemberEntries(tag)
     for _, t in ipairs(tag and { tag } or self:OtherTags()) do
         local st = self.unionMembers[t]
         if st and st.members and now - st.t > KEEP then st.members, st.t, st.id, st.parts = nil, nil, nil, nil end
-        local list = st and (st.members or (st.cur and Decode(self, t, st.cur.parts, st.cur.n)))
+        if st and st.who and now - st.who.t > KEEP then st.who = nil end
+        -- (la de Miembros, si la hay, que trae los rangos; si no, la del /who)
+        local list = st and (st.members or (st.cur and Decode(self, t, st.cur.parts, st.cur.n)) or (st.who and st.who.members))
         for _, m in ipairs(list or {}) do
             out[#out + 1] = { name = m.name, tag = t, class = m.class, level = m.level, zone = m.zone, afk = m.afk,
                 ri = m.rankIndex or 99, rank = m.rankIndex and self:RankName(t, m.rankIndex) or "", online = true }
@@ -307,6 +381,13 @@ function HU:UnionMembersStatus(tag)
     local now = GetTime()
     if st.cur then return string.format(L("llegando %d/%d"), st.cur.got, st.cur.n) end
     if st.members then return string.format(L("hace %d s"), math.floor(now - st.t)) end
+    if st.whoAskT and now - st.whoAskT < WHO_WAIT then return L("buscando con /who…") end
+    if st.who then
+        local s = string.format(L("con /who, hace %d s"), math.floor(now - st.who.t))
+        -- (el juego da como mucho unos cuantos por búsqueda: si hay más, se dice)
+        if st.who.total > st.who.shown then s = s .. string.format(L(" (%d de %d)"), st.who.shown, st.who.total) end
+        return s
+    end
     if st.failed then return L("no contesta (¿versión antigua?)") end
     if st.fetch or st.guildAskT then return L("pidiendo…") end
     return ""
