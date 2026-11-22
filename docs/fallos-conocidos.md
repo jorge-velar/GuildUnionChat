@@ -56,3 +56,17 @@ en su propia PR, cambiando la prueba que la fija junto con el código.
 - **Qué lo fija:** `datos_spec` («da exactamente lo de antes»).
 - **Arreglo propuesto:** quitarlas de `HU:Saved` y añadir una migración (`HU:RegisterMigration`)
   que borre `theme` de lo guardado; cambiar a la vez la lista de esa prueba.
+
+## 5. Los desconectados de otra hermandad (`OD`, `OE`) no pasan por susurro
+
+- **Dónde:** Net/Security.lua, `AllowAddonMessage`. Por susurro, una orden con la etiqueta de otra
+  hermandad solo vale si es de arranque (`bootstrap`), y `OD` y `OE` no lo son; esa regla va antes
+  que la de «quien sale en alguna lista», así que tampoco valen del enlace de esa hermandad.
+- **Qué pasa:** el enlace pide los desconectados de cada hermandad (`OQ`) y su contacto los manda
+  por susurro (`OD`, u `OE` si alguien los está mirando). Se rechazan siempre: los desconectados de
+  las otras hermandades no llegan nunca. Lo mismo le pasa a `PB` por susurro en cualquier momento,
+  no solo con la primera lista (ver 1). Hoy no se nota porque no hay ventana que los enseñe.
+- **Qué lo fija:** `seguridad_spec` («lo que no es de arranque (PB, OD...) no vale»).
+- **Arreglo propuesto:** por susurro, aceptar `OD`/`OE`/`PB` de quien reparte por esa hermandad
+  (`HU:IsRemoteForwarder(remitente, etiqueta)`, que ya usa el manejador de `OD`), o quitar `OQ`,
+  `OD` y `OE` si no se van a enseñar. Cambiar a la vez esa prueba.
