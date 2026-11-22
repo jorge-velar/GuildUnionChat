@@ -260,7 +260,8 @@ local function Update()
         if PVP_KINDS[instKind] and not HU.pvpLockTold then
             -- (una vez por sesión: si no, quien no lo sabe cree que el addon se ha roto)
             HU.pvpLockTold = true
-            HU:Print(HU.L("En combate dentro de un campo de batalla o una arena el juego bloquea el chat unido: no ves a las otras hermandades ni les llega lo que escribes. Vuelve solo al acabar el combate."))
+            -- (copia 175: al informe, no al chat)
+            HU:Notice("Campo de batalla o arena: el juego bloquea el chat unido en combate; vuelve solo al acabar.")
         end
         holdDropped = diag.dropped
         if not trickling then trickling = true; HU.After(TRICKLE_EVERY, Trickle) end
@@ -406,6 +407,36 @@ local function CheckInstance()
     end
 end
 
+-- (copia 162) Con el chat bloqueado fuera de un campo de batalla (un jefe de mazmorra o de banda) el [+ARCHITECTURE.md]
+local chatLockSince
+local RAID_CHAT_MAX = 10
+local function CheckChatLock()
+    if HU:IsChatLockedDown() then
+        if not chatLockSince then chatLockSince = HU.StampNow() - 5 end
+        return
+    end
+    local since = chatLockSince
+    if not since then return end
+    chatLockSince = nil
+    -- (en un campo de batalla o una arena ya se pide al salir de la partida)
+    if (inInst and PVP_KINDS[instKind]) or not HU.AskMissedChat then return end
+    -- (copia 163: en banda los jefes son largos y seguidos: como mucho 10 líneas en el chat, el resto al panel)
+    local raid = inInst and instKind == "raid"
+    HU.After(3, function()
+        if HU:IsChatLockedDown() then return end
+        local heard = HU.hlHeard or 0
+        HU.showLateUntil = GetTime() + 60
+        HU.showLateLeft = raid and RAID_CHAT_MAX or nil
+        HU:AskMissedChat(since)
+        HU.After(150, function()
+            if HU:IsChatLockedDown() or (HU.hlHeard or 0) ~= heard then return end
+            HU.showLateUntil = GetTime() + 60
+            HU.showLateLeft = raid and RAID_CHAT_MAX or nil
+            HU:AskMissedChat(since)
+        end)
+    end)
+end
+
 HU:On("UPDATE_BATTLEFIELD_STATUS", CheckQueue)
 HU:On("PLAYER_ENTERING_WORLD", CheckQueue)
 HU:On("PLAYER_ENTERING_WORLD", CheckInstance)
@@ -420,6 +451,7 @@ HU:OnStart(function()
     -- (entro fuera de una partida con la hora de una vieja guardada, p. ej. tras caerse el juego dentro:
     -- ya se pide lo de «mientras no estabas» al arrancar, Social.lua)
     if not (inInst and PVP_KINDS[instKind]) and HU.db then HU.db.pvpSince = nil end
+    HU:Every(2, "bloqueo-del-chat", CheckChatLock)
     -- (red de seguridad: si se pierde el aviso de fin de combate, no se queda en pausa)
     HU:Every(5, "combate-salida", function()
         if not hold then return end

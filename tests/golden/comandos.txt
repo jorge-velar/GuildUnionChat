@@ -413,10 +413,10 @@ llama: Trim PrintSeen
 dice: |cff33ff99Comunidad de prueba|r: Uso: /gu visto Nombre Apellido
 == /gu prat
 llama: Trim UsingPrat PratActive Print
-dice: |cff33ff99Comunidad de prueba|r: Formato de Prat: encendido · Prat: no está · enganchado: no · líneas de otras hermandades con su formato: 0 · con el de siempre: 0 · de mi hermandad adornadas: 0 · con nivel sabido: 0 · fallos: 0
+dice: |cff33ff99Comunidad de prueba|r: Formato de Prat: encendido · Prat: no está · enganchado: no · líneas de otras hermandades con su formato: 0 · con el de siempre: 0 · de mi hermandad adornadas: 0 · con nivel sabido: 0 · nombres con color de clase: 0 · fallos: 0
 == /gu prat off
 llama: Trim UsingPrat PratActive Print
-dice: |cff33ff99Comunidad de prueba|r: Formato de Prat: apagado · Prat: no está · enganchado: no · líneas de otras hermandades con su formato: 0 · con el de siempre: 0 · de mi hermandad adornadas: 0 · con nivel sabido: 0 · fallos: 0
+dice: |cff33ff99Comunidad de prueba|r: Formato de Prat: apagado · Prat: no está · enganchado: no · líneas de otras hermandades con su formato: 0 · con el de siempre: 0 · de mi hermandad adornadas: 0 · con nivel sabido: 0 · nombres con color de clase: 0 · fallos: 0
 == /gu wm
 llama: Trim WMStatus Print
 dice: |cff33ff99Comunidad de prueba|r: Whisper Messenger: no está · pestaña registrada: no · intentos: 5 · sin leer: 0 · burbujas: 0 · estilo: ? · tema: (el suyo por defecto) · color de burbuja: default · letra: 12 · borde de la caja: ?
@@ -430,6 +430,7 @@ dice: |cff33ff99Comunidad de prueba|r: canal de la comunidad: /1 · intercambio 
 dice: |cff33ff99Comunidad de prueba|r:   /1  COMUNIDAD (sala 0)
 dice: |cff33ff99Comunidad de prueba|r:   copia del mundo (número del canal de Comercio): no se ve desde aquí (solo en ciudades)
 dice: |cff33ff99Comunidad de prueba|r:   gente dentro según el juego: 0
+dice: |cff33ff99Comunidad de prueba|r:   en la lista de canales: SÍ · reentradas: 0
 dice: |cff33ff99Comunidad de prueba|r:   servidor: este juego no deja preguntar al servidor por un canal
 == /gu todo
 llama: Trim FullReport

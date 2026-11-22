@@ -406,6 +406,16 @@ function HU:StrictMode(on)
     setmetatable(HU, on and { __index = StrictIndex } or nil)
 end
 
+-- (copia 175) Avisos de fallos que ya no salen en el chat: se guardan (los 30 últimos de la sesión) y
+-- se ven en /gu informe, para cuando alguien pregunte. Jorge, 19/11: «que se tengan que preguntar»
+HU.notices = {}
+function HU:Notice(text)
+    local n = self.notices
+    if #n >= 30 then table.remove(n, 1) end
+    n[#n + 1] = { t = time(), text = tostring(text) }
+    self:Debug("Aviso guardado:", text)
+end
+
 -- Solo WoW Forever: los personajes tienen nombre y apellido, y el apellido va donde en los demás [+ARCHITECTURE.md]
 
 -- ¿Es un valor secreto? (desde Midnight / Forever, el juego oculta algunos datos a los addons)
@@ -1203,6 +1213,7 @@ HU:RegisterSlash("prat", {
             .. " · con el de siempre: " .. (st.fallback or 0)
             .. " · de mi hermandad adornadas: " .. (st.own or 0)
             .. " · con nivel sabido: " .. (st.level or 0)
+            .. " · nombres con color de clase: " .. (st.class or 0)
             .. " · fallos: " .. (st.err or 0) .. (st.last and (" (" .. st.last .. ")") or ""))
     end })
 HU:RegisterSlash("wm", {
