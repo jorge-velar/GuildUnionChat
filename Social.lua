@@ -1044,28 +1044,52 @@ function HU:ShowLate(n)
     if n <= 0 then return end
     local shown = {}
     local h = self.db.history
+    -- (copia 162: tras un bloqueo del chat por un jefe se escribe siempre, pero solo lo de las otras
+    -- hermandades: lo de la mía ya lo pintó el juego en /g)
+    local afterLock = not self.db.loginHistory and GetTime() < (HU.showLateUntil or 0)
     for i = math.max(1, #h - 400), #h do
         local e = h[i]
         if e.late then
             e.late = nil
-            shown[#shown + 1] = e
+            if not (afterLock and e.tag == self.myTag) then shown[#shown + 1] = e end
         end
     end
-    -- en el chat del juego solo si se ha activado la opción; en el panel se ve siempre
-    if not self.db.loginHistory then
+    -- en el chat del juego solo si se ha activado la opción (o justo tras un bloqueo); en el panel se ve siempre
+    if not self.db.loginHistory and not afterLock then
         if self.UI and self.UI.FillChat then self.UI:FillChat() end
         return
+    end
+    -- (copia 163: en banda, tras cada jefe, como mucho HU.showLateLeft líneas en el chat, las últimas; el
+    -- resto solo en el panel, con una línea que lo dice)
+    local total, extra = #shown, 0
+    if afterLock and HU.showLateLeft then
+        local keep = math.max(0, HU.showLateLeft)
+        if total > keep then
+            extra = total - keep
+            local last = {}
+            for i = total - keep + 1, total do last[#last + 1] = shown[i] end
+            shown = last
+        end
+        HU.showLateLeft = keep - #shown
     end
     local header = {}
     for _, e in ipairs(shown) do
         for _, fr in ipairs(self:FramesFor(e.k)) do
             if not header[fr] then
                 header[fr] = true
-                fr:AddMessage(L("|cff9a8f78— Mientras no estabas (") .. n .. ") —|r")
+                fr:AddMessage((afterLock and L("|cff9a8f78— Mientras el chat estaba bloqueado (") or L("|cff9a8f78— Mientras no estabas ("))
+                    .. total .. ") —|r")
+                if extra > 0 then
+                    fr:AddMessage("|cff9a8f78" .. L("(+") .. extra .. L(" más en el panel de ") .. HU:Title() .. ")|r")
+                end
             end
             local r, g, b = self:KindColor(e.k)
             fr:AddMessage("|cff9a8f78" .. date("%H:%M", e.t) .. "|r " .. self:FormatLine(e.k, e.tag, e.a, self:HighlightMentions(e.m or "", e.a, e.tag)), r, g, b)
         end
+    end
+    -- (todo se quedó fuera del chat: el aviso solo, en la ventana principal)
+    if #shown == 0 and extra > 0 and DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage("|cff9a8f78" .. L("— Mientras el chat estaba bloqueado: ") .. extra .. L(" más en el panel de ") .. HU:Title() .. " —|r")
     end
     if self.UI and self.UI.FillChat then self.UI:FillChat() end
 end

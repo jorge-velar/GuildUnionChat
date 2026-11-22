@@ -304,6 +304,99 @@ end
 HU:On("PLAYER_ENTERING_WORLD", RejoinSoon)
 HU:On("ZONE_CHANGED_NEW_AREA", RejoinSoon)
 
+-- (copia 162) Canal fantasma: el juego del jugador tiene el canal en su número pero el servidor no le [+ARCHITECTURE.md]
+local GHOST_TICKS = 3      -- comprobaciones seguidas (cada 10 s) sin el canal en la lista antes de actuar
+local REJOIN_GAP = 60      -- como mucho un intento por minuto
+local REJOIN_MAX = 5       -- intentos seguidos antes de rendirse y avisar
+local function InDisplayList(id)
+    if not (GetNumDisplayChannels and GetChannelDisplayInfo) then return nil end
+    local ok, n = pcall(GetNumDisplayChannels)
+    if not ok or type(n) ~= "number" or HU.Secret(n) then return nil end
+    local collapsed = false
+    for i = 1, n do
+        local ok2, _, header, isCollapsed, localID = pcall(GetChannelDisplayInfo, i)
+        if ok2 and not header and localID == id then return true end
+        if ok2 and header and isCollapsed then collapsed = true end
+    end
+    -- (con un grupo plegado en la ventana de canales no salen sus canales: no se sabe)
+    if collapsed then return nil end
+    return false
+end
+
+HU.ChannelListed = InDisplayList
+
+function HU:RejoinChannel(kind, why)
+    local c = self.chan[kind]
+    if not c or not c.name or not self.ready then return end
+    if self:ChannelApiBlocked() then return end
+    local now = GetTime()
+    if c.rejoinT and now - c.rejoinT < REJOIN_GAP then return end
+    if (c.rejoinN or 0) >= REJOIN_MAX then
+        -- (copia 174 = 5.4.43: ya no se avisa en el chat. Es un fallo del juego sin arreglo desde aquí y
+        -- el chat sigue llegando por el respaldo; Jorge, 19/11: «muchos avisos asustan»)
+        if not c.rejoinWarned then
+            c.rejoinWarned = true
+            self:Debug("El servidor no me deja estar en el canal: el chat va solo por el respaldo")
+        end
+        return
+    end
+    c.rejoinN, c.rejoinT, c.ghostN = (c.rejoinN or 0) + 1, now, 0
+    self:Debug("Canal fantasma (" .. tostring(why) .. "): salgo y vuelvo a entrar", HU.MaskChannel(c.name), kind, c.rejoinN)
+    if LeaveChannelByName then pcall(LeaveChannelByName, c.name) end
+    c.joined, c.lastTry, c.backoff, c.blockedT = false, nil, nil, nil
+    -- (copia 168: se entra SIN preguntar antes «¿estoy dentro?». En el canal fantasma el juego sigue
+    -- dando su número por el nombre aunque ya no esté en la lista (Jorge, 17/11: «/6» por el nombre y
+    -- nada en el 6), y EnsureJoined se lo creía y no volvía a entrar: las 5 reentradas solo salían)
+    HU.After(2, function()
+        if HU.chan[kind] ~= c or HU:ChannelApiBlocked() then return end
+        local join = JoinTemporaryChannel or (C_ChatInfo and C_ChatInfo.JoinTemporaryChannel)
+        if not join then return end
+        c.lastTry = GetTime()
+        HU.expectBlock, HU.joinBlockedNow = "join", nil
+        pcall(join, c.name, c.pass)
+        HU.expectBlock = nil
+        if HU.joinBlockedNow then c.blockedT = GetTime() end
+        HU:Debug("Canal fantasma: vuelvo a entrar", HU.MaskChannel(c.name), kind)
+    end)
+end
+
+-- Cada 10 s: ¿está cada canal nuestro en la lista de canales que manda el servidor?
+function HU:CheckGhostChannels()
+    if not self.ready or self:ChannelApiBlocked() then return end
+    for kind, c in pairs(self.chan) do
+        local id = c.name and self:ChannelId(kind)
+        if id then
+            local listed = InDisplayList(id)
+            if listed == true then
+                c.ghostN, c.rejoinN, c.rejoinWarned = 0, 0, nil
+            elseif listed == false then
+                c.ghostN = (c.ghostN or 0) + 1
+                -- (copia 167: justo después de que vuelva el servidor de chat basta con dos veces seguidas)
+                local need = (GetTime() - (HU.chatServerUpT or -1e9) < 60) and 2 or GHOST_TICKS
+                if c.ghostN >= need then
+                    self:RejoinChannel(kind, (need == 2 and "vuelta del servidor de chat")
+                        or (c.notAllowed and "aviso del servidor") or "no sale en la lista")
+                end
+            end
+        else
+            c.ghostN = 0
+        end
+    end
+end
+
+-- (copia 167) El servidor de chat del juego se cae y vuelve («You have been disconnected from / [+ARCHITECTURE.md]
+HU:On("CHAT_SERVER_DISCONNECTED", function()
+    HU.chatServerDownT = GetTime()
+    HU:Debug("El servidor de chat del juego se ha caído")
+end)
+HU:On("CHAT_SERVER_RECONNECTED", function()
+    HU.chatServerUpT = GetTime()
+    HU:Debug("El servidor de chat del juego ha vuelto: compruebo los canales")
+    for _, d in ipairs({ 5, 15, 30 }) do
+        HU.After(d, function() HU:SafeCall("canal fantasma", HU.CheckGhostChannels, HU) end)
+    end
+end)
+
 -- ¿Es un canal del juego? («General - Elwynn», «Comercio (Servicios) - Ventormenta»...)
 local function IsGameChannel(fullName)
     if type(fullName) ~= "string" or not HU.GAME_CHANNELS then return false end
@@ -428,6 +521,7 @@ HU:OnStart(function()
             for name in pairs(hidePending) do HU:HideChannel(name) end
         end
         for kind in pairs(HU.chan) do HU:EnsureJoined(kind) end
+        HU:SafeCall("canal fantasma", HU.CheckGhostChannels, HU)
     end)
 end)
 
@@ -435,7 +529,12 @@ HU:On("CHAT_MSG_CHANNEL_NOTICE", function(notice, _, _, fullName, _, _, _, _, ba
     local kind = HU:KindOf(baseName, fullName)
     if not kind then return end
     local c = HU.chan[kind]
-    if notice == "YOU_JOINED" or notice == "YOU_CHANGED" then
+    if notice == "NOT_ALLOWED_IN_CHANNEL" then
+        -- (copia 162: no se sale por el aviso solo, que también llega con el canal bien; lo decide
+        -- CheckGhostChannels mirando la lista de canales)
+        c.notAllowed = GetTime()
+        HU:Debug("El servidor dice NOT_ALLOWED_IN_CHANNEL", HU.MaskChannel(c.name), kind)
+    elseif notice == "YOU_JOINED" or notice == "YOU_CHANGED" then
         c.joined, c.backoff = true, nil
         HU.After(0.5, function() HU:HideChannel(c.name) end)
         HU:Debug("Conectado al canal", HU.MaskChannel(c.name), kind)
@@ -443,10 +542,11 @@ HU:On("CHAT_MSG_CHANNEL_NOTICE", function(notice, _, _, fullName, _, _, _, _, ba
     elseif notice == "YOU_LEFT" then
         c.joined = false
     elseif notice == "WRONG_PASSWORD" then
-        HU:Print(L("|cffff4444Contraseña incorrecta|r para el canal ") .. c.name .. L(". Revisa la línea HU:")
-            .. (kind == "off" and "o" or "c") .. L(" de la configuración."))
+        -- (copia 175: al informe, no al chat; y sin el nombre del canal, que salía en capturas)
+        HU:Notice("Contraseña incorrecta para el canal " .. HU.MaskChannel(c.name) .. " (" .. kind .. "): revisa la línea GU:"
+            .. (kind == "off" and "o" or "c") .. ".")
     elseif notice == "BANNED" then
-        HU:Print(L("|cffff4444Estás vetado|r del canal ") .. c.name .. L(". Pide a un moderador que te quite el veto."))
+        HU:Notice("Vetado del canal " .. HU.MaskChannel(c.name) .. " (" .. kind .. "): pide a un moderador que quite el veto.")
     end
     HU:Changed("channel")
 end)
@@ -677,7 +777,7 @@ local function SendCW(self, tag, token, author, line, solo)
     if #list == 0 then
         if solo and GetTime() - (HU.noContactT or -999) > 120 then
             HU.noContactT = GetTime()
-            self:Print("|cffff8800" .. string.format(L("Tu mensaje puede no haber llegado a <%s>: ahora mismo no sé de nadie conectado de esa hermandad."), tostring(tag)) .. "|r")
+            self:Notice(string.format("Tu mensaje puede no haber llegado a <%s>: no sabía de nadie conectado de esa hermandad.", tostring(tag)))
         end
         return HU.ChatDrop("al enviar: sin contacto en la otra hermandad", tag)
     end
@@ -745,7 +845,7 @@ function HU:OnChatLost(raw)
     if also and GetTime() - also < 180 then return end
     if GetTime() - lostCWT < 30 then return end
     lostCWT = GetTime()
-    self:Print("|cffff8800" .. L("Tu mensaje no ha llegado a alguna de las otras hermandades: el juego no dejaba enviarlo a tiempo.") .. "|r")
+    self:Notice("Un mensaje tuyo no llegó a alguna de las otras hermandades: caducó en la cola del respaldo.")
 end
 
 -- (cada remitente: 6 de golpe y luego uno cada 1,2 s, como Olympus; así nadie inunda mi hermandad)
@@ -2029,8 +2129,14 @@ local seenLine, seenN = {}, 0
 -- misma línea por tres sitios es una. Antes se miraba solo «¿llegó hace poco por otra vía?», que se
 -- comía repeticiones de verdad y dejaba pasar dobles si las copias se separaban más de 15 s.
 -- La cuenta se olvida a los 120 s de la última copia.
+-- (copia 166) La clave de una línea, sin los códigos de color: el color de un enlace de misión no viaja
+-- igual por el canal que por el respaldo (verde por un camino, rojo por el otro) y la misma línea salía
+-- dos veces (captura de Jorge, 17/11)
+local function LineKey(author, text)
+    return author:lower() .. "\0" .. (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+end
 local function Duplicate(author, text, via, carrier)
-    local k, now = author:lower() .. "\0" .. text, GetTime()
+    local k, now = LineKey(author, text), GetTime()
     local s = seenLine[k]
     if s and now - s.t > 120 then s = nil end
     if not s then
@@ -2050,7 +2156,7 @@ end
 -- ¿Me ha traído ya esta misma copia, por el respaldo, OTRO compañero? (entonces ya la ha repartido él
 -- a la hermandad y no hace falta que la reparta yo). No cuentan el canal ni el propio autor.
 function CarriedByOther(author, text, carrier)
-    local s = seenLine[author:lower() .. "\0" .. text]
+    local s = seenLine[LineKey(author, text)]
     if not s then return false end
     -- (copia 151: si nunca se llegó a pintar —autor silenciado, rechazado…—, tampoco se reparte)
     if not s.ok then return true end
@@ -2139,7 +2245,7 @@ function HU:OnUnionChat(kind, text, author, guid, via, carrier)
     HU:AddHistory(kind, tag, author, msg, guid)
     HU.lastVerdict = "shown"
     -- (copia 151: queda dicho que esta línea se pintó; una repetida solo se reparte si es así)
-    local seen = seenLine[author:lower() .. "\0" .. text]
+    local seen = seenLine[LineKey(author, text)]
     if seen then seen.ok = true end
     return true -- (se ha mostrado)
 end
@@ -2328,19 +2434,30 @@ HU:OnStart(function()
             return
         end
         outSince = outSince or GetTime()
-        if GetTime() - outSince < 170 or GetTime() - noChanT < 600 then return end
-        local why
-        if not (HU.cfg and HU.myTag) then
+        -- (copia 174 = 5.4.43: como mucho cada 30 min, no cada 10)
+        if GetTime() - outSince < 170 or GetTime() - noChanT < 1800 then return end
+        -- (copia 174: solo se avisa de lo que un oficial puede arreglar, con el motivo exacto. Los fallos
+        -- del juego (otro reino interno de Forever, canal fantasma, canal lleno) no tienen arreglo desde
+        -- aquí y el chat sigue llegando por el respaldo: se ven en /gu informe, sin aviso)
+        local text
+        local c = HU.chan.main
+        if not HU.cfg then
             -- (una hermandad que nunca ha estado en una comunidad: no se le dice nada)
             if not (HU.db and HU.db.quickCfg) then return end
-            why = L("tu hermandad ya no tiene las líneas de la comunidad (GU:g) en la Información de hermandad ni en las notas de oficial. Avisa a tu maestro o a un oficial.")
-        elseif HU.cfg.missingChannel or not (HU.chan.main and HU.chan.main.name) then
-            why = L("nadie te ha pasado el canal. Falta la línea GU:c en una nota de oficial de tu hermandad, o no hay conectado ningún compañero que lo tenga. Un oficial puede pasártelo con /gu pasarcanal.")
+            text = L("No estás en el canal de la comunidad: tu hermandad ya no tiene las líneas de la comunidad (GU:g) en la Información de hermandad ni en las notas de oficial. Avisa a tu maestro o a un oficial.")
+        elseif not HU.myTag then
+            text = string.format(L("No estás en el canal de la comunidad: tu hermandad (%s) no sale en ninguna línea GU:g de la Información de hermandad. Avisa a tu maestro o a un oficial."), tostring(HU.guildName))
+        elseif not (c and c.name) then
+            -- (antes miraba también missingChannel, que se queda puesto aunque el canal llegue por la nota
+            -- de oficial: decía «nadie te ha pasado el canal» a quien sí lo tenía)
+            text = L("Te falta el canal de la comunidad: no está en la nota de oficial de tu hermandad (línea GU:c) o no hay conectado ningún compañero que lo tenga. Un oficial puede pasártelo con /gu pasarcanal.")
         else
-            why = L("el juego no te deja entrar. Mira si tienes el máximo de canales (/chatlist) y sal de uno con /leave número.")
+            HU:Debug("Fuera del canal con el canal conocido: fallo del juego, sin aviso")
+            return
         end
         noChanT = GetTime()
-        HU:Print("|cffff8800" .. L("No estás en el canal de la comunidad: no lees a las otras hermandades.") .. "|r " .. L("Motivo: ") .. why)
+        -- (copia 175: al informe, no al chat)
+        HU:Notice(text)
     end)
 end)
 

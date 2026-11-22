@@ -4,8 +4,8 @@ local ADDON_NAME, HU = ...
 local L = HU.L
 
 HU.MEM_LIMIT_MB = 20
--- (cada 15 min, fuera de combate y con el panel cerrado: medir la memoria de los addons le cuesta al
--- juego ~50 ms con muchos addons, y con el panel abierto cuenta la basura que aún no se ha limpiado)
+-- (como mucho cada 15 min, fuera de combate y con el panel cerrado: con el panel abierto cuenta la
+-- basura que aún no se ha limpiado. Cuándo se mide: abajo, copia 165)
 local CHECK = 900
 local CHAT_MIN = 1500   -- el chat del panel no baja de aquí
 local warned = false
@@ -60,10 +60,22 @@ function HU:MemTrim()
     return mb
 end
 
+-- (copia 165) Medir la memoria de los addons recorre TODOS los addons del jugador: con muchos, 70-170 ms [+ARCHITECTURE.md]
+local FALLBACK = 7200   -- si en 2 h no hay pantalla de carga ni ausente, se mide igual una vez
+local lastCheck = -1e9
+local function Check()
+    if GetTime() - lastCheck < CHECK then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    if HU.UI and HU.UI.frame and HU.UI.frame:IsShown() then return end
+    lastCheck = GetTime()
+    HU:MemTrim()
+end
+-- (durante la pantalla de carga: el juego ya está parado y no se nota)
+HU:On("PLAYER_ENTERING_WORLD", function() HU:SafeCall("memoria", Check) end)
 HU:OnStart(function()
-    HU.NewTicker(CHECK, function()
-        if InCombatLockdown and InCombatLockdown() then return end
-        if HU.UI and HU.UI.frame and HU.UI.frame:IsShown() then return end
-        HU:MemTrim()
+    HU.NewTicker(60, function()
+        local ok, afk = pcall(UnitIsAFK, "player")
+        afk = ok and HU.SafeBool(afk, false)
+        if afk or GetTime() - lastCheck >= FALLBACK then HU:SafeCall("memoria", Check) end
     end)
 end)
