@@ -351,4 +351,24 @@ describe("Miembros de la unión: la pestaña", function()
         A.falsy(panel.memPick:IsShown())
         A.same({}, a:Errors())
     end)
+    it("solo se enseñan las filas que caben en la ventana (antes las últimas se salían por debajo)", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "IsGuildForwarder", true)
+        HU:OpenMainWindow()
+        local panel = a.env.GuildUnionReducePanel
+        Click(panel.memBtn)
+        local rows = {}
+        for i = 1, 10 do rows[i] = "Uno" .. string.char(96 + i) .. ",1,60,4," end
+        a.w:Receive("HU20B", "ML~DOS~id1~1~1~" .. table.concat(rows, ";"), "GUILD", "Compi-Reino")
+        -- (la lista mide lo que caben 5 filas y un poco)
+        panel.offScroll.GetHeight = function() return 5 * 18 + 7 end
+        panel.offScroll:GetScript("OnSizeChanged")(panel.offScroll)
+        local shown = 0
+        for i, row in ipairs(panel.offRows) do
+            if row:IsShown() then shown = shown + 1; A.truthy(i <= 5, "la fila " .. i .. " no cabe") end
+        end
+        A.equal(5, shown)
+        A.same({}, a:Errors())
+    end)
 end)

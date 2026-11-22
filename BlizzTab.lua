@@ -217,7 +217,8 @@ local function Button(parent, text, w, anchor, x)
 end
 
 -- Lista de oficiales de las otras hermandades (la lista pequeña que va por dentro)
-local ROW_H, ROWS = 18, 18
+-- (ROWS: las filas que se crean; se enseñan solo las que caben en la altura de la lista)
+local ROW_H, ROWS = 18, 30
 local function OfficerEntries(withOwn)
     local out = {}
     -- (los de mi hermandad, de la lista del juego: maestro y oficiales conectados)
@@ -278,10 +279,15 @@ local function RefreshOfficers()
     end
     panel.offEmpty:SetText(view == "members" and L("Pidiendo la lista a las otras hermandades…") or L("Todavía no ha llegado ninguno."))
     local sf = panel.offScroll
-    FauxScrollFrame_Update(sf, #list, ROWS, ROW_H)
+    -- (solo las filas que caben: antes siempre 18, y con la ventana más baja las últimas se salían por
+    -- debajo, encima de lo que hubiera. Noe, 23/11)
+    local visible = ROWS
+    local h = sf:GetHeight()
+    if type(h) == "number" and h > 0 then visible = math.max(1, math.min(ROWS, math.floor(h / ROW_H))) end
+    FauxScrollFrame_Update(sf, #list, visible, ROW_H)
     local off = FauxScrollFrame_GetOffset(sf)
     for i = 1, ROWS do
-        local row, e = panel.offRows[i], list[off + i]
+        local row, e = panel.offRows[i], i <= visible and list[off + i] or nil
         if e then
             local c = e.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[e.class]
             local hex = c and string.format("%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255) or "ffffff"
@@ -607,6 +613,8 @@ local function BuildPanel()
     sf:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -2)
     sf:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 12)
     sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, RefreshOfficers) end)
+    -- (la ventana cambia de alto, o la lista empieza más abajo en «Miembros»: caben otras filas)
+    sf:SetScript("OnSizeChanged", function() RefreshOfficers() end)
     panel.offScroll = sf
     panel.offRows = {}
     for i = 1, ROWS do
