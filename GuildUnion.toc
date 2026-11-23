@@ -61,7 +61,9 @@ UIWindows.lua
 Minimap.lua
 BlizzTab.lua
 UnionRoster.lua
+CraftItems.lua
 DJStyle.lua
+Trade.lua
 UnionConfig.lua
 ListWindow.lua
 Blacklist.lua
