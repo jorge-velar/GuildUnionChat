@@ -62,6 +62,7 @@ Minimap.lua
 BlizzTab.lua
 UnionRoster.lua
 DJStyle.lua
+UnionConfig.lua
 ListWindow.lua
 Blacklist.lua
 InviteLog.lua

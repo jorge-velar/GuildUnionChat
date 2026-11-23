@@ -181,14 +181,18 @@ local function Build()
     bDel:SetScript("OnClick", function()
         local name = HU.Trim(win.nameBox:GetText() or "")
         if name == "" or not HU:IsBanned(name) then return end
-        HU:SetBan(name, false)
-        local k = HU:Key(name) or ""
-        warned[k] = nil
-        if HU.db.blackSaid then HU.db.blackSaid[k] = nil end
+        HU:Unban(name)
         win.nameBox:SetText("")
         Refresh()
     end)
     win.editParts = { lName, win.nameBox, lWhy, whyBox, bAdd, bDel }
+end
+
+function HU:Unban(name)
+    self:SetBan(name, false)
+    local k = self:Key(name) or ""
+    warned[k] = nil
+    if self.db.blackSaid then self.db.blackSaid[k] = nil end
 end
 
 function HU:ShowBlacklist()
