@@ -1,6 +1,6 @@
 -- Guild Union - Calendario de la unión (la sección Calendar de la lista de miembros) [+ARCHITECTURE.md]
--- Fase 1: solo la ventana, sin red. Con el estilo del addon Dungeon Journal de Forever: paneles marrón oscuro
--- con borde de tooltip y un toque de pergamino, títulos dorados, tarjetas con sombra arriba y brillo dorado.
+-- Fase 1: solo la ventana, sin red. Con el estilo compartido (DJStyle.lua): fondos lisos casi negros con borde de
+-- tooltip gris, títulos y rayas doradas, tarjetas con sombra arriba y brillo dorado.
 -- Pestañas Eventos (tarjetas) y Calendario (el mes); la ficha de cada evento son sus raids.
 local _, HU = ...
 local L = HU.L
@@ -10,7 +10,9 @@ local GROUPS, PER_GROUP = 8, 5
 local MAX_RAIDS = 20
 local RAID_ROW = 10         -- pestañas de raid por fila (dos filas: 20)
 local DETAIL_H = 480        -- alto de la ventana del evento con una fila de pestañas
-local BENCH_N = 12
+local BENCH_N = 12          -- filas del banquillo a la vista (con barra, el resto)
+local DAY_N, DAY_H = 5, 44  -- eventos del día a la vista en Calendario (con barra, el resto) y su alto
+local DESC_LINES, DESC_LINE_H = 4, 13 -- la descripción en la ficha: como mucho 4 líneas (de 13 px, letra pequeña)
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
 local DJ = HU.DJ
 local T = DJ.T
@@ -47,8 +49,8 @@ local MONTHS = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
     "noviembre", "diciembre" }
 
 -- (en la sesión: fase 1, sin red)
-local events = {}           -- { id, title, kind, t, who, tag, desc, signups = { [nombre] = "yes" }, roles = { [nombre] = rol }, raids, test }
-local lastRole              -- el último rol con el que me apunté (se ofrece primero)
+local events = {}           -- { id, title, kind, t, who, tag, desc, minLevel, icon, signups = { [nombre] = "yes" }, roles = { [nombre] = rol }, raids, test }
+local lastRole              -- el último rol con el que me apunté (sin el menú del juego, y al crear un evento, voy con él)
 local view = "list"         -- "list" (Eventos) o "month" (Calendario)
 local selected              -- el evento cuya ficha está abierta (id)
 local month, year           -- el mes que se ve en Calendario
@@ -120,7 +122,6 @@ local function OnDay(key)
     table.sort(out, function(a, b) return a.t < b.t end)
     return out
 end
--- (organiza: quien lo puso, un oficial o, en el modo prueba, yo)
 -- (organiza el evento —crear raids, mover gente, colocar, elegir líder—: quien lo creó o el líder de alguna de
 -- sus raids) [+ARCHITECTURE.md]
 local function CanManage(e)
@@ -173,6 +174,12 @@ local function CanRole(class, role)
     if role == "DAMAGER" or not class then return true end
     return CAN_ROLE[role] and CAN_ROLE[role][class] == true
 end
+-- (mi rol sin el menú, al crear un evento: el último con el que me apunté o, si no, el primero que hace mi clase)
+local function MyRole()
+    if lastRole then return lastRole end
+    local _, myClass = UnitClass("player")
+    for _, role in ipairs(ROLES) do if CanRole(myClass, role) then return role end end
+end
 -- (cuántos de cada rol: «[T] 2  [H] 5  [D] 12»)
 local function RoleCounts(e, names)
     local n = { TANK = 0, HEALER = 0, DAMAGER = 0 }
@@ -207,17 +214,22 @@ local function TakeOut(r, name)
     if g then table.remove(r.groups[g], i) end
     if r.leader == name then r.leader = nil end
 end
--- Poner a alguien en un grupo (y un hueco): si el hueco tiene a otro, se cambian; si el grupo está lleno, no.
--- El hueco 1 del grupo 1 es del líder
+-- (la raid que lleva alguien: el líder no se mueve de su hueco ni de su raid, solo cambia con SetLeader)
+local function LeadsAny(e, name)
+    for _, r in ipairs(e.raids or {}) do if r.leader == name then return r end end
+end
+-- Poner a alguien en un grupo (y un hueco): si el hueco tiene a otro, se cambian (si viene del banquillo, el otro
+-- sale al banquillo); si el grupo está lleno, no. El hueco 1 del grupo 1 es del líder
 local function Place(e, r, name, tg, ti)
-    if r.leader and tg == 1 and ti == 1 and name ~= r.leader then ti = 2 end
+    if LeadsAny(e, name) then return end
+    if r.leader and tg == 1 and ti == 1 then ti = 2 end
     for _, o in ipairs(e.raids) do if o ~= r then TakeOut(o, name) end end
     local sg, si = FindPos(r, name)
     local other = r.groups[tg][ti]
     if other == name then return end
     if other then
         if other == r.leader then return end
-        if sg then r.groups[sg][si] = other else TakeOut(r, other) end
+        if sg then r.groups[sg][si] = other end
         r.groups[tg][ti] = name
         return
     end
@@ -279,8 +291,11 @@ local function PlaceBench(e)
     for _, n in ipairs(free) do if AutoPlace(e, n) then placed = placed + 1 end end
     HU:Print(string.format(L("Colocados %d en raids; %d se quedan sin raid."), placed, #free - placed))
 end
+-- (se llama «Raid N», con el número siguiente al más alto: al quitar una del medio no se repite)
 local function NewRaid(e, leader)
-    local r = { name = L("Raid") .. " " .. (#e.raids + 1), groups = {} }
+    local top = 0
+    for _, o in ipairs(e.raids) do top = math.max(top, tonumber(o.name:match("(%d+)$")) or 0) end
+    local r = { name = L("Raid") .. " " .. (top + 1), groups = {} }
     for g = 1, GROUPS do r.groups[g] = {} end
     table.insert(e.raids, r)
     if leader then SetLeader(e, r, leader) end
@@ -405,9 +420,16 @@ local function SignUp(e, owner)
         root:CreateButton(L("Cancelar"), function() end)
     end)
 end
+-- (una lista con barra, otra vez arriba)
+local function ScrollTop(sf)
+    FauxScrollFrame_SetOffset(sf, 0)
+    local bar = sf.ScrollBar or _G[sf:GetName() .. "ScrollBar"]
+    if bar then bar:SetValue(0) end
+end
 local function OpenDetail(id)
-    if selected ~= id then raidPick = 1 end
+    local other = selected ~= id
     selected = id
+    if other then raidPick = 1; ScrollTop(ui.detail.benchScroll) end
     Paint()
 end
 
@@ -425,6 +447,13 @@ local function PaintDetail()
         .. L("por") .. "|r " .. WhoText(e) .. "   |cff40ff40" .. Count(e) .. "|r |cffe6e6ea" .. L("van") .. "|r"
         .. (e.minLevel and ("   |cffa0a4ad" .. string.format(L("Nv. %d+"), e.minLevel) .. "|r") or ""))
     d.roles:SetText(RoleCounts(e, (function() local t = {} for n, v in pairs(e.signups) do if v == "yes" then t[#t + 1] = n end end return t end)()))
+    -- (la descripción, debajo de esa línea: lo que ocupa baja la raya y todo lo de debajo; sin descripción, nada)
+    local desc = e.desc or ""
+    d.desc:SetText(desc)
+    local h = desc ~= "" and math.min(d.desc:GetStringHeight(), DESC_LINES * DESC_LINE_H) or 0
+    d.descH = h > 0 and (math.ceil(h) + 4) or 0
+    d.desc:SetShown(d.descH > 0)
+    d.rule:SetPoint("TOPLEFT", 10, -28 - d.descH); d.rule:SetPoint("TOPRIGHT", -10, -28 - d.descH)
     local classes = ClassMap()
     local manage = CanManage(e)
     local mine = e.signups[Me()] == "yes"
@@ -433,11 +462,12 @@ local function PaintDetail()
 
     if raidPick > #e.raids then raidPick = #e.raids end
     if raidPick < 1 and #e.raids > 0 then raidPick = 1 end
-    -- (pestañas de raid en filas de 10; «+ Añadir» va en el hueco siguiente. Con dos filas, la ventana crece
-    -- 26 y todo lo de debajo baja 26: así no se sale ni se monta)
+    -- (pestañas de raid en filas de 10, bajo la descripción; «+ Añadir» va en el hueco siguiente. Con dos filas,
+    -- la ventana crece 26 y todo lo de debajo baja 26, y lo mismo con lo que ocupa la descripción: así no se sale
+    -- ni se monta)
     local canAdd = manage and #e.raids < MAX_RAIDS
     local used = #e.raids + (canAdd and 1 or 0)
-    local shift = used > RAID_ROW and 26 or 0
+    local shift = d.descH + (used > RAID_ROW and 26 or 0)
     d:SetHeight(DETAIL_H + shift)
     d.leaderBar:SetPoint("TOPLEFT", 176, -64 - shift)
     d.benchF:SetPoint("TOPLEFT", 12, -64 - shift)
@@ -446,6 +476,7 @@ local function PaintDetail()
     for k, b in ipairs(d.raidTabs) do
         local r = e.raids[k]
         if r then
+            d.TabPoint(b, k)
             b:Label(r.name .. " (" .. #Members(r) .. ")")
             b:Pick(k == raidPick)
             d.SmallFont(b)
@@ -477,9 +508,15 @@ local function PaintDetail()
     local free = Unassigned(e)
     local levels = LevelMap()
     d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. #free .. ")|r")
+    -- (con más de los que caben, la barra: las filas se estrechan para dejarle sitio)
+    FauxScrollFrame_Update(d.benchScroll, #free, BENCH_N, 18)
+    local off = FauxScrollFrame_GetOffset(d.benchScroll)
+    local w = #free > BENCH_N and 122 or 142
     for i, b in ipairs(d.bench) do
-        local n = free[i]
+        local n = free[off + i]
         b.name = n
+        b:SetWidth(w)
+        b.fill:SetAlpha(1)
         if n then
             local lv = levels[(HU:FullName(n) or n):lower()] or levels[n:lower()]
             b.text:SetText((lv and ("|cffa0a4ad" .. lv .. "|r ") or "") .. ColorName(n, classes, RoleOf(e, n)))
@@ -490,7 +527,6 @@ local function PaintDetail()
     end
     d.place:SetShown(manage and #free > 0 and #e.raids > 0)
     d.place:Label(string.format(L("Colocar en raids (%d)"), #free))
-    d.benchMore:SetText(#free > BENCH_N and ("|cffa0a4ad+" .. (#free - BENCH_N) .. " " .. L("más") .. "|r") or "")
     for gi, grp in ipairs(d.groups) do
         local list = cur and cur.groups[gi] or {}
         grp.label:SetText(string.format(L("Grupo %d"), gi) .. "  |cffa0a4ad" .. #list .. "/" .. PER_GROUP .. "|r")
@@ -517,22 +553,24 @@ local function PaintDetail()
     d:Show()
 end
 
--- Clic derecho en un nombre: hacer líder, pasar a otra raid, sacar, susurrar
+-- Clic derecho en un nombre: hacer líder, pasar a otra raid, sacar (al líder, nada de eso: no se mueve), susurrar
+-- e invitar
 local function NameMenu(owner, name)
     local e = selected and Find(selected)
     if not (e and name and MenuUtil and MenuUtil.CreateContextMenu) then return end
     local manage = CanManage(e)
     local cur = e.raids[raidPick]
-    local inCur = cur and FindPos(cur, name)
+    local isLeader = cur and cur.leader == name
+    local inCur = cur and FindPos(cur, name) and not isLeader
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(HU:Short(name))
         if manage then
-            if cur and cur.leader ~= name then
+            if cur and not isLeader then
                 root:CreateButton(L("Hacer líder de la raid"), function() SetLeader(e, cur, name); Paint() end)
             end
             local others = {}
             for _, r in ipairs(e.raids) do if not FindPos(r, name) then others[#others + 1] = r end end
-            if #others > 0 then
+            if #others > 0 and not isLeader then
                 local sub = root:CreateButton(L("Mover a"))
                 for _, r in ipairs(others) do
                     sub:CreateButton(r.name .. "  |cffa0a4ad(" .. #Members(r) .. ")|r", function() AddToRaid(e, r, name); Paint() end)
@@ -580,7 +618,7 @@ end
 local function BuildDetail(host)
     local d = DJWindow("GuildUnionCalendarDetail", host, 740, DETAIL_H, function() selected = nil; Paint() end)
     local cf = d.content
-    -- (arriba a la izquierda, el icono del tipo, redondo)
+    -- (arriba a la izquierda, la imagen del evento, redonda)
     d.icon = RoundIcon(d, 30)
     d.icon:SetPoint("TOPLEFT", d, "TOPLEFT", 22, -12)
     d.sub = cf:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -589,7 +627,12 @@ local function BuildDetail(host)
     d.roles = C(cf:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), T.text)
     d.roles:SetPoint("TOPRIGHT", -12, -10)
     d.sub:SetPoint("RIGHT", d.roles, "LEFT", -10, 0)
-    local sl = Line(cf, 0.45); sl:SetPoint("TOPLEFT", 10, -28); sl:SetPoint("TOPRIGHT", -10, -28)
+    -- (la descripción, en varias líneas a todo lo ancho: 704 del panel menos los márgenes)
+    d.desc = C(cf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.text)
+    d.desc:SetPoint("TOPLEFT", 12, -28); d.desc:SetWidth(680)
+    d.desc:SetJustifyH("LEFT"); d.desc:SetWordWrap(true); d.desc:SetMaxLines(DESC_LINES)
+    d.descH = 0
+    d.rule = Line(cf, 0.45); d.rule:SetPoint("TOPLEFT", 10, -28); d.rule:SetPoint("TOPRIGHT", -10, -28)
     -- (las raids: una pestaña por raid y «+ Añadir raid»)
     d.raidTabs = {}
     -- (10 por fila de 65 + 3: 677 de ancho, cabe en los 704 del panel; letra pequeña en todos sus estados,
@@ -597,7 +640,7 @@ local function BuildDetail(host)
     function d.TabPoint(b, i)
         local col, row = (i - 1) % RAID_ROW, math.floor((i - 1) / RAID_ROW)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", cf, "TOPLEFT", 12 + col * 68, -34 - row * 26)
+        b:SetPoint("TOPLEFT", cf, "TOPLEFT", 12 + col * 68, -34 - d.descH - row * 26)
     end
     function d.SmallFont(b)
         b:SetNormalFontObject(b.picked and "GameFontHighlightSmall" or "GameFontNormalSmall")
@@ -630,7 +673,8 @@ local function BuildDetail(host)
     d.noRaid:SetPoint("TOPLEFT", 186, -110)
     d.noRaid:SetText(L("Todavía no hay raids. Quien organiza las crea con «+ Añadir raid»."))
 
-    -- (arrastrar: un rótulo sigue al ratón y, al soltar, va al hueco, al grupo o al banquillo de debajo)
+    -- (arrastrar: un rótulo sigue al ratón y, al soltar, va al hueco, al grupo, a la pestaña de otra raid, a la barra
+    -- del líder o al banquillo de debajo. Al líder no se le arrastra: se cambia con «Hacer líder de la raid»)
     local ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     ghost:SetSize(120, 22); ghost:SetFrameStrata("TOOLTIP")
     Panel(ghost, T.rowSel, T.title, 10, 2)
@@ -645,6 +689,9 @@ local function BuildDetail(host)
     local function DragStart(btn)
         local e = selected and Find(selected)
         if not (btn.name and e and CanManage(e) and e.raids[raidPick]) then return end
+        if LeadsAny(e, btn.name) then
+            return HU:Print(L("El líder no se mueve: para cambiarlo, clic derecho en otro y «Hacer líder de la raid»."))
+        end
         dragName = btn.name
         ghost.text:SetText(btn.text:GetText()); ghost:Show()
         btn.text:SetText(""); if btn.fill then btn.fill:SetAlpha(0) end; if btn.status then btn.status:SetText("") end
@@ -690,7 +737,7 @@ local function BuildDetail(host)
         b:SetScript("OnDragStop", DragStop)
         return b
     end
-    -- (izquierda: el banquillo, panel lateral)
+    -- (izquierda: el banquillo, panel lateral; 12 a la vista y, si hay más, la barra a su derecha)
     local bench = CreateFrame("Frame", nil, cf, "BackdropTemplate")
     bench:SetPoint("TOPLEFT", 12, -64); bench:SetPoint("BOTTOMLEFT", 12, 10); bench:SetWidth(156)
     Panel(bench, T.panel, T.border, 12, 3)
@@ -699,15 +746,18 @@ local function BuildDetail(host)
     d.benchHead = C(bench:CreateFontString(nil, "OVERLAY", "GameFontNormal"), T.title)
     d.benchHead:SetPoint("TOPLEFT", 9, -8)
     local bl = Line(bench, 0.45); bl:SetPoint("TOPLEFT", 6, -24); bl:SetPoint("TOPRIGHT", -6, -24)
+    local bsf = CreateFrame("ScrollFrame", "GuildUnionCalendarBenchScroll", bench, "FauxScrollFrameTemplate")
+    bsf:SetPoint("TOPLEFT", 7, -28); bsf:SetSize(122, BENCH_N * 18)
+    bsf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, 18, PaintDetail) end)
+    d.benchScroll = bsf
     d.bench = {}
     for i = 1, BENCH_N do
         local b = Slot(bench, 142)
         b:SetPoint("TOPLEFT", 7, -28 - (i - 1) * 18)
         b.fill:SetColorTexture(T.row[1], T.row[2], T.row[3], 0.7)
+        b.text:SetPoint("RIGHT", -3, 0) -- (en el banquillo no hay marca de invitación: el nombre, a todo lo ancho)
         d.bench[i] = b
     end
-    d.benchMore = C(bench:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
-    d.benchMore:SetPoint("BOTTOMLEFT", 9, 34)
     d.place = DJButton(bench, "", 140, 22)
     d.place:SetPoint("BOTTOM", 0, 8)
     d.place:SetScript("OnClick", function() local e = selected and Find(selected); if e then PlaceBench(e); Paint() end end)
@@ -736,7 +786,7 @@ local function BuildDetail(host)
     end
     d.hint = C(cf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
     d.hint:SetPoint("BOTTOMLEFT", 178, 8)
-    -- (abajo, fuera del panel: Invitar a todos, Quitar raid · y a la derecha, Apuntarme)
+    -- (debajo de los grupos: Invitar a todos, Quitar raid y Convertir en banda; Apuntarme, abajo a la derecha)
     d.invite = DJButton(cf, "", 170, 24)
     d.invite:SetPoint("TOPLEFT", d.groups[5], "BOTTOMLEFT", 0, -10)
     d.invite:SetScript("OnClick", function()
@@ -913,6 +963,14 @@ end
 local function PaintDay()
     local s = ui.side
     for _, b in ipairs(s.dayBtns) do b:Hide() end
+    local list = pickedDay and OnDay(pickedDay) or {}
+    -- (con más de 5, la barra: las filas se estrechan para dejarle sitio)
+    FauxScrollFrame_Update(s.scroll, #list, DAY_N, DAY_H)
+    local inset = #list > DAY_N and 30 or 6
+    if s.inset ~= inset then
+        s.inset = inset
+        for _, b in ipairs(s.dayBtns) do b:SetPoint("RIGHT", s, "RIGHT", -inset, 0) end
+    end
     if not pickedDay then
         s.title:SetText(L("Calendario"))
         s.info:SetText(L("Elige un día para ver sus eventos."))
@@ -921,10 +979,10 @@ local function PaintDay()
     local y, m, d = pickedDay:match("(%d+)-(%d+)-(%d+)")
     local t = time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 })
     s.title:SetText(LongDay(t))
-    local list = OnDay(pickedDay)
     s.info:SetText(#list == 0 and L("No hay eventos este día.") or "")
+    local off = FauxScrollFrame_GetOffset(s.scroll)
     for i, b in ipairs(s.dayBtns) do
-        local ev = list[i]
+        local ev = list[off + i]
         if ev then
             b.id = ev.id
             b.icon:SetTexture(EventIcon(ev))
@@ -949,7 +1007,7 @@ function Paint()
 end
 
 ---------------------------------------------------------------------------
--- Nuevo evento (oficiales): título, tipo, día, hora y descripción
+-- Nuevo evento: título, tipo, imagen, día, hora, nivel mínimo y descripción
 ---------------------------------------------------------------------------
 local function BuildNewDialog(host)
     local d = DJWindow("GuildUnionCalendarNew", host, 380, 420)
@@ -1188,9 +1246,11 @@ local function BuildNewDialog(host)
         local t = HU.Trim(d.title:GetText() or "")
         if t == "" then return HU:Print(L("Pon un título al evento.")) end
         local when = time({ year = d.y, month = d.m, day = d.dd, hour = d.hh, min = d.mi })
+        if when < time() then return HU:Print(L("Elige un día y una hora que no hayan pasado.")) end
         local minLv = tonumber(d.minLv:GetText() or "")
+        -- (quien lo crea va, con su rol: como al apuntarse)
         events[#events + 1] = { id = NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
-            desc = HU.Trim(d.desc:GetText() or ""), signups = { [Me()] = "yes" }, raids = {},
+            desc = HU.Trim(d.desc:GetText() or ""), signups = { [Me()] = "yes" }, roles = { [Me()] = MyRole() }, raids = {},
             minLevel = (minLv and minLv > 1) and minLv or nil, icon = d.icon }
         d:Hide()
         Paint()
@@ -1211,13 +1271,13 @@ end
 ---------------------------------------------------------------------------
 -- Modo prueba: eventos de mentira (de mi hermandad y de otra), con gente apuntada y una raid hecha
 ---------------------------------------------------------------------------
--- (quitar lo de prueba: sus eventos, invitaciones, clases y niveles)
+-- (quitar lo de prueba: sus eventos, invitaciones, clases y niveles; la ficha abierta, solo si era de prueba)
 local function ClearTest()
     for k = #events, 1, -1 do if events[k].test then table.remove(events, k) end end
+    if selected and not Find(selected) then selected = nil end
     for n in pairs(invites) do if n:find("%-Prueba$") then invites[n] = nil end end
     for n in pairs(testClass) do testClass[n] = nil end
     for n in pairs(testLevel) do testLevel[n] = nil end
-    selected = nil
 end
 
 local function AddTest()
@@ -1272,6 +1332,16 @@ local function AddTest()
     E(L("Guarida de Onyxia"), "raid", At(8, 21), "Bea-Prueba", other, L("Para los que tengáis la misión."), { ["Bea-Prueba"] = "yes" }).minLevel = 60
     ui.testOn = true
     Paint()
+end
+
+-- («+ Nuevo evento» apagado, al pasar el ratón: quién los crea según la configuración del calendario, calMake; con
+-- «Todos» siempre se puede, así que no sale)
+local function NoMakeTip(s)
+    if s:IsEnabled() then return end
+    local who = HU:UnionCfg().calMake or "officers"
+    local text = (who == "gm" and L("Solo el maestro crea eventos.")) or (who == "officers" and L("Solo los oficiales crean eventos."))
+    if not text then return end
+    GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(text); GameTooltip:Show()
 end
 
 ---------------------------------------------------------------------------
@@ -1335,7 +1405,7 @@ function HU:BuildCalendar(host)
             insets = { left = 3, right = 3, top = 3, bottom = 3 } })
         c:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
         c:SetBackdropBorderColor(0.34, 0.34, 0.34, 1)
-        -- (capas: piedra cálida, un tinte del color del tipo, sombra arriba y una raya de brillo dorado)
+        -- (capas: el fondo de fila, un tinte del color del tipo, sombra arriba y una raya de brillo dorado)
         local art = c:CreateTexture(nil, "BACKGROUND", nil, 1)
         art:SetPoint("TOPLEFT", 4, -4); art:SetPoint("BOTTOMRIGHT", -4, 4)
         art:SetColorTexture(T.row[1], T.row[2], T.row[3], 1)
@@ -1385,7 +1455,7 @@ function HU:BuildCalendar(host)
         c:SetScript("OnClick", function(s) if s.id then OpenDetail(s.id) end end)
         ui.cards[i] = c
     end
-    -- (la rueda del ratón mueve la barra escondida, de una fila de tarjetas en una fila)
+    -- (la rueda del ratón mueve la barra de una fila de tarjetas en una fila)
     sf:EnableMouseWheel(true)
     sf:SetScript("OnMouseWheel", function(s, delta)
         local bar = s.ScrollBar or _G[s:GetName() .. "ScrollBar"]
@@ -1408,11 +1478,16 @@ function HU:BuildCalendar(host)
     side.info = C(side:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
     side.info:SetPoint("TOPLEFT", 10, -40); side.info:SetPoint("RIGHT", side, "RIGHT", -8, 0)
     side.info:SetJustifyH("LEFT")
+    -- (5 a la vista y, si hay más, la barra a su derecha)
+    local dsf = CreateFrame("ScrollFrame", "GuildUnionCalendarDayScroll", side, "FauxScrollFrameTemplate")
+    dsf:SetPoint("TOPLEFT", 6, -40); dsf:SetSize(184, DAY_N * DAY_H)
+    dsf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, DAY_H, PaintDay) end)
+    side.scroll = dsf
     side.dayBtns = {}
-    for i = 1, 5 do
+    for i = 1, DAY_N do
         local b = CreateFrame("Button", nil, side, "BackdropTemplate")
         b:SetHeight(40)
-        b:SetPoint("TOPLEFT", side, "TOPLEFT", 6, -40 - (i - 1) * 44); b:SetPoint("RIGHT", side, "RIGHT", -6, 0)
+        b:SetPoint("TOPLEFT", side, "TOPLEFT", 6, -40 - (i - 1) * DAY_H); b:SetPoint("RIGHT", side, "RIGHT", -6, 0)
         Panel(b, T.row, T.border, 10, 2)
         b:SetHighlightTexture(ROW_HL, "ADD")
         b.icon = b:CreateTexture(nil, "ARTWORK")
@@ -1433,6 +1508,9 @@ function HU:BuildCalendar(host)
         local y, m, dd = pickedDay:match("(%d+)-(%d+)-(%d+)")
         ui.newDlg.Open(time({ year = tonumber(y), month = tonumber(m), day = tonumber(dd), hour = 12 }))
     end)
+    side.new:SetScript("OnEnter", NoMakeTip)
+    side.new:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    side.new:SetMotionScriptsWhileDisabled(true)
 
     -- Calendario: el mes
     local mframe = CreateFrame("Frame", nil, body)
@@ -1482,7 +1560,12 @@ function HU:BuildCalendar(host)
         c.mark:SetSize(6, 6); c.mark:SetPoint("TOPRIGHT", -4, -4); c.mark:Hide()
         c.ev:SetJustifyH("LEFT"); c.ev:SetJustifyV("TOP"); c.ev:SetWordWrap(false)
         Big(c.ev, 9)
-        c:SetScript("OnClick", function(s) pickedDay = s.key; Paint() end)
+        c:SetScript("OnClick", function(s)
+            local other = pickedDay ~= s.key
+            pickedDay = s.key
+            if other then ScrollTop(ui.side.scroll) end
+            Paint()
+        end)
         grid.cells[i] = c
     end
     grid:SetScript("OnSizeChanged", function() if ui:IsShown() and view == "month" then Paint() end end)
@@ -1507,7 +1590,8 @@ function HU:BuildCalendar(host)
         cfm:Show()
     end
 
-    -- Abajo: Nuevo evento (oficiales); en Calendario, para el día elegido
+    -- Arriba, en el centro: «+ Nuevo evento» (quien puede crearlos, HU:CanMakeEvents, o con el modo prueba); en
+    -- Calendario, para el día elegido
     local new = DJButton(host, "+ " .. L("Nuevo evento"), 200, 24)
     new:SetPoint("TOP", host, "TOP", 0, -30)
     -- (destacado: las piezas del botón teñidas de verde y la letra blanca)
@@ -1521,10 +1605,7 @@ function HU:BuildCalendar(host)
         end
         ui.newDlg.Open(t)
     end)
-    new:SetScript("OnEnter", function(s)
-        if s:IsEnabled() then return end
-        GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L("Solo los oficiales crean eventos.")); GameTooltip:Show()
-    end)
+    new:SetScript("OnEnter", NoMakeTip)
     new:SetScript("OnLeave", function() GameTooltip:Hide() end)
     new:SetMotionScriptsWhileDisabled(true)
     ui.new = new
