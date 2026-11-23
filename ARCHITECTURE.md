@@ -410,14 +410,36 @@ Se quita sola al actualizar o si el maestro baja o borra la línea.
 
 ### Qué hay en el archivo
 
-Guild Union - ventana de órdenes (/ginvite, /gpromote, /gdemote, /gremove)
-Copiado de GuildManagement (probado en Forever): en Forever esas acciones son «solo para la
-interfaz de Blizzard»: ni un addon, ni una macro, ni un botón seguro pueden hacerlas, y si el
-addon escribe en la caja del chat, el juego bloquea esas órdenes hasta /reload. Sí puedes
-escribirlas tú. La ventana te deja cada orden seleccionada para copiarla:
+Guild Union - órdenes de hermandad (/ginvite, /gpromote, /gdemote, /gremove), por dos caminos.
+Quien las pide: `HU:RunOrders(job)` (el menú de rango y «Echar» de la lista, vía `HU:TypeLines`, y
+«Aceptar» de «Peticiones de oficiales»); `job = { title, text, lines, onDone(hechas), onLine(línea) }`.
+Si hay otra lista a medias, la nueva espera su turno.
+
+**Con el botón: echar, subir y bajar de rango.** En Forever /gremove, /gpromote y /gdemote son
+órdenes seguras: el juego las registra en `SecureCmdList` (`CheckAddSecureSlashCommand` en
+Blizzard_ChatFrameBase/Shared/SlashCommands.lua, como /cast o /target). Un botón seguro
+(`SecureActionButtonTemplate`, type `macro`, macrotext con las órdenes) las lanza con tu clic, igual que
+una macro tuya: es lo que hacen los addons de gestión de hermandad (Guild Roster Manager, con su
+macro). Una ventanita enseña las órdenes tal cual y pide confirmar; un clic lanza todas (dos /gpromote
+para subir dos rangos).
+- El botón lanza al soltar (atributo `useOnKeyDown = false`, que `SecureActionButton_OnClick` mira antes
+  que la opción ActionButtonUseKeyDown) y se registra al pulsar y al soltar (`AnyDown`, `AnyUp`): si el
+  juego usara la opción, lanzaría igual una sola vez. Con solo `AnyUp` y la opción puesta, no haría nada.
+- Tras el clic se esperan 1,5 s: si el juego avisa de un bloqueo (MACRO_ACTION_BLOCKED/FORBIDDEN, o
+  ADDON_ACTION_BLOCKED/FORBIDDEN con nuestro nombre), se pasa a copiar y pegar con las mismas órdenes
+  y el botón no se vuelve a usar hasta /reload. Si no avisa, se dan por hechas.
+- Combate: el botón no se puede preparar, ni la ventanita mover o cerrar. Se esconde en
+  PLAYER_REGEN_DISABLED (lo último que se puede hacer antes) y vuelve en PLAYER_REGEN_ENABLED; lo
+  pedido en combate se pregunta al salir.
+
+**Copiar y pegar: /ginvite y lo demás.** /ginvite no es segura (`CheckAddSlashCommand`): con una
+macro, el juego la bloquea («solo la interfaz de Blizzard», probado en Forever el 5/11). Ni un addon
+ni una macro pueden invitar; tú sí, escribiéndolo. Y si el addon escribe en la caja del chat, el juego
+bloquea esas órdenes hasta /reload. La ventana te deja cada orden seleccionada para copiarla:
   Ctrl+C → Intro (abre el chat) → Ctrl+V → Intro
 Al enviarla (tu segundo Intro) pasa sola a la siguiente; si el juego contesta en el chat
-(«Has invitado a…», «no se encuentra…»), también. Si no, botón «Siguiente».
+(«Has invitado a…», «no se encuentra…»), también. Si no, botón «Siguiente». Esto solo vale con la
+ventana abierta: con el botón, las respuestas del chat no mueven nada.
 El addon solo MIRA la caja del chat: nunca escribe en ella.
 
 ### `Norm`

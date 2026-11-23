@@ -1,11 +1,11 @@
 # Cobertura mínima de cada archivo (%) y sus líneas sin probar, sin lo que se ejecuta al cargar.
 # Un archivo falla si baja de su % Y tiene más líneas sin probar (borrar código probado no falla).
 # Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)
-Audit.lua 66.2 27
+Audit.lua 83.7 13
 Blacklist.lua 88.3 14
 BlizzTab.lua 44.4 586
 ChanPresence.lua 95.0 3
-Channel.lua 80.0 282
+Channel.lua 80.2 279
 Channels.lua 14.4 196
 ChatPaint.lua 0.0 30
 ChatTabs.lua 45.0 39
@@ -13,7 +13,7 @@ Combat.lua 58.5 100
 Comm.lua 59.5 34
 Community.lua 7.2 371
 Config.lua 70.2 101
-Core.lua 82.6 90
+Core.lua 82.8 89
 DJStyle.lua 98.5 1
 Domain/Trust.lua 75.3 60
 ErrorShare.lua 29.2 46
@@ -22,7 +22,7 @@ GuardKeeper.lua 57.8 73
 History.lua 64.3 403
 InviteLog.lua 98.5 4
 ListWindow.lua 98.8 1
-Lists.lua 64.3 62
+Lists.lua 68.3 55
 MassLogin.lua 54.9 23
 MemGuard.lua 39.1 28
 Mention.lua 3.6 80
@@ -32,7 +32,7 @@ Net/RosterSync.lua 77.2 178
 Net/Security.lua 79.8 35
 Net/Transport.lua 67.4 57
 NoteConfig.lua 26.9 92
-Orders.lua 5.9 173
+Orders.lua 77.7 62
 Perf.lua 37.4 97
 Pinned.lua 56.2 21
 Popup.lua 64.3 62
