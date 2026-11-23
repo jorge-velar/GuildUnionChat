@@ -2,8 +2,8 @@
 -- Fase 1: solo la ventana, sin red. Pestañas: Bancos de hermandad (los de la unión: buscador, filtro por hermandad y
 -- la pestaña del banco de cada objeto), Banco propio (Bolsas o Banco de mi personaje) y Solicitudes (registro de lo
 -- pedido: quién lo pide, de qué banco y pestaña, y quién lo saca). Se saca en el banco de hermandad del juego: al
--- abrirlo sale una ventanita con lo pedido a mi hermandad. Rechazar, solo el maestro. Lo ven los oficiales; todos, si
--- el maestro lo abre (UnionConfig.lua). El «Modo prueba» rellena bancos y solicitudes de mentira.
+-- abrirlo, si hay algo pedido a mi hermandad, sale una ventanita con ello. Rechazar, solo el maestro. Lo ven los
+-- oficiales; todos, si el maestro lo abre (UnionConfig.lua). El «Modo prueba» rellena bancos y solicitudes de mentira.
 local _, HU = ...
 local L = HU.L
 
@@ -28,12 +28,14 @@ local function Me() return HU:Me() or "?" end
 local function NewId() return string.format("%x%x", math.random(0, 0xffff), time() % 0xffff) end
 local function Cfg() return HU:UnionCfg() end
 local function IsGM() return HU:IsUnionGM() end
+-- (el modo prueba; sin la sección montada, apagado: el banco de hermandad del juego se puede abrir antes)
+local function TestOn() return ui ~= nil and ui.testOn == true end
 -- (lo ve: oficial, o todos si el maestro lo abrió, o el modo prueba)
-local function CanSee() return HU:CanPin() or Cfg().bankView == "all" or ui.testOn == true end
+local function CanSee() return HU:CanPin() or Cfg().bankView == "all" or TestOn() end
 local function CanRequest()
     local who = Cfg().bankRequest or "all"
     if who == "none" then return false end
-    return who == "all" or HU:CanPin() or ui.testOn == true
+    return who == "all" or HU:CanPin() or TestOn()
 end
 local function ItemName(id)
     local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
@@ -71,6 +73,8 @@ local function Who(name)
     return string.format("|cff%02x%02x%02x%s|r", c.r * 255, c.g * 255, c.b * 255, short)
 end
 
+local Paint
+
 -- (mi banco de personaje: el juego solo deja leerlo con el banco abierto; se guarda lo último que se vio)
 local function ReadContainers(list)
     local out = {}
@@ -92,8 +96,16 @@ local function BagIDs()
     return t
 end
 local function BankIDs()
-    -- (con Enum.BagIndex, los números del juego; si no, tras las bolsas y la de componentes)
     local E = Enum and Enum.BagIndex
+    -- (Forever, como el juego de hoy: el banco del personaje es Characterbanktab (-2) y sus pestañas compradas,
+    -- CharacterBankTab_1… (6-14). El -1 ahí es el llavero, no el banco)
+    if E and E.Characterbanktab then
+        local t = { E.Characterbanktab }
+        for i = 1, 9 do if E["CharacterBankTab_" .. i] then t[#t + 1] = E["CharacterBankTab_" .. i] end end
+        return t
+    end
+    -- (otros clientes con Enum.BagIndex: Bank y BankBag_N; sin él, el banco es el -1 y sus bolsas van tras las del
+    -- jugador y la de componentes)
     if E and E.Bank and E.BankBag_1 then
         local t = { E.Bank }
         for i = 1, NUM_BANKBAGSLOTS or 7 do if E["BankBag_" .. i] then t[#t + 1] = E["BankBag_" .. i] end end
@@ -104,20 +116,38 @@ local function BankIDs()
     for i = first, first + n - 1 do t[#t + 1] = i end
     return t
 end
+-- (abierto, de BANKFRAME_OPENED a BANKFRAME_CLOSED: la foto se hace al abrirlo y con cada cambio, también vacía; se
+-- enseña siempre la foto, con su fecha si ya está cerrado) [+ARCHITECTURE.md]
+local bankOpen = false
+local function SnapBank() HU.db.myBankSnap = { items = ReadContainers(BankIDs()), t = time() } end
 local function MyBank()
-    local now = ReadContainers(BankIDs())
-    if #now > 0 then
-        HU.db.myBankSnap = { items = now, t = time() }
-        return now, nil
-    end
     local snap = HU.db.myBankSnap
-    return snap and snap.items or {}, snap and snap.t
+    if not snap then return {}, nil end
+    return snap.items or {}, (not bankOpen) and snap.t or nil
 end
+HU:On("BANKFRAME_OPENED", function()
+    if not HU.db then return end
+    bankOpen = true
+    SnapBank(); Paint()
+end)
+HU:On("BANKFRAME_CLOSED", function()
+    if not bankOpen then return end
+    bankOpen = false
+    -- (lo último que se vio es de ahora: hasta aquí no ha cambiado)
+    if HU.db.myBankSnap then HU.db.myBankSnap.t = time() end
+    Paint()
+end)
+local function BankChanged() if bankOpen then SnapBank(); Paint() end end
+HU:On("PLAYERBANKSLOTS_CHANGED", BankChanged)
+HU:On("BAG_UPDATE", BankChanged)
+
+-- (lo escrito en el buscador, en minúsculas)
+local function Query() return ui.search and HU.Trim(ui.search:GetText() or ""):lower() or "" end
 
 -- Lo que se ve: los objetos del banco elegido (y el buscador)
 local function Items()
     local out = {}
-    local q = ui.search and HU.Trim(ui.search:GetText() or ""):lower() or ""
+    local q = Query()
     local function add(id, count, tag, tab)
         if q ~= "" then
             local name = ItemName(id)
@@ -151,8 +181,6 @@ local function Items()
     return out
 end
 
-local Paint
-
 ---------------------------------------------------------------------------
 -- Pedir algo de un banco: cantidad y nota. Lo saca alguien de esa hermandad en su banco del juego
 ---------------------------------------------------------------------------
@@ -178,6 +206,8 @@ local function BuildAsk(host)
     local no = DJ.Button(d, L("Cancelar"), 120, 24); no:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -18, 14)
     no:SetScript("OnClick", function() d:Hide() end)
     ok:SetScript("OnClick", function()
+        -- (el permiso puede haber cambiado con la ventana abierta: se mira otra vez)
+        if not CanRequest() then d:Hide(); Paint(); return end
         local n = tonumber(d.qty:GetText() or "") or 1
         n = math.max(1, math.min(n, d.it.count))
         reqs[#reqs + 1] = { id = NewId(), item = d.it.id, count = n, tab = d.it.tab, who = Me(), tag = d.it.tag,
@@ -185,7 +215,7 @@ local function BuildAsk(host)
         local r = reqs[#reqs]
         Log(string.format(L("%s pide %s a %s"), Who(r.who), ReqText(r), WhereText(r.tag, r.tab)), r.test)
         d:Hide()
-        HU:Print(string.format(L("Pedido al banco de %s: %d x %s."), tostring(d.it.tag), n, ItemName(d.it.id) or "?"))
+        HU:Print(string.format(L("Pedido al banco de %s: %d x %s."), tostring(d.it.tag), n, ItemName(d.it.id) or ("#" .. d.it.id)))
         Paint()
     end)
     function d.Open(it)
@@ -202,18 +232,28 @@ local function BuildAsk(host)
 end
 
 ---------------------------------------------------------------------------
--- Sacar: al abrir el banco de hermandad del juego, una ventanita con lo pedido a mi hermandad (y «Sacar»)
+-- Sacar: al abrir el banco de hermandad del juego, si hay algo pedido a mi hermandad y puedo ver el banco, una
+-- ventanita con ello (y «Sacar»)
 ---------------------------------------------------------------------------
-local W_ROWS = 8
+local W_ROWS, W_ROW = 8, 34
 local withdraw
-local function PaintWithdraw()
-    if not (withdraw and withdraw:IsShown()) then return end
+-- (lo pendiente de mi hermandad; en el modo prueba, también lo de prueba)
+local function Pending()
     local list = {}
     for _, r in ipairs(reqs) do
         if r.state == "open" and (r.tag == HU.myTag or r.test) then list[#list + 1] = r end
     end
+    return list
+end
+local function PaintWithdraw()
+    if not (withdraw and withdraw:IsShown()) then return end
+    -- (sin permiso para ver el banco, se cierra: el maestro lo ha podido cerrar con ella abierta)
+    if not CanSee() then withdraw:Hide(); return end
+    local list = Pending()
+    FauxScrollFrame_Update(withdraw.scroll, #list, W_ROWS, W_ROW)
+    local off = FauxScrollFrame_GetOffset(withdraw.scroll)
     for i, row in ipairs(withdraw.rows) do
-        local r = list[i]
+        local r = list[off + i]
         row.r = r
         if r then
             local name, link = ItemName(r.item)
@@ -228,14 +268,19 @@ local function PaintWithdraw()
     withdraw.empty:SetShown(#list == 0)
 end
 local function BuildWithdraw()
-    local d = DJ.Window("GuildUnionBankWithdraw", UIParent, 330, 64 + W_ROWS * 34 + 46)
+    local d = DJ.Window("GuildUnionBankWithdraw", UIParent, 330, 64 + W_ROWS * W_ROW + 46)
     d.titleText:SetText(L("Lo pedido a tu hermandad"))
     local cf = d.content
+    -- (con más de las que caben, la barra)
+    local sf = CreateFrame("ScrollFrame", "GuildUnionBankWithdrawScroll", cf, "FauxScrollFrameTemplate")
+    sf:SetPoint("TOPLEFT", 6, -6); sf:SetPoint("BOTTOMRIGHT", -28, 6)
+    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, W_ROW, PaintWithdraw) end)
+    d.scroll = sf
     d.rows = {}
     for i = 1, W_ROWS do
         local row = CreateFrame("Frame", nil, cf)
         row:SetHeight(32)
-        row:SetPoint("TOPLEFT", 6, -6 - (i - 1) * 34); row:SetPoint("RIGHT", cf, "RIGHT", -6, 0)
+        row:SetPoint("TOPLEFT", sf, "TOPLEFT", 0, -(i - 1) * W_ROW); row:SetPoint("RIGHT", sf, "RIGHT")
         row.icon = row:CreateTexture(nil, "ARTWORK"); row.icon:SetSize(28, 28); row.icon:SetPoint("LEFT", 2, 0)
         row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         row.text:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 6, -1); row.text:SetPoint("RIGHT", -70, 0)
@@ -247,7 +292,8 @@ local function BuildWithdraw()
         take:SetPoint("RIGHT", 0, 0)
         take:SetScript("OnClick", function()
             local r = row.r
-            if not r then return end
+            -- (solo quien puede ver el banco, y lo que sigue pendiente)
+            if not (r and r.state == "open" and CanSee()) then return end
             r.state, r.takenBy, r.takenAt = "done", Me(), time()
             Log(string.format(L("%s saca %s de %s para %s"), Who(Me()), ReqText(r), WhereText(r.tag, r.tab), Who(r.who)), r.test)
             HU:Print(string.format(L("Sacado para %s: envíaselo por correo."), HU:Short(r.who)))
@@ -262,6 +308,7 @@ local function BuildWithdraw()
     return d
 end
 local function ShowWithdraw()
+    if not (CanSee() and #Pending() > 0) then return end
     withdraw = withdraw or BuildWithdraw()
     withdraw:ClearAllPoints()
     if GuildBankFrame and GuildBankFrame:IsShown() then withdraw:SetPoint("TOPLEFT", GuildBankFrame, "TOPRIGHT", 6, 0)
@@ -300,20 +347,30 @@ local function PaintGrid()
         end
     end
     ui.empty:SetShown(#list == 0)
+    -- (buscando, que no hay nada así)
+    local noMatch = Query() ~= "" and L("Nada coincide con la búsqueda.")
     if view == "own" then
-        local bank = not next(ownSet) or ownSet.bank
-        ui.empty:SetText(bank and L("Tu banco: ábrelo una vez en el juego (en un banquero) para verlo aquí.")
+        local bank, bags = not next(ownSet) or ownSet.bank, not next(ownSet) or ownSet.bags
+        -- (sin foto del banco, cómo tenerla; con ella, aunque sea de un banco vacío, que no hay nada)
+        local unseen = bank and not HU.db.myBankSnap
+        ui.empty:SetText(noMatch or (unseen and L("Tu banco: ábrelo una vez en el juego (en un banquero) para verlo aquí."))
+            or (bank and bags and L("No hay nada en tu banco ni en tus bolsas.")) or (bank and L("No hay nada en tu banco."))
             or L("No hay nada en tus bolsas."))
         ui.seen:SetText(bank and seen and string.format(L("Visto por última vez: %s"), When(seen)) or "")
     else
-        ui.empty:SetText(L("No hay objetos. (Los bancos de las hermandades llegarán con la red; prueba el modo prueba.)"))
+        ui.empty:SetText(noMatch or L("No hay objetos. (Los bancos de las hermandades llegarán con la red; prueba el modo prueba.)"))
         ui.seen:SetText("")
     end
 end
 
 local function PaintReqs()
-    local list = {}
-    for i = #reqs, 1, -1 do list[#list + 1] = reqs[i] end
+    -- (por fecha, la más nueva arriba; a la misma hora, la última pedida)
+    local list, pos = {}, {}
+    for i, r in ipairs(reqs) do list[i], pos[r] = r, i end
+    table.sort(list, function(x, y)
+        if (x.t or 0) ~= (y.t or 0) then return (x.t or 0) > (y.t or 0) end
+        return pos[x] > pos[y]
+    end)
     FauxScrollFrame_Update(ui.reqScroll, #list, REQ_ROWS, ROW_H)
     local off = FauxScrollFrame_GetOffset(ui.reqScroll)
     local gm = IsGM()
@@ -375,7 +432,9 @@ function Paint()
     ui.ownBtn:SetText((not next(ownSet) or (ownSet.bank and ownSet.bags)) and L("Todo") or ownSet.bank and L("Banco") or L("Bolsas"))
     ui.simBtn:SetShown(view == "reqs" and ui.testOn == true)
     ui.tagBtn.Paint()
-    ui.hint:SetText(view == "guild" and (CanRequest() and L("Clic en un objeto: pedirlo.") or L("Pedir está cerrado por el maestro."))
+    -- (sin poder pedir, por qué: «Nadie», o «Oficiales» y no lo soy)
+    local closed = Cfg().bankRequest == "none" and L("Pedir está cerrado por el maestro.") or L("Solo los oficiales pueden pedir.")
+    ui.hint:SetText(view == "guild" and (CanRequest() and L("Clic en un objeto: pedirlo.") or closed)
         or view == "reqs" and L("Se saca en el banco de hermandad del juego: al abrirlo sale lo pedido.") or "")
     if view == "reqs" then if reqLog then PaintLog() else PaintReqs() end else PaintGrid() end
     PaintWithdraw()

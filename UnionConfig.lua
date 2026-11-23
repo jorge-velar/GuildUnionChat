@@ -1,7 +1,8 @@
 -- Guild Union - Configuración de la hermandad (mitad derecha de la pestaña GuildUnion) [+ARCHITECTURE.md]
--- Fase 1: sin red; se guarda en este PC (HU.db.unionCfg) y la usan Banco y Comercio. Pestañas: Hermandad (color,
--- solo el maestro), Banco (quién lo ve y quién puede pedir), Comercio (activo, propinas) y Lista negra.
--- Lo cambia el maestro de la hermandad; los demás lo ven sin poder tocarlo.
+-- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio, Banco y Calendario.
+-- Pestañas: Comercio (activo, propinas), Lista negra (la de la comunidad), Banco (quién lo ve y quién puede pedir),
+-- Calendario (quién crea eventos y permisos por un tiempo) y Hermandad (el color).
+-- Lo cambia el maestro de la hermandad (la lista negra, también los oficiales); los demás lo ven sin poder tocarlo.
 local _, HU = ...
 local L = HU.L
 local DJ = HU.DJ
@@ -134,7 +135,7 @@ function HU:BuildUnionConfig(panel)
         function() return Cfg().bankRequest or "all" end, function(v) Cfg().bankRequest = v end)
     local bNote = DJ.C(pb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
     bNote:SetPoint("TOPLEFT", 4, -110); bNote:SetWidth(250); bNote:SetJustifyH("LEFT")
-    bNote:SetText(L("Las solicitudes las aprueba o rechaza un oficial de la hermandad del banco, y lo envía por correo."))
+    bNote:SetText(L("Lo pedido se saca en el banco de hermandad del juego (al abrirlo sale lo pendiente) y se envía por correo. Rechazar una solicitud, solo el maestro de la hermandad del banco."))
 
     -- Comercio: activo y propinas
     local pt = pages.trade
@@ -164,11 +165,16 @@ function HU:BuildUnionConfig(panel)
     local pGive = DJ.Button(pc, L("Dar"), 54, 20)
     pGive:SetPoint("LEFT", pH, "RIGHT", 6, 0)
     controls[#controls + 1] = pName; controls[#controls + 1] = pHours; controls[#controls + 1] = pGive
-    local permRows = {}
-    for i = 1, 5 do
+    -- (quién lo tiene: lista con barra, las filas que quepan hasta 5)
+    local PERM_ROW, PERM_MAX = 18, 5
+    local psf = CreateFrame("ScrollFrame", "GuildUnionCfgPermScroll", pc, "FauxScrollFrameTemplate")
+    psf:SetPoint("TOPLEFT", 4, -100); psf:SetPoint("BOTTOMRIGHT", -26, 0)
+    local permRows, PaintPerms = {}, nil
+    psf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, PERM_ROW, PaintPerms) end)
+    for i = 1, PERM_MAX do
         local row = CreateFrame("Frame", nil, pc)
-        row:SetHeight(18)
-        row:SetPoint("TOPLEFT", 4, -100 - (i - 1) * 18); row:SetPoint("RIGHT", pc, "RIGHT", -4, 0)
+        row:SetHeight(PERM_ROW)
+        row:SetPoint("TOPLEFT", psf, "TOPLEFT", 0, -(i - 1) * PERM_ROW); row:SetPoint("RIGHT", psf, "RIGHT")
         row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row.name:SetPoint("LEFT", 2, 0); row.name:SetWidth(110); row.name:SetJustifyH("LEFT"); row.name:SetWordWrap(false)
         row.till = DJ.C(row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
@@ -194,7 +200,7 @@ function HU:BuildUnionConfig(panel)
         pName:SetText("")
         Changed()
     end)
-    refresh[#refresh + 1] = function()
+    PaintPerms = function()
         local allow = Cfg().calAllow or {}
         local list, now = {}, time()
         for k, p in pairs(allow) do
@@ -203,9 +209,11 @@ function HU:BuildUnionConfig(panel)
         table.sort(list, function(x, y) return x.p.untilT < y.p.untilT end)
         local gm = IsGM()
         local ph = pc:GetHeight()
-        local fit = (type(ph) == "number" and ph > 0) and math.max(1, math.floor((ph - 100) / 18)) or 3
+        local fit = (type(ph) == "number" and ph > 0) and math.max(1, math.min(PERM_MAX, math.floor((ph - 100) / PERM_ROW))) or 3
+        FauxScrollFrame_Update(psf, #list, fit, PERM_ROW)
+        local off = FauxScrollFrame_GetOffset(psf)
         for i, row in ipairs(permRows) do
-            local it = (i <= fit) and list[i] or nil
+            local it = (i <= fit) and list[off + i] or nil
             row.key = it and it.key
             if it then
                 row.name:SetText(HU:Short(it.p.name))
@@ -216,6 +224,7 @@ function HU:BuildUnionConfig(panel)
         end
         permNone:SetShown(#list == 0)
     end
+    refresh[#refresh + 1] = PaintPerms
 
     -- Lista negra: la lista, aquí mismo; añadir y quitar, el maestro y los oficiales
     local pl = pages.black
@@ -306,7 +315,8 @@ function HU:BuildUnionConfig(panel)
         nameBox:SetText("")
         PaintBlack()
     end)
-    local blEdit = { lName, nameBox, bDel, lWhy, whyBox, bAdd }
+    -- (y «Comprobar ahora»: el repaso, HU:BlacklistCheck, solo lo hacen el maestro y los oficiales)
+    local blEdit = { lName, nameBox, bDel, lWhy, whyBox, bAdd, bCheck }
     refresh[#refresh + 1] = function()
         local can = HU:CanPin()
         for _, w in ipairs(blEdit) do w:SetShown(can) end

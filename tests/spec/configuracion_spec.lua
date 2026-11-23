@@ -3,6 +3,7 @@
 -- llegan de otras hermandades: echar (GK, Social.lua) y cambiar de rango (GP, Ranks.lua)
 local F = require("lib.fixtures")
 local red = require("lib.red")
+local addon = require("lib.addon")
 local A = assert_
 
 ---------------------------------------------------------------------------
@@ -225,6 +226,9 @@ describe("Configuración: Comercio y Banco", function()
         Click(b[1])
         A.equal("officers", HU.db.unionCfg.bankView)
         A.same({ true, false, false, true, false }, Picked())
+        -- (la nota de debajo: cómo se saca y quién rechaza, como hace el Banco)
+        A.equal("Lo pedido se saca en el banco de hermandad del juego (al abrirlo sale lo pendiente) y se envía por correo. "
+            .. "Rechazar una solicitud, solo el maestro de la hermandad del banco.", Kids(a, c.bank, "FontString")[3]:GetText())
         A.same({}, a:Errors())
     end)
 end)
@@ -351,6 +355,36 @@ describe("Configuración: Calendario (quién crea eventos y permisos por un tiem
         Reopen(c)
         A.same({}, Shown())
         A.truthy(WithText(a, c.calendar, "Nadie tiene permiso por un tiempo."):IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("con más de los que caben, la barra: el que no cabía se ve bajando y su X lo quita", function()
+        local a = F.Community()
+        local HU = a.HU
+        local now = a.env.time()
+        HU.db.unionCfg = { testGM = true, calAllow = {} }
+        for i, n in ipairs({ "Uno", "Dos", "Tres", "Cuatro", "Cinco", "Seis", "Siete" }) do
+            HU.db.unionCfg.calAllow[n:lower() .. "-reino"] = { name = n .. "-Reino", untilT = now + i * 60, by = "Tester-Reino" }
+        end
+        local c = Config(a)
+        Click(c.tab["Calendario"])
+        c.calendar.GetHeight = function() return 400 end
+        Reopen(c)
+        local rows = Kids(a, c.calendar, "Frame")
+        local function Shown()
+            local out = {}
+            for _, r in ipairs(rows) do if r:IsShown() then out[#out + 1] = r.name:GetText() end end
+            return out
+        end
+        A.same({ "Uno-Reino", "Dos-Reino", "Tres-Reino", "Cuatro-Reino", "Cinco-Reino" }, Shown())
+        local scroll = a.env.GuildUnionCfgPermScroll
+        A.truthy(scroll, "la barra")
+        a.env.FauxScrollFrame_SetOffset(scroll, 2)
+        scroll:GetScript("OnVerticalScroll")(scroll, 2 * 18)
+        A.same({ "Tres-Reino", "Cuatro-Reino", "Cinco-Reino", "Seis-Reino", "Siete-Reino" }, Shown())
+        A.truthy(Click(rows[5].del))
+        A.is_nil(HU.db.unionCfg.calAllow["siete-reino"], "el que no cabía, quitado")
+        A.truthy(HU.db.unionCfg.calAllow["seis-reino"])
         A.same({}, a:Errors())
     end)
 
@@ -500,7 +534,7 @@ describe("Configuración: la lista negra, en su pestaña", function()
         local a = F.Community()
         local HU = a.HU
         local b = Black(a)
-        for _, w in ipairs({ b.name, b.why, b.add, b.del, b.labels[1], b.labels[2] }) do A.truthy(w:IsShown()) end
+        for _, w in ipairs({ b.name, b.why, b.add, b.del, b.check, b.labels[1], b.labels[2] }) do A.truthy(w:IsShown()) end
         -- (sin motivo no se veta: se queda escrito para ponerlo)
         b.name:SetText("Compi-Reino")
         Click(b.add)
@@ -557,26 +591,35 @@ describe("Configuración: la lista negra, en su pestaña", function()
         local text = Chat(a, n0)
         A.matches("Compi%-Reino|r está en tu hermandad%.", text)
         A.matches("Lo vetó Bea%-Reino <DOS>%.", text)
-        A.matches("Motivo: estafa", text)
-        A.matches("Lo invitó Jefa%-Reino%.", text)
+        A.matches("Motivo: estafa%. Lo invitó Jefa%-Reino%.", text, "con su punto entre el motivo y quién lo invitó")
         a.w:Advance(13)
         A.same({}, Officer(a), "a mano, solo me lo dice a mí")
         A.same({}, a:Errors())
     end)
 
-    it("un miembro ve la lista, pero no puede añadir ni quitar (y Comprobar ahora no le dice nada)", function()
+    it("el aviso en /o, con quién lo invitó: el motivo lleva su punto antes de «Lo invitó»", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU.db.inviteLog = { ["Hermandad Uno"] = { { t = a.env.time() - 60, by = "Jefa-Reino", who = "Compi-Reino" } } }
+        HU:SetBan("Compi-Reino", true, "estafa")
+        HU:BlacklistCheck()
+        a.w:Advance(13)
+        A.same({ "[Guild Union] Lista negra: Compi-Reino está en la hermandad. Lo vetó Tester-Reino <UNO>. Motivo: estafa. Lo invitó Jefa-Reino." },
+            Officer(a))
+        A.same({}, a:Errors())
+    end)
+
+    it("un miembro ve la lista, pero no puede añadir, quitar ni «Comprobar ahora» (el repaso es de los oficiales)", function()
         local a = F.Community({ guild = GuildAs(4) })
         local HU = a.HU
         HU.db.bans = { ["malo-reino"] = { name = "Malo-Reino", on = true, by = "Bea-Reino", tag = "DOS", why = "estafa", t = 2 } }
         local b = Black(a)
         A.same({ WHITE .. "Malo-Reino|r" }, Names(b))
-        for _, w in ipairs({ b.name, b.why, b.add, b.del, b.labels[1], b.labels[2] }) do A.falsy(w:IsShown()) end
+        for _, w in ipairs({ b.name, b.why, b.add, b.del, b.check, b.labels[1], b.labels[2] }) do A.falsy(w:IsShown()) end
         A.falsy(Click(b.add))
         Click(b.rows[1])
         A.equal("", b.name:GetText(), "pulsar una fila no deja nada abajo")
-        local n0 = #a.w.chat
-        A.truthy(Click(b.check), "el botón sí se ve")
-        A.equal(n0, #a.w.chat)
+        A.falsy(Click(b.check), "«Comprobar ahora» no se ve")
         A.same({}, a:Errors())
     end)
 end)
@@ -617,15 +660,38 @@ describe("Configuración: la ventana de la lista negra (Blacklist.lua)", functio
         A.same({}, a:Errors())
     end)
 
-    it("un miembro la ve sin poder cambiarla", function()
+    it("un miembro la ve sin poder cambiarla ni «Comprobar ahora»", function()
         local a = F.Community({ guild = GuildAs(4) })
         Live(a)
         a.HU:ShowBlacklist()
         local win = a.env.GuildUnionBlacklistFrame
         win.Refresh()
-        A.equal(6, #win.editParts)
+        A.equal(7, #win.editParts)
         for _, w in ipairs(win.editParts) do A.falsy(w:IsShown()) end
+        A.falsy(WithText(a, win, "Comprobar ahora"):IsShown())
         A.equal("Solo el maestro y los oficiales pueden cambiar la lista.", win.who:GetText())
+        -- (un oficial, sí)
+        local o = F.Community()
+        Live(o)
+        o.HU:ShowBlacklist()
+        o.env.GuildUnionBlacklistFrame.Refresh()
+        A.truthy(WithText(o, o.env.GuildUnionBlacklistFrame, "Comprobar ahora"):IsShown())
+        A.same({}, a:Errors())
+        A.same({}, o:Errors())
+    end)
+
+    it("al invitar a alguien de la lista negra, el aviso: el motivo lleva su punto antes de «La invitación ya ha salido»", function()
+        -- (C_GuildInfo.Invite, que el WoW de mentira no trae: tiene que estar antes de entrar, cuando se engancha el aviso)
+        local a = addon.Load({ guild = F.Guild(), guildInfo = F.INFO })
+        local invited = {}
+        a.env.C_GuildInfo.Invite = function(name) invited[#invited + 1] = name end
+        a:Login(60)
+        a.HU:RefreshConfig(true)
+        a.HU.db.bans = { ["malo-reino"] = { name = "Malo-Reino", on = true, by = "Bea-Reino", tag = "DOS", why = "estafa", t = 2 } }
+        local n0 = #a.w.chat
+        a.env.C_GuildInfo.Invite("Malo-Reino")
+        A.same({ "Malo-Reino" }, invited, "la invitación sale igual")
+        A.matches("Lo vetó Bea%-Reino <DOS>%. Motivo: estafa%. La invitación ya ha salido: si entra, habla con un oficial%.", Chat(a, n0))
         A.same({}, a:Errors())
     end)
 end)
@@ -687,6 +753,7 @@ describe("Configuración: registro de invitaciones y salidas (InviteLog.lua)", f
         Search(win, "zzz")
         A.same({}, Rows(win))
         A.truthy(win.empty:IsShown())
+        A.equal("Nada coincide con la búsqueda.", win.empty:GetText(), "hay 4 guardadas: es que ninguna sale con eso")
         Search(win, "")
         A.equal(4, #Rows(win))
         -- (el botón del registro, otra vez: se cierra)
@@ -723,11 +790,14 @@ describe("Configuración: registro de invitaciones y salidas (InviteLog.lua)", f
         A.truthy(win.tabs.leaveLog.djPicked)
         A.falsy(win.tabs.inviteLog.djPicked)
         Search(win, "zzz")
-        A.equal("Todavía no hay salidas guardadas.", win.empty:GetText())
+        A.equal("Nada coincide con la búsqueda.", win.empty:GetText())
         Search(win, "")
         Click(win.tabs.inviteLog)
         A.equal("Invitó", win.hdrCells[3]:GetText())
         A.same({}, Rows(win))
+        -- (sin ninguna guardada, aunque se busque: que no hay)
+        Search(win, "zzz")
+        A.equal("Todavía no hay invitaciones guardadas.", win.empty:GetText())
         A.same({}, a:Errors())
     end)
 
@@ -770,7 +840,7 @@ describe("Configuración: registro de invitaciones y salidas (InviteLog.lua)", f
 end)
 
 ---------------------------------------------------------------------------
-describe("Configuración: «Solicitudes» de otras hermandades (InviteLog.lua)", function()
+describe("Configuración: «Peticiones de oficiales» de otras hermandades (InviteLog.lua)", function()
     local function Requests(a)
         Live(a)
         a.HU:ShowRequests()
@@ -840,7 +910,7 @@ describe("Configuración: «Solicitudes» de otras hermandades (InviteLog.lua)",
         a.w:TakeSent()
         A.truthy(Click(win.accept))
         A.matches("Compi%-Reino: ya tiene ese rango", Chat(a, n0))
-        A.equal("Solicitudes", job.title)
+        A.equal("Peticiones de oficiales", job.title)
         A.equal("Compi-Reino (+1)", job.text)
         A.same({ "/gdemote Compi Reino", "/gremove Compi Reino" }, job.lines)
         -- (solo ha salido la primera orden: se contesta esa y se quita; la de echar sigue)
@@ -911,7 +981,7 @@ describe("Configuración: peticiones de otra hermandad, echar (GK, Social.lua) y
         return out
     end
 
-    it("GK: la de una oficial de DOS va a «Solicitudes» y se reparte a mi hermandad; contestada por otro oficial, se quita", function()
+    it("GK: la de una oficial de DOS va a «Peticiones de oficiales» y se reparte a mi hermandad; contestada por otro oficial, se quita", function()
         local a = F.Community()
         local HU = a.HU
         KnowDOS(a)
@@ -968,7 +1038,7 @@ describe("Configuración: peticiones de otra hermandad, echar (GK, Social.lua) y
         A.same({}, a:Errors())
     end)
 
-    it("GP: el cambio de rango que pide una oficial de DOS va a «Solicitudes»; sin permiso para cambiar rangos, no", function()
+    it("GP: el cambio de rango que pide una oficial de DOS va a «Peticiones de oficiales»; sin permiso para cambiar rangos, no", function()
         local a = F.Community()
         local HU = a.HU
         KnowDOS(a)
@@ -1023,10 +1093,10 @@ describe("Configuración: peticiones de otra hermandad, echar (GK, Social.lua) y
         HU.remoteRanks.DOS = { "Maestro", "Oficial", "Oficial", "Veterano", "Miembro" }
         n0 = #a.w.chat
         HU:AskGuildKick("Blas-Reino", "DOS")
-        A.matches("Pedido a <DOS> que eche a Blas%-Reino: lo verán sus oficiales en «Solicitudes»%.", Chat(a, n0))
+        A.matches("Pedido a <DOS> que eche a Blas%-Reino: lo verán sus oficiales en «Peticiones de oficiales»%.", Chat(a, n0))
         n0 = #a.w.chat
         HU:AskGuildRank("Blas-Reino", "DOS", 3)
-        A.matches("Pedido a <DOS> que Blas%-Reino pase a Veterano: lo verán sus oficiales en «Solicitudes»%.", Chat(a, n0))
+        A.matches("Pedido a <DOS> que Blas%-Reino pase a Veterano: lo verán sus oficiales en «Peticiones de oficiales»%.", Chat(a, n0))
         a.w:Advance(2)
         local gk, gp = Sent(a, "^GK~")[1], Sent(a, "^GP~")[1]
         A.equal("Bea-Reino", gk.target)
@@ -1088,7 +1158,7 @@ describe("Configuración: peticiones entre hermandades, de punta a punta (red)",
         net:Advance(30)
         return net, p
     end
-    -- (Bea la acepta en su «Solicitudes»: el tic de la primera; la ventana de órdenes lo manda todo)
+    -- (Bea la acepta en sus «Peticiones de oficiales»: el tic de la primera; la ventana de órdenes lo manda todo)
     local function Accept(q)
         Live(q.a)
         local job

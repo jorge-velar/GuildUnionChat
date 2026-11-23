@@ -166,15 +166,17 @@ local function Refresh()
         end
     end
     win:Fill(list, Paint)
+    -- (hay guardadas, pero ninguna sale con lo buscado)
+    local noMatch = q ~= "" and total > 0 and L("Nada coincide con la búsqueda.")
     local h = win.hdrCells
     if view == "inviteLog" then
         h[3]:SetText(L("Invitó")); h[4]:SetText(L("A quién"))
         win.who:SetText(L("Quién invitó a quién a tus hermandades. Se guarda lo que tu addon va viendo en el registro del juego.") .. "  |cff808080" .. total .. "|r")
-        win.empty:SetText(L("Todavía no hay invitaciones guardadas."))
+        win.empty:SetText(noMatch or L("Todavía no hay invitaciones guardadas."))
     else
         h[3]:SetText(L("Quién")); h[4]:SetText(L("Cómo"))
         win.who:SetText(L("Quién se fue de tus hermandades o fue echado. Se guarda lo que tu addon va viendo en el registro del juego.") .. "  |cff808080" .. total .. "|r")
-        win.empty:SetText(L("Todavía no hay salidas guardadas."))
+        win.empty:SetText(noMatch or L("Todavía no hay salidas guardadas."))
     end
     for k, b in pairs(win.tabs) do
         HU.DJ.PickRed(b, k == view)
@@ -216,9 +218,9 @@ function HU:ShowInviteLog()
 end
 
 ---------------------------------------------------------------------------
--- Solicitudes: otra hermandad pide echar a alguien de la mía (GK, Social.lua). No salta ninguna
--- ventana: se guardan (db.kickRequests, caducan en 24 h) y un oficial las acepta o rechaza desde aquí
--- [+ARCHITECTURE.md]
+-- Peticiones de oficiales: otra hermandad pide echar a alguien de la mía (GK, Social.lua) o cambiarle el
+-- rango (GP, Ranks.lua). No salta ninguna ventana: se guardan (db.kickRequests, caducan en 24 h) y un
+-- oficial las acepta o rechaza desde aquí [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local REQ_TTL = 86400
 local function Requests()
@@ -350,7 +352,7 @@ local function Accept(list)
         end
     end
     if #lines == 0 then return end
-    HU:RunOrders({ title = L("Solicitudes"), text = HU:Short(real[1].r.target) .. (#real > 1 and (" (+" .. (#real - 1) .. ")") or ""), lines = lines,
+    HU:RunOrders({ title = L("Peticiones de oficiales"), text = HU:Short(real[1].r.target) .. (#real > 1 and (" (+" .. (#real - 1) .. ")") or ""), lines = lines,
         onDone = function(sent)
             for _, x in ipairs(real) do
                 if (sent or 0) >= x.upto then
