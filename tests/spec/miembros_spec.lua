@@ -454,10 +454,17 @@ end)
 describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", function()
     local BEA = { fullName = "Bea-Reino", fullGuildName = "Hermandad Dos", level = 30, filename = "MAGE", area = "Ventormenta" }
     -- (la ventana de hermandad del juego, lo justo: su lista de miembros con la casilla de desconectados)
-    local function GuildWindow(a)
+    local function GuildWindow(a, withChat)
         local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
+        -- (con withChat, también el chat del juego, para la vista de chat)
+        if withChat then
+            f.Chat = a.env.CreateFrame("Frame", nil, f)
+            f.Chat.visible = false
+            f.Chat.IsVisible = function(self) return self.visible end
+        end
         f.GuildInfoTab = false -- (sin pestañas: la de GuildUnion, BlizzTab.lua, no se monta)
         f.MemberList = a.env.CreateFrame("Frame", nil, f)
+        f.MemberList.IsVisible = function() return true end
         local chk = a.env.CreateFrame("CheckButton", nil, f.MemberList)
         f.MemberList.ShowOfflineButton = chk
         chk.visible = true
@@ -480,43 +487,403 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.falsy(list[4].own)
     end)
 
-    it("el interruptor sale en la vista de miembros; «Unión» tapa la lista del juego con la de todos", function()
+    it("Miembros sale de entrada y tapa la lista del juego: por rango y nivel, con hermandad y nota", function()
         local a = F.Community()
+        a.w.guild.members[2].note = "tanque" -- (Compi)
         GuildWindow(a)
-        local switch, cover = a.env.GuildUnionRosterSwitch, a.env.GuildUnionUnionRoster
-        A.truthy(switch and switch:IsShown(), "el interruptor")
-        A.falsy(cover:IsShown(), "al principio, la del juego")
-        Click("GuildUnionRosterUnion", a)
-        A.truthy(cover:IsShown())
-        A.matches("Jefa", cover.rows[1].cells[1]:GetText())
-        A.matches("Hermandad Uno", cover.rows[1].cells[5]:GetText())
-        -- (el clic ha buscado con /who la hermandad que no tiene lista)
+        local check, cover = a.env.GuildUnionRosterCheck, a.env.GuildUnionUnionRoster
+        A.truthy(check and check:IsShown(), "la casilla «GuildUnion»")
+        A.truthy(cover:IsShown(), "al principio, Miembros")
+        A.equal(1, cover.tabs.selectedTab)
+        A.equal(4, cover.tabs.numTabs)
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        A.matches("Jefa", cover.rows[1].cells.name:GetText())
+        A.matches("UNO", cover.rows[1].cells.guild:GetText())
+        A.matches("Compi", cover.rows[3].cells.name:GetText())
+        A.equal("tanque", cover.rows[3].cells.note:GetText())
+        -- (corona para la maestra, espadas para el oficial, nada para el miembro)
+        A.truthy(cover.rows[1].cells.rankIcon:IsShown())
+        A.truthy(cover.rows[2].cells.rankIcon:IsShown())
+        A.falsy(cover.rows[3].cells.rankIcon:IsShown())
+        -- (el clic en una fila ha buscado con /who la hermandad que no tiene lista)
+        cover.rows[1]:GetScript("OnClick")(cover.rows[1], "LeftButton")
         A.same({ 'g-"Hermandad Dos"' }, a.w.whoSent)
         a.w.who = { BEA }
         a.w:Fire("WHO_LIST_UPDATE")
-        A.matches("Bea", cover.rows[4].cells[1]:GetText())
-        A.equal("30", cover.rows[4].cells[2]:GetText())
-        A.equal("Ventormenta", cover.rows[4].cells[3]:GetText())
+        A.matches("Bea", cover.rows[4].cells.name:GetText())
+        A.equal("30", cover.rows[4].cells.level:GetText())
+        A.equal("Ventormenta", cover.rows[4].cells.zone:GetText())
+        A.matches("DOS", cover.rows[4].cells.guild:GetText())
         A.matches("4 conectados", cover.status:GetText())
-        cover.rows[1]:GetScript("OnClick")(cover.rows[1], "LeftButton")
-        Click("GuildUnionRosterGuild", a)
-        A.falsy(cover:IsShown(), "«Mi hermandad»: la del juego, tal cual")
+        Click("GuildUnionRosterCheck", a)
+        A.falsy(cover:IsShown(), "casilla quitada: la del juego, tal cual")
+        A.truthy(a.HU.db.unionRosterOff, "y se recuerda")
+        Click("GuildUnionRosterCheck", a)
+        A.truthy(cover:IsShown(), "puesta otra vez: Miembros")
+        A.falsy(a.HU.db.unionRosterOff)
         A.same({}, a:Errors())
     end)
 
-    it("fuera de la vista de miembros no sale nada", function()
+    it("un clic en un título ordena por esa columna; otro, al revés; el tercero, como al principio", function()
         local a = F.Community()
-        local f = GuildWindow(a)
-        Click("GuildUnionRosterUnion", a)
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        local name = cover.hdr -- (los títulos no tienen nombre: se buscan por el texto)
+        local byName
+        for _, fr in ipairs(a.w.frames) do
+            if fr._parent == name and fr:GetText() == "Nombre" then byName = fr end
+        end
+        A.truthy(byName, "el título «Nombre»")
+        byName:GetScript("OnClick")(byName)
+        A.matches("Compi", cover.rows[1].cells.name:GetText())
+        byName:GetScript("OnClick")(byName)
+        A.matches("Tester", cover.rows[1].cells.name:GetText())
+        byName:GetScript("OnClick")(byName)
+        A.matches("Jefa", cover.rows[1].cells.name:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("los oficiales de las otras hermandades salen con su rango (la lista que mandan solas, RB)", function()
+        local a = F.Community()
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        a.HU.remoteRoster.DOS = { members = {
+            { name = "Lord-Reino", online = true, rankIndex = 1, rank = "Oficial", class = "MAGE", level = 60, zone = "Ventormenta" },
+            { name = "Fuera-Reino", online = false, rankIndex = 1, rank = "Oficial", class = "MAGE", level = 60 },
+        } }
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        -- (Jefa 0; luego los de rango 1, por nombre: Lord antes que Tester; el desconectado no sale)
+        A.matches("Lord", cover.rows[2].cells.name:GetText())
+        A.equal("Oficial", cover.rows[2].cells.rank:GetText())
+        A.matches("DOS", cover.rows[2].cells.guild:GetText())
+        A.truthy(cover.rows[2].cells.rankIcon:IsShown())
+        for i = 1, 6 do A.falsy((cover.rows[i].cells.name:GetText() or ""):find("Fuera", 1, true)) end
+        A.same({}, a:Errors())
+    end)
+
+    it("clic izquierdo: la ficha (nuestra) con hermandad, rango, nota y profesiones; otro clic la cierra", function()
+        local a = F.Community()
+        a.w.guild.members[2].note = "tanque" -- (Compi)
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local row = cover.rows[3]
+        A.matches("Compi", row.cells.name:GetText())
+        row:GetScript("OnClick")(row, "LeftButton")
+        local card = a.env.GuildUnionMemberCard
+        A.truthy(card and card:IsShown(), "la ficha")
+        A.matches("Compi", card.title:GetText())
+        A.matches("UNO", card.lines[1]:GetText())
+        A.equal("Miembro", card.lines[3]:GetText())
+        A.equal("—", card.lines[5]:GetText(), "sin profesiones que dé el juego")
+        A.equal("tanque", card.lines[6]:GetText())
+        row:GetScript("OnClick")(row, "LeftButton")
+        A.falsy(card:IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("varios a la vez: Ctrl suma uno, Mayús elige del último al de ahora", function()
+        local a = F.Community()
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local r = cover.rows
+        r[1]:GetScript("OnClick")(r[1], "LeftButton")
+        A.truthy(r[1].selTex:IsShown()); A.falsy(r[2].selTex:IsShown())
+        a.env.IsControlKeyDown = function() return true end
+        r[3]:GetScript("OnClick")(r[3], "LeftButton")
+        A.truthy(r[1].selTex:IsShown()); A.falsy(r[2].selTex:IsShown()); A.truthy(r[3].selTex:IsShown())
+        a.env.IsControlKeyDown = function() return false end
+        a.env.IsShiftKeyDown = function() return true end
+        r[1]:GetScript("OnClick")(r[1], "LeftButton")
+        A.truthy(r[1].selTex:IsShown()); A.truthy(r[2].selTex:IsShown()); A.truthy(r[3].selTex:IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("clic derecho en uno de mi hermandad: cambiar rango y echar, por la ventana de órdenes", function()
+        local a = F.Community()
+        local HU = a.HU
+        GuildWindow(a)
+        F.Stub(HU, "CanPromote", true); F.Stub(HU, "CanDemote", true); F.Stub(HU, "CanKickGuild", true)
+        local sent = {}
+        F.Stub(HU, "TypeLines", function(_, macro, title) sent[#sent + 1] = { macro = macro, title = title } end)
+        local extra
+        HU.PlayerMenu = function(_, _, fn) extra = fn end
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local row = cover.rows[3]
+        A.matches("Compi", row.cells.name:GetText())
+        row:GetScript("OnClick")(row, "RightButton")
+        A.truthy(extra, "el menú trae las opciones de hermandad")
+        -- (un menú de mentira que recuerda sus botones)
+        local function Menu()
+            local m = { items = {} }
+            function m:CreateButton(text, fn) local sub = Menu(); sub.text, sub.fn = text, fn; self.items[#self.items + 1] = sub; return sub end
+            function m:CreateTitle() end
+            function m:CreateDivider() end
+            return m
+        end
+        local root = Menu()
+        extra(root)
+        local rankMenu, kick = root.items[1], root.items[2]
+        A.equal("Cambiar rango", rankMenu.text)
+        rankMenu.items[4].fn() -- (Veterano: índice 3, Compi está en el 4)
+        A.matches("/gpromote Compi", sent[1].macro)
+        kick.fn()
+        A.matches("/gremove Compi", sent[2].macro)
+        A.same({}, a:Errors())
+    end)
+
+    it("en la vista de chat: Chat primero; Members…Bank pasan a la vista de miembros con esa sección", function()
+        local a = F.Community()
+        local f = GuildWindow(a, true)
+        local cover = a.env.GuildUnionUnionRoster
         f.MemberList.ShowOfflineButton.visible = false
-        f.MemberList.ShowOfflineButton:GetScript("OnHide")()
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
         a.w:Advance(0.1)
-        A.falsy(a.env.GuildUnionRosterSwitch:IsShown())
-        A.falsy(a.env.GuildUnionUnionRoster:IsShown())
-        -- (y al volver, sigue en «Unión»)
+        A.truthy(cover:IsShown(), "la fila de botones")
+        A.equal(0, cover.tabs.selectedTab, "empieza en Chat")
+        A.truthy(cover.tabs.chatBtn:IsShown())
+        A.falsy(cover.hdr:IsShown(), "sin lista: se ve el chat del juego")
+        A.falsy(cover.tabs.Tabs[1]:IsShown(), "los nuestros, fuera: van los seguros")
+        A.falsy(a.env.GuildUnionRosterCheck:IsShown(), "la casilla solo en la vista de miembros")
+        -- (pulsar Trade en el chat: el botón seguro apunta la sección y el juego pasa a la vista de miembros)
+        local trade = cover.tabs.chatModeBtns[2]
+        trade:GetScript("PreClick")(trade)
+        f.Chat.visible = false
         f.MemberList.ShowOfflineButton.visible = true
         f.MemberList.ShowOfflineButton:GetScript("OnShow")()
         a.w:Advance(0.1)
-        A.truthy(a.env.GuildUnionUnionRoster:IsShown())
+        A.equal(2, cover.tabs.selectedTab, "abre Trade")
+        A.truthy(cover.trade:IsShown())
+        A.truthy(cover.tabs.Tabs[1]:IsShown())
+        A.falsy(cover.tabs.chatBtn:IsShown())
+        -- (en la vista de miembros, «Chat» es el botón seguro que pulsa el icono del chat del juego)
+        A.truthy(cover.tabs.chatSecure:IsShown())
+        local check = a.env.GuildUnionRosterCheck
+        check:GetScript("OnClick")(check)
+        A.falsy(cover.tabs.chatSecure:IsShown(), "con la casilla quitada, fuera")
+        A.same({}, a:Errors())
+    end)
+
+    it("la ficha enseña la nota de oficial, pero no las líneas de configuración del addon", function()
+        local a = F.Community()
+        a.w.guild.members[2].officerNote = "tanque principal"
+        a.w.guild.members[3].officerNote = "vieja GU:zz secreta"
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local function Card(i)
+            local row = cover.rows[i]
+            row:GetScript("OnClick")(row, "LeftButton")
+            return a.env.GuildUnionMemberCard
+        end
+        A.equal("tanque principal", Card(3).lines[7]:GetText())
+        local c = Card(1)
+        A.matches("Jefa", c.title:GetText())
+        A.falsy(c.lines[7]:GetText():find("secreta", 1, true))
+        A.same({}, a:Errors())
+    end)
+
+    it("Comercio (Trade.lua): solicitudes públicas y privadas, mías en azul, con modo prueba", function()
+        local a = F.Community()
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        local t2 = cover.tabs.Tabs[2]
+        t2:GetScript("OnClick")(t2)
+        local tr = cover.trade
+        A.truthy(tr:IsShown(), "la sección Comercio")
+        tr.testBtn:GetScript("OnClick")(tr.testBtn)
+        local function Count()
+            local n = 0
+            for _, r in ipairs(tr.rows) do if r:IsShown() and r.entry then n = n + 1 end end
+            return n
+        end
+        A.equal(4, Count(), "públicas: 4")
+        local mine
+        for _, r in ipairs(tr.rows) do if r.entry and r.entry.who == a.HU:Me() then mine = r end end
+        A.matches("4da6ff", mine.cells[1]:GetText(), "la mía, en azul")
+        A.falsy(mine.accept:IsShown(), "la mía: sin Aceptar")
+        A.truthy(mine.cancel:IsShown(), "la mía: Cancelar")
+        local priv = tr.viewBtns.priv
+        priv:GetScript("OnClick")(priv)
+        A.equal(3, Count(), "en Privado: la que me piden y las dos mías")
+        -- (Aceptar una pública de otro: sigue en Público con mi nombre, y sale en mi Privado)
+        local pub = tr.viewBtns.pub
+        pub:GetScript("OnClick")(pub)
+        local other
+        for _, r in ipairs(tr.rows) do if r.entry and r.entry.state == "open" and r.entry.who ~= a.HU:Me() then other = r end end
+        A.truthy(other.accept:IsShown())
+        other.accept:GetScript("OnClick")(other.accept)
+        A.equal(4, Count(), "sigue en Público")
+        A.truthy(other.actText:IsShown(), "con el nombre de quien la aceptó")
+        priv:GetScript("OnClick")(priv)
+        A.equal(4, Count(), "y en mi Privado")
+        pub:GetScript("OnClick")(pub)
+        -- (al buscar, la lista pasa a ser la de quién lo tiene: en el WoW de mentira, nadie)
+        tr.search:SetText("Alquimia")
+        tr.search:GetScript("OnTextChanged")(tr.search)
+        A.equal(0, Count())
+        A.truthy(tr.empty:IsShown())
+        A.falsy(tr.chat:IsShown(), "sin chat al buscar")
+        A.same({}, a:Errors())
+    end)
+
+    it("Comercio, Calendario y Banco: «próximamente», sin lista", function()
+        local a = F.Community()
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        local t2 = cover.tabs.Tabs[3]
+        t2:GetScript("OnClick")(t2)
+        A.equal(3, cover.tabs.selectedTab)
+        A.truthy(cover.soon:IsShown())
+        A.falsy(cover.hdr:IsShown())
+        A.matches("Próximamente", cover.soon:GetText())
+        local t1 = cover.tabs.Tabs[1]
+        t1:GetScript("OnClick")(t1)
+        A.falsy(cover.soon:IsShown())
+        A.truthy(cover.hdr:IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("fuera de la vista de miembros no sale nada; al volver, la casilla manda", function()
+        local a = F.Community()
+        local f = GuildWindow(a)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.MemberList.ShowOfflineButton:GetScript("OnHide")()
+        a.w:Advance(0.1)
+        A.falsy(a.env.GuildUnionRosterCheck:IsShown())
+        A.falsy(a.env.GuildUnionUnionRoster:IsShown())
+        f.MemberList.ShowOfflineButton.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.truthy(a.env.GuildUnionUnionRoster:IsShown(), "por defecto, puesta")
+        Click("GuildUnionRosterCheck", a)
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.falsy(a.env.GuildUnionUnionRoster:IsShown(), "quitada, sigue quitada al volver a abrir")
+    end)
+
+    it("sin separar por hermandad: los del /who, sin rango, se mezclan por nivel con el rango más bajo", function()
+        local a = F.Community()
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover.rows[1]:GetScript("OnClick")(cover.rows[1], "LeftButton")
+        a.w.who = { { fullName = "Alta-Reino", fullGuildName = "Hermandad Dos", level = 61, filename = "MAGE", area = "Ventormenta" } }
+        a.w:Fire("WHO_LIST_UPDATE")
+        -- (Jefa 0, Tester 1, y en el rango más bajo, Alta (61) antes que Compi (60))
+        A.matches("Alta", cover.rows[3].cells.name:GetText())
+        A.matches("Compi", cover.rows[4].cells.name:GetText())
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("El chat de la ventana de hermandad del juego sigue el formato de Ajustes (BlizzTab.lua)", function()
+    it("punto o etiqueta, como diga db.chatMark", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU.db.chatMark = "dot"
+        local head = HU:FormatLineParts("main", "DOS", "Bea-Reino", "hola", nil, "blizz")
+        A.truthy(head:find("dot:0:0", 1, true), "el punto")
+        HU.db.chatMark = "tag"
+        head = HU:FormatLineParts("main", "DOS", "Bea-Reino", "hola", nil, "blizz")
+        A.falsy(head:find("dot:0:0", 1, true), "sin punto")
+        A.truthy(head:find("DOS", 1, true), "la etiqueta")
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Registro (InviteLog.lua): invitaciones y salidas", function()
+    it("guarda quién se fue y a quién echaron, aparte de las invitaciones", function()
+        local a = F.Community()
+        local HU = a.HU
+        local EV = {
+            { "invite", "Jefa", "Nuevo", nil, 0, 0, 1, 0 },
+            { "quit", "Viejo", nil, nil, 0, 0, 2, 0 },
+            { "remove", "Jefa", "Malo", nil, 0, 0, 0, 3 },
+        }
+        a.env.GetNumGuildEvents = function() return #EV end
+        a.env.GetGuildEventInfo = function(i) return unpack(EV[i]) end
+        a.w:Fire("GUILD_EVENT_LOG_UPDATE")
+        local inv, out
+        for _, l in pairs(HU.db.inviteLog or {}) do inv = l end
+        for _, l in pairs(HU.db.leaveLog or {}) do out = l end
+        A.equal(1, #inv)
+        A.equal(2, #out)
+        local byWho = {}
+        for _, e in ipairs(out) do byWho[e.who:match("^([^-]+)")] = e end
+        A.falsy(byWho.Viejo.by, "se fue él")
+        A.matches("Jefa", byWho.Malo.by, "lo echó la Jefa")
+        -- (otra vez lo mismo: no se repite)
+        a.w:Fire("GUILD_EVENT_LOG_UPDATE")
+        A.equal(2, #out)
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Solicitudes (InviteLog.lua): otra hermandad pide echar a alguien de la mía", function()
+    it("se guardan, se cuentan, y aceptar abre la ventana de órdenes con el /gremove", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "CanKickGuild", true)
+        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        A.equal(1, HU:KickRequestCount(), "sin repetidas")
+        local job, answered
+        F.Stub(HU, "RunOrders", function(_, j) job = j end)
+        F.Stub(HU, "AnswerKick", function(_, r, ok) answered = { r = r, ok = ok } end)
+        HU:ShowRequests()
+        local win = a.env.GuildUnionRequestsFrame
+        win.Refresh()
+        win.rows[1]:GetScript("OnClick")(win.rows[1])
+        win.accept:GetScript("OnClick")(win.accept)
+        A.matches("/gremove Compi", job.lines[1])
+        job.onDone(1)
+        A.truthy(answered.ok)
+        A.equal(0, HU:KickRequestCount(), "contestada: fuera de la lista")
+        -- (y queda en el registro de salidas, con quién lo pidió)
+        local out
+        for _, l in pairs(HU.db.leaveLog or {}) do out = l end
+        A.truthy(out and out[1], "apuntada en Salidas")
+        A.equal("Bea-Reino", out[1].req)
+        A.same({}, a:Errors())
+    end)
+
+    it("solo salen las que puedo hacer: subir a oficial, no, si yo soy oficial", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "CanPromote", true); F.Stub(HU, "CanDemote", true)
+        -- (yo, Tester, soy oficial (rango 1); Compi es miembro (4))
+        HU:AddKickRequest({ id = "r1", kind = "rank", rank = 1, target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        A.equal(0, HU:KickRequestCount(), "a oficial: no la puedo dar")
+        HU:AddKickRequest({ id = "r2", kind = "rank", rank = 3, target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        A.equal(1, HU:KickRequestCount(), "a veterano: sí")
+        A.same({}, a:Errors())
+    end)
+
+    it("modo prueba: solicitudes de mentira; el tic y la X las quitan sin mandar nada", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "CanKickGuild", true)
+        local sent = 0
+        F.Stub(HU, "RunOrders", function() sent = sent + 1 end)
+        F.Stub(HU, "AnswerKick", function() sent = sent + 1 end)
+        HU:ShowRequests()
+        local win = a.env.GuildUnionRequestsFrame
+        win.test:GetScript("OnClick")(win.test)
+        A.equal(5, HU:KickRequestCount(), "3 de echar y 2 de rango")
+        win.Refresh()
+        win.rows[1].yes:GetScript("OnClick")(win.rows[1].yes)
+        A.equal(4, HU:KickRequestCount())
+        win.Refresh()
+        win.rows[1].no:GetScript("OnClick")(win.rows[1].no)
+        A.equal(3, HU:KickRequestCount())
+        -- (el filtro de rango enseña solo las 2 de rango)
+        local tr = win.tabs.rank
+        tr:GetScript("OnClick")(tr)
+        A.matches("Cuatro", win.rows[1].cells[3]:GetText() .. win.rows[2].cells[3]:GetText())
+        A.equal(0, sent, "las de prueba no mandan nada")
+        A.same({}, a:Errors())
     end)
 end)

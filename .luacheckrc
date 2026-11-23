@@ -30,7 +30,7 @@ globals = {
 read_globals = {
     table = { fields = { "unpack" } }, -- (WoW la tiene: table.unpack)
     "Ambiguate", "BackdropTemplateMixin", "CHAT_GUILD_GET", "CHAT_OFFICER_GET", "CLASS_ICON_TCOORDS",
-    "C_AddOns", "C_ChatInfo", "C_Club", "C_GuildInfo", "C_Item", "C_PartyInfo", "C_RestrictedActions",
+    "C_AddOns", "C_ChatInfo", "C_Club", "NUM_REAGENTBAG_SLOTS", "GuildBankFrame", "NUM_BANKBAGSLOTS", "ITEM_QUALITY_COLORS", "IsModifiedClick", "GetItemIcon", "UnitIsGroupLeader", "EMPTY", "ButtonFrameTemplate_HidePortrait", "UnitInRaid", "UnitInParty", "C_Container", "GetContainerNumSlots", "GetContainerItemLink", "NUM_BAG_SLOTS", "C_GuildInfo", "C_Item", "C_PartyInfo", "C_RestrictedActions",
     "C_Spell", "C_SpellBook", "C_Timer", "C_TradeSkillUI", "C_UI", "CanEditGuildInfo", "CanEditOfficerNote",
     "CanGuildDemote", "CanGuildInvite", "CanGuildPromote", "CanGuildRemove", "CanViewOfficerNote",
     "ChannelBan", "ChannelFrame", "ChannelKick", "ChannelModerator", "ChannelMute", "ChannelUnban",
@@ -41,7 +41,7 @@ read_globals = {
     "CreateColor", "CreateFont", "CreateFrame", "DEFAULT_CHAT_FRAME", "ERR_ALREADY_INVITED_TO_GUILD_S",
     "ERR_ALREADY_IN_GUILD_S", "ERR_CHAT_PLAYER_NOT_FOUND_S", "ERR_GUILD_INVITE_S",
     "ERR_GUILD_PLAYER_NOT_FOUND_S", "Enum", "FCF_OpenNewWindow", "FauxScrollFrame_GetOffset",
-    "FauxScrollFrame_OnVerticalScroll", "FauxScrollFrame_SetOffset", "FauxScrollFrame_Update", "GetWhoInfo", "GetNumWhoResults", "GetFramesRegisteredForEvent", "FlashClientIcon",
+    "FauxScrollFrame_OnVerticalScroll", "PanelTemplates_SetTab", "PanelTemplates_TabResize", "PanelTemplates_SetNumTabs", "FauxScrollFrame_SetOffset", "FauxScrollFrame_Update", "GetWhoInfo", "GetNumWhoResults", "GetFramesRegisteredForEvent", "FlashClientIcon",
     "GameFontHighlightSmall", "GameFontNormal", "GameFontNormalSmall", "GameTooltip", "GameTooltip_Hide",
     "GetActiveTalentGroup", "GetAddOnMemoryUsage", "GetAddOnMetadata", "GetBuildInfo",
     "GetChannelDisplayInfo", "GetChannelName", "GetChannelRosterInfo", "GetChatWindowInfo",

@@ -235,6 +235,10 @@ function wow.New(opts)
     api.FauxScrollFrame_GetOffset = function(f) return f and f._offset or 0 end
     api.FauxScrollFrame_SetOffset = function(f, n) if f then f._offset = n end end
     api.FauxScrollFrame_OnVerticalScroll = function(_, _, _, fn) if fn then fn() end end
+    -- (las pestañas de la interfaz del juego: solo recuerdan cuál está elegida)
+    api.PanelTemplates_SetNumTabs = function(f, n) if f then f.numTabs = n end end
+    api.PanelTemplates_SetTab = function(f, id) if f then f.selectedTab = id end end
+    api.PanelTemplates_TabResize = function() end
     api.CreateFont = function(name) return NewFrame(w, "Font", name) end
     api.UIParent = NewFrame(w, "Frame", "UIParent")
     api.DEFAULT_CHAT_FRAME = NewFrame(w, "ScrollingMessageFrame", "ChatFrame1")
