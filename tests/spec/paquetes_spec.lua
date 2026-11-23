@@ -208,3 +208,56 @@ describe("Paquetes: la lista completa de miembros (MB)", function()
         A.same({}, net:Errors())
     end)
 end)
+
+describe("Paquetes: Members con desconectados de otras hermandades", function()
+    -- (la ventana de hermandad del juego, lo justo, con «Mostrar desconectados» marcada)
+    local function GuildWindow(a)
+        local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
+        f.GuildInfoTab, f.CommunitiesControlFrame, f.Chat = false, false, false
+        f.CommunitiesList = a.env.CreateFrame("Frame", nil, f)
+        f.MemberList = a.env.CreateFrame("Frame", nil, f)
+        f.MemberList.IsVisible = function() return true end
+        local chk = a.env.CreateFrame("CheckButton", nil, f.MemberList)
+        f.MemberList.ShowOfflineButton = chk
+        chk.IsVisible = function() return true end
+        chk.GetChecked = function() return true end
+        a.w:Fire("ADDON_LOADED", "Blizzard_Communities")
+        return f
+    end
+
+    it("salen con «?» si no se sabe si están conectados; con la lista de conectados al día, desconectados", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU.db.packs = { DOS = { MB = Pack(HU, { "Bea-Reino,8,60,1", "Beto-Reino,1,40,4" }) } }
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local function Row(name)
+            for _, r in ipairs(cover.rows) do
+                if r:IsShown() and (r.cells.name:GetText() or ""):find(name, 1, true) then return r end
+            end
+        end
+        local beto = Row("Beto")
+        A.truthy(beto, "Beto, de DOS, sale")
+        A.matches("%?", beto.cells.zone:GetText(), "no se sabe si está")
+        A.matches("DOS", beto.cells.guild:GetText())
+        -- (llega la lista de conectados de DOS: Bea está; Beto no, así que está desconectado)
+        HU.unionMembers.DOS = { members = { { name = "Bea-Reino", tag = "DOS", online = true, level = 60, ri = 1 } }, t = a.env.GetTime() }
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        A.falsy(Row("Beto").cells.zone:GetText():find("?", 1, true), "desconectado")
+        A.same({}, a:Errors())
+    end)
+
+    it("mientras llega, abajo dice cuánto falta de la lista completa", function()
+        local a = F.Community()
+        local HU = a.HU
+        local pk = Pack(HU, { "Bea-Reino,8,60,1" })
+        pk.t, pk.ok = {}, {}
+        HU.db.packs = { DOS = { MB = pk } }
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        A.matches("0/16", cover.status:GetText())
+        A.same({}, a:Errors())
+    end)
+end)

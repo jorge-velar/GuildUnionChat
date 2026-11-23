@@ -24,6 +24,7 @@ local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
 -- (la franja de esa barra, entre la columna y lo nuestro: toda oscura, de arriba abajo, con la barra por encima; mide
 -- STRIP_W, y en los 4 que quedan hasta lo nuestro empieza el borde del chat, que no se tapa) [+ARCHITECTURE.md]
 local STRIP, STRIP_W = 23, 19
+local ONLINE_FRESH = 120 -- la lista de conectados de otra hermandad (Miembros) vale para saber quién no está
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
@@ -187,6 +188,25 @@ local function Entries()
             end
         end
     end
+    -- Con la casilla de desconectados: la lista completa de las otras hermandades, de su paquete MB [+ARCHITECTURE.md]
+    -- (Packs/Members.lua), que se pide al mirarla. Si la lista de conectados de esa hermandad está al día,
+    -- quien no sale en ella está desconectado; si no, no se sabe y sale «?»
+    if ShowOffline() then
+        for _, tag in ipairs(HU:OtherTags()) do
+            HU:PackNeed(tag, "MB")
+            local st = HU.unionMembers[tag]
+            local known = st and st.members and st.t and GetTime() - st.t < ONLINE_FRESH
+            for _, m in ipairs(HU:PackedMembers(tag)) do
+                local k = m.name:lower()
+                if not byKey[k] then
+                    local e = { name = m.name, tag = tag, class = m.class, level = m.level, ri = m.rankIndex,
+                        rank = (m.rankIndex and HU:RankName(tag, m.rankIndex)) or "", online = false, unknown = not known }
+                    list[#list + 1] = e
+                    byKey[k] = e
+                end
+            end
+        end
+    end
     -- (los que llegan sin rango, del /who, van con el rango más bajo de mi hermandad: así se mezclan
     -- por nivel con los demás en vez de quedarse todos juntos al final)
     local low = 0
@@ -265,7 +285,7 @@ local function Paint()
                 ri:Hide()
             end
             -- (desconectado: en vez de la zona, cuánto lleva desconectado)
-            if e.online == false then c.zone:SetText("|cff9d9d9d" .. Ago(e.offSecs) .. "|r")
+            if e.online == false then c.zone:SetText(e.unknown and "|cffb0b0b0?|r" or ("|cff9d9d9d" .. Ago(e.offSecs) .. "|r"))
             else c.zone:SetText((e.zone or "") .. (e.afk and (" |cff808080(" .. L("Ausente") .. ")|r") or "")) end
             c.rank:SetText(e.rank or "")
             -- (la etiqueta de la hermandad, corta; el nombre entero, en la barra de abajo y en el menú)
@@ -293,6 +313,11 @@ local function Paint()
     local parts = { string.format(L("%d conectados"), online) }
     for _, t in ipairs(HU:OtherTags()) do
         local s = HU:UnionMembersStatus(t)
+        -- (con desconectados: cuánto ha llegado de su lista completa, mientras llega)
+        local got, total = HU:PackProgress(t, "MB")
+        if ShowOffline() and got and got < total then
+            s = (s ~= "" and (s .. ", ") or "") .. string.format(L("lista completa %d/%d"), got, total)
+        end
         if s ~= "" then parts[#parts + 1] = "|cff" .. HU:GuildColorHex(t) .. t .. "|r " .. s end
     end
     cover.status:SetText(table.concat(parts, "  ·  "))
@@ -1408,4 +1433,4 @@ HU:OnStart(function()
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_Communities") then Setup() end
 end)
 
-HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })
+HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Net/Packs", "Packs/Members", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })

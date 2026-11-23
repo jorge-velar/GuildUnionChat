@@ -1155,6 +1155,7 @@ E["No hay nada en tu banco ni en tus bolsas."] = "Nothing in your bank or your b
 E["No hay nada en tu banco."] = "Nothing in your bank."
 E["Solo los oficiales pueden pedir."] = "Only officers can make requests."
 E["Lo pedido se saca en el banco de hermandad del juego (al abrirlo sale lo pendiente) y se envía por correo. Rechazar una solicitud, solo el maestro de la hermandad del banco."] = "Requested items are taken out at the in-game guild bank (opening it shows what is pending) and sent by mail. Only the guild master of the bank's guild can reject a request."
+E["lista completa %d/%d"] = "full list %d/%d"
 
 -- (órdenes de hermandad: Orders.lua)
 E[": el juego aún no lo ha cargado"] = ": the game has not loaded it yet"
