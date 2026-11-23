@@ -1679,7 +1679,13 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
         local rTag, rIdx = self:RankInfoOf(author)
         local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
         local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
-        local tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
+        local tagText
+        if compact == "blizz" then
+            -- (el chat de la ventana de hermandad del juego: punto o etiqueta, como diga Ajustes, db.chatMark)
+            tagText = mark .. (tag and (self.db.chatMark == "tag" and self:TagText(tag) or self:DotText(tag)) or "")
+        else
+            tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
+        end
         local label = ""
         if showKind then
             local s = KIND_SHORT[kind] or (HU.IsExtra(kind) and HU.Utf8Cut(HU.ExtraName(kind) or "?", 4)) or "?"

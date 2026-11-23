@@ -39,7 +39,7 @@ function HU:Display(kind, tag, author, msg, guid)
     if kind ~= "main" or not tag or tag == self.myTag then return end
     -- (sin «[Guild]» delante: en esta ventana las líneas de Blizzard tampoco lo llevan)
     local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg, author, tag)
-    local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, true, nil, HU.MENTION_MARK[mentioned])
+    local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, "blizz", nil, HU.MENTION_MARK[mentioned])
     local line = head .. body
     local r, g, b = self:KindColor(kind)
     recent[#recent + 1] = { line, r, g, b, t = (GetServerTime and GetServerTime()) or time() }
@@ -151,7 +151,8 @@ end
 
 -- Menú del clic derecho sobre un jugador (con el menú de Blizzard, MenuUtil): susurrar, invitar al
 -- grupo, añadir amigo, ignorar y, para oficiales, silenciar. Son llamadas que el juego deja a los addons
-local function PlayerMenu(owner, e)
+-- (extra: una función que añade más opciones al final, como cambiar rango o echar en UnionRoster.lua)
+local function PlayerMenu(owner, e, extra)
     if not (e and MenuUtil and MenuUtil.CreateContextMenu) then return Whisper(e and e.name) end
     local target = HU:FullName(e.name) or e.name
     MenuUtil.CreateContextMenu(owner, function(_, root)
@@ -173,12 +174,13 @@ local function PlayerMenu(owner, e)
             root:CreateButton(L("Quitar silencio"), function() HU:SetMute(e.name, -1) end)
             root:CreateButton(L("Buscar lo que ha dicho"), function() HU:HistSearch(e.name, nil) end)
         end
+        if extra then root:CreateDivider(); extra(root) end
     end)
 end
 
 -- (también los usa «Unión» en la lista de miembros, UnionRoster.lua)
 function HU.WhisperTo(name) return Whisper(name) end
-function HU.PlayerMenu(owner, e) return PlayerMenu(owner, e) end
+function HU.PlayerMenu(owner, e, extra) return PlayerMenu(owner, e, extra) end
 
 -- Clic derecho en la lista de miembros de Blizzard: las opciones de oficial de GuildUnion, al final
 local function AddToGuildMemberMenu(_, root, ctx)
@@ -456,12 +458,9 @@ local function BuildPanel()
     end)
     local bUnmute = Button(panel, L("Quitar"), 80, bMute)
     bUnmute:SetScript("OnClick", function() HU:SetMute(mName:GetText(), -1) end)
-    -- (lista negra de la comunidad: su ventana, Blacklist.lua)
-    local bBlack = Button(panel, L("Lista negra"), 90, bUnmute, 6)
-    bBlack:SetScript("OnClick", function() HU:ShowBlacklist() end)
     HU:NameSuggest(qName, function(s) s:ClearFocus(); b2:Click() end)
     HU:NameSuggest(mName)
-    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute, bBlack }) do
+    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute }) do
         panel.officerOnly[#panel.officerOnly + 1] = w
     end
 
@@ -582,7 +581,7 @@ local function BuildPanel()
     hdr:SetPoint("RIGHT", panel, "RIGHT", -30, 0)
     local function SetView(v)
         view = v
-        if v == "members" then bMem:LockHighlight(); bOff:UnlockHighlight() else bOff:LockHighlight(); bMem:UnlockHighlight() end
+        HU.DJ.PickRed(bMem, v == "members"); HU.DJ.PickRed(bOff, v ~= "members")
         panel.memPick:SetShown(v == "members"); panel.memStatus:SetShown(v == "members")
         panel.whoBtn:SetShown(v == "members" and memberTag ~= nil)
         hdr:ClearAllPoints()
@@ -688,6 +687,14 @@ local function BuildPanel()
     -- (un clic en cualquier parte de la pestaña también vale para el /who)
     panel:HookScript("OnMouseDown", function() WhoTick() end)
     panel:SetScript("OnEvent", function() RefreshOfficers() end)
+    -- (copia 266: la mitad derecha es la configuración de la hermandad, UnionConfig.lua. Oficiales y Miembros se
+    -- guardan en un marco escondido: su código sigue igual, pero no se ven) [+ARCHITECTURE.md]
+    local stash = CreateFrame("Frame", nil, panel)
+    stash:Hide()
+    for _, w in ipairs({ bOff, bMem, panel.memPick, panel.whoBtn, hdr, sf }) do w:SetParent(stash) end
+    for _, row in ipairs(panel.offRows) do row:SetParent(stash) end
+    panel.memStatus:SetParent(stash); panel.offEmpty:SetParent(stash)
+    panel.config = HU:BuildUnionConfig(panel)
     -- (viendo «Miembros»: lo que llega se pinta al momento, y cada 2 s se mira si toca pedir otra vez)
     HU:Listen("CHANGED", function(what) if what == "unionMembers" and view == "members" then RefreshOfficers() end end)
     local acc = 0
@@ -733,10 +740,20 @@ local function FindChars(query)
             out[#out + 1] = { name = name, rank = rank or "", level = level, online = online, class = class, tag = HU.myTag, own = true, m = m }
         end
     end
+    -- (de las otras hermandades: sus oficiales y todos los conectados que se sepan, de Miembros o del /who)
+    local seen = {}
     for _, e in ipairs(OfficerEntries()) do
         local m = Match(e.name, q)
         if m then
+            seen[e.name:lower()] = true
             out[#out + 1] = { name = e.name, rank = e.rank, online = true, class = e.class, tag = e.tag, m = m }
+        end
+    end
+    for _, e in ipairs(HU:UnionMemberEntries(nil)) do
+        local m = not seen[e.name:lower()] and Match(e.name, q)
+        if m then
+            seen[e.name:lower()] = true
+            out[#out + 1] = { name = e.name, rank = e.rank or "", online = true, class = e.class, tag = e.tag, m = m }
         end
     end
     -- (primero TODOS los conectados y luego los desconectados, sin mezclarlos; dentro de cada grupo,
@@ -1042,9 +1059,13 @@ ScrollTo = function(name)
 end
 
 local search
+HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
+HU.SyncCharSearch = function() end
 -- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
 -- dónde es (antes se abría un susurro con él: Jorge, 10/11). Para susurrar, el clic derecho
 local function Pick(e)
+    -- (con la lista de toda la unión a la vista, UnionRoster.lua: se va allí, sea de la hermandad que sea)
+    if HU.UnionRosterPick(e) then return end
     if e.own then return ScrollTo(e.name) end
     HU:Print(string.format(L("%s es de %s: no sale en esta lista. Clic derecho en su nombre para susurrarle."),
         HU:Nice(e.name), "|cff" .. HU:GuildColorHex(e.tag) .. HU:GuildName(e.tag) .. "|r"))
@@ -1140,8 +1161,14 @@ local function BuildCharSearch(f)
     local function Sync()
         box:ClearAllPoints()
         local ours = panel and panel.where == "blizz" and panel:IsShown()
-        if not ours and anchor:IsVisible() then
-            box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -24, 30)
+        if HU.charSearchOff then
+            box:Hide()
+            ClearMark()
+        elseif not ours and anchor:IsVisible() then
+            -- (en el mismo sitio que en la vista de chat: a la derecha del desplegable «Guild», que en esta
+            -- vista está escondido pero sigue en su sitio. Jorge, 23/11)
+            if dd then box:SetPoint("LEFT", dd, "RIGHT", 16, 0)
+            else box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -108, 30) end
             box:Show()
         elseif not ours and dd and dd:IsVisible() then
             box:SetPoint("LEFT", dd, "RIGHT", 16, 0)
@@ -1197,11 +1224,26 @@ local function Setup()
     -- de ese botón, así que se ve y se esconde con él; y solo con la hermandad elegida (SyncTab)
     if f.InviteButton and HU.ShowInviteLog then
         local b = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
-        b:SetSize(170, 20)
-        b:SetText(L("Registro de invitaciones"))
+        b:SetSize(120, 20)
+        b:SetText(L("Ver registro"))
         b:SetPoint("RIGHT", f.InviteButton, "LEFT", -4, 0)
         b:SetScript("OnClick", function() HU:ShowInviteLog() end)
         tab.logBtn = b
+        -- «Solicitudes» (InviteLog.lua): lo que piden otras hermandades (echar a alguien de la mía). Con
+        -- alguna pendiente, encendido y con el número
+        local rq = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
+        rq:SetSize(140, 20)
+        rq:SetPoint("RIGHT", b, "LEFT", -4, 0)
+        rq:SetScript("OnClick", function() HU:ShowRequests() end)
+        local function SyncRequests()
+            local n = HU:KickRequestCount()
+            rq:SetText(n > 0 and (L("Peticiones de oficiales") .. " (" .. n .. ")") or L("Peticiones de oficiales"))
+            if n > 0 then rq:LockHighlight() else rq:UnlockHighlight() end
+        end
+        HU:Listen("CHANGED", function(what) if what == "requests" then SyncRequests() end end)
+        rq:HookScript("OnShow", SyncRequests)
+        SyncRequests()
+        tab.reqBtn = rq
     end
     -- (cada parte por separado: si una falla, las demás siguen y el fallo queda en /gu errores)
     if not panel then HU:SafeCall("pestaña", BuildPanel) end
@@ -1431,4 +1473,4 @@ HU:OnStart(function()
     end
 end)
 
-HU:Module("BlizzTab", { "Blacklist", "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "UnionMembers", "Wizard" })
+HU:Module("BlizzTab", { "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "UnionConfig", "UnionMembers", "UnionRoster", "Wizard" })
