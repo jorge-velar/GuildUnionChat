@@ -29,7 +29,7 @@ Mention.lua 3.6 80
 Minimap.lua 33.3 12
 Net/Packs.lua 94.6 19
 Net/Relay.lua 81.9 162
-Net/RosterSync.lua 77.2 176
+Net/RosterSync.lua 77.8 177
 Net/Security.lua 81.0 33
 Net/Transport.lua 67.4 57
 NoteConfig.lua 26.9 92
