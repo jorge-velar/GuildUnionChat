@@ -30,6 +30,10 @@ local mode             -- "roster" (vista de miembros del juego) o "chat" (vista
 local wantTab          -- la sección pulsada desde la vista de chat: se abre al llegar a la de miembros
 local sortKey, sortDesc   -- nil: rango y luego nivel
 local cover, mine
+local SyncNow          -- (la de Build: vuelve a mirar la vista y coloca lo nuestro)
+-- «Solo mi hermandad» en Miembros: lo nuestro se quita y queda la lista del juego, tal cual. Al pinchar en alguien sale
+-- su ficha, la única con la que el juego deja guardar notas (a un addon, nunca) [+ARCHITECTURE.md]
+local function RealList() return mode == "roster" and tab == 1 and HU.db.unionRosterMine == true end
 -- (los elegidos con clic, Mayús y Ctrl, por nombre en minúsculas; shown: la lista entera, en su orden)
 local sel, anchorKey, shown = {}, nil, {}
 local notes, notesDirty = {}, true
@@ -139,12 +143,6 @@ local function Entries()
     for _, e in ipairs(list) do
         if (e.ri or 99) >= 99 then e.ri, e.noRank = low, true end
         if e.own then e.note, e.offNote = notes[e.name:lower()], offNotes[e.name:lower()] end
-    end
-    -- (casilla «Solo mi hermandad»: fuera los de las otras)
-    if HU.db.unionRosterMine then
-        local only = {}
-        for _, e in ipairs(list) do if e.tag == HU.myTag then only[#only + 1] = e end end
-        list = only
     end
     table.sort(list, Less)
     return list
@@ -288,6 +286,12 @@ end
 
 local function ShowTab(i)
     tab = i
+    if RealList() then
+        -- (Miembros con «Solo mi hermandad»: la lista del juego; lo nuestro, fuera. La casilla sigue, para volver)
+        cover:Hide()
+        if mine then mine:Show() end
+        return
+    end
     -- (el botón elegido, negro con borde dorado y letra blanca; los demás, rojos: DJStyle.lua)
     cover.tabs.selectedTab = i
     local all = { [0] = cover.tabs.chatBtn }
@@ -316,6 +320,17 @@ end
 -- (expulsar, rango, notas) [+ARCHITECTURE.md]
 local card
 local RemoveFromGuild   -- (más abajo, con el clic derecho; lo usa también el botón de la ficha)
+
+-- (las notas solo se guardan con la ficha del juego: un clic en las nuestras lleva a la lista del juego, «Solo mi
+-- hermandad», con esa persona marcada por el buscador —flecha y resaltado, sin tocar la lista: BlizzTab.lua—)
+local function EditNotesInGame(e)
+    HU.db.unionRosterMine = true
+    if mine then mine:SetChecked(true) end
+    if card then card:Hide() end
+    if SyncNow then SyncNow() end
+    HU:Print(string.format(L("Las notas se cambian en la ficha del juego: pincha en %s en esta lista."), HU:Nice(e.name)))
+    HU.After(0.1, function() HU.MarkInGameList(e.name) end)
+end
 
 -- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; de las otras
 -- hermandades no llegan todavía)
@@ -438,8 +453,21 @@ local function BuildCard(f)
     end
     local noteBox
     noteBox, card.lines[6] = NoteBox(GT("NOTE_COLON", "Nota"), rows, -4)
-    local _, offText = NoteBox(GT("OFFICER_NOTE_COLON", "Nota de oficial"), noteBox, -4)
+    local offBox, offText = NoteBox(GT("OFFICER_NOTE_COLON", "Nota de oficial"), noteBox, -4)
     card.lines[7] = offText
+    -- (de mi hermandad: un clic en una nota lleva a la ficha del juego, la única que las guarda)
+    for _, box in ipairs({ noteBox, offBox }) do
+        box:EnableMouse(true)
+        box:SetScript("OnMouseUp", function() if card.entry and card.entry.own then EditNotesInGame(card.entry) end end)
+        box:SetScript("OnEnter", function(s)
+            if not (card.entry and card.entry.own) then return end
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L("Editar las notas"))
+            GameTooltip:AddLine(L("El juego solo deja cambiarlas en su ficha: te llevo a su lista con esta persona marcada."), 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        box:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
 
     -- (abajo, como el juego: Echar e Invitar al grupo. Echar va por la ventana de órdenes, como el clic
     -- derecho: solo para los de mi hermandad y si tengo permiso)
@@ -489,22 +517,6 @@ local function ShowCard(e, force)
     v[6]:SetText((e.note and e.note ~= "") and e.note or "")
     v[7]:SetText((e.offNote and e.offNote ~= "") and e.offNote or "")
     card:Show()
-end
-
--- Alguien de la lista, por nombre (para abrir su ficha desde la lista del juego)
-local function EntryByName(name)
-    local key = (HU:FullName(name) or name):lower()
-    for _, e in ipairs(Entries()) do
-        if e.name:lower() == key then return e end
-    end
-    for _, e in ipairs(HU.rosterList) do
-        if e.name and e.name:lower() == key then
-            if notesDirty then ReadNotes() end
-            return { name = e.name, tag = HU.myTag, class = e.class, level = e.level, zone = e.zone, ri = e.rankIndex or 99,
-                rank = e.rank or "", online = e.online, own = true, offSecs = e.offSecs,
-                note = notes[key], offNote = offNotes[key] }
-        end
-    end
 end
 
 -- Varios a la vez: Ctrl suma o quita uno, Mayús elige del último al de ahora; un clic solo, uno y su
@@ -641,12 +653,6 @@ function HU.UnionRosterPick(e)
             if not (card and card:IsShown() and card.entry and card.entry.name:lower() == key) then ShowCard(x) end
             return true
         end
-    end
-    -- (con «Solo mi hermandad» puesta, uno de otra hermandad no sale aunque esté conectado: se dice eso)
-    if HU.db.unionRosterMine and e.tag and e.tag ~= HU.myTag then
-        HU:Print(string.format(L("%s es de %s: con «Solo mi hermandad» puesta no sale en la lista."), HU:Nice(e.name),
-            "|cff" .. HU:GuildColorHex(e.tag) .. HU:GuildName(e.tag) .. "|r"))
-        return true
     end
     HU:Print(string.format(L("%s no está conectado ahora mismo (de las otras hermandades solo salen los conectados)."), HU:Nice(e.name)))
     return true
@@ -1038,7 +1044,7 @@ local function Build(f)
             ml:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 26, -60)
             if f.Chat then f.Chat:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 31, -44) end
         end
-        cover:SetShown(m ~= nil)
+        cover:SetShown(m ~= nil and not RealList())
         if cover:IsShown() then ShowTab(tab) end
         if m == "chat" then ChatAnchors() end
         UpdateCounts()
@@ -1052,30 +1058,23 @@ local function Build(f)
         if not ok then error(err, 0) end
     end
     local function SyncSoon() HU.After(0, Sync) end
+    SyncNow = Sync
     HU:On("PLAYER_REGEN_ENABLED", function() if secureLater then secureLater = false; SyncSoon() end end)
+    -- (marcada: la lista del juego; quitada: vuelve lo nuestro, con toda la unión)
     mine:SetScript("OnClick", function(s)
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         HU.db.unionRosterMine = s:GetChecked() and true or nil
         FauxScrollFrame_SetOffset(cover.scroll, 0)
-        Paint()
+        if card then card:Hide() end
+        Sync()
     end)
     for _, w in ipairs({ anchor, ml, f.Chat or nil }) do w:HookScript("OnShow", SyncSoon); w:HookScript("OnHide", SyncSoon) end
     -- (al cambiar de vista, en el acto: si se espera al siguiente fotograma, durante un instante se ven los
     -- botones en el sitio de la vista anterior)
     if f.SetDisplayMode then hooksecurefunc(f, "SetDisplayMode", function() Sync(); SyncSoon() end) end
-    -- (en la vista de chat, un clic en la lista de la derecha del juego abre nuestra ficha y no la suya. La
-    -- del juego se abre igual —es su código— y se cierra al momento)
-    if f.OpenGuildMemberDetailFrame then
-        hooksecurefunc(f, "OpenGuildMemberDetailFrame", function(_, _, memberInfo)
-            if mode ~= "chat" then return end
-            local name = memberInfo and memberInfo.name
-            if type(name) ~= "string" or HU.Secret(name) then return end
-            local e = EntryByName(name)
-            if not e then return end
-            if f.GuildMemberDetailFrame then f.GuildMemberDetailFrame:Hide() end
-            ShowCard(e, true)
-        end)
-    end
+    -- (un clic en la lista del juego —la de la derecha en la vista de chat, o la de «Solo mi hermandad»— abre su
+    -- ficha, la del juego, sin tocarla: con ella se guardan las notas. Si el addon la cerrara o abriera, el juego
+    -- bloquearía guardarlas)
     -- (al abrir la ventana se vuelve a mirar la vista: Chat o Miembros, según cuál abra el juego)
     f:HookScript("OnShow", function() lastMode = nil; SyncSoon() end)
     ShowTab(tab)

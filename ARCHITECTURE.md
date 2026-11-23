@@ -2531,11 +2531,17 @@ mezcla por nivel y no se queda al final. Columnas como las del juego más Herman
 (maestro) o espadas (oficial; rojas, admin: `HU:RoleOf`); desconectado, en Zona cuánto lleva (`Ago`). Nota: solo
 la pública de mi hermandad (las otras no llegan), que `ReadNotes` lee tras cada `GUILD_ROSTER_UPDATE`.
 Orden (`Less`): rango (0 = maestro, en todas), nivel de mayor a menor y nombre, todas mezcladas; un clic en un
-título ordena por esa columna, otro al revés y el tercero vuelve al de siempre (`sortKey`, `sortDesc`). «Solo mi
-hermandad» (`mine`, solo en Miembros) deja solo a los míos (`HU.db.unionRosterMine`); si con ella puesta el buscador
-de personajes elige a alguien de otra hermandad, `HU.UnionRosterPick` dice que esa casilla lo esconde. `Paint` pinta
+título ordena por esa columna, otro al revés y el tercero vuelve al de siempre (`sortKey`, `sortDesc`). `Paint` pinta
 las filas que caben, pide las listas que falten (`HU:WantUnionMembers(nil)`) y dice abajo cómo va cada una
 (`HU:UnionMembersStatus`); se repinta con `GUILD_ROSTER_UPDATE`, `CHANGED` «unionMembers» y cada 2 s.
+
+**«Solo mi hermandad» = la lista del juego** (`mine`, solo en Miembros; se recuerda en `HU.db.unionRosterMine`;
+`RealList()`). Lo nuestro (`cover`) se esconde entero y queda la ventana del juego tal cual: sus títulos para
+ordenar, su casilla de desconectados y, al pinchar, **su ficha, la única que guarda notas**. En Forever ningún
+addon puede guardarlas (`C_GuildInfo.SetNote` restringida; Ultimate Guild Roster lo dice igual; GuildNoteUpdater
+dejó de funcionar en 12.0) y si el addon abre esa ficha, mueve esa lista o abre su diálogo, el juego lo bloquea.
+Para encontrar a alguien en ella, el buscador de personajes (BlizzTab.lua, `ScrollTo`): flecha con su posición y
+resaltado, solo leyendo la lista. La casilla sigue a la vista para volver; las otras secciones, quitándola.
 
 ### La ficha de un miembro
 
@@ -2545,8 +2551,10 @@ juego bloquearía sus botones (expulsar, rango, notas). Con su aspecto y sus tex
 conexión, profesiones (solo de mi hermandad, `C_Club.GetMemberInfo`, y «Ver recetas»: `QueryGuildMemberRecipes`),
 nota y nota de oficial (si puedo verla; con «GU:», «(configuración de GuildUnion)»); abajo, Echar (como el clic
 derecho: activo con los de mi hermandad que mi rango puede echar, `HU:CanKickMember`, y con los de otra si soy
-oficial) e Invitar al grupo. En la vista de chat, un clic en la lista de la derecha del juego abre la nuestra
-(`EntryByName`): un `hooksecurefunc` sobre `OpenGuildMemberDetailFrame` cierra la suya, que abre su propio código.
+oficial) e Invitar al grupo. Las notas de los de mi hermandad se pueden pinchar (`EditNotesInGame`): ponen «Solo
+mi hermandad» (la lista del juego) y marcan a esa persona con el buscador (`HU.MarkInGameList`, BlizzTab.lua),
+porque solo la ficha del juego las guarda. En la vista de chat, un clic en la lista de la derecha del juego abre
+la ficha del juego, sin tocarla (hasta el 23/11 se cerraba y salía la nuestra: así no se podían guardar notas).
 
 ### Varios a la vez y clic derecho
 

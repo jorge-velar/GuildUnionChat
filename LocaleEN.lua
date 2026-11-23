@@ -1110,6 +1110,9 @@ E["Peticiones de oficiales"] = "Officer Requests"
 E["Ayer"] = "Yesterday"
 
 E["Solo mi hermandad"] = "Only my guild"
+E["Las notas se cambian en la ficha del juego: pincha en %s en esta lista."] = "Notes are changed in the game's member card: click %s in this list."
+E["Editar las notas"] = "Edit notes"
+E["El juego solo deja cambiarlas en su ficha: te llevo a su lista con esta persona marcada."] = "The game only lets you change them in its own card: this takes you to its list with this player marked."
 
 E["Añadir a amigos"] = "Add friend"
 E["Buscar jugador"] = "Find player"
@@ -1136,7 +1139,6 @@ E["y %d más: escribe más letras"] = "and %d more: type more letters"
 
 E["Pedido a <%s> que %s pase a %s: lo verán sus oficiales en «Peticiones de oficiales»."] = "Asked <%s> to make %s %s: their officers will see it in «Officer Requests»."
 E["Pedido a <%s> que eche a %s: lo verán sus oficiales en «Peticiones de oficiales»."] = "Asked <%s> to remove %s: their officers will see it in «Officer Requests»."
-E["%s es de %s: con «Solo mi hermandad» puesta no sale en la lista."] = "%s is from %s: with «Only my guild» checked, they don't show in the list."
 E["El líder no se mueve: para cambiarlo, clic derecho en otro y «Hacer líder de la raid»."] = "The leader can't be moved: to change it, right-click someone else and pick «Make raid leader»."
 E["Elige un día y una hora que no hayan pasado."] = "Pick a day and time that haven't passed yet."
 E["Solo el maestro crea eventos."] = "Only the guild master creates events."

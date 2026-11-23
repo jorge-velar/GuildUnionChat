@@ -452,7 +452,7 @@ describe("Miembros de la unión: /who al hacer clic y sin la ventana del juego",
 end)
 
 -- (la ventana de hermandad del juego, lo justo: su lista de miembros con la casilla de desconectados)
-local function GuildWindow(a, withChat)
+local function GuildWindow(a, withChat, setup)
     local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
     -- (con withChat, también el chat del juego, para la vista de chat)
     if withChat then
@@ -471,6 +471,8 @@ local function GuildWindow(a, withChat)
     f.MemberList.ShowOfflineButton = chk
     chk.visible = true
     chk.IsVisible = function(self) return self.visible end
+    -- (setup: más piezas de la ventana del juego, antes de que el addon la monte)
+    if setup then setup(f) end
     a.w:Fire("ADDON_LOADED", "Blizzard_Communities")
     return f
 end
@@ -541,19 +543,79 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.equal("Ventormenta", cover.rows[4].cells.zone:GetText())
         A.matches("DOS", cover.rows[4].cells.guild:GetText())
         A.matches("4 conectados", cover.status:GetText())
-        -- («Solo mi hermandad»: fuera Bea, de DOS; se recuerda; quitada, vuelve)
+        -- («Solo mi hermandad»: lo nuestro fuera y la lista del juego a la vista —su ficha guarda las notas—; se
+        -- recuerda; quitada, vuelve lo nuestro con toda la unión)
         mine.GetChecked = function() return true end
         Click("GuildUnionRosterMine", a)
         A.truthy(a.HU.db.unionRosterMine, "se recuerda")
-        for i = 1, 6 do
-            local r = cover.rows[i]
-            A.falsy(r:IsShown() and (r.cells.name:GetText() or ""):find("Bea", 1, true), "sin los de DOS")
-        end
-        A.matches("3 conectados", cover.status:GetText())
+        A.falsy(cover:IsShown(), "la lista del juego, sin tapar")
+        A.truthy(mine:IsShown(), "la casilla sigue, para volver")
         mine.GetChecked = function() return false end
         Click("GuildUnionRosterMine", a)
         A.falsy(a.HU.db.unionRosterMine)
-        A.matches("Bea", cover.rows[4].cells.name:GetText(), "y vuelven")
+        A.truthy(cover:IsShown(), "lo nuestro, otra vez")
+        A.matches("Bea", cover.rows[4].cells.name:GetText(), "con los de las otras hermandades")
+        A.same({}, a:Errors())
+    end)
+
+    it("«Solo mi hermandad» se recuerda: Miembros abre con la lista del juego; Comercio, con lo nuestro", function()
+        local a = F.Community()
+        a.HU.db.unionRosterMine = true
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        A.falsy(cover:IsShown(), "Miembros: la lista del juego")
+        A.truthy(a.env.GuildUnionRosterMine:IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("un clic en las notas de nuestra ficha (de mi hermandad) lleva a la lista del juego con esa persona marcada", function()
+        local a = F.Community()
+        local HU = a.HU
+        GuildWindow(a)
+        local marked
+        F.Stub(HU, "MarkInGameList", function(name) marked = name end)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local row = cover.rows[3]
+        A.matches("Compi", row.cells.name:GetText())
+        row:GetScript("OnClick")(row, "LeftButton")
+        local card = a.env.GuildUnionMemberCard
+        A.truthy(card and card:IsShown(), "nuestra ficha")
+        -- (el recuadro de la nota: el que tiene el texto de la nota)
+        local box
+        for _, fr in ipairs(a.w.frames) do
+            if fr._parent == card and fr:GetScript("OnMouseUp") then box = fr end
+        end
+        A.truthy(box, "las notas se pueden pinchar")
+        local n0 = #a.w.chat
+        box:GetScript("OnMouseUp")(box, "LeftButton")
+        A.truthy(HU.db.unionRosterMine, "«Solo mi hermandad»")
+        A.falsy(cover:IsShown(), "la lista del juego")
+        A.falsy(card:IsShown())
+        A.matches("ficha del juego", Chat(a, n0))
+        a.w:Advance(0.2)
+        A.matches("^Compi", marked or "", "marcada con el buscador")
+        A.same({}, a:Errors())
+    end)
+
+    it("en la vista de chat, un clic en la lista de la derecha deja la ficha del juego (no se cambia por la nuestra)", function()
+        local a = F.Community()
+        local detail, opened = nil, 0
+        -- (la ficha del juego y su función de abrirla, de antes de que el addon monte lo suyo: si la enganchara, se vería)
+        local f = GuildWindow(a, true, function(w)
+            detail = a.env.CreateFrame("Frame", nil, w)
+            w.GuildMemberDetailFrame = detail
+            w.OpenGuildMemberDetailFrame = function() opened = opened + 1; detail:Show() end
+        end)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        detail:Hide()
+        f:OpenGuildMemberDetailFrame(1, { name = "Compi-Reino" })
+        A.equal(1, opened)
+        A.truthy(detail:IsShown(), "la del juego, abierta")
+        A.falsy(a.env.GuildUnionMemberCard and a.env.GuildUnionMemberCard:IsShown(), "sin la nuestra")
         A.same({}, a:Errors())
     end)
 
@@ -836,7 +898,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("«Solo mi hermandad» puesta y busco a alguien conectado de otra: dice el porqué, no que no está conectado", function()
+    it("«Solo mi hermandad» puesta: el buscador va a la lista del juego (nuestra lista no está a la vista)", function()
         local a = F.Community()
         local HU = a.HU
         F.Stub(HU, "IsGuildForwarder", true)
@@ -848,11 +910,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         local mine = a.env.GuildUnionRosterMine
         mine.GetChecked = function() return true end
         Click("GuildUnionRosterMine", a)
-        local n0 = #a.w.chat
-        A.truthy(HU.UnionRosterPick({ name = blas.name, tag = "DOS", online = true }))
-        local said = Chat(a, n0)
-        A.falsy(said:find("no está conectado", 1, true), said)
-        A.matches("Solo mi hermandad", said)
+        A.falsy(HU.UnionRosterPick({ name = blas.name, tag = "DOS", online = true }), "lo lleva BlizzTab.lua")
         A.same({}, a:Errors())
     end)
 

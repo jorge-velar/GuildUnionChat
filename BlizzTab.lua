@@ -1058,6 +1058,9 @@ ScrollTo = function(name)
     hl.ticker = HU:Every(0.25, "pestana-resaltar", function() if f:IsShown() then Mark() end end)
 end
 
+-- (desde la ficha de UnionRoster.lua: «edita sus notas» lleva a la lista del juego con esa persona marcada)
+function HU.MarkInGameList(name) ScrollTo(name) end
+
 local search
 HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
 HU.SyncCharSearch = function() end
