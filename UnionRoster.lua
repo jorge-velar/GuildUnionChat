@@ -517,13 +517,18 @@ local function Selected()
 end
 
 local function ChangeRank(targets, idx, rankName)
-    local lines = {}
+    local lines, names = {}, {}
     for _, e in ipairs(targets) do
         local macro, why = HU:RankMacro(e.name, idx)
-        if macro then lines[#lines + 1] = macro
+        if macro then lines[#lines + 1] = macro; names[#names + 1] = HU:Nice(e.name)
         else HU:Print(HU:Nice(e.name) .. ": " .. tostring(why)) end
     end
-    if #lines > 0 then HU:TypeLines(table.concat(lines, "\n"), L("Cambiar rango") .. ": " .. tostring(rankName)) end
+    if #lines == 0 then return end
+    -- (la pregunta con el rango nuevo: «¿Seguro que quieres pasar a Ana a «Oficial»?»)
+    local rank = tostring(rankName)
+    local ask = #names == 1 and string.format(L("¿Seguro que quieres pasar a %s a «%s»?"), names[1], rank)
+        or string.format(L("¿Seguro que quieres pasar a estas %d personas a «%s»?"), #names, rank)
+    HU:TypeLines(table.concat(lines, "\n"), L("Cambiar rango") .. ": " .. rank, ask, #names > 1 and table.concat(names, "\n") or nil)
 end
 
 -- (los de mi hermandad, por la ventana de órdenes, si mi rango me deja: si no, la orden fallaría y se dice por

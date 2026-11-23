@@ -1242,14 +1242,15 @@ HU:On("SKILL_LINES_CHANGED", function() HU.After(2, function() HU:UpdateMyProfil
 -- Órdenes que escribes tú
 ---------------------------------------------------------------------------
 -- Comandos (de una o varias líneas: echar, ascender, degradar) que tienes que escribir tú en el [+ARCHITECTURE.md]
-function HU:TypeLines(macro, title)
+function HU:TypeLines(macro, title, ask, list)
     local lines = {}
     for line in tostring(macro or ""):gmatch("[^\r\n]+") do
         line = HU.Trim(line)
         if line ~= "" then lines[#lines + 1] = line end
     end
     if #lines == 0 then return end
-    self:RunOrders({ title = title or L("Órdenes de hermandad"), text = lines[1] .. (#lines > 1 and (" (+" .. (#lines - 1) .. ")") or ""), lines = lines })
+    self:RunOrders({ title = title or L("Órdenes de hermandad"), text = lines[1] .. (#lines > 1 and (" (+" .. (#lines - 1) .. ")") or ""), lines = lines,
+        ask = ask, list = list })
 end
 
 HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "InviteLog", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })

@@ -368,22 +368,21 @@ local function BuildConfirm()
         tile = true, tileSize = 32, edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
-    f.title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    f.title:SetPoint("TOP", 0, -20)
+    -- (como las preguntas del juego: la pregunta arriba, debajo los nombres si son varios, y Sí / No)
     f.body = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    f.body:SetPoint("TOPLEFT", 24, -48)
-    f.body:SetPoint("TOPRIGHT", -24, -48)
-    f.body:SetJustifyH("LEFT")
-    -- (las órdenes, tal cual se van a lanzar)
-    f.cmds = f:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    f.body:SetPoint("TOPLEFT", 24, -24)
+    f.body:SetPoint("TOPRIGHT", -24, -24)
+    f.body:SetJustifyH("CENTER")
+    f.cmds = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     f.cmds:SetPoint("TOPLEFT", f.body, "BOTTOMLEFT", 0, -10)
     f.cmds:SetPoint("RIGHT", -24, 0)
-    f.cmds:SetJustifyH("LEFT")
-    f.cmds:SetMaxLines(6)
+    f.cmds:SetJustifyH("CENTER")
+    f.cmds:SetMaxLines(8)
     -- «Sí»: el botón seguro, que lanza al soltar (useOnKeyDown); también al pulsar, por si el juego usa el otro
     local yes = CreateFrame("Button", "GuildUnionOrdersYes", f, "SecureActionButtonTemplate,UIPanelButtonTemplate")
-    yes:SetSize(140, 24)
-    yes:SetPoint("BOTTOMLEFT", 24, 18)
+    yes:SetSize(110, 24)
+    yes:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 18)
+    yes:SetText(L("Sí"))
     yes:RegisterForClicks("AnyUp", "AnyDown")
     yes:SetAttribute("type", "macro")
     yes:SetAttribute("useOnKeyDown", false)
@@ -399,8 +398,8 @@ local function BuildConfirm()
     f.yes = yes
     local no = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     no:SetSize(110, 24)
-    no:SetPoint("BOTTOMRIGHT", -24, 18)
-    no:SetText(L("Cancelar"))
+    no:SetPoint("BOTTOMLEFT", f, "BOTTOM", 6, 18)
+    no:SetText(L("No"))
     local function Cancel()
         if waiting then return end
         local done = job
@@ -416,12 +415,55 @@ local function BuildConfirm()
     return f
 end
 
+-- (lo que se va a hacer, en palabras y por persona: «echar a Ana de la hermandad», «subir a Ana 2 rangos»)
+local function Phrases(lines)
+    local order, count = {}, {}
+    for _, line in ipairs(lines) do
+        local cmd, who = line:match("^(/%S+)%s+(.+)$")
+        cmd = cmd and cmd:lower()
+        if cmd and SECURE[cmd] then
+            local k = cmd .. " " .. who
+            if not count[k] then order[#order + 1] = { cmd = cmd, who = who, k = k }; count[k] = 0 end
+            count[k] = count[k] + 1
+        end
+    end
+    local out = {}
+    for _, o in ipairs(order) do
+        local n = count[o.k]
+        if o.cmd == "/gremove" then out[#out + 1] = string.format(L("echar a %s de la hermandad"), o.who)
+        elseif o.cmd == "/gpromote" then
+            out[#out + 1] = n > 1 and string.format(L("subir a %s %d rangos"), o.who, n) or string.format(L("subir a %s un rango"), o.who)
+        else
+            out[#out + 1] = n > 1 and string.format(L("bajar a %s %d rangos"), o.who, n) or string.format(L("bajar a %s un rango"), o.who)
+        end
+    end
+    return out, order
+end
+
+-- (la pregunta, como las del juego, sin enseñar las órdenes; con varias personas, la lista debajo. Quien pide
+-- las órdenes puede traer la suya: job.ask y job.list)
+local function Question(j)
+    if j.ask then return j.ask, j.list or "" end
+    local phrases, order = Phrases(j.lines)
+    if #phrases == 1 then return string.format(L("¿Seguro que quieres %s?"), phrases[1]), "" end
+    local names, allRemove = {}, true
+    for _, o in ipairs(order) do
+        names[#names + 1] = o.who
+        if o.cmd ~= "/gremove" then allRemove = false end
+    end
+    if allRemove then
+        return string.format(L("¿Seguro que quieres echar de la hermandad a estas %d personas?"), #names), table.concat(names, "\n")
+    end
+    for i, p in ipairs(phrases) do phrases[i] = (p:gsub("^%l", string.upper)) end
+    return L("¿Seguro que quieres hacer esto?"), table.concat(phrases, "\n")
+end
+
 local function ShowConfirm()
     confirm = confirm or BuildConfirm()
-    confirm.title:SetText(job.title or L("Órdenes"))
-    confirm.body:SetText(job.text or "")
-    confirm.cmds:SetText(table.concat(job.lines, "\n"))
-    confirm.yes:SetText(#job.lines > 1 and string.format(L("Hacer las %d"), #job.lines) or L("Hacerlo"))
+    local ask, list = Question(job)
+    confirm.body:SetText(ask)
+    confirm.cmds:SetText(list)
+    confirm:SetHeight(76 + confirm.body:GetStringHeight() + (list ~= "" and confirm.cmds:GetStringHeight() + 10 or 0))
     confirm.yes:SetAttribute("macrotext", table.concat(job.lines, "\n"))
     confirm:Show()
     confirm:Raise()
@@ -439,7 +481,7 @@ Present = function()
     ShowConfirm()
 end
 
--- job = { title, text, lines = {...}, onDone(sent), onLine(line) }
+-- job = { title, text, lines = {...}, onDone(sent), onLine(line), ask, list }
 function HU:RunOrders(newJob)
     if not newJob or not newJob.lines or #newJob.lines == 0 then return false end
     newJob.sent = 0

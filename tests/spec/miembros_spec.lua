@@ -639,7 +639,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         GuildWindow(a)
         F.Stub(HU, "CanPromote", true); F.Stub(HU, "CanDemote", true); F.Stub(HU, "CanKickGuild", true)
         local sent = {}
-        F.Stub(HU, "TypeLines", function(_, macro, title) sent[#sent + 1] = { macro = macro, title = title } end)
+        F.Stub(HU, "TypeLines", function(_, macro, title, ask) sent[#sent + 1] = { macro = macro, title = title, ask = ask } end)
         local extra
         HU.PlayerMenu = function(_, _, fn) extra = fn end
         local cover = a.env.GuildUnionUnionRoster
@@ -662,6 +662,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.equal("Cambiar rango", rankMenu.text)
         rankMenu.items[4].fn() -- (Veterano: índice 3, Compi está en el 4)
         A.matches("/gpromote Compi", sent[1].macro)
+        A.equal("¿Seguro que quieres pasar a Compi Reino a «Veterano»?", sent[1].ask, "pregunta con el rango nuevo")
         kick.fn()
         A.matches("/gremove Compi", sent[2].macro)
         A.same({}, a:Errors())

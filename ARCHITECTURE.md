@@ -420,8 +420,13 @@ Si hay otra lista a medias, la nueva espera su turno.
 Blizzard_ChatFrameBase/Shared/SlashCommands.lua, como /cast o /target). Un botón seguro
 (`SecureActionButtonTemplate`, type `macro`, macrotext con las órdenes) las lanza con tu clic, igual que
 una macro tuya: es lo que hacen los addons de gestión de hermandad (Guild Roster Manager, con su
-macro). Una ventanita enseña las órdenes tal cual y pide confirmar; un clic lanza todas (dos /gpromote
-para subir dos rangos).
+macro). Probado en Forever el 23/11: echa. Una ventanita pregunta como las del juego, sin enseñar las
+órdenes: «¿Seguro que quieres echar a Ana de la hermandad?», «… subir a Ana 2 rangos?», con varias
+personas los nombres debajo; quien pide las órdenes puede traer su pregunta (`job.ask`, `job.list`:
+el cambio de rango dice el rango nuevo). «Sí» es el botón seguro y lanza todas de un clic; «No» no
+lanza nada. No se puede quitar la ventanita: el juego solo deja lanzarlas desde un botón seguro
+pulsado por ti, y el clic derecho o la ficha no pueden serlo (con la ficha se podría, pero echaría
+sin preguntar).
 - El botón lanza al soltar (atributo `useOnKeyDown = false`, que `SecureActionButton_OnClick` mira antes
   que la opción ActionButtonUseKeyDown) y se registra al pulsar y al soltar (`AnyDown`, `AnyUp`): si el
   juego usara la opción, lanzaría igual una sola vez. Con solo `AnyUp` y la opción puesta, no haría nada.

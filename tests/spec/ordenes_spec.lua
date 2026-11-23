@@ -19,7 +19,7 @@ local function Press(b) b:GetScript("PostClick")(b, "LeftButton", true); b:GetSc
 local function Shown(a, name) local f = rawget(a.env, name); return f ~= nil and f:IsShown() end
 
 describe("Órdenes de hermandad: con el botón seguro", function()
-    it("echar: pide confirmar con la orden a la vista y la lanza el botón seguro, sin copiar ni pegar", function()
+    it("echar: pregunta como el juego («¿Seguro que…?», Sí / No), sin enseñar la orden, y la lanza el botón seguro", function()
         local a = F.Community()
         Attrs(a)
         local done
@@ -27,7 +27,10 @@ describe("Órdenes de hermandad: con el botón seguro", function()
         local c, yes = a.env.GuildUnionOrdersConfirm, a.env.GuildUnionOrdersYes
         A.truthy(Shown(a, "GuildUnionOrdersConfirm"), "la ventanita de confirmar")
         A.falsy(Shown(a, "GuildUnionOrders"), "sin la de copiar y pegar")
-        A.equal("/gremove Compi", c.cmds:GetText(), "la orden, a la vista")
+        A.equal("¿Seguro que quieres echar a Compi de la hermandad?", c.body:GetText())
+        A.equal("", c.cmds:GetText())
+        A.equal("Sí", yes:GetText())
+        A.is_nil((c.body:GetText() .. c.cmds:GetText()):find("/g", 1, true), "sin enseñar la orden")
         A.equal("macro", yes:GetAttribute("type"))
         A.equal(false, yes:GetAttribute("useOnKeyDown"), "se lanza al soltar")
         A.equal("/gremove Compi", yes:GetAttribute("macrotext"))
@@ -50,12 +53,34 @@ describe("Órdenes de hermandad: con el botón seguro", function()
             onDone = function(n) done = n end, onLine = function(l) each[#each + 1] = l end })
         local yes = a.env.GuildUnionOrdersYes
         A.equal("/gpromote Compi\n/gpromote Compi", yes:GetAttribute("macrotext"))
-        A.equal("Hacer las 2", yes:GetText())
+        A.equal("¿Seguro que quieres subir a Compi 2 rangos?", a.env.GuildUnionOrdersConfirm.body:GetText())
         Press(yes)
         a.w:Advance(2)
         A.equal(2, done)
         A.same({ "/gpromote Compi", "/gpromote Compi" }, each)
         A.same({}, a:Errors())
+    end)
+
+    it("con varias personas, los nombres debajo; con su propia pregunta (el rango nuevo), esa", function()
+        local function Ask(job)
+            local a = F.Community()
+            Attrs(a)
+            a.HU:RunOrders(job)
+            local c = a.env.GuildUnionOrdersConfirm
+            A.same({}, a:Errors())
+            return c.body:GetText(), c.cmds:GetText()
+        end
+        local q, list = Ask({ lines = { "/gremove Ana Sol", "/gremove Bea" } })
+        A.equal("¿Seguro que quieres echar de la hermandad a estas 2 personas?", q)
+        A.equal("Ana Sol\nBea", list)
+        q, list = Ask({ lines = { "/gremove Ana", "/gdemote Bea", "/gdemote Bea" } })
+        A.equal("¿Seguro que quieres hacer esto?", q)
+        A.equal("Echar a Ana de la hermandad\nBajar a Bea 2 rangos", list)
+        A.equal("¿Seguro que quieres subir a Ana un rango?", (Ask({ lines = { "/gpromote Ana" } })))
+        A.equal("¿Seguro que quieres bajar a Ana un rango?", (Ask({ lines = { "/gdemote Ana" } })))
+        q, list = Ask({ lines = { "/gpromote Ana" }, ask = "¿Seguro que quieres pasar a Ana a «Oficial»?" })
+        A.equal("¿Seguro que quieres pasar a Ana a «Oficial»?", q)
+        A.equal("", list)
     end)
 
     it("si el juego lo bloquea, pasa a copiar y pegar con las mismas órdenes, y ya no lo intenta hasta /reload", function()
@@ -170,7 +195,7 @@ describe("Órdenes de hermandad: con el botón seguro", function()
         A.same({}, a:Errors())
     end)
 
-    it("«Cancelar» no lanza nada, la da por no hecha y sigue con la que esperaba", function()
+    it("«No» no lanza nada, la da por no hecha y sigue con la que esperaba", function()
         local a = F.Community()
         Attrs(a)
         local first, second
@@ -178,7 +203,7 @@ describe("Órdenes de hermandad: con el botón seguro", function()
         a.HU:RunOrders({ lines = { "/gdemote Jefa" }, onDone = function(n) second = n end })
         local c = a.env.GuildUnionOrdersConfirm
         local no
-        for _, fr in ipairs(a.w.frames) do if fr._parent == c and fr:GetText() == "Cancelar" then no = fr end end
+        for _, fr in ipairs(a.w.frames) do if fr._parent == c and fr:GetText() == "No" then no = fr end end
         no:GetScript("OnClick")(no)
         A.equal(0, first)
         a.w:Advance(1)
