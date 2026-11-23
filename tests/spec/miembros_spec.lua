@@ -461,8 +461,12 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
             f.Chat = a.env.CreateFrame("Frame", nil, f)
             f.Chat.visible = false
             f.Chat.IsVisible = function(self) return self.visible end
+        else
+            f.Chat = false
         end
         f.GuildInfoTab = false -- (sin pestañas: la de GuildUnion, BlizzTab.lua, no se monta)
+        f.CommunitiesControlFrame = false -- (sin «Ajustes de hermandad»: los botones de abajo, en su prueba)
+        f.CommunitiesList = a.env.CreateFrame("Frame", nil, f) -- (la columna de comunidades: la fila se ata a ella)
         f.MemberList = a.env.CreateFrame("Frame", nil, f)
         f.MemberList.IsVisible = function() return true end
         local chk = a.env.CreateFrame("CheckButton", nil, f.MemberList)
@@ -491,8 +495,9 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         local a = F.Community()
         a.w.guild.members[2].note = "tanque" -- (Compi)
         GuildWindow(a)
-        local check, cover = a.env.GuildUnionRosterCheck, a.env.GuildUnionUnionRoster
-        A.truthy(check and check:IsShown(), "la casilla «GuildUnion»")
+        local check, mine, cover = a.env.GuildUnionRosterCheck, a.env.GuildUnionRosterMine, a.env.GuildUnionUnionRoster
+        A.falsy(check and check:IsShown(), "sin casilla «GuildUnion»: lo nuestro siempre puesto")
+        A.truthy(mine and mine:IsShown(), "«Solo mi hermandad», en Miembros")
         A.truthy(cover:IsShown(), "al principio, Miembros")
         A.equal(1, cover.tabs.selectedTab)
         A.equal(4, cover.tabs.numTabs)
@@ -515,12 +520,19 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.equal("Ventormenta", cover.rows[4].cells.zone:GetText())
         A.matches("DOS", cover.rows[4].cells.guild:GetText())
         A.matches("4 conectados", cover.status:GetText())
-        Click("GuildUnionRosterCheck", a)
-        A.falsy(cover:IsShown(), "casilla quitada: la del juego, tal cual")
-        A.truthy(a.HU.db.unionRosterOff, "y se recuerda")
-        Click("GuildUnionRosterCheck", a)
-        A.truthy(cover:IsShown(), "puesta otra vez: Miembros")
-        A.falsy(a.HU.db.unionRosterOff)
+        -- («Solo mi hermandad»: fuera Bea, de DOS; se recuerda; quitada, vuelve)
+        mine.GetChecked = function() return true end
+        Click("GuildUnionRosterMine", a)
+        A.truthy(a.HU.db.unionRosterMine, "se recuerda")
+        for i = 1, 6 do
+            local r = cover.rows[i]
+            A.falsy(r:IsShown() and (r.cells.name:GetText() or ""):find("Bea", 1, true), "sin los de DOS")
+        end
+        A.matches("3 conectados", cover.status:GetText())
+        mine.GetChecked = function() return false end
+        Click("GuildUnionRosterMine", a)
+        A.falsy(a.HU.db.unionRosterMine)
+        A.matches("Bea", cover.rows[4].cells.name:GetText(), "y vuelven")
         A.same({}, a:Errors())
     end)
 
@@ -647,7 +659,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.truthy(cover.tabs.chatBtn:IsShown())
         A.falsy(cover.hdr:IsShown(), "sin lista: se ve el chat del juego")
         A.falsy(cover.tabs.Tabs[1]:IsShown(), "los nuestros, fuera: van los seguros")
-        A.falsy(a.env.GuildUnionRosterCheck:IsShown(), "la casilla solo en la vista de miembros")
+        A.falsy(a.env.GuildUnionRosterMine:IsShown(), "«Solo mi hermandad», solo en la vista de miembros")
         -- (pulsar Trade en el chat: el botón seguro apunta la sección y el juego pasa a la vista de miembros)
         local trade = cover.tabs.chatModeBtns[2]
         trade:GetScript("PreClick")(trade)
@@ -661,9 +673,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.falsy(cover.tabs.chatBtn:IsShown())
         -- (en la vista de miembros, «Chat» es el botón seguro que pulsa el icono del chat del juego)
         A.truthy(cover.tabs.chatSecure:IsShown())
-        local check = a.env.GuildUnionRosterCheck
-        check:GetScript("OnClick")(check)
-        A.falsy(cover.tabs.chatSecure:IsShown(), "con la casilla quitada, fuera")
+        A.falsy(a.env.GuildUnionRosterMine:IsShown(), "en Comercio, sin «Solo mi hermandad»")
         A.same({}, a:Errors())
     end)
 
@@ -695,74 +705,82 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         local tr = cover.trade
         A.truthy(tr:IsShown(), "la sección Comercio")
         tr.testBtn:GetScript("OnClick")(tr.testBtn)
-        local function Count()
+        local function Count(lst)
             local n = 0
-            for _, r in ipairs(tr.rows) do if r:IsShown() and r.entry then n = n + 1 end end
+            for _, r in ipairs((lst or tr.req).rows) do if r:IsShown() and r.entry then n = n + 1 end end
             return n
         end
-        A.equal(4, Count(), "públicas: 4")
+        A.equal(4, Count(), "Público: las 4 públicas (3 abiertas y 1 aceptada hace poco)")
         local mine
-        for _, r in ipairs(tr.rows) do if r.entry and r.entry.who == a.HU:Me() then mine = r end end
+        for _, r in ipairs(tr.req.rows) do if r.entry and r.entry.who == a.HU:Me() then mine = r end end
         A.matches("4da6ff", mine.cells[1]:GetText(), "la mía, en azul")
         A.falsy(mine.accept:IsShown(), "la mía: sin Aceptar")
         A.truthy(mine.cancel:IsShown(), "la mía: Cancelar")
         local priv = tr.viewBtns.priv
         priv:GetScript("OnClick")(priv)
-        A.equal(3, Count(), "en Privado: la que me piden y las dos mías")
+        A.equal(4, Count(), "Privado: las 2 que me piden y las 2 mías (la pública mía sin aceptar, solo en Público)")
         -- (Aceptar una pública de otro: sigue en Público con mi nombre, y sale en mi Privado)
         local pub = tr.viewBtns.pub
         pub:GetScript("OnClick")(pub)
         local other
-        for _, r in ipairs(tr.rows) do if r.entry and r.entry.state == "open" and r.entry.who ~= a.HU:Me() then other = r end end
+        for _, r in ipairs(tr.req.rows) do if r.entry and r.entry.state == "open" and r.entry.who ~= a.HU:Me() then other = r end end
         A.truthy(other.accept:IsShown())
         other.accept:GetScript("OnClick")(other.accept)
         A.equal(4, Count(), "sigue en Público")
         A.truthy(other.actText:IsShown(), "con el nombre de quien la aceptó")
         priv:GetScript("OnClick")(priv)
-        A.equal(4, Count(), "y en mi Privado")
+        A.equal(5, Count(), "y en mi Privado")
         pub:GetScript("OnClick")(pub)
-        -- (al buscar, la lista pasa a ser la de quién lo tiene: en el WoW de mentira, nadie)
-        tr.search:SetText("Alquimia")
+        -- (al buscar: arriba, lo publicado que encaja; abajo, quién lo hace (en el WoW de mentira, nadie))
+        tr.search:SetText("Poción")
         tr.search:GetScript("OnTextChanged")(tr.search)
-        A.equal(0, Count())
-        A.truthy(tr.empty:IsShown())
+        A.equal(1, Count(), "la poción pública de Janeth")
+        A.equal(0, Count(tr.found))
+        A.truthy(tr.found.empty:IsShown())
         A.falsy(tr.chat:IsShown(), "sin chat al buscar")
+        -- (el modo prueba se apaga y quita lo de prueba)
+        tr.search:SetText("")
+        tr.search:GetScript("OnTextChanged")(tr.search)
+        tr.testBtn:GetScript("OnClick")(tr.testBtn)
+        A.equal(0, Count(), "sin lo de prueba")
         A.same({}, a:Errors())
     end)
 
-    it("Comercio, Calendario y Banco: «próximamente», sin lista", function()
+    it("Comercio, Calendario y Banco: cada uno su sección, sin la lista de miembros", function()
         local a = F.Community()
         GuildWindow(a)
         local cover = a.env.GuildUnionUnionRoster
-        local t2 = cover.tabs.Tabs[3]
-        t2:GetScript("OnClick")(t2)
-        A.equal(3, cover.tabs.selectedTab)
-        A.truthy(cover.soon:IsShown())
-        A.falsy(cover.hdr:IsShown())
-        A.matches("Próximamente", cover.soon:GetText())
+        for i, key in ipairs({ "trade", "calendar", "bank" }) do
+            local t = cover.tabs.Tabs[i + 1]
+            t:GetScript("OnClick")(t)
+            A.equal(i + 1, cover.tabs.selectedTab)
+            A.truthy(cover[key]:IsShown(), key)
+            A.falsy(cover.hdr:IsShown(), "sin los títulos de Miembros")
+            A.falsy(cover.soon:IsShown(), "ya no es «próximamente»")
+        end
         local t1 = cover.tabs.Tabs[1]
         t1:GetScript("OnClick")(t1)
-        A.falsy(cover.soon:IsShown())
         A.truthy(cover.hdr:IsShown())
+        A.falsy(cover.trade:IsShown()); A.falsy(cover.calendar:IsShown()); A.falsy(cover.bank:IsShown())
         A.same({}, a:Errors())
     end)
 
-    it("fuera de la vista de miembros no sale nada; al volver, la casilla manda", function()
+    it("fuera de la vista de miembros no sale nada; al volver, Miembros (también si se había quitado)", function()
         local a = F.Community()
         local f = GuildWindow(a)
         f.MemberList.ShowOfflineButton.visible = false
         f.MemberList.ShowOfflineButton:GetScript("OnHide")()
         a.w:Advance(0.1)
-        A.falsy(a.env.GuildUnionRosterCheck:IsShown())
+        A.falsy(a.env.GuildUnionRosterMine:IsShown())
         A.falsy(a.env.GuildUnionUnionRoster:IsShown())
+        -- (quien la tenía quitada con la casilla «GuildUnion» de antes: ya no hay casilla, sale igual)
+        a.HU.db.unionRosterOff = true
         f.MemberList.ShowOfflineButton.visible = true
         f:GetScript("OnShow")(f)
         a.w:Advance(0.1)
-        A.truthy(a.env.GuildUnionUnionRoster:IsShown(), "por defecto, puesta")
-        Click("GuildUnionRosterCheck", a)
-        f:GetScript("OnShow")(f)
-        a.w:Advance(0.1)
-        A.falsy(a.env.GuildUnionUnionRoster:IsShown(), "quitada, sigue quitada al volver a abrir")
+        A.truthy(a.env.GuildUnionUnionRoster:IsShown(), "siempre puesta")
+        A.falsy(a.HU.db.unionRosterOff, "y lo viejo, borrado")
+        A.same({}, a:Errors())
     end)
 
     it("sin separar por hermandad: los del /who, sin rango, se mezclan por nivel con el rango más bajo", function()
@@ -827,8 +845,8 @@ describe("Solicitudes (InviteLog.lua): otra hermandad pide echar a alguien de la
         local a = F.Community()
         local HU = a.HU
         F.Stub(HU, "CanKickGuild", true)
-        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
-        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = a.env.time() })
+        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = a.env.time() })
         A.equal(1, HU:KickRequestCount(), "sin repetidas")
         local job, answered
         F.Stub(HU, "RunOrders", function(_, j) job = j end)
@@ -855,9 +873,9 @@ describe("Solicitudes (InviteLog.lua): otra hermandad pide echar a alguien de la
         local HU = a.HU
         F.Stub(HU, "CanPromote", true); F.Stub(HU, "CanDemote", true)
         -- (yo, Tester, soy oficial (rango 1); Compi es miembro (4))
-        HU:AddKickRequest({ id = "r1", kind = "rank", rank = 1, target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        HU:AddKickRequest({ id = "r1", kind = "rank", rank = 1, target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = a.env.time() })
         A.equal(0, HU:KickRequestCount(), "a oficial: no la puedo dar")
-        HU:AddKickRequest({ id = "r2", kind = "rank", rank = 3, target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = time() })
+        HU:AddKickRequest({ id = "r2", kind = "rank", rank = 3, target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = a.env.time() })
         A.equal(1, HU:KickRequestCount(), "a veterano: sí")
         A.same({}, a:Errors())
     end)
@@ -873,7 +891,9 @@ describe("Solicitudes (InviteLog.lua): otra hermandad pide echar a alguien de la
         local win = a.env.GuildUnionRequestsFrame
         win.test:GetScript("OnClick")(win.test)
         A.equal(5, HU:KickRequestCount(), "3 de echar y 2 de rango")
-        win.Refresh()
+        -- (en el filtro de echar: el tic y la X quitan dos)
+        local tk = win.tabs.kick
+        tk:GetScript("OnClick")(tk)
         win.rows[1].yes:GetScript("OnClick")(win.rows[1].yes)
         A.equal(4, HU:KickRequestCount())
         win.Refresh()
@@ -882,7 +902,13 @@ describe("Solicitudes (InviteLog.lua): otra hermandad pide echar a alguien de la
         -- (el filtro de rango enseña solo las 2 de rango)
         local tr = win.tabs.rank
         tr:GetScript("OnClick")(tr)
-        A.matches("Cuatro", win.rows[1].cells[3]:GetText() .. win.rows[2].cells[3]:GetText())
+        local shown = {}
+        for _, row in ipairs(win.rows) do if row:IsShown() and row.entry then shown[#shown + 1] = row.entry.target end end
+        table.sort(shown)
+        A.same({ "Prueba-Cinco", "Prueba-Cuatro" }, shown)
+        -- (y una de prueba se quita con el tic aunque yo no pueda cambiar rangos: no manda nada)
+        win.rows[1].yes:GetScript("OnClick")(win.rows[1].yes)
+        A.equal(2, HU:KickRequestCount())
         A.equal(0, sent, "las de prueba no mandan nada")
         A.same({}, a:Errors())
     end)

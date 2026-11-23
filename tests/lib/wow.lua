@@ -228,6 +228,18 @@ function wow.New(opts)
         local f = NewFrame(w, kind, name, parent)
         -- (las piezas que traen las plantillas del juego y que el addon toca: el fondo de InsetFrameTemplate)
         if type(template) == "string" and template:find("InsetFrameTemplate", 1, true) then f.Bg = NewFrame(w, "Texture", nil, f) end
+        -- (y las tres piezas del botón rojo, UIPanelButtonTemplate: DJStyle.lua las oscurece al elegirlo)
+        if type(template) == "string" and template:find("UIPanelButtonTemplate", 1, true) then
+            for _, k in ipairs({ "Left", "Middle", "Right" }) do f[k] = NewFrame(w, "Texture", nil, f) end
+        end
+        -- (el texto gris de ayuda de los buscadores, SearchBoxTemplate)
+        if type(template) == "string" and template:find("SearchBoxTemplate", 1, true) then
+            f.Instructions = NewFrame(w, "FontString", nil, f)
+        end
+        -- (el texto de al lado de las casillas, UICheckButtonTemplate)
+        if type(template) == "string" and template:find("UICheckButtonTemplate", 1, true) then
+            f.Text = NewFrame(w, "FontString", nil, f)
+        end
         return f
     end
     -- (las listas con barra de la interfaz del juego: solo recuerdan por dónde van)
