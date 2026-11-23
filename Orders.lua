@@ -183,6 +183,8 @@ end)
 ---------------------------------------------------------------------------
 local function Build()
     local f = CreateFrame("Frame", "GuildUnionOrders", UIParent, "BackdropTemplate")
+    -- (escondida antes de poner su OnHide: si no, al esconderla cerraría la lista que acaba de llegar)
+    f:Hide()
     f:SetSize(400, 240)
     f:SetPoint("CENTER", 0, 120)
     f:SetFrameStrata("DIALOG")
@@ -279,7 +281,6 @@ local function Build()
     -- (Escape: igual que Cerrar)
     f:SetScript("OnHide", function() if job then Close() end end)
     tinsert(UISpecialFrames, "GuildUnionOrders")
-    f:Hide()
     return f
 end
 
@@ -350,6 +351,8 @@ end
 
 local function BuildConfirm()
     local f = CreateFrame("Frame", "GuildUnionOrdersConfirm", UIParent, "BackdropTemplate")
+    -- (escondida antes de poner su OnHide: si no, al esconderla cancelaría la orden que acaba de llegar)
+    f:Hide()
     f:SetSize(380, 200)
     f:SetPoint("CENTER", 0, 120)
     f:SetFrameStrata("DIALOG")
@@ -410,7 +413,6 @@ local function BuildConfirm()
     -- (Escape o cerrar: igual que Cancelar, salvo al cerrarse tras el clic)
     f:SetScript("OnHide", function() if job and not f.acting and not waiting then Cancel() end end)
     tinsert(UISpecialFrames, "GuildUnionOrdersConfirm")
-    f:Hide()
     return f
 end
 

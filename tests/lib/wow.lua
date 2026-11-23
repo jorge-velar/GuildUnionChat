@@ -62,9 +62,27 @@ local function FrameMethods(w)
     function M:IsEventRegistered(ev) return self._events[ev] == true end
     function M:RegisterAllEvents() self._allEvents = true end
     function M:UnregisterAllEvents() self._events, self._allEvents = {}, nil end
-    function M:Show() self._shown = true end
-    function M:Hide() self._shown = false end
-    function M:SetShown(v) self._shown = v and true or false end
+    -- (como en el juego: OnShow / OnHide cuando el marco pasa a verse o deja de verse, mirando sus padres;
+    -- p. ej. Hide() nada más crearlo, que nace visible, ya llama a su OnHide)
+    local function Visible(f)
+        while f do
+            if f._shown == false then return false end
+            f = f._parent
+        end
+        return true
+    end
+    local function SetShownState(self, v)
+        local was = Visible(self)
+        self._shown = v
+        local now = Visible(self)
+        if was ~= now then
+            local s = self._scripts[now and "OnShow" or "OnHide"]
+            if s then s(self) end
+        end
+    end
+    function M:Show() SetShownState(self, true) end
+    function M:Hide() SetShownState(self, false) end
+    function M:SetShown(v) SetShownState(self, v and true or false) end
     function M:IsShown() return self._shown end
     function M:GetName() return self._name end
     function M:GetParent() return self._parent end
