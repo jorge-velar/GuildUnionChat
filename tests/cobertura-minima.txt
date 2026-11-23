@@ -33,7 +33,7 @@ Net/RosterSync.lua 77.2 176
 Net/Security.lua 81.0 33
 Net/Transport.lua 67.4 57
 NoteConfig.lua 26.9 92
-Orders.lua 77.7 62
+Orders.lua 79.1 64
 Packs/Members.lua 92.3 1
 Perf.lua 37.4 97
 Pinned.lua 56.2 21
@@ -44,7 +44,7 @@ Protocol.lua 88.8 1
 Ranks.lua 68.0 52
 Report.lua 57.7 178
 Roster.lua 87.2 16
-Social.lua 68.4 214
+Social.lua 68.3 215
 TestLog.lua 33.3 60
 Trade.lua 87.3 91
 UI.lua 87.5 3
