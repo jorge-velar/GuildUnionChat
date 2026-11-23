@@ -3148,7 +3148,7 @@ vistos hace menos de 5 min (`HU.remote`) y los de prueba. Yo, siempre verde; en 
 
 «Modo prueba» se enciende y se apaga (encendido, oscuro; `ui.testOn`). `AddTest` quita lo de prueba que hubiera y pone
 8 solicitudes (4 públicas, 4 privadas: me piden, pido, aceptadas) y tres líneas de chat, con personas «-Prueba» (Pepe
-y Bea conectados, Lyra y Janeth no) y el enlace de verdad si el juego conoce el objeto; `ClearTest` lo quita todo.
+y Bea conectados, Lyra y Jandra no) y el enlace de verdad si el juego conoce el objeto; `ClearTest` lo quita todo.
 `tradeOff` y `tipsOff`, en la configuración de la hermandad (`HU:UnionCfg()`, Configuración → Comercio,
 UnionConfig.lua), los cambia el maestro y de momento solo valen en su personaje; sin poner, todo activo. `tradeOff`
 deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, buscador, Público · Privado,

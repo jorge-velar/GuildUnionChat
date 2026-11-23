@@ -471,7 +471,7 @@ local function AddTest()
     reqs[#reqs + 1] = { id = NewId() .. "b", item = 14047, count = 20, tab = 1, who = Me(), tag = tags[2], note = "",
         state = "open", t = time() - 600, test = true }
     reqs[#reqs + 1] = { id = NewId() .. "c", item = 3928, count = 10, tab = 3, who = "Bea-Prueba", tag = tags[1], note = "",
-        state = "done", t = time() - 86400, takenBy = "Janeth-Prueba", takenAt = time() - 80000, test = true }
+        state = "done", t = time() - 86400, takenBy = "Jandra-Prueba", takenAt = time() - 80000, test = true }
     for _, r in ipairs(reqs) do
         if r.test then
             log[#log + 1] = { t = r.t, test = true, text = string.format(L("%s pide %s a %s"), Who(r.who), ReqText(r), WhereText(r.tag, r.tab)) }

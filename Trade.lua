@@ -13,7 +13,7 @@ local CROSS = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 local CHAT_W = 200
 local DOT_ON = "|TInterface\\FriendsFrame\\StatusIcon-Online:10:10|t"
 local DOT_OFF = "|TInterface\\FriendsFrame\\StatusIcon-Offline:10:10|t"
-local testOnline = { ["Pepe-Prueba"] = true, ["Bea-Prueba"] = true, ["Lyra-Prueba"] = false, ["Janeth-Prueba"] = false }
+local testOnline = { ["Pepe-Prueba"] = true, ["Bea-Prueba"] = true, ["Lyra-Prueba"] = false, ["Jandra-Prueba"] = false }
 local ACT_W = 84            -- la última columna: el botón (Aceptar / Cancelar) o quién la aceptó
 local COIN_ICON = { "Interface\\MoneyFrame\\UI-GoldIcon", "Interface\\MoneyFrame\\UI-SilverIcon", "Interface\\MoneyFrame\\UI-CopperIcon" }
 local GOLD = { 1, 0.82, 0.2 }
@@ -744,14 +744,14 @@ local function AddTest()
         if ok and type(link) == "string" then return link end
         return "|cff" .. color .. "|Hitem:" .. id .. "::::::::60:::::::|h[" .. name .. "]|h|r"
     end
-    R("Janeth-Prueba", Link(3928, "Poción de curación superior", "ffffff"), false, 2.5, "open", true, nil, nil, 5)
+    R("Jandra-Prueba", Link(3928, "Poción de curación superior", "ffffff"), false, 2.5, "open", true, nil, nil, 5)
     R("Pepe-Prueba", Link(7378, "Bolsa de tejido de lana", "1eff00"), true, nil, "open", true)
     R("Lyra-Prueba", Link(7931, "Cofia de mitril", "1eff00"), true, 3, "taken", true, nil, "Bea-Prueba")
     R(Me(), Link(7056, "Capa de seda carmesí", "1eff00"), true, 5, "open", true)
     R("Bea-Prueba", Link(8949, "Elixir de agilidad", "ffffff"), false, 1, "open", false, Me())
     R(Me(), Link(7954, "Gran espada de mitril", "0070dd"), true, nil, "taken", false, "Pepe-Prueba", "Pepe-Prueba")
     R("Lyra-Prueba", Link(7931, "Cofia de mitril", "1eff00"), true, 2, "open", false, Me())
-    R(Me(), Link(3928, "Poción de curación superior", "ffffff"), false, 0.5, "open", false, "Janeth-Prueba")
+    R(Me(), Link(3928, "Poción de curación superior", "ffffff"), false, 0.5, "open", false, "Jandra-Prueba")
     ChatLine("Lyra-Prueba", "Lyra-Prueba", L("Te dejo el encargo; mañana me conecto."))
     ChatLine("Pepe-Prueba", "Pepe-Prueba", L("Te hago la espada esta noche."))
     ChatLine("Bea-Prueba", "Bea-Prueba", L("¿Me haces el elixir? Pago bien."))

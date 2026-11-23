@@ -1293,7 +1293,7 @@ local function AddTest()
         return events[#events]
     end
     local CLASSES = { "WARRIOR", "PRIEST", "MAGE", "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN" }
-    local mc = { ["Janeth-Prueba"] = "yes", ["Pepe-Prueba"] = "yes", ["Bea-Prueba"] = "yes", [Me()] = "yes" }
+    local mc = { ["Jandra-Prueba"] = "yes", ["Pepe-Prueba"] = "yes", ["Bea-Prueba"] = "yes", [Me()] = "yes" }
     local NAMES = { "Arwen", "Borin", "Celes", "Dax", "Elian", "Fyra", "Gorm", "Hela", "Ivo", "Jun", "Kael", "Lune",
         "Mora", "Nix", "Orla", "Pim", "Quin", "Rhea", "Sol", "Tamsin" }
     for i, n in ipairs(NAMES) do
@@ -1302,9 +1302,9 @@ local function AddTest()
         testClass[full] = CLASSES[(i - 1) % #CLASSES + 1]
         testLevel[full] = 52 + (i * 7) % 9
     end
-    testClass["Janeth-Prueba"], testClass["Pepe-Prueba"], testClass["Bea-Prueba"] = "PRIEST", "WARRIOR", "DRUID"
+    testClass["Jandra-Prueba"], testClass["Pepe-Prueba"], testClass["Bea-Prueba"] = "PRIEST", "WARRIOR", "DRUID"
     local ROLE_BY = { WARRIOR = "TANK", PRIEST = "HEALER", DRUID = "HEALER", PALADIN = "HEALER", SHAMAN = "HEALER" }
-    local first = E(L("Núcleo de Magma"), "raid", At(0, 21), "Janeth-Prueba", HU.myTag, L("Raid de la unión. Traed resistencias al fuego."), {})
+    local first = E(L("Núcleo de Magma"), "raid", At(0, 21), "Jandra-Prueba", HU.myTag, L("Raid de la unión. Traed resistencias al fuego."), {})
     first.roles = {}
     first.minLevel = 55
     local r1 = NewRaid(first, Me())
@@ -1321,7 +1321,7 @@ local function AddTest()
     end
     r1.name = L("Raid") .. " 1"
     -- (cómo se ven las marcas al invitar: uno dentro, uno esperando, uno que no aceptó)
-    invites["Janeth-Prueba"] = { s = "ok", t = time() }
+    invites["Jandra-Prueba"] = { s = "ok", t = time() }
     invites["Arwen-Prueba"] = { s = "wait", t = time() }
     invites["Borin-Prueba"] = { s = "no", t = time() }
     E(L("Profundidades de Roca Negra"), "dungeon", At(1, 19, 30), "Pepe-Prueba", HU.myTag, L("Grupo para la llave."),

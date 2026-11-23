@@ -798,7 +798,7 @@ describe("Banco: solicitudes", function()
         A.equal("10 x #3928", done.item:GetText())
         A.equal("Bea-Prueba", done.who:GetText())
         A.equal(Where(a, "UNO", 3), done.tag:GetText())
-        A.equal("|cff40ff40Sacado por Janeth-Prueba|r", done.state:GetText())
+        A.equal("|cff40ff40Sacado por Jandra-Prueba|r", done.state:GetText())
         A.equal("Pendiente", ReqRow(bank, "Pepe-Prueba").state:GetText())
         A.equal("Pendiente", ReqRow(bank, "Tester-Reino").state:GetText())
         Click(ReqRow(bank, "Pepe-Prueba").no)
@@ -904,7 +904,7 @@ describe("Banco: solicitudes", function()
         Hover(ReqRow(bank, "Bea-Prueba"))
         A.equal("Registro", tip.title)
         A.same({ "Pedido por Bea-Prueba el " .. When(now - 86400), "Banco: " .. Where(a, "UNO", 3),
-            "Sacado por Janeth-Prueba el " .. When(now - 80000) }, tip.lines)
+            "Sacado por Jandra-Prueba el " .. When(now - 80000) }, tip.lines)
         Click(ReqRow(bank, "Pepe-Prueba").no)
         tip = Tip(a)
         Hover(ReqRow(bank, "Pepe-Prueba"))
@@ -958,7 +958,7 @@ describe("Banco: registro", function()
         A.same({
             "|cffffd100— " .. os.date("%d/%m/%Y", now - 86400) .. " —|r",
             "|cffb0b0b012:00|r  " .. W("Bea-Prueba") .. " pide 10 x #3928 a " .. Where(a, "UNO", 3),
-            "|cffb0b0b013:46|r  " .. W("Janeth-Prueba") .. " saca 10 x #3928 de " .. Where(a, "UNO", 3) .. " para " .. W("Bea-Prueba"),
+            "|cffb0b0b013:46|r  " .. W("Jandra-Prueba") .. " saca 10 x #3928 de " .. Where(a, "UNO", 3) .. " para " .. W("Bea-Prueba"),
             " ",
             "|cffffd100— Ayer —|r",
             "|cffb0b0b011:00|r  " .. W("Pepe-Prueba") .. " pide 5 x #13446 a " .. Where(a, "UNO", 2),
@@ -1000,7 +1000,7 @@ describe("Banco: registro", function()
         A.equal(bea[1], bea[2], "siempre del mismo color")
         A.truthy(HEX[bea[1]], "uno de los de clase")
         A.truthy(HEX[ColorOf("Pepe-Prueba")[1]])
-        A.truthy(HEX[ColorOf("Janeth-Prueba")[1]])
+        A.truthy(HEX[ColorOf("Jandra-Prueba")[1]])
         A.same({}, a:Errors())
     end)
 

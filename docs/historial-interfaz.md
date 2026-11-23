@@ -240,7 +240,7 @@ del chat de Privado lleva también el circulito.
 Copia 228: la caja del chat solo se puede usar con alguien elegido (si no, apagada con «Elige un comercio con
 alguien para escribir»). A un desconectado se escribe igual y la línea lleva «(pendiente: lo leerá al entrar)»;
 sin red de momento no se manda (fase 4: buzón). En la búsqueda los nombres van en amarillo (mío, azul). El modo
-prueba añade dos privadas con desconectados (Lyra me pide; yo le pido a Janeth).
+prueba añade dos privadas con desconectados (Lyra me pide; yo le pido a Jandra).
 
 Copia 229: sin la marca «(pendiente…)» en las líneas a un desconectado (se escribe igual que a uno conectado).
 
