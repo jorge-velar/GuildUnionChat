@@ -422,7 +422,7 @@ end
 function Paint()
     if not (ui and ui:IsShown()) then return end
     -- (comercio apagado por el maestro: solo el aviso)
-    local off = HU.db.unionCfg and HU.db.unionCfg.tradeOff
+    local off = HU:UnionCfg().tradeOff
     ui.offMsg:SetShown(off and true or false)
     ui.body:SetShown(not off)
     if off then return end
@@ -675,7 +675,7 @@ local function BuildNewDialog(host)
         end
         local mats
         if d.matsMe:GetChecked() then mats = true elseif d.matsSeller:GetChecked() then mats = false end
-        reqs[#reqs + 1] = { id = NewId(), who = Me(), item = item, mats = mats, tip = (any and not (HU.db.unionCfg and HU.db.unionCfg.tipsOff)) and tip or nil, qty = math.max(1, tonumber(d.qty:GetText() or "") or 1), state = "open", pub = pub,
+        reqs[#reqs + 1] = { id = NewId(), who = Me(), item = item, mats = mats, tip = (any and not (HU:UnionCfg().tipsOff)) and tip or nil, qty = math.max(1, tonumber(d.qty:GetText() or "") or 1), state = "open", pub = pub,
             to = (not pub) and (HU:FullName(to) or to) or nil, t = time() }
         d:Hide()
         view = pub and "pub" or "priv"
@@ -1005,7 +1005,7 @@ function HU:BuildTrade(host)
         newDlg.title:SetText(to and (L("Pedir una receta a ") .. HU:Short(to)) or L("Nueva solicitud"))
         newDlg.item:SetText(""); newDlg.to:SetText(to or ""); newDlg.qty:SetText("1")
         for _, box in ipairs(newDlg.coins) do box:SetText("") end
-        local noTips = HU.db.unionCfg and HU.db.unionCfg.tipsOff
+        local noTips = HU:UnionCfg().tipsOff
         for _, w in ipairs(newDlg.tipParts) do w:SetShown(not noTips) end
         newDlg.matsMe:SetChecked(true); newDlg.matsSeller:SetChecked(false)
         newDlg.SetPub(not to and view == "pub")
@@ -1030,4 +1030,4 @@ function HU:BuildTrade(host)
     Paint()
 end
 
-HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow" })
+HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "UnionConfig" })

@@ -2,7 +2,7 @@
 local _, HU = ...
 local L = HU.L
 -- (true: la casilla «GuildUnion» quitada, se ve la lista del juego; por defecto, puesta)
-HU:Saved({ account = { "unionRosterOff" } })
+HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
 local TAB_H, HDR_H = 34, 24

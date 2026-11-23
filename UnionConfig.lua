@@ -7,9 +7,16 @@ local L = HU.L
 local DJ = HU.DJ
 local T = DJ.T
 
-local function Cfg() HU.db.unionCfg = HU.db.unionCfg or {}; return HU.db.unionCfg end
--- (el maestro de la hermandad; o «probar como maestro» para probar la ventana)
-local function IsGM() return (IsGuildLeader and IsGuildLeader()) or Cfg().testGM == true end
+HU:Saved({ char = { "unionCfg" } }) -- (de cada personaje: cada hermandad tiene la suya)
+
+function HU:UnionCfg()
+    self.db.unionCfg = self.db.unionCfg or {}
+    return self.db.unionCfg
+end
+-- (el maestro de la hermandad, o quien tiene el rango 0; o «Probar como maestro» para probar la ventana)
+function HU:IsUnionGM() return self:IsMaster() or self:UnionCfg().testGM == true end
+local function Cfg() return HU:UnionCfg() end
+local function IsGM() return HU:IsUnionGM() end
 local function Changed() HU:Changed("unionCfg") end
 
 -- (¿puedo crear eventos? Según la configuración del calendario, o con un permiso por un tiempo)

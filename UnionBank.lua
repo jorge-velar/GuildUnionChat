@@ -7,6 +7,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "myBankSnap" } }) -- (lo último que se vio del banco de este personaje: { items, t })
+
 local SLOT, GAP = 37, 4
 local REQ_ROWS, ROW_H = 10, 20
 local DJ = HU.DJ
@@ -24,8 +26,8 @@ local ui
 
 local function Me() return HU:Me() or "?" end
 local function NewId() return string.format("%x%x", math.random(0, 0xffff), time() % 0xffff) end
-local function Cfg() HU.db.unionCfg = HU.db.unionCfg or {}; return HU.db.unionCfg end
-local function IsGM() return (IsGuildLeader and IsGuildLeader()) or Cfg().testGM == true end
+local function Cfg() return HU:UnionCfg() end
+local function IsGM() return HU:IsUnionGM() end
 -- (lo ve: oficial, o todos si el maestro lo abrió, o el modo prueba)
 local function CanSee() return HU:CanPin() or Cfg().bankView == "all" or ui.testOn == true end
 local function CanRequest()
@@ -669,4 +671,4 @@ function HU:BuildBank(host)
     Paint()
 end
 
-HU:Module("UnionBank", { "Config", "Core", "ListWindow", "Pinned" })
+HU:Module("UnionBank", { "Config", "Core", "ListWindow", "Pinned", "UnionConfig" })
