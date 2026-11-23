@@ -36,7 +36,7 @@ local function CheckAlone(name, pass, done)
     if w.test then return HU.After(1, function() done(true) end) end
     if JoinTemporaryChannel then pcall(JoinTemporaryChannel, name, pass) end
     HU.After(2.5, function()
-        if HU.HideChannel then HU:HideChannel(name) end
+        HU:HideChannel(name)
         local n = ChannelCount(name)
         done(n ~= nil and n <= 1)
     end)
@@ -355,3 +355,5 @@ function HU:OpenWizard(test)
     w:Show()
     if self.myTag and not test then w.tag, w.title, w.created = self.myTag, self:Title(), true; Show(5) else Show(1) end
 end
+
+HU:Module("Wizard", { "Audit", "Channel", "Community", "Config", "Core", "Pinned" })

@@ -23,7 +23,20 @@ local SPECS = {
     "spec/cola_spec",
     "spec/red_spec",
     "spec/formato_spec",
+    "spec/chat_spec",
+    "spec/listas_spec",
+    "spec/comandos_spec",
+    "spec/slash_spec",
+    "spec/registro_spec",
+    "spec/combate_spec",
+    "spec/datos_spec",
+    "spec/escenarios_spec",
     "spec/novedades_spec",
+    "spec/planificador_spec",
+    "spec/guardas_spec",
+    "spec/modulos_spec",
+    "spec/protocolo_spec",
+    "spec/strict_spec", -- (la última: mira lo que han leído todas las demás)
 }
 for _, name in ipairs(SPECS) do
     local fn, err = loadfile(here .. "/" .. name .. ".lua")

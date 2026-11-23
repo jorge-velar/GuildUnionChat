@@ -35,15 +35,15 @@ local function OwnFilter(frame, event, msg, author, ...)
     if event == "CHAT_MSG_GUILD" and HU:GuildLineHidden(msg, author) then return true end
     if not (HU.db and HU.db.ownPaint and HU.myTag) then return false end
     -- (con Prat o Chattynator la línea la monta ese addon: PratBridge.lua pone el adorno con Prat)
-    if HU.PratActive and HU.PratActive() then return false end
-    if HU.UsingChattynator and HU.UsingChattynator() then return false end
+    if HU.PratActive() then return false end
+    if HU.UsingChattynator() then return false end
     if not (frame and type(frame.AddMessage) == "function") then return false end
     local guid = select(10, ...)
     if HU.Secret(guid) then guid = nil end
     -- (si algo falla al escribirla, no se oculta: la pinta el juego y no se pierde)
     local ok, err = pcall(PaintOwn, frame, event, msg, author, guid)
     if not ok then
-        if HU.RecordError then HU:RecordError(err, "pintar línea propia") end
+        HU:RecordError(err, "pintar línea propia")
         return false
     end
     return true
@@ -54,3 +54,5 @@ if add then
     add("CHAT_MSG_GUILD", OwnFilter)
     add("CHAT_MSG_OFFICER", OwnFilter)
 end
+
+HU:Module("ChatPaint", { "Channel", "ChatTabs", "Core", "PratBridge" })

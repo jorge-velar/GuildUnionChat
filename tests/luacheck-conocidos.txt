@@ -1,20 +1,2 @@
 # Avisos de luacheck que ya había (no paran el CI). Se rehace con:
 #   luacheck . -q --formatter=plain --codes | lua tests/luacheck_nuevos.lua --actualizar
-Channel.lua: (W542) empty if branch
-Channel.lua: (W542) empty if branch
-Comm.lua: (W431) shadowing upvalue 'L'
-Comm.lua: (W431) shadowing upvalue 'L'
-Comm.lua: (W431) shadowing upvalue 'R'
-Comm.lua: (W431) shadowing upvalue 'R'
-Comm.lua: (W431) shadowing upvalue 'R'
-Comm.lua: (W431) shadowing upvalue 'R'
-Comm.lua: (W431) shadowing upvalue 'b'
-Comm.lua: (W431) shadowing upvalue 'b'
-Comm.lua: (W431) shadowing upvalue 'b'
-Comm.lua: (W431) shadowing upvalue 'b'
-Comm.lua: (W431) shadowing upvalue 'b'
-Config.lua: (W421) shadowing definition of variable 'c'
-History.lua: (W311) value assigned to variable 'total' is unused
-History.lua: (W411) variable 'key' was previously defined
-History.lua: (W431) shadowing upvalue 'asked'
-History.lua: (W542) empty if branch

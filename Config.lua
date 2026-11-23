@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "infoBackup", "myOfficerRanks", "quickCfg" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 HU.ADDON_TITLE = "Guild Union"
@@ -164,7 +166,7 @@ local function Doubt(self, sig)
     local now = GetTime()
     if not doubt or doubt.sig ~= sig then
         doubt = { sig = sig, t = now, v = self.rosterVersion or 0 }
-        if self.RequestRoster then self:RequestRoster(true) end
+        self:RequestRoster(true)
     else
         local waited = now - doubt.t
         local delivered = (self.rosterVersion or 0) > doubt.v
@@ -180,7 +182,7 @@ local function Doubt(self, sig)
         HU.After(DOUBT_RETRY, function()
             d.timer = nil
             if doubt ~= d then return end
-            if HU.RequestRoster then HU:RequestRoster(true) end
+            HU:RequestRoster(true)
             HU:RefreshConfig()
         end)
     end
@@ -204,7 +206,7 @@ end
 
 -- Arranque rápido: al entrar, el juego tarda unos segundos en dar la Información de hermandad y la [+ARCHITECTURE.md]
 function HU:QuickConfig()
-    if self:IsTest() or self.cfg or not IsInGuild() then return false end
+    if self.cfg or not IsInGuild() then return false end
     local q = self.db.quickCfg
     if type(q) ~= "table" or type(q.text) ~= "string" or type(q.guild) ~= "string" then return false end
     -- (si el juego ya dice la hermandad y no es la de entonces, no vale. Si es la misma, vale [+ARCHITECTURE.md]
@@ -213,7 +215,7 @@ function HU:QuickConfig()
     if not gname and time() - (tonumber(q.t) or 0) > 7 * 86400 then return false end
     local cfg = HU.ParseConfigText(q.text)
     if not cfg then return false end
-    if self.MergeNetGuilds then self:MergeNetGuilds(cfg) end
+    self:MergeNetGuilds(cfg)
     UseNetChannel(cfg, self.db.netChan)
     local mine = cfg.byName[q.guild:lower()]
     if not cfg.ok or not cfg.channel or not mine then return false end
@@ -225,10 +227,26 @@ function HU:QuickConfig()
     return true
 end
 
+-- Migración 1 del personaje: versiones de antes guardaban esto para toda la cuenta; pasa a este
+-- personaje solo si es de su hermandad. Necesita la Información (la de RefreshConfig)
+HU:RegisterMigration("char", 1, "de la cuenta al personaje", function(adb, cdb, info)
+    if cdb.migrated then return true end -- (ya lo hizo una versión de antes)
+    if not info then return false end
+    local gname, text = info.guild, info.text
+    cdb.migrated = true -- (lo siguen mirando las versiones de antes: no lo repiten si se vuelve a una)
+    if adb.netCfg and adb.netCfg.guild == gname then cdb.netCfg = adb.netCfg end
+    if adb.infoBackup and adb.infoBackup.guild == gname then cdb.infoBackup = adb.infoBackup end
+    local c0 = HU.ParseConfigText(text)
+    if adb.netChan and c0 and c0.byName[gname:lower()] and c0.byTag[adb.netChan.tag or ""] then cdb.netChan = adb.netChan end
+    if adb.pinned and c0 and c0.byName[gname:lower()] then cdb.pinned = adb.pinned end
+    if type(adb.extraChans) == "table" and next(adb.extraChans) and c0 then cdb.extraChans = adb.extraChans end
+    return true
+end)
+
 function HU:RefreshConfig(force)
     if not IsInGuild() then
         self:Debug("Sin hermandad")
-        if self.SetGuildMin then self:SetGuildMin(nil) end
+        self:SetGuildMin(nil)
         self.cfg, self.myTag, self.guildName = nil, nil, nil
         lastKey = nil
         self:ApplyChannels()
@@ -250,21 +268,11 @@ function HU:RefreshConfig(force)
         return
     end
     -- (versión mínima: solo de la Información de MI hermandad, tal cual, antes de juntarle nada)
-    if self.SetGuildMin then self:SetGuildMin(HU.ParseMinVersion(text)) end
+    self:SetGuildMin(HU.ParseMinVersion(text))
     -- (y la sala fijada, igual: de la Información de MI hermandad)
-    if self.SetLaneLock then self:SetLaneLock(HU.ParseLaneLock(text)) end
-    -- (versiones de antes guardaban esto para toda la cuenta: pasa a este personaje solo si es
-    -- de su hermandad)
-    local cdb, adb = self.cdb, self.adb
-    if cdb and adb and not cdb.migrated then
-        cdb.migrated = true
-        if adb.netCfg and adb.netCfg.guild == gname then cdb.netCfg = adb.netCfg end
-        if adb.infoBackup and adb.infoBackup.guild == gname then cdb.infoBackup = adb.infoBackup end
-        local c0 = HU.ParseConfigText(text)
-        if adb.netChan and c0 and c0.byName[gname:lower()] and c0.byTag[adb.netChan.tag or ""] then cdb.netChan = adb.netChan end
-        if adb.pinned and c0 and c0.byName[gname:lower()] then cdb.pinned = adb.pinned end
-        if type(adb.extraChans) == "table" and next(adb.extraChans) and c0 then cdb.extraChans = adb.extraChans end
-    end
+    self:SetLaneLock(HU.ParseLaneLock(text))
+    -- (las migraciones que esperan a la Información de la hermandad: ver «de la cuenta al personaje»)
+    self:RunMigrations({ guild = gname, text = text })
     -- recién unida a la comunidad: el juego puede tardar en devolver la Información nueva
     if self.joinedText and not HU.ParseConfigText(text) then text = self.joinedText end
     -- más líneas de la comunidad en las notas de oficial (las leen los oficiales y las reparten)
@@ -277,7 +285,7 @@ function HU:RefreshConfig(force)
     if extra and HU.MergeConfigText then text = HU.MergeConfigText(text, extra) end
     local net = self.db.netChan
     local key = gname .. "\0" .. text .. "\0" .. (net and (net.channel .. (net.pass or "") .. (net.t or 0)) or "")
-        .. "\0" .. (self.NetGuildsKey and self:NetGuildsKey() or "")
+        .. "\0" .. (self:NetGuildsKey() or "")
     if not force and key == lastKey then return end
     lastKey = key
 
@@ -368,8 +376,8 @@ function HU:GuildColor(tag)
     if self.cfg and tag then
         for i, g in ipairs(self.cfg.guilds) do
             if g.tag == tag then
-                local c = GUILD_COLORS[((i - 1) % #GUILD_COLORS) + 1]
-                return c[1], c[2], c[3]
+                local col = GUILD_COLORS[((i - 1) % #GUILD_COLORS) + 1]
+                return col[1], col[2], col[3]
             end
         end
     end
@@ -473,7 +481,7 @@ function HU:RankRole(tag, rankIndex)
     return rankIndex == 1 and "officer" or nil
 end
 
-HU:On("GUILD_RANKS_UPDATE", function() HU:ForgetMyOfficerRanks(); if HU.Changed then HU:Changed("members") end end)
+HU:On("GUILD_RANKS_UPDATE", function() HU:ForgetMyOfficerRanks(); HU:Changed("members") end)
 HU:OnStart(function()
     for tag, set in pairs(HU.db.officerRanks or {}) do
         if type(set) == "table" and not HU.officerRanks[tag] then HU.officerRanks[tag] = set end
@@ -518,7 +526,7 @@ function HU:IsChannelMod(name)
     local k = self:Key(name)
     if not k then return false end
     -- (la forma rápida: la completa monta la lista entera del canal, y esto se mira al pintar)
-    if k == self:MeKey() then return self.AmIModFast and self:AmIModFast() or false end
+    if k == self:MeKey() then return self:AmIModFast() or false end
     if self.chanMods and self.chanMods[k] then return true end
     local p = (self.guildPeers and self.guildPeers[k]) or (self.remote and self.remote[k])
     return p and p.mod and true or false
@@ -559,10 +567,9 @@ function RankInfoSlow(self, k)
             end
         end
     end
-    -- rangos vistos antes (se guardan entre sesiones, valen 7 días)
-    local c = self.db and self.db.rankCache and self.db.rankCache[k]
-    if c and time() - (c.t or 0) < 7 * 86400 and self.whitelist[c.tag] and self.whitelist[c.tag].set[k] then
-        return c.tag, c.idx
-    end
+    -- (db.rankCache, los rangos vistos antes, solo se leía aquí si además salía en la lista completa de
+    -- su hermandad, que ya no existe: hoy se guarda pero no se usa. Ver docs/fallos-conocidos.md, 2)
     return nil
 end
+
+HU:Module("Config", { "Channel", "Community", "Core", "Guard", "NoteConfig", "Popup", "Ranks", "Roster" })

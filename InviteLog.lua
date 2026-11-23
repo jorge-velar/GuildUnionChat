@@ -63,7 +63,7 @@ local function Ask()
 end
 HU:OnStart(function()
     HU.After(15, Ask)
-    HU.NewTicker(600, Ask)
+    HU:Every(600, "invitaciones", Ask)
 end)
 
 -- Quién invitó a esa persona (la última vez), o nil si no consta
@@ -85,7 +85,7 @@ local function Paint(row, e)
     row.cells[1]:SetText("|cff9a8f78" .. HU.SafeDate("%d/%m/%y %H:%M", e.t) .. "|r")
     row.cells[2]:SetText(HU:Short(e.by))
     -- (en blanco quien sigue en la hermandad, en gris quien ya no está, en rojo quien está en la lista negra)
-    local color = (HU.IsBanned and HU:IsBanned(e.who)) and "|cffff4444" or (HU:InMyGuild(e.who) and "|cffffffff" or "|cff808080")
+    local color = (HU:IsBanned(e.who)) and "|cffff4444" or (HU:InMyGuild(e.who) and "|cffffffff" or "|cff808080")
     row.cells[3]:SetText(color .. HU:Short(e.who) .. "|r")
 end
 
@@ -123,3 +123,5 @@ function HU:ShowInviteLog()
     Ask()
     win:Show()
 end
+
+HU:Module("InviteLog", { "Core", "ListWindow", "Roster", "Social" })

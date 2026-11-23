@@ -46,7 +46,7 @@ local function Candidates(frag)
     end
     HU.EachRecentSpeaker(function(name) try(name, true) end)
     -- (@everyone, solo para quien puede usarlo; sale el primero)
-    if HU.CanPin and HU:CanPin() and want ~= "everyone" and ("everyone"):sub(1, #want) == want then
+    if HU:CanPin() and want ~= "everyone" and ("everyone"):sub(1, #want) == want then
         out[#out + 1] = { nice = "everyone", online = 2 }
     end
     table.sort(out, function(a, b)
@@ -135,3 +135,5 @@ HU:OnStart(function()
         end
     end
 end)
+
+HU:Module("Mention", { "Core", "Pinned" })

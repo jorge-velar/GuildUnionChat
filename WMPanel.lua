@@ -8,6 +8,9 @@
 local _, HU = ...
 local L = HU.L
 
+-- (copia 156: filas silenciadas, ancladas y eliminadas de la pestaña de Whisper Messenger)
+HU:Saved({ char = { "wmRows" } })
+
 local PANEL_ID = "guildunion"
 -- (copia 133) Los botones de la zona de escribir, como los suyos: 26 de lado, 4 entre ellos, icono de 18
 local BTN, BTN_GAP, BTN_ICON, GUTTER = 26, 4, 18, 8
@@ -712,12 +715,12 @@ local function BuildRows()
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
-                if HU.WMRowMenu then HU.WMRowMenu(self, it.tag) end
+                HU.WMRowMenu(self, it.tag)
                 return
             end
             filter = it.tag
             ClearUnread(it.tag)
-            if HU.WMRefreshBadge then HU.WMRefreshBadge() end
+            HU.WMRefreshBadge()
             Fill()
         end)
         rows[i] = row
@@ -1216,3 +1219,5 @@ HU:On("PLAYER_LOGIN", function()
         HU.After(d, function() if not registered then pcall(TryRegister) end end)
     end
 end)
+
+HU:Module("WMPanel", { "Channel", "Config", "Core" })

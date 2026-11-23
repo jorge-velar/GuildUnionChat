@@ -109,3 +109,5 @@ HU.RelayName = function(self)
     if now - nameT >= 1 then nameT, nameV = now, origRelayName(self) end
     return nameV
 end
+
+HU:Module("MassLogin", { "Core", "Net/Relay", "Net/Transport", "Pinned" })

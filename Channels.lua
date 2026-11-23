@@ -2,6 +2,14 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({
+    char = {
+        extraChans = {},      -- canales extra: [nombre] = { name, pass, del, by, tag, t }
+        "netChan",            -- canal y contraseña repartidos desde la nota de oficial: { channel, pass, t, by, tag }
+        "noteChanSeen",
+    },
+})
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local MAX_EXTRA = 3
@@ -35,6 +43,7 @@ function HU:ShareExtra(x, target)
 end
 
 -- Devuelve true o false y el motivo
+HU:RegisterMessage("CX", { queue = "chat", ttl = 600 })
 HU.comm.CX = function(self, sender, f, dist, raw)
     local name, pass, del, by, tag, t = f[1], f[2], f[3] == "1", f[4], f[5], HU.NetT(f[6])
     if not name or not name:match("^%w+$") or #name > 25 or not t then return end
@@ -72,7 +81,7 @@ HU.comm.PQ = function(self, sender, ...)
 end
 
 HU:OnStart(function()
-    HU.NewTicker(300, function()
+    HU:Every(300, "canales-extra", function()
         if not HU.myTag or not HU:IsRelay() then return end
         for _, x in pairs(HU.db.extraChans) do
             for _, tag in ipairs(HU:OtherTags()) do
@@ -158,6 +167,7 @@ end
 
 -- Me pasan el canal a mano (/gu pasarcanal): solo si no tengo uno bueno, y como provisional (el de mi
 -- hermandad lo sustituye)
+HU:RegisterMessage("CK", { open = true }) -- (canal pasado a mano: solo vale de provisional)
 HU.comm.CK = function(self, sender, f, dist)
     if dist ~= "WHISPER" then return end
     local cur = self.db.netChan
@@ -172,7 +182,7 @@ end
 
 -- Lo llama la lista de la hermandad cuando un oficial ve la línea en una nota de oficial
 function HU:OnChannelNote(channel, pass)
-    if self:IsTest() or not self.myTag then return end
+    if not self.myTag then return end
     local n = self.db.netChan
     if n and n.channel == channel and (n.pass or nil) == (pass or nil) then return end
     -- Solo cuenta como cambio si la nota cambia después de haberla visto. La primera vez que un
@@ -191,7 +201,7 @@ end
 local noteMissT, noteMissWarned
 -- (bad: la línea está, pero con algo pegado detrás que no cuadra; tampoco se usa ni se reparte)
 function HU:OnChannelNoteMissing(bad)
-    if self:IsTest() or not self.myTag or noteMissWarned then return end
+    if not self.myTag or noteMissWarned then return end
     local n = self.db.netChan
     -- (solo si en esta hermandad la línea estuvo: si el canal llegó de otra, aquí no falta nada)
     if not n or n.prov or not self.db.noteChanSeen then return end
@@ -335,7 +345,7 @@ CPCore = function(self, sender, f, dist, raw, fromPending)
         return
     end
     local cur = self.db.netChan
-    if viaCQ and not self:IsTest() then
+    if viaCQ then
         if cur and not cur.prov then return end
         return CQVote(self, sender, { channel = channel, pass = (pass ~= "") and pass or nil, t = t, by = by, tag = (tag ~= "" and tag) or nil })
     end
@@ -343,9 +353,11 @@ CPCore = function(self, sender, f, dist, raw, fromPending)
     Adopt(self, { channel = channel, pass = (pass ~= "") and pass or nil, t = t, by = by, tag = (tag ~= "" and tag) or nil })
     if dist == "WHISPER" then self:Send(raw, "GUILD") end
 end
+HU:RegisterMessage("CP", { queue = "chat", ttl = 600 })
 HU.comm.CP = function(self, sender, f, dist, raw) return CPCore(self, sender, f, dist, raw) end
 
 -- Al entrar, quien no tenga el canal lo pide (contesta el primero conectado que lo tenga)
+HU:RegisterMessage("CQ", { queue = "chat", ttl = 600 })
 HU.comm.CQ = function(self, sender, f, dist)
     -- (con un canal provisional no se contesta: contaría como un segundo voto para el siguiente)
     if dist ~= "GUILD" or not self.db.netChan or self.db.netChan.prov then return end
@@ -378,13 +390,13 @@ HU:OnStart(function()
     end
     -- (sin canal, o con uno provisional: se sigue pidiendo cada minuto, así llega en cuanto se conecte
     -- alguien de la hermandad que lo tenga, sin /reload)
-    HU.NewTicker(60, function()
+    HU:Every(60, "canal-pedir", function()
         local n = HU.db.netChan
         if not (HU.myTag and IsInGuild()) or (n and not n.prov) then return end
         HU.cqAskedT = GetTime(); HU:Send("CQ", "GUILD")
     end)
     -- el enlace lo pasa a las otras hermandades de vez en cuando
-    HU.NewTicker(300, function()
+    HU:Every(300, "canal-repartir", function()
         if HU.myTag and HU:IsRelay() and HU.db.netChan then
             for _, tag in ipairs(HU:OtherTags()) do
                 local peer = HU:SafePeer(tag)
@@ -393,3 +405,5 @@ HU:OnStart(function()
         end
     end)
 end)
+
+HU:Module("Channels", { "Audit", "Channel", "Comm", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/Transport", "Protocol", "Roster" })

@@ -26,7 +26,7 @@ function HU:MemTrim()
     if not self.memOver then self.memOver = true; return mb end
     local before = mb
     -- 1) lo que se puede volver a calcular
-    if self.HistDropCaches then self:HistDropCaches() end
+    self:HistDropCaches()
     collectgarbage("collect")
     mb = AddonMB() or mb
     -- 2) los días más viejos del historial de oficiales: 3 por vuelta, una vuelta por segundo
@@ -52,11 +52,11 @@ function HU:MemTrim()
         collectgarbage("collect")
         mb = AddonMB() or mb
     end
-    if not warned and self.CanPin and self:CanPin() then
+    if not warned and self:CanPin() then
         warned = true
         self:Print(string.format(L("Memoria del addon por encima de %d MB (%.1f MB): se ha borrado lo más viejo; ahora %.1f MB."), HU.MEM_LIMIT_MB, before, mb))
     end
-    if self.TestLogAdd then self.TestLogAdd("memoria", string.format("%.1f MB -> %.1f MB", before, mb)) end
+    self.TestLogAdd("memoria", string.format("%.1f MB -> %.1f MB", before, mb))
     return mb
 end
 
@@ -73,9 +73,12 @@ end
 -- (durante la pantalla de carga: el juego ya está parado y no se nota)
 HU:On("PLAYER_ENTERING_WORLD", function() HU:SafeCall("memoria", Check) end)
 HU:OnStart(function()
-    HU.NewTicker(60, function()
+    -- (cada minuto se mira si toca: solo ausente, o si en FALLBACK no ha habido pantalla de carga)
+    HU:Every(60, "memoria", function()
         local ok, afk = pcall(UnitIsAFK, "player")
         afk = ok and HU.SafeBool(afk, false)
-        if afk or GetTime() - lastCheck >= FALLBACK then HU:SafeCall("memoria", Check) end
+        if afk or GetTime() - lastCheck >= FALLBACK then Check() end
     end)
 end)
+
+HU:Module("MemGuard", { "Core", "History", "Pinned" })

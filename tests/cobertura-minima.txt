@@ -1,42 +1,49 @@
-# Cobertura mínima de cada archivo (%), sin lo que se ejecuta al cargar. No puede bajar.
+# Cobertura mínima de cada archivo (%) y sus líneas sin probar, sin lo que se ejecuta al cargar.
+# Un archivo falla si baja de su % Y tiene más líneas sin probar (borrar código probado no falla).
 # Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)
-Audit.lua 27.7
-Blacklist.lua 7.5
-BlizzTab.lua 1.8
-ChanPresence.lua 55.0
-Channel.lua 49.5
-Channels.lua 10.9
-ChatPaint.lua 0.0
-ChatTabs.lua 45.0
-Combat.lua 17.3
-Comm.lua 71.2
-Community.lua 3.2
-Config.lua 66.8
-Core.lua 15.3
-ErrorShare.lua 0.0
-Guard.lua 36.9
-GuardKeeper.lua 35.2
-History.lua 43.9
-InviteLog.lua 5.7
-ListWindow.lua 0.0
-Lists.lua 28.1
-MassLogin.lua 54.9
-MemGuard.lua 4.8
-Mention.lua 3.6
-Minimap.lua 5.5
-NoteConfig.lua 7.1
-Orders.lua 1.0
-Perf.lua 0.6
-Pinned.lua 16.6
-Popup.lua 9.7
-PratBridge.lua 8.9
-Presence.lua 30.6
-Ranks.lua 29.3
-Report.lua 1.4
-Roster.lua 72.0
-Social.lua 47.5
-TestLog.lua 20.0
-UI.lua 12.5
-UIWindows.lua 0.0
-WMPanel.lua 1.6
-Wizard.lua 0.0
+Audit.lua 28.7 57
+Blacklist.lua 39.4 72
+BlizzTab.lua 16.9 783
+ChanPresence.lua 95.0 3
+Channel.lua 78.1 294
+Channels.lua 14.4 196
+ChatPaint.lua 0.0 30
+ChatTabs.lua 45.0 39
+Combat.lua 56.1 96
+Comm.lua 59.5 34
+Community.lua 7.2 371
+Config.lua 68.5 107
+Core.lua 81.1 97
+Domain/Trust.lua 75.7 59
+ErrorShare.lua 29.2 46
+Guard.lua 50.4 238
+GuardKeeper.lua 57.8 73
+History.lua 64.3 403
+InviteLog.lua 30.0 49
+ListWindow.lua 90.4 8
+Lists.lua 47.1 92
+MassLogin.lua 54.9 23
+MemGuard.lua 31.7 28
+Mention.lua 3.6 80
+Minimap.lua 33.3 12
+Net/Relay.lua 79.1 187
+Net/RosterSync.lua 76.6 182
+Net/Security.lua 75.8 42
+Net/Transport.lua 67.4 57
+NoteConfig.lua 26.9 92
+Orders.lua 5.4 174
+Perf.lua 37.4 97
+Pinned.lua 56.2 21
+Popup.lua 62.6 65
+PratBridge.lua 8.9 61
+Presence.lua 29.3 152
+Protocol.lua 88.8 1
+Ranks.lua 29.3 101
+Report.lua 56.3 175
+Roster.lua 87.2 16
+Social.lua 49.8 329
+TestLog.lua 32.2 61
+UI.lua 87.5 3
+UIWindows.lua 95.0 3
+WMPanel.lua 3.6 816
+Wizard.lua 40.5 148

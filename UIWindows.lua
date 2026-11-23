@@ -81,3 +81,4 @@ local function OldVersions()
 end
 HU.OldVersions = OldVersions
 
+HU:Module("UIWindows", { "Core" })

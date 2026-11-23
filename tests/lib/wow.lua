@@ -8,6 +8,24 @@ local wow = {}
 
 local unpack = unpack or table.unpack
 
+-- Números al azar propios (Park-Miller), iguales con Lua 5.1 y 5.4: el math.random de cada versión
+-- da otros números, el addon los usa para repartir saludos y retrasos, y el mismo escenario seguía
+-- otro camino en el CI (5.1) que en local (5.4). Lo comparten todos los mundos, como el del juego.
+local seed = 1
+function wow.Seed(n)
+    seed = math.floor(tonumber(n) or 1) % 2147483646 + 1
+end
+local function Random(m, n)
+    seed = seed * 16807 % 2147483647 -- (cabe entero en un double: < 2^53)
+    local r = (seed - 1) / 2147483646
+    if m == nil then return r end
+    if n == nil then m, n = 1, m end
+    m, n = math.floor(m), math.floor(n)
+    if n < m then error("bad argument #2 to 'random' (interval is empty)", 2) end
+    return m + math.floor(r * (n - m + 1))
+end
+local mathEnv = setmetatable({ random = Random, randomseed = wow.Seed }, { __index = math })
+
 ---------------------------------------------------------------------------
 -- Marcos
 ---------------------------------------------------------------------------
@@ -78,6 +96,8 @@ local function FrameMeta(w)
             if type(k) == "string" and k:sub(1, 6) == "Create" then
                 return function(self, name) return NewFrame(w, k:sub(7), name, self) end
             end
+            -- (un campo del addon que aún no se ha puesto, en minúscula: nada, como en el juego)
+            if type(k) ~= "string" or not k:match("^%u") then return nil end
             -- (cualquier otro método: no hace nada, como un «Set…» del juego)
             return function() end
         end,
@@ -107,7 +127,7 @@ function wow.New(opts)
     local env = {}
     w.env = env
     if not opts.keepRandom then
-        math.randomseed(opts.seed or 1) -- (el addon usa math.random para repartir saludos: que sea siempre igual)
+        wow.Seed(opts.seed or 1) -- (el addon usa math.random para repartir saludos: que sea siempre igual)
     end
     w.frameMeta = FrameMeta(w)
 
@@ -180,7 +200,12 @@ function wow.New(opts)
     api.date = function(fmt, t) return os.date(fmt, t or api.time()) end
     api.GetServerTime = api.time
     api.debugprofilestop = function() return w.now * 1000 end
-    api.debugstack = function() return "" end
+    -- (como el del juego: «Archivo.lua:123: in function …» de quien está `level` por encima)
+    api.debugstack = function(level)
+        local info = debug.getinfo((level or 1) + 1, "Sl")
+        if not info then return "" end
+        return info.short_src .. ":" .. tostring(info.currentline) .. ": in function"
+    end
     api.geterrorhandler = function() return function(e) error(e, 0) end end
     api.securecall = function(fn, ...) if type(fn) == "function" then return fn(...) end end
     api.hooksecurefunc = function(a, b, c)
@@ -266,10 +291,12 @@ function wow.New(opts)
     end
     api.IsGuildLeader = function() return w.guild and w.guild.rankIndex == 0 or false end
     api.CanEditOfficerNote = function() return false end
-    api.CanViewOfficerNote = function() return false end
+    -- (los oficiales, rangos 0 a 2, ven las notas de oficial: lo mismo que su casilla «Oficial»)
+    api.CanViewOfficerNote = function() return w.guild ~= nil and (w.guild.rankIndex or 4) <= 2 end
     api.CanEditGuildInfo = function() return false end
     api.InCombatLockdown = function() return w.inCombat == true end
-    api.IsInInstance = function() return false, "none" end
+    -- (w.instance = "raid", "party", "pvp"...: dentro de una instancia de ese tipo)
+    api.IsInInstance = function() if w.instance then return true, w.instance end return false, "none" end
     api.IsInGroup = function() return false end
     api.IsInRaid = function() return false end
     api.GetNumGroupMembers = function() return 0 end
@@ -392,7 +419,7 @@ function wow.New(opts)
     local RANK_NAMES = { "Maestro", "Oficial", "Oficial", "Veterano", "Miembro" }
     api.C_GuildInfo = {
         GuildRoster = function() return api.GuildRoster() end,
-        CanViewOfficerNote = function() return false end,
+        CanViewOfficerNote = function() return api.CanViewOfficerNote() end,
         GuildControlGetRankFlags = function(i)
             local flags = {}
             for k = 1, 24 do flags[k] = false end
@@ -407,6 +434,8 @@ function wow.New(opts)
     api.wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
     api.tinsert, api.tremove = table.insert, table.remove
     api.unpack = unpack
+    api.math = mathEnv
+    api.random = Random
     api.strmatch, api.strfind, api.strlower, api.strupper = string.match, string.find, string.lower, string.upper
     api.strlen, api.strsub, api.strrep, api.format, api.gsub = string.len, string.sub, string.rep, string.format, string.gsub
     api.floor, api.ceil, api.abs, api.max, api.min = math.floor, math.ceil, math.abs, math.max, math.min

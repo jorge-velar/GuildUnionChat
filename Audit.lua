@@ -2,6 +2,8 @@
 local ADDON_NAME, HU = ...
 local L = HU.L
 
+HU:Saved({ account = { audit = {} } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local seen = {}
@@ -17,10 +19,6 @@ function HU:TagOf(name)
     if not name then return nil end
     local k = self:Key(name)
     if self.roster[k] then return self.myTag end
-    if self:IsTest() and k == self:MeKey() then return self.myTag end
-    for tag, W in pairs(self.whitelist) do
-        if W.set[k] then return tag end
-    end
     return nil
 end
 
@@ -47,6 +45,7 @@ function HU:ShareAudit(e, share)
     end
 end
 
+HU:RegisterMessage("AU")
 HU.comm.AU = function(self, sender, f, dist, raw)
     local id, t, tag, actor, text = f[1], HU.NetT(f[2]), f[3], f[4], f[5]
     if not id or not text or seen[id] then return end
@@ -138,7 +137,7 @@ local SYSTEM = {
 }
 
 HU:On("CHAT_MSG_SYSTEM", function(text)
-    if not HU.myTag or HU:IsTest() or type(text) ~= "string" then return end
+    if not HU.myTag or type(text) ~= "string" then return end
     for _, s in ipairs(SYSTEM) do
         local args = Match(text, _G[s.key])
         if args then
@@ -177,4 +176,4 @@ HU:On("ADDON_LOADED", function(name)
     for _, e in ipairs(HU.db.audit) do if e.id then seen[e.id] = true end end
 end)
 
--- Autores que aparecen en el registro (para filtrar)
+HU:Module("Audit", { "Channel", "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "Protocol" })

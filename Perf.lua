@@ -15,7 +15,7 @@ local clock = debugprofilestop
 local function Heap() return collectgarbage("count") end
 
 local on = false
-local origSafeCall, origAfter, origTicker
+local origSafeCall, origAfter
 local depth = 0
 local stats, nLabels = {}, 0
 local slow, spikes = {}, {}
@@ -54,7 +54,7 @@ local function Label(where, fn, a, b)
     local label = tostring(where)
     if where == "CHAT_MSG_ADDON" then
         if type(a) == "string" and a:sub(1, 4) == "HU20" then
-            -- (el tipo, con «~» detrás o solo, como HY, RQ, PA, CQ, PQ, NK; igual que lo lee Comm.lua)
+            -- (el tipo, con «~» detrás o solo, como HY, RQ, PA, CQ, PQ, NK; igual que lo lee Net/Security.lua)
             local kind = type(b) == "string" and (b:match("^(%u%u?)~") or b:match("^(%u%u?)$"))
             label = label .. " " .. a .. " " .. (kind or "?")
         else
@@ -112,7 +112,6 @@ local function WrapTimer(fn, origin)
     return fn
 end
 local function TimedAfter(delay, fn) return origAfter(delay, WrapTimer(fn, Origin())) end
-local function TimedTicker(delay, fn, n) return origTicker(delay, WrapTimer(fn, Origin()), n) end
 
 local updater = CreateFrame("Frame")
 updater:Hide()
@@ -144,8 +143,9 @@ end
 function Perf.Start()
     if on then return end
     on = true
-    origSafeCall, origAfter, origTicker = HU.SafeCall, HU.After, HU.NewTicker
-    HU.SafeCall, HU.After, HU.NewTicker = TimedSafeCall, TimedAfter, TimedTicker
+    -- (lo que se repite ya va por HU:Every, que lleva su propia cuenta: ver HU:TaskLines)
+    origSafeCall, origAfter = HU.SafeCall, HU.After
+    HU.SafeCall, HU.After = TimedSafeCall, TimedAfter
     Perf.Reset()
     updater:Show()
     if HU.db then HU.db.perfOn = true end
@@ -159,7 +159,6 @@ function Perf.Stop()
     -- (solo se devuelve lo nuestro si nadie lo ha cambiado después)
     if HU.SafeCall == TimedSafeCall then HU.SafeCall = origSafeCall end
     if HU.After == TimedAfter then HU.After = origAfter end
-    if HU.NewTicker == TimedTicker then HU.NewTicker = origTicker end
     if HU.db then HU.db.perfOn = nil end
 end
 
@@ -237,6 +236,9 @@ function Perf.Report()
         end
     end
     Add("")
+    Add(L("-- Tareas que se repiten (HU:Every), desde que entraste --"))
+    for _, l in ipairs(HU:TaskLines()) do Add(l) end
+    Add("")
     Add(L("(Mide eventos, temporizadores e inicio del addon; no el dibujo de las ventanas.)"))
     return table.concat(lines, "\n")
 end
@@ -290,6 +292,7 @@ if E then
     E["del addon: "] = "addon: "
     E["(Si «del addon» es pequeño, la subida la causó otro addon o el juego.)"] = "(If the addon's part is small, another addon or the game caused it.)"
     E["-- Lo que más tiempo se lleva (veces, ms en total, ms la peor, KB) --"] = "-- Most time spent (calls, total ms, worst ms, KB) --"
+    E["-- Tareas que se repiten (HU:Every), desde que entraste --"] = "-- Repeating tasks (HU:Every), since you logged in --"
     E["(Mide eventos, temporizadores e inicio del addon; no el dibujo de las ventanas.)"] = "(Measures the addon's events, timers and startup; not window drawing.)"
     E["sin tirones del addon"] = "no addon stutters"
     E["%d tirones (peor %d ms), %d picos de memoria"] = "%d stutters (worst %d ms), %d memory spikes"
@@ -300,3 +303,5 @@ if E then
     E["Medidor: "] = "Meter: "
     E["Medidor de tirones (Ctrl+C y mándaselo a quien lleva el addon)"] = "Stutter meter (Ctrl+C and send it to the addon's maintainer)"
 end
+
+HU:Module("Perf", { "Core" })

@@ -35,7 +35,7 @@ do
     local i = 1
     while arg and arg[i] do
         local a = arg[i]
-        if a == "--base" or a == "--al-dia" then opts[a:sub(3)] = arg[i + 1]; i = i + 1
+        if a == "--base" or a == "--al-dia" or a == "--sin-probar" then opts[a:sub(3)] = arg[i + 1]; i = i + 1
         elseif a == "--actualizar" then opts.actualizar = true
         elseif a == "--forzar" then opts.forzar = true end
         i = i + 1
@@ -116,37 +116,71 @@ end
 table.sort(rows, function(a, b) return a.t > b.t end)
 local totalPct = 100 * covered / math.max(1, total)
 
+-- --sin-probar Archivo.lua: sus líneas sin probar, por función (de la que más tiene a la que menos)
+if opts["sin-probar"] then
+    local file = opts["sin-probar"]
+    local r = assert(byFile[file], "no conozco " .. file)
+    local fnOf, cur = {}, "(fuera de funciones)"
+    local n = 0
+    for line in io.lines(root .. "/" .. file) do
+        n = n + 1
+        local name = line:match("^%s*function%s+([%w_.:]+)") or line:match("^%s*local%s+function%s+([%w_]+)")
+            or line:match("^%s*([%w_.]+)%s*=%s*function") or line:match("RegisterMessage%(\"(%u+)\"")
+        if name then cur = name .. " (" .. n .. ")" end
+        fnOf[n] = cur
+    end
+    local by, order = {}, {}
+    for l in pairs(r.exe) do
+        if not r.hits[l] then
+            local f = fnOf[l]
+            if not by[f] then by[f] = {}; order[#order + 1] = f end
+            table.insert(by[f], l)
+        end
+    end
+    table.sort(order, function(x, y) return #by[x] > #by[y] end)
+    print(string.format("%s: %d de %d líneas sin probar", file, r.t - r.c, r.t))
+    for _, f in ipairs(order) do
+        table.sort(by[f])
+        print(string.format("%4d  %s", #by[f], f))
+    end
+end
+
 ---------------------------------------------------------------------------
 -- Mínimos por archivo
 ---------------------------------------------------------------------------
 local function Round(x) return math.floor(x * 10) / 10 end
 local function WriteMins(path)
     local f = assert(io.open(path, "wb"))
-    f:write("# Cobertura mínima de cada archivo (%), sin lo que se ejecuta al cargar. No puede bajar.\n")
+    f:write("# Cobertura mínima de cada archivo (%) y sus líneas sin probar, sin lo que se ejecuta al cargar.\n")
+    f:write("# Un archivo falla si baja de su % Y tiene más líneas sin probar (borrar código probado no falla).\n")
     f:write("# Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)\n")
     local sorted = {}
     for _, r in ipairs(rows) do sorted[#sorted + 1] = r end
     table.sort(sorted, function(a, b) return a.file < b.file end)
-    for _, r in ipairs(sorted) do f:write(string.format("%s %.1f\n", r.file, Round(r.pct))) end
+    for _, r in ipairs(sorted) do f:write(string.format("%s %.1f %d\n", r.file, Round(r.pct), r.t - r.c)) end
     f:close()
 end
 
-local mins = {}
+local mins, minUnc = {}, {}
 do
     local f = io.open(MINIMOS, "rb")
     if f then
         for line in f:lines() do
-            local file, v = line:gsub("\r$", ""):match("^([^#%s]+)%s+([%d%.]+)")
-            if file then mins[file] = tonumber(v) end
+            local file, v, u = line:gsub("\r$", ""):match("^([^#%s]+)%s+([%d%.]+)%s*(%d*)")
+            if file then mins[file], minUnc[file] = tonumber(v), tonumber(u) end
         end
         f:close()
     end
 end
 
+-- (un archivo falla si baja de su % y además tiene más líneas sin probar que su mínimo: al borrar
+-- código que sí se probaba, el % baja sin que falte ninguna prueba. Fuera de Lua 5.1, luac cuenta
+-- las líneas de otra forma: un 3 % de margen también en las líneas sin probar)
 local below, above = {}, {}
 for _, r in ipairs(rows) do
-    local m = mins[r.file]
-    if m and r.pct < m - MARGEN then below[#below + 1] = r end
+    local m, u = mins[r.file], minUnc[r.file]
+    local moreUntested = not u or (r.t - r.c) > u + (LUA51 and 0 or math.ceil(r.t * 0.03))
+    if m and r.pct < m - MARGEN and moreUntested then below[#below + 1] = r end
     if m and r.pct > m + MARGEN then above[#above + 1] = r end
 end
 
@@ -237,7 +271,10 @@ if diff then
 end
 if #below > 0 then
     P("### Archivos por debajo de su mínimo")
-    for _, r in ipairs(below) do P(string.format("- `%s`: %.1f %% (mínimo %.1f %%)", r.file, r.pct, mins[r.file])) end
+    for _, r in ipairs(below) do
+        P(string.format("- `%s`: %.1f %% (mínimo %.1f %%), %d líneas sin probar%s", r.file, r.pct, mins[r.file], r.t - r.c,
+            minUnc[r.file] and (" (antes " .. minUnc[r.file] .. ")") or ""))
+    end
     P()
 end
 if #above > 0 then
