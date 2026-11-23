@@ -2182,6 +2182,79 @@ también trae nombres parecidos). Solo desde un clic: el juego no deja a un addo
 cuenta. Solo se toma la respuesta al /who que he pedido, si llega en 15 s. No trae rangos; si llega la
 lista de Miembros, se enseña esa. Si el juego no los da todos, el estado dice «N de M».
 
+## Net/Packs.lua · Packs/Members.lua
+
+### Qué hay en el archivo
+
+Los **paquetes con huella**: datos de cada hermandad que cambian poco (hoy, la lista completa de miembros;
+después, Banco, Calendario, Comercio y Configuración), repartidos sin atascar. Especificación, plan y tareas:
+Obsidian, «GuildUnion - specs / plan / tareas paquetes con huella».
+
+Net/Packs.lua no sabe qué hay dentro: cada **conjunto** se declara con
+`HU:RegisterPackSet(id, { chunks, key, encode, source, onChange })` (dos mayúsculas; hoy solo `MB`, en
+Packs/Members.lua: «Nombre-Reino,clase,nivel,rango», una línea por miembro).
+
+### Trozos y huella
+
+- Cada entrada cae siempre en el mismo trozo: `HU.PackChunkOf(clave, n)` (djb2 del nombre en minúsculas). Un
+  alta o una baja solo cambia su trozo.
+- La huella de un trozo (`HU.PackHash`): dos funciones de 32 bits distintas (×33 y ×65599, cada una módulo
+  36^6) sobre sus líneas ordenadas, en base 36: 12 letras, para que el anuncio de 16 trozos quepa en un
+  mensaje. `Mul32` multiplica módulo 2^32 sin perder cifras con los números de Lua 5.1.
+- **No hay número de versión: la huella es la versión.** Un anuncio dice cómo es la lista ahora y gana el
+  último que llega de quien puede mandarlo. No hay nada que «inflar» para bloquear una lista: un anuncio
+  falso dura hasta el siguiente repaso del enlace (10 min).
+- La huella asegura que un trozo es el anunciado; la confianza sale de quién manda el anuncio. Un trozo
+  vacío (`EMPTY`) vale con su huella y no se pide.
+
+### Los papeles
+
+| Papel | Quién | Qué hace |
+|---|---|---|
+| Publica | el enlace de la hermandad | lee su lista del juego (`Refresh`, solo lo que cambia desde `rosterVersion`), junta los cambios de 60 s (`PUBLISH_WAIT`) y manda las diferencias pequeñas (`WD`) y el anuncio (`WM`) a una persona de cada otra hermandad (`Receiver`: su enlace, si no el primero de su equipo, si no su mejor contacto). Repite el anuncio cada 10 min (`ANNOUNCE_EVERY`) y reintenta en cada vuelta a quien no conocía (`unsent`) |
+| Sirve | cualquiera de esa hermandad a quien se lo pidan por susurro | lo lee del juego y lo manda por susurro, con tope de 60 mensajes por minuto a cada hermandad (`SERVE_MAX`) |
+| Porteador | en mi hermandad, uno del equipo (enlace y ayudantes, ordenados por nombre) por cada otra hermandad: `Pick(MyTeam(), TagIndex(etiqueta), turno)` | si tiene el trozo, lo da por GUILD; si no, lo pide al de esa hermandad que le toca (`Pick(PoolOf(etiqueta), TagIndex(mi etiqueta), turno)`) y lo reparte por GUILD al llegar |
+| Miembros | todos | escuchan, guardan y comprueban; solo piden al mirar (`HU:PackNeed`) |
+
+Todos calculan igual quién hace cada cosa, sin hablar: el orden es por nombre y por etiqueta.
+
+### Cómo viaja
+
+1. **Anuncio (`WM`)** y **cambios (`WD`)**: del enlace dueño, por susurro; quien lo recibe lo repite por GUILD
+   una vez (`Forward`, 60 s). Un `WD` lleva la huella de antes y la de después del trozo: se aplica solo si mi
+   trozo estaba como «antes», y se comprueba con «después»; si no cuadra, se tira y el trozo se pedirá entero.
+2. **Pedir (`WP`)**, solo al mirar: `HU:PackNeed(etiqueta, conjunto)` espera 0,5–2 s al azar y pide por GUILD lo
+   que falta y nadie de mi hermandad acaba de pedir o recibir (`askSeen`, `wtSeen`, 15 s). Sin anuncio todavía,
+   pide el anuncio («m»). Si el porteador de ese turno soy yo, mi mensaje no me llega: lo traigo directamente.
+3. **Si no llega nada en 6 s** (`RETRY`; mientras siga llegando algo, se espera), se pide con el turno
+   siguiente: otro porteador y otro de la otra hermandad. Se deja tras dar la vuelta al equipo; se vuelve a
+   intentar al mirar otra vez. Un trozo que no cuadra con su huella también pasa al turno siguiente.
+4. **Trozos (`WT`)**, en partes de líneas enteras (`Parts`, ≤ 200 letras: un nombre con tilde nunca se parte);
+   las partes de dos que sirven a la vez no se mezclan. Al completar un trozo se comprueba su huella.
+5. **Entrada masiva**: mientras `HU.QuietLogins(10)` diga que entra mucha gente, no se pide nada (como mucho
+   2 min). Las cuatro órdenes van en la cola más baja de `HU20B` (`blow`) y se guardan en combate.
+
+### Confianza
+
+- `WM`/`WD` por susurro: de alguien comprobado de esa hermandad (`HU:Vouched`; lo que dice lo lee del juego,
+  igual que su enlace). Por GUILD: de quien reparte en la mía (`IsGuildForwarder`; la seguridad ya lo exige con
+  `remoteData`). Lo de mi propia hermandad no se acepta de nadie: lo leo yo.
+- `WT`: de cualquiera, porque se comprueba con la huella.
+
+### Lo guardado
+
+`HU.db.packs[etiqueta][conjunto] = { h = { huellas }, t = { [trozo] = { líneas } }, ok = { [trozo] = huella } }`
+(cuenta; se crea al llegar el primero). `ok[i]` es la huella con la que se comprobó el trozo `i`: vale mientras
+coincida con `h[i]`, sin volver a calcularla (`Valid`). Al entrar ya están los trozos de antes: solo se pide lo
+cambiado.
+
+### En Members
+
+Con «Mostrar desconectados» marcada, Members pide la lista completa de cada otra hermandad (`HU:PackNeed`) y
+añade a los que no están en la de conectados (`HU:PackedMembers`). Si la lista de conectados de esa hermandad
+(Miembros, UnionMembers.lua) tiene menos de 2 min (`ONLINE_FRESH`), quien no sale en ella está desconectado; si
+no, no se sabe y su zona dice «?». Abajo, mientras llega, «lista completa 5/16».
+
 ## History.lua
 
 ### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)

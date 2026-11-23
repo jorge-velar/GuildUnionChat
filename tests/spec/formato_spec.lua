@@ -21,6 +21,12 @@ local NOBODY_ACCEPTS = {
     -- se deja así a propósito: docs/fallos-conocidos.md, 1)
     PB = "sale con la primera lista, antes de que el otro se fíe; no se retiene",
 }
+-- (solo con versiones mezcladas: lo que la versión publicada no entiende todavía, y por qué no se pierde)
+local NOBODY_ACCEPTS_MIXED = {
+    -- (el anuncio de un paquete puede ir al enlace con la versión de antes; los de la nueva de esa
+    -- hermandad lo piden ellos al mirar la lista («m»), así que no se pierde)
+    WM = "el enlace de la otra hermandad aún lleva la versión de antes; sus compañeros lo piden al mirar",
+}
 
 ---------------------------------------------------------------------------
 -- La forma de un mensaje
@@ -110,10 +116,10 @@ local function NobodyAccepts(net, players)
     return out
 end
 
-local function Missing(net, players)
+local function Missing(net, players, mixed)
     local out = {}
     for _, cmd in ipairs(NobodyAccepts(net, players)) do
-        if not NOBODY_ACCEPTS[cmd] then out[#out + 1] = cmd end
+        if not NOBODY_ACCEPTS[cmd] and not (mixed and NOBODY_ACCEPTS_MIXED[cmd]) then out[#out + 1] = cmd end
     end
     return out
 end
@@ -215,6 +221,6 @@ describe("Formato con versiones mezcladas", function()
 
     it(ref .. " y la de la carpeta: todo lo que se manda lo acepta alguien", function()
         local net, p = Mixed()
-        A.same({}, Missing(net, p), "órdenes que nadie acepta")
+        A.same({}, Missing(net, p, true), "órdenes que nadie acepta")
     end)
 end)

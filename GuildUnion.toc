@@ -35,6 +35,7 @@ Domain\Trust.lua
 Net\Relay.lua
 Net\RosterSync.lua
 Net\Security.lua
+Net\Packs.lua
 Lists.lua
 Presence.lua
 ChanPresence.lua
@@ -46,6 +47,7 @@ Guard.lua
 GuardKeeper.lua
 Social.lua
 UnionMembers.lua
+Packs\Members.lua
 History.lua
 Channels.lua
 Community.lua

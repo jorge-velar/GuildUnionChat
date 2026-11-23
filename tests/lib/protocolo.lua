@@ -5,6 +5,10 @@ local M = {}
 
 -- Qué es cada orden: el formato (campos separados por ~) y para qué sirve
 M.DESC = {
+    WD = "`WD~etiq~conj~trozo~antes~después~-línea;+línea`: un cambio pequeño en un trozo de un paquete con huella",
+    WM = "`WM~etiq~conj~n~h1,…,hn`: cómo es ahora un paquete con huella (la huella de cada trozo); lo anuncia el enlace dueño",
+    WP = "`WP~deEtiq~etiq~conj~turno~3,7|m`: pedir trozos o el anuncio (GUILD: al porteador; susurro: al equipo dueño)",
+    WT = "`WT~etiq~conj~trozo~parte~partes~datos`: un trozo de un paquete, en partes de líneas enteras",
     AU = "`AU~id~hora~etiq~autor~texto`: una entrada del registro compartido",
     BN = "`BN~nombre~1|0~autor~etiq~t`: veto (1) o readmisión (0)",
     CF = "`CF~canal~[ETIQ] mensaje`: chat de un compañero cuyo texto no sale por el canal (por GUILD)",
