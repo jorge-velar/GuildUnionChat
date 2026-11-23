@@ -312,7 +312,7 @@ local function RefreshRequests()
     reqWin.accept:SetText(n > 1 and (L("Aceptar") .. " (" .. n .. ")") or L("Aceptar"))
     reqWin.reject:SetText(n > 1 and (L("Rechazar") .. " (" .. n .. ")") or L("Rechazar"))
     local can = n > 0
-    for _, r in ipairs(Picked()) do if not CanAnswer(KindOf(r)) then can = false end end
+    for _, r in ipairs(Picked()) do if not r.test and not CanAnswer(KindOf(r)) then can = false end end
     reqWin.accept:SetEnabled(can)
     reqWin.reject:SetEnabled(n > 0)
     for k, b in pairs(reqWin.tabs) do
@@ -435,7 +435,11 @@ function HU:ShowRequests()
             local yes = CreateFrame("Button", nil, row)
             yes:SetSize(16, 16); yes:SetPoint("RIGHT", no, "LEFT", -6, 0)
             yes:SetNormalTexture(TICK); yes:SetHighlightTexture(TICK, "ADD")
-            yes:SetScript("OnClick", function() if row.entry and CanAnswer(KindOf(row.entry)) then Accept({ row.entry }) end end)
+            -- (las de prueba se quitan siempre, sin mirar permisos: no mandan nada)
+            yes:SetScript("OnClick", function()
+                local r = row.entry
+                if r and (r.test or CanAnswer(KindOf(r))) then Accept({ r }) end
+            end)
             row.yes, row.no = yes, no
             -- (la última columna no se mete debajo del tic y la X)
             row.cells[4]:SetPoint("RIGHT", row, "RIGHT", -52, 0)
