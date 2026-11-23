@@ -65,6 +65,7 @@ CraftItems.lua
 DJStyle.lua
 Trade.lua
 UnionCalendar.lua
+UnionBank.lua
 UnionConfig.lua
 ListWindow.lua
 Blacklist.lua
