@@ -2480,19 +2480,117 @@ al marcarla se marca a la persona)
 
 ### Qué hay en el archivo
 
-«Unión» en la lista de miembros del juego (la pestaña de miembros de la ventana de hermandad): un
-interruptor «Mi hermandad | Unión» a la izquierda del buscador de personajes y, con «Unión», una
-lista nuestra con todos los conectados (los de mi hermandad, de la lista del juego, y los de las
-otras, de Miembros o del /who: `HU:UnionRosterEntries`), con nombre, nivel, zona, rango y hermandad.
+Una fila de botones rojos del juego sobre la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
+`Blizzard_Communities`): **Chat · Miembros · Comercio · Calendario · Banco**. Miembros es la lista de toda la
+unión; Comercio, Calendario y Banco son marcos hijos de `cover` que llenan `HU:BuildTrade`, `HU:BuildCalendar` y
+`HU:BuildBank`. El botón elegido va negro con letra blanca (`HU.DJ.PickRed`); el buscador de personajes solo sale
+en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-4 = las otras) y `mode`
+(«roster», «chat» o nil).
 
-**La lista del juego no se toca.** La nuestra es hija de la ventana (no de su lista) y va encima,
-tapándola; con «Mi hermandad» se esconde y la del juego queda tal cual. Si se metieran filas en la
-lista del juego, su ventana quedaría «contaminada» y el juego bloquearía lo que solo puede hacer su
-interfaz: ascender, degradar, expulsar o guardar notas (lo mismo que se vio con la ventana entera:
-BlizzTab.lua). Clic: susurrar; clic derecho: el menú de GuildUnion (`HU.PlayerMenu`), no el del
-juego. Los clics en ella valen para el /who (`HU:UnionWhoTick`). Solo sale en la vista de miembros
-(la casilla de desconectados se ve: `IsVisible`, como el buscador). Lo elegido no se guarda: al
-entrar, «Mi hermandad».
+**La lista del juego no se toca.** Lo nuestro (`cover`) es hijo de la ventana, no de su lista, y va encima: 26 px
+más arriba (tapa sus títulos, no la casilla «Mostrar desconectados» ni el buscador) y 22 px más a la derecha
+(tapa su barra). La casilla solo se lee (`GetChecked`). Si el addon metiera filas en la lista del juego o abriera
+su ficha, la ventana quedaría «contaminada» y el juego bloquearía lo que solo hace su interfaz: ascender, degradar,
+expulsar y guardar notas. Nivel 300 como mínimo y capa `HIGH`: el borde de su lista (`InsetFrame`, nivel 100)
+tapaba el primer título, y la barra del chat del juego, en otra capa, asomaba encima de los botones.
+
+### Miembros: la lista de la unión
+
+`Entries()` junta a los conectados de la unión (`HU:UnionRosterEntries`: los míos de la lista del juego, los de
+las otras de Miembros o del /who) y, con «Mostrar desconectados», mis desconectados (de las otras no se sabe).
+Las listas RB que las otras mandan solas (`HU.remoteRoster[tag].members`) ponen el rango a quien llegó sin él y
+añaden a quien falte; quien sigue sin rango (del /who) va con el rango más bajo de mi hermandad (`noRank`): así se
+mezcla por nivel y no se queda al final. Columnas como las del juego más Hermandad; tras el nombre, corona
+(maestro) o espadas (oficial; rojas, admin: `HU:RoleOf`); desconectado, en Zona cuánto lleva (`Ago`). Nota: solo
+la pública de mi hermandad (las otras no llegan), que `ReadNotes` lee tras cada `GUILD_ROSTER_UPDATE`.
+Orden (`Less`): rango (0 = maestro, en todas), nivel de mayor a menor y nombre, todas mezcladas; un clic en un
+título ordena por esa columna, otro al revés y el tercero vuelve al de siempre (`sortKey`, `sortDesc`). «Solo mi
+hermandad» (`mine`, solo en Miembros) deja solo a los míos (`HU.db.unionRosterMine`). `Paint` pinta las filas que
+caben, pide las listas que falten (`HU:WantUnionMembers(nil)`) y dice abajo cómo va cada una
+(`HU:UnionMembersStatus`); se repinta con `GUILD_ROSTER_UPDATE`, `CHANGED` «unionMembers» y cada 2 s.
+
+### La ficha de un miembro
+
+Clic izquierdo: nuestra ficha (`GuildUnionMemberCard`, a la derecha de los iconos de la ventana; otro clic en la
+misma persona la cierra), para todas las hermandades. La del juego no se abre desde aquí: abierta por un addon, el
+juego bloquearía sus botones (expulsar, rango, notas). Con su aspecto y sus textos: hermandad, zona, rango, última
+conexión, profesiones (solo de mi hermandad, `C_Club.GetMemberInfo`, y «Ver recetas»: `QueryGuildMemberRecipes`),
+nota y nota de oficial (si puedo verla; con «GU:», «(configuración de GuildUnion)»); abajo, Echar (como el clic
+derecho) e Invitar al grupo. En la vista de chat, un clic en la lista de la derecha del juego abre la nuestra
+(`EntryByName`): un `hooksecurefunc` sobre `OpenGuildMemberDetailFrame` cierra la suya, que abre su propio código.
+
+### Varios a la vez y clic derecho
+
+Ctrl suma o quita uno, Mayús elige del último al de ahora (en el orden de la lista) y un clic solo elige uno y abre
+su ficha, como el buscador de personajes (`HU.UnionRosterPick`). Clic derecho: sobre uno de varios elegidos, menú
+«N elegidos»; si no, el de GuildUnion (`HU.PlayerMenu`). Los dos acaban con `AddGuildActions`:
+- De mi hermandad: «Cambiar rango» (con permiso; `HU:RankMacro` da un /gpromote o /gdemote por rango, o por qué
+  no) y «Echar de la hermandad» (`HU:CanKickGuild`, `HU.GuildCmd("gremove")`), por la ventana de órdenes
+  (`HU:TypeLines`, Orders.lua): en Forever un addon no puede hacerlo; cada orden la mandas tú.
+- De otra, si soy oficial (`HU:CanOfficer`): «Pedir a su hermandad que lo eche» (`HU:AskGuildKick`, GK) y, si son
+  todos de la misma y se saben sus rangos, «Pedir a su hermandad cambio de rango» (`HU:AskGuildRank`, GP). Va por
+  susurro a alguien suyo con el addon, que lo reparte; a sus oficiales les sale en «Peticiones de oficiales».
+
+### La fila en las dos vistas: `Sync` y `Layout`
+
+`Sync` mira la vista con `IsVisible` (el `IsShown` de la casilla sigue verdadero con su lista escondida): «roster»
+si se ve la casilla de desconectados; «chat» si se ven el chat y su lista (la ventana pequeña, sin lista, no
+cuenta). Al entrar en la de chat se empieza en Chat; en la de miembros, en Miembros o en la sección pulsada desde
+el chat (`wantTab`). Corre con `OnShow`/`OnHide` de la casilla, la lista y el chat, al abrir la ventana y, en el
+acto, tras `SetDisplayMode` (si no, se ven un instante los botones en el sitio de la vista anterior).
+`Layout`: los cinco botones caben siempre (se estrechan) y la fila va en el mismo sitio en las dos vistas
+(23 y -34 de `CommunitiesList`). En la de miembros, `cover` tapa la lista; en la de chat es solo la fila (los clics
+pasan al chat) y el chat y su lista se atan debajo (`ChatAnchors`); el juego recoloca esa lista al actualizarla y
+un `hooksecurefunc` sobre su `SetPoint` la vuelve a poner en el acto (`placing`; no es un marco protegido). Al
+volver a la de miembros, lista y chat vuelven a sus sitios del juego antes de poner la fila encima (si no, lista y
+fila quedarían atadas la una a la otra); el chat, a mano: el juego solo lo coloca al maximizar.
+
+### Botones seguros
+
+Cambiar de vista desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas: los botones que
+cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los pulsa el juego.
+- «Chat» en la vista de miembros (`GuildUnionRosterChatSecure`) pulsa `ChatTab`; Miembros…Banco en la de chat
+  (`GuildUnionChatSection1`…`4`) pulsan `RosterTab`; su `PreClick` apunta la sección (`wantTab`).
+- En combate no se puede enseñar, esconder ni mover un botón seguro: cuelgan de algo que solo se ve en su vista
+  (la casilla de desconectados; los de sección, el chat) y se colocan fuera de combate (`secureLater`).
+- `Unpress`: la vista cambia antes de soltar el ratón y se quedaban «pulsados»; al volver a verse se sueltan.
+
+### Botones de abajo: Peticiones de oficiales · Ver registro · Invitar miembro
+
+En la vista de miembros, a la izquierda de «Ajustes de hermandad» del juego y colgados de la casilla de
+desconectados; en la de chat, los dos primeros los pone BlizzTab.lua, colgados del «Invitar miembro» del juego.
+- «Invitar miembro»: botón seguro que pulsa el del juego (`f.InviteButton`, que solo sale en la vista de chat);
+  si lo pulsara el addon, el juego bloquearía la invitación.
+- «Ver registro» (`HU:ShowInviteLog`, InviteLog.lua): Invitaciones y Salidas; el juego solo guarda las últimas
+  entradas y aquí se van guardando (`HU.db.inviteLog`, `HU.db.leaveLog`, por hermandad, hasta 2.000).
+- «Peticiones de oficiales» (`HU:ShowRequests`): otra hermandad pide echar (GK) o cambiar el rango (GP) a alguien
+  de la mía; sin ventana emergente, se guarda (`HU.db.kickRequests`, 24 h) y el botón lleva el número
+  (`HU:KickRequestCount`: las que puedo hacer). Aceptar abre las órdenes y, al mandarlas, contesta (`AnswerKick`,
+  `AnswerRank`) y apunta la salida (`HU:LogRequestedKick`).
+
+### Contador de conectados de la unión
+
+`GuildUnionUnionCounts`, en la barra del título, a la izquierda de minimizar y cerrar: es lo único que no se
+mueve (los cascos del juego cambian de sitio) y el contador del juego queda tapado por la fila. «N/M conectados»
+de toda la unión: la mía de `GetNumGuildMembers`, las otras de su lista RB (`HU.remoteRoster[tag].online`,
+`.total`), «+» si falta alguna; al pasar el ratón, cada hermandad. Se pone al día en `Sync` y cada 3 s.
+
+### /who: `WhoTick`
+
+El juego solo deja hacer /who desde un clic del jugador (UnionMembers.lua): los clics en Miembros (botones,
+títulos, filas, scroll, cualquier clic en `cover`) llaman a `WhoTick` → `HU:UnionWhoTick(nil)`, que busca con
+/who una hermandad sin lista. Nunca dentro de `Sync` (`inSync`; `Sync` va con `pcall` para no dejarlo puesto):
+`Sync` corre tras `SetDisplayMode` y, si el cambio de vista viene de un botón seguro, dentro de su clic; al
+recolocar la lista salta el scroll (`OnVerticalScroll` → `WhoTick`) y el juego bloqueaba ese /who
+(`ADDON_ACTION_BLOCKED`). Tampoco en combate (`InCombatLockdown`): puede esperar (el código no da otro motivo).
+
+### BlizzTab.lua: la mitad derecha es «Configuración»
+
+En el panel de GuildUnion (pestaña GuildUnion o ventana propia), la mitad derecha la monta UnionConfig.lua:
+`panel.config = HU:BuildUnionConfig(panel)`. Lo de antes («Oficiales conectados» / «Miembros», elegir hermandad,
+«Buscar con /who», la lista) pasa a un marco escondido (`stash`): su código sigue (`RefreshOfficers`), pero no se
+ve; sin «Miembros» que pulsar, el panel ya no lanza /who. A la izquierda ya no está el botón «Lista negra»: va en
+Configuración > Lista negra; su ventana (`HU:ShowBlacklist`, Blacklist.lua) solo se abre con `/gu listanegra`.
 
 ## ChatTabs.lua · Chattynator
 
@@ -2906,3 +3004,310 @@ Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el
 - **Copia 175 = 5.4.43 definitiva (19/11): sin avisos de fallos en el chat.** Sale de la 174 (sigue con el número 5.4.43; la 174 no se llegó a subir). Jorge: «quítalos todos, que se tengan que preguntar cuando a alguien le falle». Elegido: los de fallos; se quedan los de moderación (te han silenciado o vetado, estás silenciado), versiones, lista negra y los de oficiales.
   - **`HU:Notice(texto)`** (`Core.lua`): guarda los 30 últimos avisos de la sesión con su hora y los escribe en la depuración. **`/gu informe`** tiene una sección nueva, «AVISOS DE ESTA SESIÓN (no se enseñan en el chat)» (`Report.lua`, `NoticeLines`).
   - Pasan de `Print` a `Notice`: los tres de configuración del aviso de fuera del canal (`Channel.lua`), contraseña incorrecta y vetado del canal (`CHAT_MSG_CHANNEL_NOTICE`; ya sin el nombre del canal, que salía en capturas, y con «GU:c» en vez del viejo «HU:»), «tu mensaje puede no haber llegado a <X>» (`SendCW`), «tu mensaje no ha llegado» (`OnChatLost`) y el del campo de batalla (`Combat.lua`).
+
+## Trade.lua
+
+La sección Comercio de la lista de miembros (UnionRoster.lua crea `cover.trade` y llama a `HU:BuildTrade(host)`):
+pedir objetos fabricados a la unión, en un tablón (Público) o a alguien concreto (Privado), y hablar con cada persona.
+**Fase 1: solo la ventana, sin red.** Nada viaja: las solicitudes (`reqs`) y los chats (`chats`) son tablas del
+archivo, solo de esta sesión (se pierden con /reload), y nadie más las ve; el «Modo prueba» la llena de datos. La red
+está prevista con los paquetes con huella: el conjunto `TR` (`Net/Packs.lua`, aún sin escribir).
+Arriba, el buscador (150 de ancho: más ancho chocaba con «Público»), Público · Privado (cambiar borra búsqueda,
+elegida y marcadas) y «Modo prueba»; debajo, «+ Nueva solicitud» (`ui.new`), teñido de verde como «+ Nuevo evento»,
+que no sale mientras se busca. El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua,
+`HU.charSearchOff`) y no Trade.lua, porque el `Sync` de BlizzTab.lua lo volvería a sacar.
+
+### Una solicitud
+
+`{ id, who, item, qty, mats, tip, pub, to, state, taker, takenAt, t, closed, test }`
+- `item`, el enlace (o lo escrito); `qty`, 1 o más; `tip`, la propina en cobre (nil: «A negociar»); `mats`, true si
+  los materiales los pone quien pide («Yo», de entrada), false si quien la hace («Vendedor»).
+- `pub`: pública, o privada para `to`. `state`: `open` (Abierta), `taken` (Aceptada por `taker` a la hora `takenAt`),
+  `done` (Hecha) o `gone` (cancelada o rechazada: ya no sale). `closed`: quitada de mi Privado (solo de mi lista).
+- `test`: del modo prueba. Tope: 5 sin terminar por persona (`MAX_OPEN`, abiertas y aceptadas), pensado para la red.
+- Lo mío va en azul (`MINE`; en Público, «Yo») y lo de otros en amarillo (`OTHERS`).
+
+### Público y Privado (`Visible`, `Layout`)
+
+- **Público**, a todo lo ancho: las públicas abiertas y, 10 min más (`PUB_KEEP`), las aceptadas con quien la aceptó,
+  para que se vea que ya está cogida; luego solo en Privado. Quién · Receta / objeto · Cant. · Mats (Sí / No) ·
+  Propina · Estado · Acción: «Aceptar» (de otro y abierta), «Cancelar» (mía sin aceptar) o quién la aceptó. `Accept`
+  la pasa a `taken` conmigo como `taker` y deja puesto el chat con quien la pidió.
+- **Privado**: las que me tocan (`Involved`: mías, las que me piden y las que hago yo), menos las quitadas y las
+  públicas sin aceptar, que no tienen a nadie al otro lado. Comparte el ancho con el chat y va sin Mats para que quepa:
+  Con quién (`Other`) · Receta / objeto · Cant. · Propina · Estado; en las abiertas, un tic (aceptar la que me piden)
+  y una X (`Cancel`: cancelar la mía o rechazar la que me piden).
+- Sin filtros: clic en un título ordena (otro, al revés; el tercero, lo más nuevo arriba); «Acción», solo en Público.
+  Sobre el objeto, un botón (`itemBtn`) del ancho del enlace: clic, su ficha (`SetItemRef`, como en el chat); ratón
+  encima, la flotante (en Privado no). El resto de la casilla elige la fila.
+
+### Nueva solicitud (`BuildNewDialog`, `ui.OpenNew`)
+
+Objeto (autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco), Cantidad
+(1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina en oro · plata · cobre (vacías: a
+negociar) y Pública Sí · No (de entrada, según la pestaña; con No, «Personaje»). «Pedir» exige el objeto, que no pase
+del tope y que una privada tenga a quién, y salta a Público o Privado. `ui.OpenNew(nombre)` la abre privada para esa
+persona («Pedir una receta a …»). Autorrelleno (`Suggest`): desde 2 letras, hasta 6, primero las que empiezan por lo
+escrito; clic o Intro (la primera) elige. Objetos (`ItemMatches`): el de ese nombre exacto si el juego lo conoce, los
+de mis bolsas, los de las solicitudes y los fabricables (CraftItems.lua), hasta 60. Nombres (`NameMatches`): mi
+hermandad, las listas de las otras y los que tienen GuildUnion, con su etiqueta y sin mí.
+
+### Buscar
+
+Sugiere objetos como al pedir; compara en texto llano (`Query`: de un enlace, su nombre). Mientras se busca no hay
+pestaña elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos de 4 filas:
+- **Publicadas**: las del tablón que encajan por quién la pide, el objeto o quién la aceptó (`Matches`); si no hay
+  ninguna, se esconde y «Quién lo hace» ocupa todo (10 filas).
+- **Quién lo hace** (`SearchMembers`): los de mi hermandad con una profesión cuyo nombre encaja, o con la profesión y
+  el nivel de un fabricable que encaja (`CraftNeeds`), de más nivel a menos. Es aproximado: el juego da sus dos
+  profesiones y su nivel (`C_Club.GetMemberInfo`), no sus recetas. Las otras hermandades, con la red.
+
+### Chat con cada persona y circulitos
+
+Solo en Privado, a la derecha (`ui.chat`), y solo aquí: no sale en el chat normal. Uno por persona (`chats[nombre]`,
+hasta 200 líneas); elegir una solicitud lo cambia al de la otra persona (`OpenChat(Other(r))`); sin nadie, la caja
+está apagada. A un desconectado se le escribe igual (con la red, lo leería al entrar); hoy solo se añade aquí.
+Detrás de cada nombre, un circulito verde o gris (desconectado o no se sabe): `BuildOnline` rehace `onlineMap` en cada
+repintado con mi hermandad (`HU.rosterList`), las listas de las otras (`HU.remoteRoster`), los que tienen GuildUnion
+vistos hace menos de 5 min (`HU.remote`) y los de prueba. Yo, siempre verde; en «Quién lo hace», la presencia del club.
+
+### Clic derecho, varias a la vez y «Hecha»
+
+- `RowMenu`: la otra persona, con Susurrar e Invitar al grupo; en «Quién lo hace», «Pedir una receta»; en Privado,
+  «Marcar como hecha» y «Eliminar» («Eliminar (N)» con varias marcadas); y «Cancelar», que cierra el menú.
+- En Privado, Ctrl+clic suma o quita una fila y Mayús+clic, el tramo desde la última (`picks`); con algo marcado sale
+  «Eliminar (N)» junto a «+ Nueva solicitud». `RemoveReq`: la mía sin aceptar se cancela; las demás salen de mi lista.
+- «Hecha» (arriba a la derecha del chat, para la elegida) y «Marcar como hecha» la pasan a `done` (`MarkDone`).
+
+### Modo prueba y configuración
+
+«Modo prueba» se enciende y se apaga (encendido, oscuro; `ui.testOn`). `AddTest` quita lo de prueba que hubiera y pone
+8 solicitudes (4 públicas, 4 privadas: me piden, pido, aceptadas) y tres líneas de chat, con personas «-Prueba» (Pepe
+y Bea conectados, Lyra y Janeth no) y el enlace de verdad si el juego conoce el objeto; `ClearTest` lo quita todo.
+`tradeOff` y `tipsOff`, en `HU.db.unionCfg` (Configuración → Comercio, UnionConfig.lua), los cambia el maestro y de
+momento solo valen en este PC; sin poner, todo activo. `tradeOff` esconde el cuerpo (`ui.body`) y enseña un aviso
+(`ui.offMsg`); `tipsOff` esconde la propina al pedir y no la guarda. Con `HU:Changed("unionCfg")` se repinta.
+
+## CraftItems.lua
+
+`HU.CRAFT_ITEMS[profesión] = { objeto, nivel, objeto, nivel, ... }`: lo que se fabrica en Forever (vanilla) y el nivel
+para aprender la receta. La clave es el número de profesión del juego, el de `C_Club.GetMemberInfo` (`profession1ID`,
+`profession2ID`): 129 Primeros auxilios, 164 Herrería, 165 Peletería, 171 Alquimia, 185 Cocina, 186 Minería (fundir),
+197 Sastrería, 202 Ingeniería y 333 Encantamiento. 1.373 objetos, sacados una vez de Wowhead Classic (hechizos de cada
+profesión, campo «creates»). Solo números: el nombre y el enlace los da el juego, en el idioma de cada uno.
+
+### Los nombres: `LoadCraftNames` (en Trade.lua)
+
+- Pide cada objeto al juego (`C_Item.GetItemInfo`) y guarda lo que llega en `craft[id] = { key, link, skill, lv }`
+  (`key`, el nombre en minúsculas), solo para la sesión. Lo usan `ItemMatches` y `CraftNeeds(q)`: por profesión, el
+  nivel más bajo entre los fabricables cuyo nombre contiene lo buscado.
+- Poco a poco, para no pedir 1.373 de golpe: 30 cada medio segundo con `HU:Every` («Comercio: nombres», en
+  `/gu perf`), en pausa durante el modo combate (`pauseInCombat`).
+- Si el juego no tiene el objeto a mano, devuelve nil y lo pide al servidor; sin esperar su aviso, los que faltan se
+  vuelven a pedir en dos vueltas más. Luego el temporizador se para y no se repite en la sesión.
+- Se llama al final de `HU:BuildTrade` (al cargar la ventana de hermandad del juego) y en cada `OnShow` de Comercio;
+  `craftLoader` impide que arranque dos veces.
+
+## DJStyle.lua
+
+`HU.DJ`, el estilo compartido de Comercio, Calendario, Banco y Configuración. Sale del addon Dungeon Journal de
+Forever, con los fondos de WhisperMessenger; de los dos se estudió el código, sin copiar su arte. Va en el .toc antes
+de Trade, UnionCalendar, UnionBank y UnionConfig, que leen `HU.DJ` al cargarse. Colores (`DJ.T`): fondos lisos casi
+negros y grises muy oscuros (`frame`, `content`, `panel`, `header`, `row`), borde gris piedra (`border`), lo elegido
+en azul pizarra (`rowSel`) y el dorado del juego para títulos, rayas y lo que se señala (`title`, `line`, `hover`).
+
+### Ayudantes
+
+- `DJ.Panel(f, bg, border, edge, inset)`: fondo liso (`WHITE8X8`) y borde de tooltip con colores de `T`; `f` ha de ser
+  `BackdropTemplate`. `DJ.Line(f, alpha)`: raya dorada de 1 px (alfa 0,55 si no se dice) que coloca quien la pide.
+- `DJ.Parchment(f, alpha)`: la textura de pergamino (`QuestBG`) detrás, hoy a alfa 0 porque los fondos son lisos; se
+  queda para no tocar a quien la llama. `DJ.Big(fs, size)`: tamaño de letra. `DJ.C(fs, c)`: color de `T` (da `fs`).
+- `DJ.RoundIcon(parent, size)`: icono redondo (máscara de retrato) con el aro del minimapa; devuelve solo el icono.
+- `DJ.Window(name, parent, w, h, onClose)`: ventana DIALOG que nace escondida y se arrastra: marco de diálogo, título
+  con rayas doradas (`d.titleText`), X (`onClose` o esconderla) y `d.content`, con 44 px libres abajo para botones.
+
+### Botones: `DJ.Button` y `DJ.PickRed`
+
+- `DJ.Button(parent, text, w, h)`: el botón rojo del juego (`UIPanelButtonTemplate`, 22 de alto si no se dice);
+  `:Pick(on)` lo deja elegido (`b.picked` lo dice) y `:Label(t)` es `SetText`.
+- `DJ.PickRed(b, on)` vale para cualquier botón rojo: también los de arriba de la lista de miembros (`ShowTab`,
+  UnionRoster.lua), Registro · Solicitudes (InviteLog.lua) y Miembros · Oficiales (BlizzTab.lua). Elegido, sus tres
+  piezas (`Left`, `Middle`, `Right`) se desaturan y oscurecen hasta el negro y la letra pasa a blanca; sin elegir,
+  rojo con letra dorada. Si ya está así no hace nada (`djPicked`): se llama en cada repintado.
+- Por qué el elegido mantiene la forma: no se esconde ni se añade nada, solo se tiñen las piezas que ya tiene. Sigue
+  siendo el mismo botón que sus vecinos (contorno y tamaño), solo que oscuro, y vale para botones de otros archivos.
+
+## UnionCalendar.lua
+
+### Qué hay en el archivo
+
+La sección Calendario de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
+Arriba, Eventos · Calendario en el centro, «+ Nuevo evento» debajo (verde y centrado: abajo pisaba las tarjetas) y
+«Modo prueba» a la derecha. Piezas de DJStyle.lua (`HU.DJ`). Solo eventos de la unión: el calendario del juego no se toca.
+- **Eventos** (`PaintCards`): los próximos (desde hace 3 h, `Upcoming`), por fecha, en tarjetas de 2 en 2 (dos filas a
+  la vista): tinte del tipo, imagen, título, tipo · hora · «Nv. N+», día grande con día de la semana y mes, «por» quién
+  (yo en azul, los demás en amarillo, con su hermandad a color), «N van» (tic si voy), roles, y «Apuntarme» / «Más
+  información» (o clic en la tarjeta). Van en un panel centrado (`ui.list`) cuya zona de tarjetas (`ui.cardArea`) solo
+  deja el hueco de la barra con más de dos filas, para no descentrarse; la rueda baja de fila en fila.
+- **Calendario** (`PaintMonth`): el mes en casillas, lunes primero, flechas del libro de hechizos; solo las semanas que
+  tiene (casillas más altas). Cada día: número, «+N evento(s)» y un cuadradito del color del primero; hoy con borde
+  dorado, el elegido en azul. Clic en un día: el panel de la derecha (`PaintDay`) enseña sus eventos (clic: la ficha) y
+  «+ Nuevo evento» para ese día (el de arriba también lo usa).
+
+### Fase 1: solo la ventana, sin red
+
+Los eventos viven en una tabla local de la sesión (`events`): no salen de este PC y se pierden con /reload. La red irá
+con los paquetes con huella (Net/Packs.lua, aún sin escribir; diseño en Obsidian, «GuildUnion - specs paquetes con
+huella»), conjunto `EV`. Evento: `{ id, title, kind, t, who, tag, desc, minLevel, icon, signups = { [nombre] = "yes" },
+roles = { [nombre] = rol }, raids, test }`. Tipos (`KINDS`, con color e icono): Banda, Mazmorra, JcJ, Social y Otro; al
+crear se ofrecen Banda, JcJ y Social (Mazmorra solo sale en el modo prueba; Otro es el de reserva).
+
+### Nuevo evento (`BuildNewDialog`)
+
+Ventana movible: título (40 letras), tipo, imagen, día, hora, nivel mínimo y descripción (varias líneas, 240 → `desc`).
+- Imagen: vista previa + «Elegir imagen», que abre una rejilla de 64 iconos de vanilla (`EVENT_ICONS`, 8 x 4 y barra).
+  Siempre hay una: la del tipo, que sigue al tipo hasta que se elige otra (`iconCustom`).
+- Día y hora se eligen, no se escriben (sin errores de formato): «Día», un calendario pequeño (hoy en dorado, el
+  elegido oscuro); «Hora» (20:00 al abrir), una lista de 00:00 a 23:45 de 15 en 15, con barra, abierta por la elegida.
+- Las tres ventanitas se excluyen (`d.ClosePopups(keep)`) y pinchar fuera las cierra: una capa invisible de toda la
+  pantalla, por debajo de ellas, que se enseña mientras alguna está abierta (`d.WatchPopup`).
+- Nivel mínimo (2 cifras; vacío o 1, ninguno) → `minLevel`: «Nv. N+» en tarjeta y ficha; no deja apuntarse con menos.
+- «Crear» pide título; el evento lleva la hermandad de quien lo crea (`tag`) y este queda apuntado, sin rol.
+
+### La ficha del evento (`BuildDetail`, `PaintDetail`)
+
+Ventana movible (740 x 480) que es solo las raids: arriba icono, título, tipo · día y hora · por · cuántos van ·
+nivel y los roles; abajo a la derecha, «Apuntarme» / «Apuntado» (verde, con tic).
+- Apuntarse (`SignUp`): mira el nivel y pide el rol con un menú que solo trae los de la clase (`CAN_ROLE`, vanilla:
+  tanque guerrero, druida o paladín; sanador sacerdote, druida, paladín o chamán; daño, todas). Ya apuntado, pregunta
+  «¿Seguro que quieres salir del evento?» (`ui.confirm`); salir te quita también de la raid.
+- Raids: `{ name, leader, groups = { {nombres} x 8 } }`, 8 grupos de 5, hasta 20 (`MAX_RAIDS`). Pestañas «Raid N
+  (cuántos)» en filas de 10 (65 de ancho, letra pequeña en todos sus estados: no cambia de tamaño al pasar el ratón) y,
+  para quien organiza, «+ Añadir» en el hueco siguiente; con segunda fila, la ventana crece 26 (`DETAIL_H`) y lo de
+  debajo baja 26, para que nada se salga ni se monte. «+ Añadir» pregunta quién la lleva en una ventanita con buscador
+  y barra (`d.picker`; un menú no cabía con mucha gente), primero los apuntados sin raid.
+- Barra «Líder de la raid» (corona, roles de la raid) sobre los grupos. `SetLeader`: el líder va el primero del grupo
+  1 (si está lleno, el último baja a otro grupo) y nadie más puede ocupar ese hueco.
+- Banquillo «Sin raid (N)» a la izquierda (`Unassigned`), con nivel (`LevelMap`) y color de clase (`ClassMap`: mi
+  hermandad, las listas de las otras y el modo prueba); se ven 12 y «+N más». Cada persona, en una sola raid del evento.
+  Al apuntarse se entra solo en una raid con sitio (`AutoPlace` → `BestRaid`: la que menos tiene de su rol y luego la
+  más vacía) o al banquillo; «Colocar en raids (N)» (`PlaceBench`) lo reparte igual: tanques, sanadores, daño.
+- Arrastrar (botón izquierdo, quien organiza): el nombre se va de su hueco y un rótulo sigue al ratón. Se suelta en un
+  hueco (si hay otro, se cambian; con el líder, no), un grupo (si cabe), la pestaña de otra raid, la barra del líder (lo
+  hace líder) o el banquillo (sale de la raid); fuera de todo, vuelve.
+- Clic derecho (`NameMenu`): quien organiza, «Hacer líder de la raid», «Mover a >» y «Sacar de la raid»; todos,
+  «Susurrar» e «Invitar al grupo» (uno a uno, desde el clic del menú, que el juego lo deja).
+- Bajo los grupos: «Invitar a todos (N)», «Quitar raid» (sin preguntar; su gente vuelve al banquillo) y «Convertir en
+  banda» (`C_PartyInfo.ConvertToRaid`; activo si estoy en grupo, no en banda, y lo llevo yo). Al líder sin banda, un
+  aviso en rojo en vez de la ayuda de arrastrar. Se repinta con `GROUP_ROSTER_UPDATE`.
+- `InviteRaid` invita (`C_PartyInfo.InviteUnit`) a los de la raid que no están en mi grupo (en grupo sin banda, antes
+  intenta convertirlo); sin banda, como mucho 4 (un grupo es de 5), y avisa de que otro clic invita al resto. Marca
+  junto al nombre (`invites`): reloj (invitado), tic (dentro) o X (rechaza, ya tiene grupo, no se le encuentra u
+  ocupado, o no entra en 90 s). Los rechazos se leen de `CHAT_MSG_SYSTEM` con los textos del propio juego
+  (`ERR_DECLINE_GROUP_S` y compañía, pasados a patrón con `Pattern`): sirve en cualquier idioma.
+
+### Permisos
+
+«+ Nuevo evento» (los dos): `HU:CanMakeEvents()` (UnionConfig.lua) o el modo prueba; se pone al día con `CHANGED`
+«unionCfg». Organizar (`CanManage`: añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de
+alguna de sus raids. «Invitar a todos» y «Convertir en banda»: el líder de esa raid. «Quitar raid»: quien creó el
+evento o ese líder. Apuntarse, ver la ficha, susurrar e invitar al grupo: cualquiera.
+
+### Modo prueba
+
+Se enciende y se apaga (encendido, el botón oscuro). `AddTest` pone cinco eventos de mi hermandad y de otra
+(`HU:OtherTags()`, o «OTRA»): hoy a las 21:00, una banda (nivel 55) de otra persona con 23 apuntados de mentira
+(`-Prueba`, clase y nivel en `testClass` / `testLevel`) y una raid que llevo yo (así se puede organizar) con 12
+colocados, el resto en el banquillo y las tres marcas de invitación; además, una mazmorra, un JcJ, un social mío y otra
+banda (nivel 60). `ClearTest` quita sus eventos, marcas, clases y niveles, y cierra la ficha.
+
+## UnionBank.lua
+
+### Qué hay en el archivo
+
+La sección Banco de la lista de miembros (UnionRoster.lua la monta en `cover.bank` con `HU:BuildBank`). Arriba,
+centradas, Bancos de hermandad · Banco propio · Solicitudes («(N)» si hay pendientes); en la segunda fila, el buscador
+por nombre de objeto, el filtro de la pestaña, una ayuda y, a la derecha, «Modo prueba».
+Lo ven (`CanSee`) los oficiales (`HU:CanPin`), todos si el maestro puso `unionCfg.bankView = "all"`, o quien encienda
+el modo prueba (su botón queda fuera del panel); si no, solo un aviso de cómo abrirlo. Piden (`CanRequest`) según
+`unionCfg.bankRequest`: «all» (por defecto) todos; «officers», oficiales o el modo prueba; «none», nadie.
+
+### Fase 1: solo la ventana, sin red
+
+Bancos (`banks[etiqueta] = { {id, cantidad, pestaña}, ... }`), solicitudes (`reqs`) y registro (`log`) son tablas
+locales de la sesión: no viajan y se pierden con /reload. Los bancos de hermandad solo se llenan con el modo prueba (ni
+el de mi hermandad se lee aún del juego); lo único guardado es la foto de mi banco (`HU.db.myBankSnap`). La red irá con
+los paquetes con huella (Net/Packs.lua, aún sin escribir), conjunto `BK` (un trozo por pestaña).
+
+### Bancos de hermandad y Banco propio
+
+Rejilla de huecos como la de un banco (`PaintGrid`: 13 columnas, las filas que quepan hasta 6, con barra): icono, borde
+del color de la calidad (verde o mejor), cantidad y, si no se ha elegido una sola hermandad, su etiqueta. Al pasar el
+ratón, la ficha, la cantidad y «etiqueta · pestaña N» (`WhereText`); Mayús+clic, el enlace al chat. Clic en un objeto
+de un banco de hermandad, con `CanRequest`: «Pedir al banco» (`BuildAsk`: cantidad hasta lo que hay y nota de 100
+letras), que crea la solicitud (`state = "open"`) y su línea de registro.
+- Filtro de hermandades: un botón («Todas las hermandades», una o dos etiquetas a color, o «N hermandades») con un menú
+  de casillas: «Todas» (quita el filtro) y una por banco (`filterTags`; vacío = todas).
+- Banco propio: el botón «Todo» abre las casillas Banco y Bolsas (`ownSet`; vacío = todo, primero el banco). Las bolsas
+  (0..`NUM_BAG_SLOTS`) se leen al momento. El banco del personaje solo se lee con el banco del juego abierto: `MyBank`
+  guarda lo leído en `HU.db.myBankSnap = { items, t }` y, si no lee nada, enseña esa foto con «Visto por última vez».
+- `BankIDs`: con `Enum.BagIndex`, los números del juego (`Bank`, `BankBag_N`); si no, -1 y las que van tras las bolsas
+  y la de componentes, que corre la numeración.
+
+### Solicitudes, registro y sacar
+
+Lista con barra (`PaintReqs`), la más nueva arriba: objeto · quién pide · banco y pestaña · estado (Pendiente, «Sacado
+por X» en verde, Rechazada en rojo); al pasar el ratón, su historia con fechas y la nota. No hay «Aprobar»: «Rechazar»
+solo lo ve el maestro de la hermandad del banco (`IsGM`: `IsGuildLeader()` o `unionCfg.testGM`; en las de prueba, de
+cualquier banco).
+«Ver registro» (verde, abajo a la izquierda; `reqLog`) cambia la lista por el registro (`PaintLog`): una línea por cosa
+(pide, saca, rechaza), por días («Hoy», «Ayer», fecha) con la hora, la más nueva abajo, enlaces que se pueden pinchar
+y nombres a color (`Who`: su clase si se sabe; si no, un color fijo sacado del nombre). «Volver a solicitudes», o
+cambiar de pestaña, vuelve a la lista.
+Se saca en el banco de hermandad del juego: con `GUILDBANKFRAME_OPENED` sale junto a su ventana «Lo pedido a tu
+hermandad» (`ShowWithdraw`: hasta 8 pendientes a mi hermandad, y las de prueba) con «Sacar», que marca sacado por mí,
+con la hora, y lo apunta en el registro. No mueve el objeto: se saca a mano y se manda por correo (lo recuerda en el
+chat). Se cierra con `GUILDBANKFRAME_CLOSED`.
+
+### Modo prueba
+
+`AddTest`: un banco por hermandad (la mía, las de la unión y «OTRA» si no llegan a tres) con objetos de vanilla en 3
+pestañas, tres solicitudes (dos pendientes y una sacada) y sus líneas de registro; en Solicitudes, «Probar: abrir el
+banco de hermandad» abre la ventanita de sacar sin ir al banco. `ClearTest` quita todo lo de prueba y el filtro.
+
+## UnionConfig.lua
+
+### Qué hay en el archivo
+
+La configuración de la hermandad, en la mitad derecha de la pestaña GuildUnion (BlizzTab.lua llama a
+`HU:BuildUnionConfig`; Oficiales y Miembros siguen allí, escondidos en `stash`). Título «Configuración» con «Puedes
+cambiarla» o «Solo el maestro la cambia» al lado. Cinco pestañas en dos filas (3 + 2, de 84, con la letra normal del
+botón: la pequeña cambiaba de tamaño al pasar el ratón): Comercio, Lista negra, Banco, Calendario y Hermandad; se abre
+en Comercio. La cambia el maestro (`IsGM`: `IsGuildLeader()`, o la casilla «Probar como maestro (solo en este PC)»,
+`testGM`, para probar la ventana); los controles del maestro (`controls`) se apagan para los demás, que la ven igual.
+
+### Fase 1: solo en este PC
+
+Se guarda en `HU.db.unionCfg` y no viaja: lo que cambia el maestro solo vale en su PC (un permiso que da no le llega a
+nadie). Cada cambio avisa con `HU:Changed("unionCfg")` y Calendario, Banco y Comercio se repintan. La red irá con los
+paquetes con huella (Net/Packs.lua, aún sin escribir), conjunto `CO`, que solo publicará el maestro.
+
+### Las pestañas
+
+- **Comercio** (lo lee Trade.lua): «Comercio activo» (`tradeOff`; apagado, Comercio solo enseña un aviso) y
+  «Permitir propinas» (`tipsOff`; sin propinas, la ventana de pedir esconde la propina y no la guarda).
+- **Lista negra**: la de la comunidad, aquí dentro (la misma que `/gu listanegra`, Blacklist.lua). No es de fase 1: es
+  `db.bans` (Social.lua), que ya viaja entre hermandades. Lista con barra (`HU:BlacklistEntries`; en rojo, los que
+  están ahora en mi hermandad; al pasar el ratón, quién lo vetó y el motivo; clic: el nombre a la caja de abajo).
+  Nombre + «Quitar» (`HU:Unban`) y motivo + «Añadir» (`HU:SetBan`, que pide motivo): oficiales (`HU:CanPin`), no solo
+  el maestro. «Comprobar ahora»: `HU:BlacklistCheck(true)`.
+- **Banco** (lo lee UnionBank.lua): quién lo ve (`bankView`: «officers» por defecto o «all») y quién puede pedir
+  (`bankRequest`: «all» por defecto, «officers» o «none»).
+- **Calendario**: quién crea eventos (`calMake`: «gm», «officers» por defecto o «all») y «Permiso por un tiempo»:
+  nombre (con sugerencias, `HU:NameSuggest`), horas (24 por defecto, de 1 a 999) y «Dar» → `calAllow[clave] = { name,
+  untilT, by }`. Debajo, quién lo tiene y hasta cuándo (las filas que quepan, hasta 5); la X para quitarlo, solo el
+  maestro. Los caducados se borran al repintar. `HU:CanMakeEvents()` dice sí con «all», al maestro, a un oficial con
+  «officers» o a quien tenga un permiso sin caducar.
+- **Hermandad**: el color (muestra + «Elegir color» con el selector del juego: se ve en vivo y Cancelar lo deja como
+  estaba). No va en `unionCfg`: va en `HU.db.guildColors[miEtiqueta] = { hex, by, byTag, t }`, la forma del mensaje
+  `GC` (Community.lua), y avisa también con `HU:Changed("config")`.
