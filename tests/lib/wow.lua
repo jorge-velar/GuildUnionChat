@@ -415,6 +415,19 @@ function wow.New(opts)
         for _, f in ipairs(w.frames) do if f._events[ev] then out[#out + 1] = f end end
         return unpack(out)
     end
+    -- (los mapas del juego, en el idioma de este jugador: la prueba pone w.maps = { { mapID = 1429, name = "…" } };
+    -- sin ellos, ninguno)
+    api.C_Map = {
+        GetFallbackWorldMapID = function() return 947 end,
+        GetMapChildrenInfo = function()
+            local out = {}
+            for i, m in ipairs(w.maps or {}) do out[i] = m end
+            return out
+        end,
+        GetMapInfo = function(id)
+            for _, m in ipairs(w.maps or {}) do if m.mapID == id then return m end end
+        end,
+    }
     -- (/who: se apunta lo buscado y la respuesta la pone la prueba en w.who, con w:Fire("WHO_LIST_UPDATE"))
     api.C_FriendList = {
         SendWho = function(filter) w.whoSent[#w.whoSent + 1] = filter end,

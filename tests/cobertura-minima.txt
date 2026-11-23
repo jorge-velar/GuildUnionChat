@@ -28,7 +28,7 @@ MemGuard.lua 39.1 28
 Mention.lua 3.6 80
 Minimap.lua 33.3 12
 Net/Relay.lua 79.7 182
-Net/RosterSync.lua 77.2 178
+Net/RosterSync.lua 77.8 179
 Net/Security.lua 79.8 35
 Net/Transport.lua 67.4 57
 NoteConfig.lua 26.9 92
@@ -51,6 +51,6 @@ UnionBank.lua 98.6 7
 UnionCalendar.lua 98.5 17
 UnionConfig.lua 100.0 0
 UnionMembers.lua 93.4 18
-UnionRoster.lua 84.1 117
+UnionRoster.lua 84.6 112
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144

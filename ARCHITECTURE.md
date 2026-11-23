@@ -1266,6 +1266,16 @@ como el NQ: en una entrada masiva no salen todos a la vez y casi todos la recibe
 
 ## Net/RosterSync.lua
 
+### Zonas: `HU.ZoneOut` y `HU.ZoneIn`
+
+El nombre de la zona que da el juego (`GetGuildRosterInfo`) está en el idioma de quien lo lee: en una lista
+de la unión salían unas zonas en español y otras en inglés (23/11). En las listas (RB, RC, ML) la zona viaja
+como el número de su mapa, «@1429»: `ZoneOut` lo busca en el mapa del juego (`C_Map.GetMapChildrenInfo` del
+mundo, todos los descendientes; el índice nombre → número se hace una vez, en cuanto el juego da los mapas) y
+`ZoneIn`, en `ParseRosterEntry`, pone el nombre de ese mapa en el idioma de quien la recibe
+(`C_Map.GetMapInfo`). La zona que no está en el mapa va con su nombre, como antes; un número que no conozco,
+sin zona. Va dentro del código corto de cada lista («#1=@1429»). Una versión de antes enseña «@1429» tal cual.
+
 ### `NextSeq`
 
 Número de envío siguiente: la HORA DEL SERVIDOR (igual para todos) por 10, más un contador para que dos
