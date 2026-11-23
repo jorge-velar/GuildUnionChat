@@ -726,7 +726,8 @@ function HU:BuildBank(host)
 
     ui.ask = BuildAsk(host)
     host:HookScript("OnShow", Paint)
-    HU:Listen("CHANGED", function(what) if what == "unionCfg" then Paint() end end)
+    -- (la ventanita de sacar, también con la sección Banco sin ver: si se pierde el permiso, se cierra)
+    HU:Listen("CHANGED", function(what) if what == "unionCfg" then Paint(); PaintWithdraw() end end)
     Paint()
 end
 

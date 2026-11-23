@@ -1078,6 +1078,22 @@ describe("Banco: sacar en el banco de hermandad del juego", function()
         A.same({}, a:Errors())
     end)
 
+    it("si pierde el permiso con la ventanita abierta y la sección Banco no se ve, también se cierra", function()
+        local a = Community(4)
+        a.HU.db.unionCfg = { bankView = "all" }
+        local bank = OpenBank(a)
+        RealAsk(a, bank, "UNO")
+        a.w:Fire("GUILDBANKFRAME_OPENED")
+        local w = a.env.GuildUnionBankWithdraw
+        A.truthy(w:IsShown())
+        -- (está en otra sección de la ventana de hermandad, o la tiene cerrada)
+        bank:Hide()
+        a.HU.db.unionCfg.bankView = "officers"
+        a.HU:Changed("unionCfg")
+        A.falsy(w:IsShown())
+        A.same({}, a:Errors())
+    end)
+
     it("con más de 8 pendientes, la barra enseña las de más abajo; «Sacar» saca la de su fila", function()
         local a = Community()
         local bank = OpenBank(a)
