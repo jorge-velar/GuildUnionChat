@@ -1064,7 +1064,7 @@ local function Build(f)
         HU.db.unionRosterOff = (not HU.db.unionRosterOff) or nil
         Sync(); WhoTick()
     end)
-    for _, w in ipairs({ anchor, ml, f.Chat }) do w:HookScript("OnShow", SyncSoon); w:HookScript("OnHide", SyncSoon) end
+    for _, w in ipairs({ anchor, ml, f.Chat or nil }) do w:HookScript("OnShow", SyncSoon); w:HookScript("OnHide", SyncSoon) end
     -- (al cambiar de vista, en el acto: si se espera al siguiente fotograma, durante un instante se ven los
     -- botones en el sitio de la vista anterior)
     if f.SetDisplayMode then hooksecurefunc(f, "SetDisplayMode", function() Sync(); SyncSoon() end) end
