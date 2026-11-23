@@ -1229,7 +1229,7 @@ local function Setup()
         b:SetPoint("RIGHT", f.InviteButton, "LEFT", -4, 0)
         b:SetScript("OnClick", function() HU:ShowInviteLog() end)
         tab.logBtn = b
-        -- «Solicitudes» (InviteLog.lua): lo que piden otras hermandades (echar a alguien de la mía). Con
+        -- «Peticiones de oficiales» (InviteLog.lua): lo que piden otras hermandades (echar a alguien de la mía). Con
         -- alguna pendiente, encendido y con el número
         local rq = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
         rq:SetSize(140, 20)

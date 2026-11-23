@@ -163,12 +163,12 @@ HU.comm.RD = function(self, _, f)
     local id = f[1]
     if not id then return end
     HU:HideDialogs("HERMANDADUNIDA_RANK", function(d) return d and d.id == id end)
-    -- (otro oficial ya la ha contestado: fuera de «Solicitudes»)
+    -- (otro oficial ya la ha contestado: fuera de «Peticiones de oficiales»)
     HU:RemoveKickRequest(id)
 end
 
 -- Pedir a otra hermandad que cambie el rango a alguien suyo (copia 207). Como GK (Social.lua): lo recibe
--- quien tenga su addon, lo reparte por su hermandad y a sus oficiales les sale en «Solicitudes»
+-- quien tenga su addon, lo reparte por su hermandad y a sus oficiales les sale en «Peticiones de oficiales»
 -- [+ARCHITECTURE.md]
 local seenRank = {}
 HU:RegisterMessage("GP", { queue = "chat", ttl = 600 })
@@ -195,7 +195,7 @@ function HU:AskGuildRank(name, tag, rank)
     local id = string.format("%x%x", math.random(0, 0xffff), time() % 0xffff)
     myRequests[id] = { tag = tag, rank = rank }
     self:Whisper(peer.name, table.concat({ "GP", id, tag, self:FullName(name) or name, rank, self:Me(), self.myTag or "" }, "~"), true)
-    self:Print(string.format(L("Pedido a <%s> que %s pase a %s: lo verán sus oficiales en «Solicitudes»."), tag, self:Short(name), self:RankName(tag, rank) or "?"))
+    self:Print(string.format(L("Pedido a <%s> que %s pase a %s: lo verán sus oficiales en «Peticiones de oficiales»."), tag, self:Short(name), self:RankName(tag, rank) or "?"))
 end
 
 HU:RegisterMessage("RR")

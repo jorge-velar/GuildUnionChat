@@ -4,7 +4,6 @@
 local _, HU = ...
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
-local ROCK = "Interface\\FrameGeneral\\UI-Background-Rock"
 local TIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
 local DLG_BORDER = "Interface\\DialogFrame\\UI-DialogBox-Border"
 local PARCHMENT = "Interface\\QuestFrame\\QuestBG"
@@ -12,7 +11,7 @@ local PARCHMENT = "Interface\\QuestFrame\\QuestBG"
 local DJ = {}
 HU.DJ = DJ
 DJ.ROW_HL = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
-DJ.ROCK, DJ.WHITE, DJ.TIP_BORDER = ROCK, WHITE, TIP_BORDER
+DJ.WHITE, DJ.TIP_BORDER = WHITE, TIP_BORDER
 -- (los colores: pizarra fría, como el fondo de los bocadillos del juego y la piedra gris de la ventana de
 -- hermandad; dorado del juego para títulos y lo elegido; sin marrones) [+ARCHITECTURE.md]
 DJ.T = {
@@ -20,8 +19,7 @@ DJ.T = {
     frame = { 0.03, 0.03, 0.03, 0.98 }, content = { 0.06, 0.06, 0.07, 0.95 }, border = { 0.40, 0.40, 0.45, 1 },
     header = { 0.09, 0.09, 0.10, 0.96 }, panel = { 0.05, 0.05, 0.06, 0.95 }, row = { 0.10, 0.10, 0.12, 0.95 },
     rowSel = { 0.16, 0.18, 0.28, 0.95 }, title = { 1.00, 0.82, 0.00 }, text = { 0.90, 0.90, 0.92 },
-    muted = { 0.66, 0.68, 0.74 }, gold = { 1.00, 0.82, 0.00 }, hover = { 1.00, 0.82, 0.00 },
-    btn = { 0.03, 0.03, 0.04, 0.98 }, btnBorder = { 0.40, 0.40, 0.45, 1 }, line = { 1.00, 0.82, 0.00 },
+    muted = { 0.66, 0.68, 0.74 }, hover = { 1.00, 0.82, 0.00 }, line = { 1.00, 0.82, 0.00 },
 }
 local T = DJ.T
 
@@ -94,8 +92,8 @@ function DJ.RoundIcon(parent, size)
     return t
 end
 
--- Una ventana como la del Dungeon Journal: piedra con marco de diálogo, franja de título con rayas doradas, X y
--- un panel de dentro («content», con pergamino). Se mueve arrastrándola
+-- Una ventana como la del Dungeon Journal: fondo liso casi negro con marco de diálogo, franja de título con rayas
+-- doradas, X y un panel de dentro («content»). Se mueve arrastrándola
 function DJ.Window(name, parent, w, h, onClose)
     local d = CreateFrame("Frame", name, parent, "BackdropTemplate")
     d:SetSize(w, h)

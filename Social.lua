@@ -721,12 +721,12 @@ HU.comm.GK = function(self, sender, f, dist, raw)
     seenKicks[id] = true
     if dist == "WHISPER" then self:Send(raw, "GUILD") end
     if not self:CanKickGuild() or not self:InMyGuild(target) then return end
-    -- (va a «Solicitudes» de la ventana de hermandad, sin ventana emergente: Jorge, 23/11. InviteLog.lua)
+    -- (va a «Peticiones de oficiales» de la ventana de hermandad, sin ventana emergente: Jorge, 23/11. InviteLog.lua)
     self:AddKickRequest({ id = id, target = target, requester = requester, reqTag = reqTag, t = time() })
 end
 
 -- Pedir a otra hermandad que eche a alguien suyo: lo recibe quien tenga su addon y lo reparte por su
--- hermandad; a sus oficiales les sale en «Solicitudes» (copia 205) [+ARCHITECTURE.md]
+-- hermandad; a sus oficiales les sale en «Peticiones de oficiales» (copia 205) [+ARCHITECTURE.md]
 function HU:AskGuildKick(name, tag)
     if not (name and tag) or tag == self.myTag then return end
     if not self:CanOfficer() then return self:Print(L("Solo los oficiales pueden pedir echar a alguien de otra hermandad.")) end
@@ -737,7 +737,7 @@ function HU:AskGuildKick(name, tag)
     local id = string.format("%x%x", math.random(0, 0xffff), time() % 0xffff)
     myKicks[id] = { name = self:FullName(name) or name, tag = tag }
     self:Whisper(peer.name, table.concat({ "GK", id, tag, self:FullName(name) or name, self:Me(), self.myTag or "" }, "~"), true)
-    self:Print(string.format(L("Pedido a <%s> que eche a %s: lo verán sus oficiales en «Solicitudes»."), tag, self:Short(name)))
+    self:Print(string.format(L("Pedido a <%s> que eche a %s: lo verán sus oficiales en «Peticiones de oficiales»."), tag, self:Short(name)))
 end
 
 function HU:AnswerKick(data, accept)
@@ -767,7 +767,7 @@ HU.comm.GD = function(self, _, f)
     if not id then return end
     seenKicks[id] = true
     HU:HideDialogs("WELOVEPVP_GKICK", function(d) return d and d.id == id end)
-    -- (otro oficial ya la ha contestado: fuera de «Solicitudes»)
+    -- (otro oficial ya la ha contestado: fuera de «Peticiones de oficiales»)
     HU:RemoveKickRequest(id)
 end
 

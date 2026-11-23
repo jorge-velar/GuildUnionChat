@@ -451,31 +451,52 @@ describe("Miembros de la unión: /who al hacer clic y sin la ventana del juego",
     end)
 end)
 
+-- (la ventana de hermandad del juego, lo justo: su lista de miembros con la casilla de desconectados)
+local function GuildWindow(a, withChat)
+    local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
+    -- (con withChat, también el chat del juego, para la vista de chat)
+    if withChat then
+        f.Chat = a.env.CreateFrame("Frame", nil, f)
+        f.Chat.visible = false
+        f.Chat.IsVisible = function(self) return self.visible end
+    else
+        f.Chat = false
+    end
+    f.GuildInfoTab = false -- (sin pestañas: la de GuildUnion, BlizzTab.lua, no se monta)
+    f.CommunitiesControlFrame = false -- (sin «Ajustes de hermandad»: los botones de abajo, en su prueba)
+    f.CommunitiesList = a.env.CreateFrame("Frame", nil, f) -- (la columna de comunidades: la fila se ata a ella)
+    f.MemberList = a.env.CreateFrame("Frame", nil, f)
+    f.MemberList.IsVisible = function() return true end
+    local chk = a.env.CreateFrame("CheckButton", nil, f.MemberList)
+    f.MemberList.ShowOfflineButton = chk
+    chk.visible = true
+    chk.IsVisible = function(self) return self.visible end
+    a.w:Fire("ADDON_LOADED", "Blizzard_Communities")
+    return f
+end
+
+-- Lo escrito en el chat desde la línea `from`
+local function Chat(a, from)
+    local out = {}
+    for i = (from or 0) + 1, #a.w.chat do out[#out + 1] = tostring(a.w.chat[i].msg) end
+    return table.concat(out, "\n")
+end
+
+-- Un menú de clic derecho de mentira (el del juego, MenuUtil): recuerda sus botones
+local function FakeMenu()
+    local m = { items = {} }
+    function m:CreateButton(text, fn) local sub = FakeMenu(); sub.text, sub.fn = text, fn; self.items[#self.items + 1] = sub; return sub end
+    function m:CreateTitle() end
+    function m:CreateDivider() end
+    return m
+end
+-- (el botón de ese menú cuyo texto lleva `text`)
+local function MenuItem(m, text)
+    for _, it in ipairs(m.items) do if it.text and it.text:find(text, 1, true) then return it end end
+end
+
 describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", function()
     local BEA = { fullName = "Bea-Reino", fullGuildName = "Hermandad Dos", level = 30, filename = "MAGE", area = "Ventormenta" }
-    -- (la ventana de hermandad del juego, lo justo: su lista de miembros con la casilla de desconectados)
-    local function GuildWindow(a, withChat)
-        local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
-        -- (con withChat, también el chat del juego, para la vista de chat)
-        if withChat then
-            f.Chat = a.env.CreateFrame("Frame", nil, f)
-            f.Chat.visible = false
-            f.Chat.IsVisible = function(self) return self.visible end
-        else
-            f.Chat = false
-        end
-        f.GuildInfoTab = false -- (sin pestañas: la de GuildUnion, BlizzTab.lua, no se monta)
-        f.CommunitiesControlFrame = false -- (sin «Ajustes de hermandad»: los botones de abajo, en su prueba)
-        f.CommunitiesList = a.env.CreateFrame("Frame", nil, f) -- (la columna de comunidades: la fila se ata a ella)
-        f.MemberList = a.env.CreateFrame("Frame", nil, f)
-        f.MemberList.IsVisible = function() return true end
-        local chk = a.env.CreateFrame("CheckButton", nil, f.MemberList)
-        f.MemberList.ShowOfflineButton = chk
-        chk.visible = true
-        chk.IsVisible = function(self) return self.visible end
-        a.w:Fire("ADDON_LOADED", "Blizzard_Communities")
-        return f
-    end
     local function Click(name, a) local b = a.env[name]; return b:GetScript("OnClick")(b, "LeftButton") end
 
     it("todos juntos: primero mi hermandad, por rango, y luego las otras", function()
@@ -495,8 +516,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         local a = F.Community()
         a.w.guild.members[2].note = "tanque" -- (Compi)
         GuildWindow(a)
-        local check, mine, cover = a.env.GuildUnionRosterCheck, a.env.GuildUnionRosterMine, a.env.GuildUnionUnionRoster
-        A.falsy(check and check:IsShown(), "sin casilla «GuildUnion»: lo nuestro siempre puesto")
+        local mine, cover = a.env.GuildUnionRosterMine, a.env.GuildUnionUnionRoster
+        A.falsy(a.env.GuildUnionRosterCheck, "sin casilla «GuildUnion»: lo nuestro siempre puesto")
         A.truthy(mine and mine:IsShown(), "«Solo mi hermandad», en Miembros")
         A.truthy(cover:IsShown(), "al principio, Miembros")
         A.equal(1, cover.tabs.selectedTab)
@@ -756,7 +777,6 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
             A.equal(i + 1, cover.tabs.selectedTab)
             A.truthy(cover[key]:IsShown(), key)
             A.falsy(cover.hdr:IsShown(), "sin los títulos de Miembros")
-            A.falsy(cover.soon:IsShown(), "ya no es «próximamente»")
         end
         local t1 = cover.tabs.Tabs[1]
         t1:GetScript("OnClick")(t1)
@@ -793,6 +813,417 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         -- (Jefa 0, Tester 1, y en el rango más bajo, Alta (61) antes que Compi (60))
         A.matches("Alta", cover.rows[3].cells.name:GetText())
         A.matches("Compi", cover.rows[4].cells.name:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("el contador de conectados de la unión, solo en la vista de chat y en nuestras pestañas (en Información, no)", function()
+        local a = F.Community()
+        local f = GuildWindow(a, true)
+        local counts = a.env.GuildUnionUnionCounts
+        A.truthy(counts:IsShown(), "en Miembros")
+        A.matches("conectados", counts.text:GetText())
+        -- (Información: ni la casilla de desconectados ni el chat a la vista)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.MemberList.ShowOfflineButton:GetScript("OnHide")()
+        a.w:Advance(4)
+        A.falsy(a.env.GuildUnionUnionRoster:IsShown())
+        A.falsy(counts:IsShown(), "en Información, no")
+        f.Chat.visible = true
+        f.Chat:GetScript("OnShow")()
+        a.w:Advance(0.1)
+        A.truthy(counts:IsShown(), "en la vista de chat, sí")
+        A.same({}, a:Errors())
+    end)
+
+    it("«Solo mi hermandad» puesta y busco a alguien conectado de otra: dice el porqué, no que no está conectado", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "IsGuildForwarder", true)
+        GuildWindow(a)
+        a.w:Receive("HU20B", "ML~DOS~id1~1~1~Blas,1,60,4,Ventormenta", "GUILD", "Compi-Reino")
+        local blas
+        for _, e in ipairs(HU:UnionRosterEntries()) do if e.name:match("^Blas") then blas = e end end
+        A.truthy(blas, "Blas, conectado en DOS")
+        local mine = a.env.GuildUnionRosterMine
+        mine.GetChecked = function() return true end
+        Click("GuildUnionRosterMine", a)
+        local n0 = #a.w.chat
+        A.truthy(HU.UnionRosterPick({ name = blas.name, tag = "DOS", online = true }))
+        local said = Chat(a, n0)
+        A.falsy(said:find("no está conectado", 1, true), said)
+        A.matches("Solo mi hermandad", said)
+        A.same({}, a:Errors())
+    end)
+
+    it("el /who, solo con lo que hace el jugador (la rueda, la barra y sus flechas), no al moverse la lista sola", function()
+        local a = F.Community()
+        -- (la barra de la lista y su flecha de bajar, de la plantilla del juego: el WoW de mentira no las crea)
+        local bar = a.env.CreateFrame("Slider", "GuildUnionUnionRosterScrollScrollBar")
+        local down = a.env.CreateFrame("Button", "GuildUnionUnionRosterScrollScrollBarScrollDownButton", bar)
+        GuildWindow(a)
+        local sf = a.env.GuildUnionUnionRosterScroll
+        -- (la lista se recoloca o cambia de tamaño: salta OnVerticalScroll sin ningún clic)
+        sf:GetScript("OnVerticalScroll")(sf, 18)
+        A.same({}, a.w.whoSent, "sin clic, el juego bloquearía el /who")
+        sf:GetScript("OnMouseWheel")(sf, -1)
+        A.same({ 'g-"Hermandad Dos"' }, a.w.whoSent, "con la rueda, sí")
+        a.w:Advance(61)
+        bar:GetScript("OnMouseDown")(bar, "LeftButton")
+        A.equal(2, #a.w.whoSent, "al pinchar la barra")
+        a.w:Advance(61)
+        down:GetScript("OnClick")(down, "LeftButton")
+        A.equal(3, #a.w.whoSent, "con su flecha")
+        A.same({}, a:Errors())
+    end)
+
+    it("echar, solo a quien mi rango deja: a la maestra ni el menú ni la ficha; con varios, solo los que puedo", function()
+        local a = F.Community()
+        local HU = a.HU
+        GuildWindow(a)
+        F.Stub(HU, "CanPromote", true); F.Stub(HU, "CanDemote", true); F.Stub(HU, "CanKickGuild", true)
+        local sent = {}
+        F.Stub(HU, "TypeLines", function(_, macro) sent[#sent + 1] = macro end)
+        local extra
+        HU.PlayerMenu = function(_, _, fn) extra = fn end
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local jefa, compi = cover.rows[1], cover.rows[3]
+        A.matches("Jefa", jefa.cells.name:GetText())
+        A.matches("Compi", compi.cells.name:GetText())
+        -- (yo soy oficial (rango 1) y ella, maestra (0): la orden fallaría)
+        jefa:GetScript("OnClick")(jefa, "RightButton")
+        local root = FakeMenu()
+        extra(root)
+        A.truthy(MenuItem(root, "Cambiar rango"))
+        A.falsy(MenuItem(root, "Echar de la hermandad"), "sin «Echar» para la maestra")
+        -- (su ficha: «Echar» no manda nada y dice por qué)
+        jefa:GetScript("OnClick")(jefa, "LeftButton")
+        local card = a.env.GuildUnionMemberCard
+        A.matches("Jefa", card.title:GetText())
+        local n0 = #a.w.chat
+        card.remove:GetScript("OnClick")(card.remove)
+        A.same({}, sent, "nada a la ventana de órdenes")
+        A.matches("rango igual o superior", Chat(a, n0))
+        -- (la maestra y Compi elegidos: el menú de los dos echa solo a Compi)
+        a.env.IsControlKeyDown = function() return true end
+        compi:GetScript("OnClick")(compi, "LeftButton")
+        a.env.IsControlKeyDown = function() return false end
+        local multi = FakeMenu()
+        a.env.MenuUtil = { CreateContextMenu = function(_, gen) gen(nil, multi) end }
+        compi:GetScript("OnClick")(compi, "RightButton")
+        local kick = MenuItem(multi, "Echar de la hermandad")
+        A.truthy(kick, "con Compi, sí")
+        kick.fn()
+        A.equal(1, #sent)
+        A.matches("/gremove Compi", sent[1])
+        A.falsy(sent[1]:find("Jefa", 1, true), "la maestra, no")
+        A.same({}, a:Errors())
+    end)
+
+    it("en combate no se mueven la lista ni el chat del juego (llevan botones seguros: el juego lo bloquea); al salir, sí", function()
+        -- (visto en el juego el 23/11, copia 287: ADDON_ACTION_BLOCKED en Frame:SetPoint() dentro de Sync)
+        local a = F.Community()
+        local f = GuildWindow(a, true)
+        local ml, chat = f.MemberList, f.Chat
+        local cover = a.env.GuildUnionUnionRoster
+        -- (lo que se les mueve desde aquí; gameSetPoint, el SetPoint con el que el juego coloca su lista)
+        local moved = {}
+        local function Spy(fr)
+            local set, clear = fr.SetPoint, fr.ClearAllPoints
+            fr.SetPoint = function(self, ...) moved[#moved + 1] = { self, ... }; return set(self, ...) end
+            fr.ClearAllPoints = function(self) moved[#moved + 1] = { self, "ClearAllPoints" }; return clear(self) end
+            return set
+        end
+        local gameSetPoint = Spy(ml)
+        Spy(chat)
+        a.w.inCombat = true
+        -- (en combate: a la vista de chat; el juego recoloca su lista; y otra vez a la de miembros)
+        ml.ShowOfflineButton.visible = false
+        chat.visible = true
+        chat:GetScript("OnShow")()
+        a.w:Advance(0.1)
+        A.equal(0, cover.tabs.selectedTab, "en la vista de chat")
+        gameSetPoint(ml, "TOPLEFT", f, "TOPRIGHT", -165, -63)
+        chat.visible = false
+        ml.ShowOfflineButton.visible = true
+        ml.ShowOfflineButton:GetScript("OnShow")()
+        a.w:Advance(0.1)
+        A.equal(1, cover.tabs.selectedTab, "en la de miembros")
+        A.equal(0, #moved, "en combate no se tocan")
+        -- (al salir del combate, cada uno a su sitio)
+        a.w.inCombat = false
+        a.w:Fire("PLAYER_REGEN_ENABLED")
+        a.w:Advance(0.1)
+        local back
+        for _, m in ipairs(moved) do
+            if m[1] == ml and m[2] == "TOPLEFT" and m[3] == f.CommunitiesList and m[5] == 26 and m[6] == -60 then back = true end
+        end
+        A.truthy(back, "la lista, otra vez en su sitio del juego")
+        A.same({}, a:Errors())
+    end)
+
+    it("si la ventana del juego se carga en pleno combate, lo nuestro se monta al salir (los botones seguros no se crean en combate)", function()
+        local a = F.Community()
+        a.w.inCombat = true
+        GuildWindow(a)
+        A.is_nil(rawget(a.env, "GuildUnionUnionRoster"), "en combate, nada")
+        a.w.inCombat = false
+        a.w:Fire("PLAYER_REGEN_ENABLED")
+        A.truthy(rawget(a.env, "GuildUnionUnionRoster"), "al salir del combate, montado")
+        A.same({}, a:Errors())
+    end)
+
+    it("pedir a otra hermandad que eche a alguien: el aviso nombra «Peticiones de oficiales», como el botón", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "CanOfficer", true)
+        F.Stub(HU, "BestPeer", { name = "Bea-Reino", tag = "DOS" })
+        local n0 = #a.w.chat
+        HU:AskGuildKick("Blas-Reino", "DOS")
+        A.matches("«Peticiones de oficiales»", Chat(a, n0))
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Comercio (Trade.lua)", function()
+    local function Click(b, ...) return b:GetScript("OnClick")(b, ...) end
+    -- (la ventana de hermandad del juego, en la sección Comercio)
+    local function OpenTrade(a)
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        Click(cover.tabs.Tabs[2])
+        return cover.trade
+    end
+    -- (las filas de la lista de solicitudes que se ven, en orden; la de un objeto; el título de una columna)
+    local function Rows(tr)
+        local out = {}
+        for _, r in ipairs(tr.req.rows) do if r:IsShown() and r.entry then out[#out + 1] = r end end
+        return out
+    end
+    local function Row(tr, text)
+        for _, r in ipairs(Rows(tr)) do if r.entry.item:find(text, 1, true) then return r end end
+    end
+    local function Header(tr, key)
+        for _, h in ipairs(tr.req.hdrCells) do if h:IsShown() and h.key == key then return h end end
+    end
+    local function Titles(tr)
+        local out = {}
+        for _, h in ipairs(tr.req.hdrCells) do if h:IsShown() then out[#out + 1] = h:GetText() end end
+        return out
+    end
+    -- (el botón de `parent` con ese texto)
+    local function Btn(a, parent, text)
+        for _, fr in ipairs(a.w.frames) do if fr._parent == parent and fr:GetText() == text then return fr end end
+    end
+    -- (pedir con la ventana «Nueva solicitud»; en el WoW de mentira las casillas no se marcan: privada, para Bea)
+    local function Ask(a, tr, item)
+        tr.OpenNew(nil)
+        local d = a.env.GuildUnionTradeNew
+        d.item:SetText(item); d.to:SetText("Bea-Reino")
+        Click(Btn(a, d, "Pedir"))
+    end
+    local function CtrlClick(a, row)
+        a.env.IsControlKeyDown = function() return true end
+        Click(row, "LeftButton")
+        a.env.IsControlKeyDown = function() return false end
+    end
+
+    it("apagado por el maestro: solo el aviso; ni pestañas, ni buscador, ni modo prueba, ni «+ Nueva solicitud», y no se guarda nada", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        -- (la ventana de pedir, abierta de antes)
+        tr.OpenNew(nil)
+        local d = a.env.GuildUnionTradeNew
+        A.truthy(d:IsShown())
+        d.item:SetText("Algo"); d.to:SetText("Bea-Reino")
+        a.HU:UnionCfg().tradeOff = true
+        Click(Btn(a, d, "Pedir"))
+        A.falsy(d:IsShown(), "se cierra")
+        a.HU:Changed("unionCfg")
+        A.truthy(tr.offMsg:IsShown(), "el aviso")
+        A.falsy(tr.body:IsShown())
+        for i, w in ipairs({ tr.new, tr.search, tr.testBtn, tr.viewBtns.pub, tr.viewBtns.priv }) do A.falsy(w:IsShown(), "fuera, " .. i) end
+        tr.OpenNew(nil)
+        A.falsy(d:IsShown(), "la ventana de pedir no se abre")
+        -- (encendido otra vez: todo de vuelta, y no se había guardado nada)
+        a.HU:UnionCfg().tradeOff = nil
+        a.HU:Changed("unionCfg")
+        A.falsy(tr.offMsg:IsShown())
+        for i, w in ipairs({ tr.body, tr.new, tr.search, tr.testBtn, tr.viewBtns.pub, tr.viewBtns.priv }) do A.truthy(w:IsShown(), "de vuelta, " .. i) end
+        Click(tr.viewBtns.priv)
+        A.equal(0, #Rows(tr), "no se había guardado")
+        A.same({}, a:Errors())
+    end)
+
+    it("sin propinas, la columna Propina no sale (ni su título ni sus casillas) en Público, Privado ni al buscar", function()
+        local a = F.Community()
+        a.HU:UnionCfg().tipsOff = true
+        local tr = OpenTrade(a)
+        Click(tr.testBtn)
+        local function NoTips()
+            for _, r in ipairs(Rows(tr)) do
+                for _, c in ipairs(r.cells) do
+                    local t = c:IsShown() and c:GetText() or ""
+                    A.falsy(t:find("MoneyFrame", 1, true) or t:find("negociar", 1, true), t)
+                end
+            end
+        end
+        A.same({ "Quién", "Receta / objeto", "Cant.", "Mats", "Estado", "Acción" }, Titles(tr))
+        NoTips()
+        Click(tr.viewBtns.priv)
+        A.same({ "Con quién", "Receta / objeto", "Cant.", "Estado" }, Titles(tr))
+        NoTips()
+        tr.search:SetText("Poción")
+        tr.search:GetScript("OnTextChanged")(tr.search)
+        A.equal(1, #Rows(tr), "la poción pública de Janeth")
+        A.same({ "Quién", "Receta / objeto", "Cant.", "Mats", "Estado", "Acción" }, Titles(tr))
+        NoTips()
+        -- (con propinas otra vez, vuelve)
+        tr.search:SetText("")
+        tr.search:GetScript("OnTextChanged")(tr.search)
+        a.HU:UnionCfg().tipsOff = nil
+        a.HU:Changed("unionCfg")
+        A.truthy(Header(tr, "tip"), "con propinas, su columna")
+        A.same({}, a:Errors())
+    end)
+
+    it("una mía aceptada y luego eliminada de mi lista ya no cuenta para el tope de 5", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        -- (el modo prueba trae 3 mías sin terminar: la capa pública, la espada que hace Pepe y la poción para Janeth)
+        Click(tr.testBtn)
+        Click(tr.viewBtns.priv)
+        local espada = Row(tr, "espada")
+        A.equal("taken", espada.entry.state)
+        CtrlClick(a, espada)
+        Click(tr.delBtn)
+        A.falsy(Row(tr, "espada"), "fuera de mi lista")
+        -- (quedan 2: caben 3 más, y la sexta no)
+        local n0 = #a.w.chat
+        for i = 1, 3 do Ask(a, tr, "Encargo " .. i) end
+        A.falsy(Chat(a, n0):find("Ya tienes", 1, true), Chat(a, n0))
+        A.truthy(Row(tr, "Encargo 3"), "la tercera, guardada")
+        Ask(a, tr, "Encargo 4")
+        A.matches("Ya tienes 5 solicitudes abiertas", Chat(a, n0))
+        A.same({}, a:Errors())
+    end)
+
+    it("Privado: Ctrl+clic justo después de un clic marca las dos (antes la primera se quedaba fuera)", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        Click(tr.testBtn)
+        Click(tr.viewBtns.priv)
+        local rows = Rows(tr)
+        local first, second = rows[1].entry, rows[2].entry
+        Click(rows[1], "LeftButton")
+        CtrlClick(a, rows[2])
+        A.equal("Eliminar (2)", tr.delBtn:GetText())
+        A.truthy(rows[1].pickTex:IsShown()); A.truthy(rows[2].pickTex:IsShown())
+        Click(tr.delBtn)
+        for _, r in ipairs(Rows(tr)) do A.truthy(r.entry ~= first and r.entry ~= second, "las dos, fuera") end
+        A.same({}, a:Errors())
+    end)
+
+    it("el orden por una columna que la otra vista no tiene (Mats) se quita al cambiar; por una que tienen las dos (Propina), se queda", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        Click(tr.testBtn)
+        Click(Header(tr, "mats"))
+        A.equal("Mats ^", Header(tr, "mats"):GetText())
+        Click(tr.viewBtns.priv)
+        -- (en Privado, lo más nuevo arriba: la poción para Janeth, la cofia de Lyra, la espada y el elixir de Bea)
+        local mats = {}
+        for _, r in ipairs(Rows(tr)) do mats[#mats + 1] = r.entry.mats end
+        A.same({ false, true, true, false }, mats, "sin ordenar por Mats, que aquí no está")
+        for _, t in ipairs(Titles(tr)) do A.falsy(t:find(" [%^v]$"), t) end
+        Click(tr.viewBtns.pub)
+        A.equal("Mats", Header(tr, "mats"):GetText(), "al volver a Público, tampoco")
+        Click(Header(tr, "tip"))
+        Click(tr.viewBtns.priv)
+        A.equal("Propina ^", Header(tr, "tip"):GetText(), "Propina está en las dos: se queda")
+        A.same({}, a:Errors())
+    end)
+
+    it("«Hecha»: solo quien la hace y solo si está aceptada (ni en una abierta ni en una mía que hace otro)", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        Click(tr.testBtn)
+        Click(tr.viewBtns.priv)
+        local function RowMenu(row)
+            local m = FakeMenu()
+            a.env.MenuUtil = { CreateContextMenu = function(_, gen) gen(nil, m) end }
+            Click(row, "RightButton")
+            return m
+        end
+        -- (abierta, me la pide Lyra: nadie la ha aceptado)
+        local cofia = Row(tr, "Cofia")
+        Click(cofia, "LeftButton")
+        A.falsy(tr.doneBtn:IsShown(), "abierta: sin «Hecha»")
+        Click(tr.doneBtn)
+        A.equal("open", cofia.entry.state)
+        A.falsy(MenuItem(RowMenu(cofia), "Marcar como hecha"))
+        -- (mía y aceptada por Pepe: la hace él, no yo)
+        local espada = Row(tr, "espada")
+        Click(espada, "LeftButton")
+        A.falsy(tr.doneBtn:IsShown(), "la hace Pepe")
+        A.falsy(MenuItem(RowMenu(espada), "Marcar como hecha"))
+        -- (la de Bea, aceptada por mí con el tic: ahora sí)
+        Click(Row(tr, "Elixir").yes)
+        local elixir = Row(tr, "Elixir")
+        A.equal("taken", elixir.entry.state)
+        Click(elixir, "LeftButton")
+        A.truthy(tr.doneBtn:IsShown())
+        A.truthy(MenuItem(RowMenu(elixir), "Marcar como hecha"))
+        Click(tr.doneBtn)
+        A.equal("done", Row(tr, "Elixir").entry.state)
+        A.same({}, a:Errors())
+    end)
+
+    it("dos solicitudes en el mismo segundo llevan id distinto aunque el azar repita, con la huella de quien pide", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        -- (un azar que da siempre lo mismo)
+        a.env.math = setmetatable({ random = function() return 7 end }, { __index = math })
+        Ask(a, tr, "Uno")
+        Ask(a, tr, "Dos")
+        a.env.math = nil
+        local rows = Rows(tr)
+        A.equal(2, #rows)
+        local id1, id2 = rows[1].entry.id, rows[2].entry.id
+        A.truthy(id1 ~= id2, "iguales: " .. tostring(id1))
+        local mark = a.HU.Hash(a.HU:Me()):sub(1, 4)
+        A.equal(mark, id1:sub(1, 4)); A.equal(mark, id2:sub(1, 4))
+        A.truthy(#id1 <= 16, "corto: " .. id1)
+        A.same({}, a:Errors())
+    end)
+
+    it("las sugerencias de objetos son las mejores de todos: el nombre exacto, luego los que empiezan así, por nombre", function()
+        local a = F.Community()
+        -- (el juego conoce todos los fabricables: casi todos «Paño de lino N» y tres que empiezan por «Lino»)
+        local ids, seen = {}, {}
+        for _, list in pairs(a.HU.CRAFT_ITEMS) do
+            for i = 1, #list - 1, 2 do if not seen[list[i]] then seen[list[i]] = true; ids[#ids + 1] = list[i] end end
+        end
+        table.sort(ids)
+        local special = { [ids[#ids]] = "Lino grueso", [ids[#ids - 1]] = "Lino", [ids[#ids - 2]] = "Lino fino" }
+        a.env.GetItemInfo = function(id)
+            if type(id) ~= "number" then return nil end
+            local name = special[id] or ("Paño de lino " .. id)
+            return name, "|cffffffff|Hitem:" .. id .. "::::::::60:::::::|h[" .. name .. "]|h|r"
+        end
+        local tr = OpenTrade(a)
+        a.w:Advance(60) -- (los nombres se piden poco a poco: 30 cada medio segundo)
+        tr.search:SetText("lino")
+        tr.search:GetScript("OnTextChanged")(tr.search, true)
+        -- (los botones de la lista de sugerencias, la que cuelga del buscador)
+        local list
+        for _, fr in ipairs(a.w.frames) do if fr._parent == tr.search and fr._kind == "Frame" then list = fr end end
+        local shown = {}
+        for _, fr in ipairs(a.w.frames) do
+            if fr._parent == list and fr._kind == "Button" and fr:IsShown() then shown[#shown + 1] = fr.text:GetText():match("%[(.-)%]") end
+        end
+        A.equal(6, #shown)
+        A.same({ "Lino", "Lino fino", "Lino grueso" }, { shown[1], shown[2], shown[3] })
         A.same({}, a:Errors())
     end)
 end)

@@ -1,7 +1,7 @@
 -- Guild Union - secciones de la lista de miembros del juego (botones rojos): Miembros (todos los de la unión), Comercio, Calendario y Banco [+ARCHITECTURE.md]
 local _, HU = ...
 local L = HU.L
--- (true: la casilla «GuildUnion» quitada, se ve la lista del juego; por defecto, puesta)
+-- (unionRosterOff: la casilla «GuildUnion» de antes, que ya no está: se borra; unionRosterMine: «Solo mi hermandad»)
 HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
@@ -25,11 +25,11 @@ local TABS = {
     { title = "Calendario", calendar = true },
     { title = "Banco", bank = true },
 }
-local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = las de «próximamente»
+local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
 local wantTab          -- la sección pulsada desde la vista de chat: se abre al llegar a la de miembros
 local sortKey, sortDesc   -- nil: rango y luego nivel
-local cover, check, mine
+local cover, mine
 -- (los elegidos con clic, Mayús y Ctrl, por nombre en minúsculas; shown: la lista entera, en su orden)
 local sel, anchorKey, shown = {}, nil, {}
 local notes, notesDirty = {}, true
@@ -218,7 +218,9 @@ local function Paint()
     cover.status:SetText(table.concat(parts, "  ·  "))
 end
 
--- Un clic del jugador aquí: el único momento en que el juego deja hacer /who (UnionMembers.lua)
+-- Un clic del jugador aquí (botones, títulos, filas, la rueda, la barra de la lista y sus flechas): el único
+-- momento en que el juego deja hacer /who (UnionMembers.lua). No con OnVerticalScroll: salta también cuando la
+-- lista se recoloca sola (al pintarla o cambiar de tamaño), sin clic
 -- (nunca mientras colocamos la ventana: si el cambio de vista viene de un botón seguro del juego, el /who
 -- queda dentro de su clic y el juego lo bloquea: ADDON_ACTION_BLOCKED, visto el 23/11)
 local inSync = false
@@ -266,18 +268,13 @@ local function Layout()
         -- (exactamente donde va en la vista de miembros: allí es la lista del juego, -3 y +26, y esa lista va
         -- a 26 y -60 de la columna de comunidades. Todo atado a la columna: la misma fila en las dos vistas)
         cover:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 23, -34)
-        if tab == 0 then
-            -- (a la derecha, hasta el borde de la ventana: atado a la ventana y no a la lista de la
-            -- derecha, que baja; ver Sync)
-            -- (el borde derecho, a 4 del de la ventana, pero a la misma altura: atado también a la columna)
-            local clRight, fRight = f.CommunitiesList:GetRight(), f:GetRight()
-            local dx = (type(clRight) == "number" and type(fRight) == "number") and (fRight - clRight - 4) or 640
-            cover:SetPoint("TOPRIGHT", f.CommunitiesList, "TOPRIGHT", dx, -34)
-            cover:SetHeight(TAB_H)
-        else
-            -- (abajo, hasta donde acaba el chat: debajo va la caja de escribir del juego)
-            cover:SetPoint("BOTTOMRIGHT", ml, "BOTTOMRIGHT", 22, 28)
-        end
+        -- (en la vista de chat siempre está «Chat» elegido: solo la fila. A la derecha, hasta el borde de la
+        -- ventana: atado a la ventana y no a la lista de la derecha, que baja; ver Sync)
+        -- (el borde derecho, a 4 del de la ventana, pero a la misma altura: atado también a la columna)
+        local clRight, fRight = f.CommunitiesList:GetRight(), f:GetRight()
+        local dx = (type(clRight) == "number" and type(fRight) == "number") and (fRight - clRight - 4) or 640
+        cover:SetPoint("TOPRIGHT", f.CommunitiesList, "TOPRIGHT", dx, -34)
+        cover:SetHeight(TAB_H)
     else
         cover:SetPoint("TOPLEFT", ml, "TOPLEFT", -3, TOP)
         -- (hasta 22 más a la derecha: tapa también la barra de la lista del juego, que se veía al lado de la nuestra)
@@ -300,10 +297,8 @@ local function ShowTab(i)
         HU.DJ.PickRed(b, k == i)
     end
     local members = i == 1
-    local soon = i > 1 and TABS[i].soon
     cover.hdr:SetShown(members); cover.scroll:SetShown(members); cover.status:SetShown(members)
     for _, row in ipairs(cover.rows) do if not members then row:Hide() end end
-    cover.soon:SetShown(soon and true or false)
     -- (Comercio: su sección, Trade.lua)
     cover.trade:SetShown(i > 0 and TABS[i].trade == true)
     cover.calendar:SetShown(i > 0 and TABS[i].calendar == true)
@@ -312,7 +307,6 @@ local function ShowTab(i)
     HU.charSearchOff = i >= 2
     HU.SyncCharSearch()
     if mine then mine:SetShown(i == 1) end
-    if soon then cover.soon:SetText(L(soon)) end
     Layout()
     Paint()
 end
@@ -490,8 +484,8 @@ local function ShowCard(e, force)
         end
     end
     v[5]:SetText(#profs == 0 and "—" or "")
-    -- (de mi hermandad, si puedo echar; de otra, si soy oficial: se le pide a su hermandad)
-    card.remove:SetEnabled((e.own == true and HU:CanKickGuild()) or (not e.own and e.tag ~= nil and HU:CanOfficer()))
+    -- (de mi hermandad, si mi rango me deja echarlo; de otra, si soy oficial: se le pide a su hermandad)
+    card.remove:SetEnabled((e.own == true and HU:CanKickMember(e.name)) or (not e.own and e.tag ~= nil and HU:CanOfficer()))
     v[6]:SetText((e.note and e.note ~= "") and e.note or "")
     v[7]:SetText((e.offNote and e.offNote ~= "") and e.offNote or "")
     card:Show()
@@ -532,12 +526,15 @@ local function ChangeRank(targets, idx, rankName)
     if #lines > 0 then HU:TypeLines(table.concat(lines, "\n"), L("Cambiar rango") .. ": " .. tostring(rankName)) end
 end
 
--- (los de mi hermandad, por la ventana de órdenes; los de otra, se le pide a su hermandad: les sale en
--- «Solicitudes», InviteLog.lua)
+-- (los de mi hermandad, por la ventana de órdenes, si mi rango me deja: si no, la orden fallaría y se dice por
+-- qué; los de otra, se le pide a su hermandad: les sale en «Peticiones de oficiales», InviteLog.lua)
 RemoveFromGuild = function(targets)
     local lines = {}
     for _, e in ipairs(targets) do
-        if e.own then lines[#lines + 1] = HU.GuildCmd("gremove", e.name)
+        if e.own then
+            local can, why = HU:CanKickMember(e.name)
+            if can then lines[#lines + 1] = HU.GuildCmd("gremove", e.name)
+            else HU:Print(HU:Nice(e.name) .. ": " .. tostring(why)) end
         elseif e.tag then HU:AskGuildKick(e.name, e.tag) end
     end
     if #lines > 0 then HU:TypeLines(table.concat(lines, "\n"), L("Echar de la hermandad")) end
@@ -571,8 +568,11 @@ local function AddGuildActions(root, targets)
             sub:CreateButton(name, function() ChangeRank(own, i - 1, name) end)
         end
     end
-    if HU:CanKickGuild() then
-        root:CreateButton("|cffff4040" .. L("Echar de la hermandad") .. "|r", function() RemoveFromGuild(own) end)
+    -- (echar, solo a los que mi rango deja: a uno de rango igual o más alto, la orden fallaría)
+    local kick = {}
+    for _, e in ipairs(own) do if HU:CanKickMember(e.name) then kick[#kick + 1] = e end end
+    if #kick > 0 then
+        root:CreateButton("|cffff4040" .. L("Echar de la hermandad") .. "|r", function() RemoveFromGuild(kick) end)
     end
 end
 
@@ -637,6 +637,12 @@ function HU.UnionRosterPick(e)
             return true
         end
     end
+    -- (con «Solo mi hermandad» puesta, uno de otra hermandad no sale aunque esté conectado: se dice eso)
+    if HU.db.unionRosterMine and e.tag and e.tag ~= HU.myTag then
+        HU:Print(string.format(L("%s es de %s: con «Solo mi hermandad» puesta no sale en la lista."), HU:Nice(e.name),
+            "|cff" .. HU:GuildColorHex(e.tag) .. HU:GuildName(e.tag) .. "|r"))
+        return true
+    end
     HU:Print(string.format(L("%s no está conectado ahora mismo (de las otras hermandades solo salen los conectados)."), HU:Nice(e.name)))
     return true
 end
@@ -683,9 +689,9 @@ local function Build(f)
     chatBtn:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(0) end)
     chatBtn:Hide()
     tabs.chatBtn = chatBtn
-    -- Abajo, como en la vista del chat: Solicitudes · Registro · Invitar miembro, a la izquierda de «Ajustes de
-    -- hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo pulsa
-    -- un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
+    -- Abajo, como en la vista del chat: Peticiones de oficiales · Registro · Invitar miembro, a la izquierda de
+    -- «Ajustes de hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo
+    -- pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
     -- desconectados, como el «Chat» seguro: solo se ven en la vista de miembros [+ARCHITECTURE.md]
     local gcb = f.CommunitiesControlFrame and f.CommunitiesControlFrame.GuildControlButton
     if f.InviteButton and gcb then
@@ -831,15 +837,21 @@ local function Build(f)
     cover.status:SetPoint("BOTTOMLEFT", 8, 6)
     cover.status:SetPoint("RIGHT", cover, "RIGHT", -8, 0)
     cover.status:SetJustifyH("LEFT"); cover.status:SetWordWrap(false)
-    cover.soon = cover:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    cover.soon:SetPoint("CENTER", cover, "CENTER", 0, 0)
-    cover.soon:SetWidth(360)
-    cover.soon:Hide()
 
     local sf = CreateFrame("ScrollFrame", "GuildUnionUnionRosterScroll", cover, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -2)
     sf:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", -26, 22)
-    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, Paint); WhoTick() end)
+    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, Paint) end)
+    -- (el /who, con lo que mueve el jugador: la rueda, la barra y sus flechas; ver WhoTick)
+    sf:HookScript("OnMouseWheel", function() WhoTick() end)
+    local bar = _G[sf:GetName() .. "ScrollBar"]
+    if bar then
+        bar:HookScript("OnMouseDown", function() WhoTick() end)
+        for _, k in ipairs({ "ScrollUpButton", "ScrollDownButton" }) do
+            local arrow = _G[bar:GetName() .. k]
+            if arrow then arrow:HookScript("OnClick", function() WhoTick() end) end
+        end
+    end
     sf:SetScript("OnSizeChanged", function() Paint() end)
     cover.scroll = sf
     cover.rows = {}
@@ -906,22 +918,7 @@ local function Build(f)
         if acc > 2 then acc = 0; Paint() end
     end)
 
-    -- La casilla «GuildUnion», a la derecha del buscador: puesta, nuestras pestañas; quitada, la lista
-    -- del juego tal cual (para ascender, expulsar o editar notas). Se recuerda
-    check = CreateFrame("CheckButton", "GuildUnionRosterCheck", f, "UICheckButtonTemplate")
-    check:SetSize(24, 24)
-    check:SetPoint("BOTTOMLEFT", ml, "TOPRIGHT", -100, TOP + 2)
-    check:SetFrameStrata("HIGH")
-    check:SetFrameLevel(cover:GetFrameLevel() + 2)
-    if check.Text then check.Text:SetText("GuildUnion") end
-    check:SetScript("OnEnter", function(s)
-        GameTooltip:SetOwner(s, "ANCHOR_TOP")
-        GameTooltip:AddLine("GuildUnion")
-        GameTooltip:AddLine(L("Puesta: Miembros de la unión y las demás pestañas. Quitada: la lista de tu hermandad del juego, tal cual, para ascender, expulsar o editar notas."), 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    check:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- (a su izquierda, «Solo mi hermandad»: la lista, solo con los de mi hermandad)
+    -- («Solo mi hermandad», encima de la lista a la derecha: solo con los de mi hermandad)
     mine = CreateFrame("CheckButton", "GuildUnionRosterMine", f, "UICheckButtonTemplate")
     mine:SetSize(24, 24)
     mine:SetPoint("BOTTOMLEFT", ml, "TOPRIGHT", -120, TOP + 2)
@@ -932,31 +929,32 @@ local function Build(f)
     -- y no IsShown, como el buscador. Al cambiar de vista: con el icono del chat se empieza en Chat; con el
     -- de miembros, en Miembros)
     local lastMode, secureLater, UpdateCounts
+    -- (la lista y el chat del juego llevan colgados nuestros botones seguros: en combate el juego no deja moverlos
+    -- (ADDON_ACTION_BLOCKED en SetPoint, visto el 23/11, copia 287). Se apunta y se colocan al salir del combate)
+    local function GameLocked()
+        if InCombatLockdown() then secureLater = true; return true end
+        return false
+    end
     -- (en la vista de chat, el chat y su lista de la derecha empiezan justo debajo de la fila de botones:
-    -- atados a ella, así no hay que calcular nada. Sin la fila, a su sitio de siempre: el chat a -44 bajo
-    -- la columna de comunidades —el juego solo lo recoloca al maximizar— y la lista a -63 de la ventana)
+    -- atados a ella, así no hay que calcular nada. De vuelta en la de miembros, Sync los devuelve a su sitio)
     local placing = false
-    local function ChatAnchors(on)
+    local function ChatAnchors()
+        if GameLocked() then return end
         placing = true
-        if on then
-            ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -2)
-            f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2)
-        else
-            ml:SetPoint("TOPLEFT", f, "TOPRIGHT", -165, -63)
-            if f.CommunitiesList then f.Chat:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 31, -44) end
-        end
+        ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -2)
+        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2)
         placing = false
     end
     -- (el juego vuelve a colocar la lista de la derecha a su aire —al actualizarla—: si está en la vista de
     -- chat con nuestra fila, se vuelve a poner debajo de la fila un instante después)
     hooksecurefunc(ml, "SetPoint", function()
-        if placing or mode ~= "chat" or HU.db.unionRosterOff then return end
+        if placing or mode ~= "chat" then return end
         -- (en el acto: si se espera al siguiente fotograma, la lista se ve un instante en el sitio del juego)
-        ChatAnchors(true)
+        ChatAnchors()
     end)
 
-    -- Conectados y miembros de toda la unión, en la vista de chat, junto al icono de los cascos (el contador
-    -- del juego queda tapado por la fila de botones). Al pasar el ratón, los de cada hermandad
+    -- Conectados y miembros de toda la unión, en la barra del título (el contador del juego queda tapado por la
+    -- fila de botones): en la vista de chat y en nuestras pestañas. Al pasar el ratón, los de cada hermandad
     -- [+ARCHITECTURE.md]
     local counts
     local perGuild = {}
@@ -976,10 +974,8 @@ local function Build(f)
         counts:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
     UpdateCounts = function()
-        if not counts then return end
-        local on = not HU.db.unionRosterOff
-        counts:SetShown(on)
-        if not on then return end
+        -- (si se ve, lo decide Sync: aquí solo el texto)
+        if not (counts and counts:IsShown()) then return end
         perGuild = {}
         local sumOn, sumTot, unknown = 0, 0, false
         local total, online = 0, 0
@@ -1016,14 +1012,11 @@ local function Build(f)
             if m == "chat" then tab = 0 elseif m == "roster" then tab = wantTab or 1 end
             wantTab = nil
         end
-        -- (sin casilla «GuildUnion» (Jorge, 23/11): siempre puesta, también para quien la tenía quitada)
+        -- (sin casilla «GuildUnion» (Jorge, 23/11): lo nuestro siempre puesto, también para quien la tenía quitada)
         HU.db.unionRosterOff = nil
-        local on = true
-        check:SetShown(false)
-        check:SetChecked(on)
-        mine:SetShown(m == "roster" and on)
+        mine:SetShown(m == "roster")
         mine:SetChecked(HU.db.unionRosterMine == true)
-        -- (conectados: en la vista de chat y en todas las pestañas, el mismo sitio)
+        -- (conectados: en la vista de chat y en todas las pestañas, el mismo sitio; en las demás vistas, no)
         if counts then
             counts:ClearAllPoints()
             -- (siempre en la barra del título, a la izquierda de minimizar y cerrar: es lo único que no se
@@ -1033,17 +1026,19 @@ local function Build(f)
             counts:SetShown(m ~= nil)
         end
         -- (de vuelta en la vista de miembros, la lista y el chat dejan de estar atados a nuestra fila ANTES de
-        -- colocarla encima de la lista: si no, se atarían el uno al otro. Son los sitios que les da el juego)
-        if m == "roster" and f.CommunitiesList then
+        -- colocarla encima de la lista: si no, se atarían el uno al otro. Son los sitios que les da el juego. En
+        -- combate, al salir: la lista ya la deja el juego en su sitio al enseñarla o cambiar de vista, y el enganche
+        -- de arriba no la mueve, así que no quedan atadas la una a la otra)
+        if m == "roster" and f.CommunitiesList and not GameLocked() then
             ml:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 26, -60)
             if f.Chat then f.Chat:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 31, -44) end
         end
-        cover:SetShown(m ~= nil and on)
+        cover:SetShown(m ~= nil)
         if cover:IsShown() then ShowTab(tab) end
-        if m == "chat" then ChatAnchors(on) end
+        if m == "chat" then ChatAnchors() end
         UpdateCounts()
-        -- (el botón seguro: con la casilla «GuildUnion» quitada, fuera; en combate se espera)
-        if InCombatLockdown() then secureLater = true else tabs.chatSecure:SetShown(on) end
+        -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
+        if InCombatLockdown() then secureLater = true end
     end
     local function Sync()
         inSync = true
@@ -1059,21 +1054,15 @@ local function Build(f)
         FauxScrollFrame_SetOffset(cover.scroll, 0)
         Paint()
     end)
-    check:SetScript("OnClick", function()
-        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
-        HU.db.unionRosterOff = (not HU.db.unionRosterOff) or nil
-        Sync(); WhoTick()
-    end)
     for _, w in ipairs({ anchor, ml, f.Chat or nil }) do w:HookScript("OnShow", SyncSoon); w:HookScript("OnHide", SyncSoon) end
     -- (al cambiar de vista, en el acto: si se espera al siguiente fotograma, durante un instante se ven los
     -- botones en el sitio de la vista anterior)
     if f.SetDisplayMode then hooksecurefunc(f, "SetDisplayMode", function() Sync(); SyncSoon() end) end
     -- (en la vista de chat, un clic en la lista de la derecha del juego abre nuestra ficha y no la suya. La
-    -- del juego se abre igual —es su código— y se cierra al momento; en la vista de miembros con la casilla
-    -- «GuildUnion» quitada, la del juego, tal cual)
+    -- del juego se abre igual —es su código— y se cierra al momento)
     if f.OpenGuildMemberDetailFrame then
         hooksecurefunc(f, "OpenGuildMemberDetailFrame", function(_, _, memberInfo)
-            if mode ~= "chat" or HU.db.unionRosterOff then return end
+            if mode ~= "chat" then return end
             local name = memberInfo and memberInfo.name
             if type(name) ~= "string" or HU.Secret(name) then return end
             local e = EntryByName(name)
@@ -1088,8 +1077,15 @@ local function Build(f)
     Sync()
 end
 
-local function Setup() HU:SafeCall("unión en la lista", Build, Win()) end
+-- (los botones seguros no se pueden crear en combate: si la ventana del juego se carga en pleno combate, se
+-- monta al salir de él)
+local setupLater = false
+local function Setup()
+    if InCombatLockdown() then setupLater = true; return end
+    HU:SafeCall("unión en la lista", Build, Win())
+end
 HU:On("ADDON_LOADED", function(name) if name == "Blizzard_Communities" then Setup() end end)
+HU:On("PLAYER_REGEN_ENABLED", function() if setupLater then setupLater = false; Setup() end end)
 HU:OnStart(function()
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_Communities") then Setup() end
 end)

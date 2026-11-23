@@ -16,7 +16,7 @@ local DOT_OFF = "|TInterface\\FriendsFrame\\StatusIcon-Offline:10:10|t"
 local testOnline = { ["Pepe-Prueba"] = true, ["Bea-Prueba"] = true, ["Lyra-Prueba"] = false, ["Janeth-Prueba"] = false }
 local ACT_W = 84            -- la última columna: el botón (Aceptar / Cancelar) o quién la aceptó
 local COIN_ICON = { "Interface\\MoneyFrame\\UI-GoldIcon", "Interface\\MoneyFrame\\UI-SilverIcon", "Interface\\MoneyFrame\\UI-CopperIcon" }
-local GOLD, GREEN, RED = { 1, 0.82, 0.2 }, { 0.3, 0.85, 0.35 }, { 0.9, 0.3, 0.25 }
+local GOLD = { 1, 0.82, 0.2 }
 
 -- Botones y pestañas con el estilo del Dungeon Journal (DJStyle.lua): rojos, y negros los elegidos
 local DJ = HU.DJ
@@ -39,8 +39,8 @@ local COLS = {
 local reqs = {}             -- { id, who, item, mats, tip, state = "open"|"taken"|"done"|"gone", taker, pub, to, t, test }
 local chats = {}            -- [persona] = { líneas }: uno por persona
 local chatKey
-local view, filter, pubFilter = "pub", "all", "all"
-local sortKey, sortDesc     -- nil: lo más nuevo arriba; si no, por esa columna (clic en su título)
+local view = "pub"
+local sortKey, sortDesc     -- nil: lo más nuevo arriba; si no, por esa columna (clic en su título), si la vista la tiene
 local PUB_KEEP = 600        -- una aceptada sigue 10 min en el tablón de Público
 local selected
 local picks = {}            -- Privado: las elegidas con Ctrl / Mayús (para eliminar varias)
@@ -49,7 +49,13 @@ local ui
 
 local function Me() return HU:Me() or "?" end
 local function IsMine(r) return r.who == Me() end
-local function NewId() return string.format("%x%x", math.random(0, 0xffff), time() % 0xffff) end
+-- (id: huella del nombre de quien la pide, la hora, un contador de la sesión y algo de azar, en 16 cifras: con la red,
+-- distinto en toda la unión aunque dos pidan en el mismo segundo o el azar se repita)
+local idSeq = 0
+local function NewId()
+    idSeq = (idSeq + 1) % 256
+    return string.format("%s%06x%02x%04x", HU.Hash(Me()):sub(1, 4), time() % 0x1000000, idSeq, math.random(0, 0xffff))
+end
 -- (en una privada, la otra persona: a quién se la pido o quién la hace, o quién me la pide)
 local function Other(r) if IsMine(r) then return r.taker or r.to end return r.who end
 local function Plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")) end
@@ -119,11 +125,13 @@ local function OpenChat(key)
 end
 
 ---------------------------------------------------------------------------
--- Buscar: escribes y la lista pasa a ser la de quién lo tiene. Por ahora, las profesiones de mi
--- hermandad (las da el juego) y los nombres; recetas y objetos, y las otras hermandades, por red
+-- Buscar: arriba, las publicadas que encajan (por quién la pide, el objeto o quién la aceptó); abajo, quién lo
+-- hace: los de mi hermandad con una profesión que encaja o con la de un fabricable que encaja (las da el juego).
+-- Las otras hermandades, con la red
 ---------------------------------------------------------------------------
 -- Fabricables (CraftItems.lua): el juego da su nombre y enlace en tu idioma; se piden poco a poco (30 cada
--- medio segundo) la primera vez que se abre Comercio, y los que tarda se reintentan dos vueltas más [+ARCHITECTURE.md]
+-- medio segundo) desde que se monta la sección (al cargar la ventana de hermandad del juego), y los que tarda se
+-- reintentan dos vueltas más [+ARCHITECTURE.md]
 local craft = {}            -- [objeto] = { key = nombre en minúsculas, link, skill, lv }
 local craftLoader
 local function LoadCraftNames()
@@ -219,6 +227,7 @@ end
 local function Visible()
     local out = {}
     local q = Searching() and Query()
+    local priv = view == "priv" and not q
     for i = #reqs, 1, -1 do
         local r = reqs[i]
         local ok
@@ -226,22 +235,20 @@ local function Visible()
             ok = r.pub == true and (r.state == "open" or (r.state == "taken" and time() - (r.takenAt or 0) < PUB_KEEP))
                 and Matches(r, q)
         elseif view == "pub" then
-            -- (Público: las públicas abiertas y, 10 min más, las aceptadas, con quién la aceptó; el
-            -- filtro deja solo las que nadie ha aceptado)
+            -- (Público: las públicas abiertas y, 10 min más, las aceptadas, con quién la aceptó)
             ok = r.pub == true and (r.state == "open" or (r.state == "taken" and time() - (r.takenAt or 0) < PUB_KEEP))
-            if pubFilter == "open" and r.state ~= "open" then ok = false end
         else
-            -- (Privado: las que me tocan: las mías, las que me piden a mí y las que hago yo; con el filtro)
+            -- (Privado: las que me tocan: las mías, las que me piden a mí y las que hago yo)
             -- (una pública sin aceptar no tiene a nadie al otro lado: solo sale en Público)
             ok = Involved(r) and not r.closed and not (r.pub and r.state == "open")
-            if filter == "mine" then ok = ok and IsMine(r) elseif filter == "others" then ok = ok and not IsMine(r) end
         end
         if ok and r.state ~= "gone" then out[#out + 1] = r end
     end
     if sortKey then
         local STATE = { open = 1, taken = 2, done = 3 }
         local function V(r)
-            if sortKey == "who" then return (view == "priv" and Other(r) or r.who or ""):lower() end
+            -- (Quién: lo que enseña la columna; en Privado, la otra persona)
+            if sortKey == "who" then return (priv and Other(r) or r.who or ""):lower() end
             if sortKey == "item" then return Plain(r.item):lower() end
             if sortKey == "mats" then return r.mats and 1 or 0 end
             if sortKey == "qty" then return r.qty or 1 end
@@ -260,9 +267,12 @@ local function Visible()
     return out
 end
 
+-- (las mías sin terminar, para el tope: abiertas o aceptadas; las que he quitado de mi lista ya no cuentan)
 local function OpenCount()
     local n = 0
-    for _, r in ipairs(reqs) do if IsMine(r) and r.state ~= "done" and r.state ~= "gone" then n = n + 1 end end
+    for _, r in ipairs(reqs) do
+        if IsMine(r) and not r.closed and (r.state == "open" or r.state == "taken") then n = n + 1 end
+    end
     return n
 end
 
@@ -281,18 +291,20 @@ local function Cancel(r)
     if IsMine(r) or r.to == Me() then r.state = "gone"; selected = nil; Paint() end
 end
 
--- Privado: quitar los comercios con esa persona y su chat
+-- (una solicitud por su id)
 local function FindReq(id) for _, r in ipairs(reqs) do if r.id == id then return r end end end
 -- (eliminar de mi Privado: la mía sin aceptar se cancela; las demás solo se quitan de mi lista)
 local function RemoveReq(r)
     if IsMine(r) and r.state == "open" then r.state = "gone" else r.closed = true end
 end
+-- «Hecha»: solo quien la hace (quien la aceptó) y mientras está aceptada
+local function CanMarkDone(r) return r ~= nil and r.state == "taken" and r.taker == Me() end
 local function MarkDone(r)
-    if r and r.state ~= "done" then r.state = "done"; Paint() end
+    if CanMarkDone(r) then r.state = "done"; Paint() end
 end
 
--- Clic derecho en una fila: la otra persona (susurrar, invitar al grupo), en Privado cerrar con ella, en la
--- búsqueda pedirle una receta, y Cancelar (cierra el menú)
+-- Clic derecho en una fila: la otra persona (susurrar, invitar al grupo); en Privado, marcarla como hecha (si la
+-- hago yo y está aceptada) y eliminarla; en la búsqueda, pedirle una receta; y Cancelar (cierra el menú)
 local function RowMenu(owner, r)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
     local person
@@ -311,7 +323,7 @@ local function RowMenu(owner, r)
             end)
             if not r.id then root:CreateButton(L("Pedir una receta"), function() ui.OpenNew(person) end) end
         end
-        if priv and r.state ~= "done" then
+        if priv and CanMarkDone(r) then
             root:CreateButton(L("Marcar como hecha"), function() MarkDone(r) end)
         end
         if priv then
@@ -368,17 +380,25 @@ local function Titled(lst, text)
     lst.list:SetHeight((text and 14 or 0) + 24 + lst.n * ROW_H)
 end
 
+-- (las columnas de la lista de solicitudes: las de Privado o, en Público y al buscar, las de Público; sin
+-- propinas, sin la suya)
+local function ReqCols()
+    local cols = (view == "priv" and not Searching()) and COLS.priv or COLS.pub
+    if not HU:UnionCfg().tipsOff then return cols end
+    local out = {}
+    for _, col in ipairs(cols) do if col[1] ~= "tip" then out[#out + 1] = col end end
+    return out
+end
+
 -- En Privado, con el chat a la derecha; en Público, a todo lo ancho. Al buscar: arriba las publicadas que
 -- encajan y abajo quién lo hace [+ARCHITECTURE.md]
-local function Layout()
+local function Layout(cols)
     local searching = Searching()
     local priv = view == "priv" and not searching
     local req, found = ui.req, ui.found
     -- (en Privado, el chat siempre a la derecha)
     local withChat = priv
     ui.chat:SetShown(withChat)
-    ui.filterBar:Hide()
-    ui.pubFilterBar:Hide()
     req.list:ClearAllPoints()
     req.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0)
     if withChat then req.list:SetPoint("RIGHT", ui.chat, "LEFT", -6, 0)
@@ -394,7 +414,7 @@ local function Layout()
     found.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0)
     Titled(found, L("Quién lo hace"))
     found.list:SetShown(searching)
-    if priv then Columns(req, COLS.priv, 44) else Columns(req, COLS.pub, 4) end
+    Columns(req, cols, priv and 44 or 4)
     if searching then Columns(found, COLS.search, 4) end
     ui.new:SetShown(not searching)
 end
@@ -421,22 +441,20 @@ end
 
 function Paint()
     if not (ui and ui:IsShown()) then return end
-    -- (comercio apagado por el maestro: solo el aviso)
-    local off = HU:UnionCfg().tradeOff
-    ui.offMsg:SetShown(off and true or false)
-    ui.body:SetShown(not off)
-    if off then return end
+    -- (comercio apagado por el maestro: solo el panel con el aviso; ni pestañas, ni buscador, ni modo prueba, ni pedir)
+    local off = HU:UnionCfg().tradeOff and true or false
+    ui.offMsg:SetShown(off)
+    for _, w in ipairs(ui.onlyOn) do w:SetShown(not off) end
+    if off then ui.newDlg:Hide(); return end
     BuildOnline()
     for k, b in pairs(ui.viewBtns) do b:SetSelected(k == view and not Searching()) end
-    for k, b in pairs(ui.filterBtns) do
-        b.text:SetText(k == filter and ("|cffffd100" .. b.label .. "|r") or ("|cff9a8f78" .. b.label .. "|r"))
-        b.line:SetShown(k == filter)
-    end
-    for k, b in pairs(ui.pubFilterBtns) do
-        b.text:SetText(k == pubFilter and ("|cffffd100" .. b.label .. "|r") or ("|cff9a8f78" .. b.label .. "|r"))
-        b.line:SetShown(k == pubFilter)
-    end
-    Layout()
+    -- (se ordena por una columna de la vista: si esta no la tiene (Mats y Acción solo están en Público; sin propinas,
+    -- tampoco la suya), vuelve a lo más nuevo arriba)
+    local cols = ReqCols()
+    local sorted = false
+    for _, col in ipairs(cols) do if col[1] == sortKey then sorted = true end end
+    if not sorted then sortKey, sortDesc = nil, nil end
+    Layout(cols)
     local searching = Searching()
     if searching then
         ui.found.empty:SetText(L("Nadie de tu hermandad lo hace (profesión u objeto fabricable). Otras hermandades, con la red."))
@@ -455,22 +473,21 @@ function Paint()
     ui.delBtn:SetShown(view == "priv" and not searching and nPicks > 0)
     ui.delBtn:SetText(string.format(L("Eliminar (%d)"), nPicks))
     local cur = selected and FindReq(selected)
-    ui.doneBtn:SetShown(view == "priv" and not searching and cur ~= nil and Involved(cur))
-    ui.doneBtn:SetEnabled(cur ~= nil and cur.state ~= "done")
+    -- («Hecha», en las que hago yo; ya hecha, apagado)
+    ui.doneBtn:SetShown(view == "priv" and not searching and cur ~= nil and cur.taker == Me())
+    ui.doneBtn:SetEnabled(CanMarkDone(cur))
     PaintRows(ui.req, ui.lastList, function(row, r)
         local mine = IsMine(r)
-        local c = row.cells
-        local tip = r.tip and Coins(r.tip) or ("|cff9a8f78" .. L("A negociar") .. "|r")
         local test = r.test and (" |cff808080(" .. L("prueba") .. ")|r") or ""
         row.pickTex:SetShown(r.id == selected or picks[r.id] == true)
+        -- (lo de cada columna, por su clave: sin propinas, la suya no está)
+        local v = { item = r.item or "?", qty = tostring(r.qty or 1), state = StateText(r) .. test,
+            tip = r.tip and Coins(r.tip) or ("|cff9a8f78" .. L("A negociar") .. "|r") }
         if view == "pub" or searching then
-            c[1]:SetText(mine and (MINE .. L("Yo") .. "|r " .. DOT_ON) or (OTHERS .. HU:Short(r.who) .. "|r " .. Dot(r.who)))
-            c[2]:SetText(r.item or "?"); c[3]:SetText(tostring(r.qty or 1))
-            c[4]:SetText(r.mats == nil and "—" or (r.mats and L("Sí") or L("No"))); c[5]:SetText(tip)
-            c[6]:SetText(StateText(r) .. test)
+            v.who = mine and (MINE .. L("Yo") .. "|r " .. DOT_ON) or (OTHERS .. HU:Short(r.who) .. "|r " .. Dot(r.who))
+            v.mats = r.mats == nil and "—" or (r.mats and L("Sí") or L("No"))
             -- (la última columna: Aceptar si es de otro y está abierta; Cancelar si es mía; si ya la
             -- aceptó alguien, su nombre)
-            -- (Aceptar si es de otro y está abierta; Cancelar si es mía; si ya la aceptó alguien, su nombre)
             if r.taker then
                 row.actText:SetText(r.taker == Me() and (MINE .. L("Yo") .. "|r") or (OTHERS .. HU:Short(r.taker) .. "|r " .. Dot(r.taker))); row.actText:Show()
             elseif mine then
@@ -480,14 +497,13 @@ function Paint()
             end
         else
             local other = Other(r)
-            c[1]:SetText(other and ((mine and MINE or OTHERS) .. HU:Short(other) .. "|r " .. Dot(other)) or ("|cff9a8f78" .. L("Tablón") .. "|r"))
-            c[2]:SetText(r.item or "?"); c[3]:SetText(tostring(r.qty or 1)); c[4]:SetText(tip)
-            c[5]:SetText(StateText(r) .. test)
+            v.who = (mine and MINE or OTHERS) .. HU:Short(other) .. "|r " .. Dot(other)
             -- (solo en las abiertas: el tic para aceptarla —si me la piden a mí— y la X para cancelarla —mía—
             -- o rechazarla; las aceptadas, sin nada)
             row.yes:SetShown(r.state == "open" and not mine)
             row.no:SetShown(r.state == "open")
         end
+        for i, col in ipairs(cols) do row.cells[i]:SetText(v[col[1]] or "") end
     end)
 end
 
@@ -497,7 +513,15 @@ end
 ---------------------------------------------------------------------------
 local SUGGEST_N = 6
 
--- Lista de sugerencias bajo una caja: source(q) da { { text, value, pre } }; clic o Intro (la primera) la elige
+-- (lo que encaja con lo escrito, de mejor a peor: el nombre exacto, los que empiezan así y los que lo llevan
+-- dentro; en cada grupo, por nombre)
+local function Rank(k, q) if k == q then return 0 elseif k:sub(1, #q) == q then return 1 end return 2 end
+local function Better(x, y)
+    if x.rank ~= y.rank then return x.rank < y.rank end
+    return x.key < y.key
+end
+
+-- Lista de sugerencias bajo una caja: source(q) da { { text, value, key, rank } }; clic o Intro (la primera) la elige
 local function Suggest(box, source)
     local list = CreateFrame("Frame", nil, box, "BackdropTemplate")
     list:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, -1)
@@ -522,7 +546,7 @@ local function Suggest(box, source)
         if not user then list:Hide(); return end
         local q = HU.Trim(s:GetText() or "")
         found = #q >= 2 and source(q) or {}
-        table.sort(found, function(x, y) if x.pre ~= y.pre then return x.pre end return Plain(x.text) < Plain(y.text) end)
+        table.sort(found, Better)
         for i, b in ipairs(btns) do
             local f = found[i]
             b.value = f and f.value
@@ -536,16 +560,20 @@ local function Suggest(box, source)
     box:HookScript("OnHide", function() list:Hide() end)
 end
 
--- Objetos que el juego ya conoce: el de ese nombre exacto, los de mis bolsas y los de las solicitudes
+-- Objetos que el juego ya conoce: el de ese nombre exacto, los de mis bolsas, los de las solicitudes y los
+-- fabricables. Todos los que encajan, de mejor a peor, y luego los primeros (antes se cortaba a 60 en el orden de
+-- la tabla y los mejores se podían quedar fuera)
 local function ItemMatches(text)
     local q = text:lower()
     local out, seen = {}, {}
-    local function add(link)
-        if type(link) ~= "string" or HU.Secret(link) or not link:find("|H", 1, true) then return end
-        local k = Plain(link):lower():gsub("^%[", ""):gsub("%]$", "")
+    local function push(link, k)
         if seen[k] or not k:find(q, 1, true) then return end
         seen[k] = true
-        out[#out + 1] = { text = link, value = link, pre = k:sub(1, #q) == q }
+        out[#out + 1] = { text = link, value = link, key = k, rank = Rank(k, q) }
+    end
+    local function add(link)
+        if type(link) ~= "string" or HU.Secret(link) or not link:find("|H", 1, true) then return end
+        push(link, (Plain(link):lower():gsub("^%[", ""):gsub("%]$", "")))
     end
     local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     local ok, _, link = pcall(get, text)
@@ -560,13 +588,9 @@ local function ItemMatches(text)
         end
     end
     for _, r in ipairs(reqs) do add(r.item) end
-    for _, c in pairs(craft) do
-        if #out >= 60 then break end
-        if not seen[c.key] and c.key:find(q, 1, true) then
-            seen[c.key] = true
-            out[#out + 1] = { text = c.link, value = c.link, pre = c.key:sub(1, #q) == q }
-        end
-    end
+    for _, c in pairs(craft) do push(c.link, c.key) end
+    table.sort(out, Better)
+    for i = #out, SUGGEST_N + 1, -1 do out[i] = nil end
     return out
 end
 
@@ -581,7 +605,7 @@ local function NameMatches(text)
         if seen[k] or not short:lower():find(q, 1, true) then return end
         seen[k] = true
         local t = tag and (" |cff" .. HU:GuildColorHex(tag) .. "<" .. tag .. ">|r") or ""
-        out[#out + 1] = { text = short .. t, value = full, pre = short:lower():sub(1, #q) == q }
+        out[#out + 1] = { text = short .. t, value = full, key = short:lower(), rank = Rank(short:lower(), q) }
     end
     for _, e in ipairs(HU.rosterList or {}) do add(e.name, HU.myTag) end
     for tag, rr in pairs(HU.remoteRoster or {}) do for _, m in ipairs(rr.members or {}) do add(m.name, tag) end end
@@ -657,10 +681,15 @@ local function BuildNewDialog(host)
         if d.to:IsShown() then d.to:SetFocus() end
     end)
 
-    local ok = Flat(d, L("Pedir"), 110, 22, GREEN); ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -6, 12)
-    local no = Flat(d, L("Cancelar"), 110, 22, { 0.75, 0.75, 0.75 }); no:SetPoint("BOTTOMLEFT", d, "BOTTOM", 6, 12)
+    local ok = Flat(d, L("Pedir"), 110, 22); ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -6, 12)
+    local no = Flat(d, L("Cancelar"), 110, 22); no:SetPoint("BOTTOMLEFT", d, "BOTTOM", 6, 12)
     no:SetScript("OnClick", function() d:Hide() end)
     ok:SetScript("OnClick", function()
+        -- (con el comercio apagado no se pide nada, aunque la ventana se hubiera quedado abierta de antes)
+        if HU:UnionCfg().tradeOff then
+            d:Hide()
+            return HU:Print(L("El maestro de la hermandad ha desactivado el comercio (pestaña GuildUnion, Configuración → Comercio)."))
+        end
         local item = HU.Trim(d.item:GetText() or "")
         if item == "" then return HU:Print(L("Pon el objeto que pides (Mayús+clic en él).")) end
         if OpenCount() >= MAX_OPEN then return HU:Print(string.format(L("Ya tienes %d solicitudes abiertas: cierra alguna antes."), MAX_OPEN)) end
@@ -706,7 +735,7 @@ local function AddTest()
     ClearTest()
     local now = time()
     local function R(who, item, mats, tip, state, pub, to, taker, qty)
-        reqs[#reqs + 1] = { id = NewId() .. #reqs, who = who, item = item, mats = mats, tip = tip and tip * 10000, qty = qty, state = state, pub = pub,
+        reqs[#reqs + 1] = { id = NewId(), who = who, item = item, mats = mats, tip = tip and tip * 10000, qty = qty, state = state, pub = pub,
             to = to, taker = taker, takenAt = taker and now or nil, t = now, test = true }
     end
     local function Link(id, name, color)
@@ -773,7 +802,7 @@ function HU:BuildTrade(host)
     rule:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.25); rule:SetHeight(1)
     rule:SetPoint("TOPLEFT", host, "TOPLEFT", 6, -27); rule:SetPoint("TOPRIGHT", host, "TOPRIGHT", -24, -27)
 
-    -- (detrás de todo, el panel de la sección: color «content», borde y pergamino, como el calendario)
+    -- (detrás de todo, el panel de la sección: color «content» y borde, como el calendario)
     local bg = CreateFrame("Frame", nil, host, "BackdropTemplate")
     bg:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -58); bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
     bg:SetFrameLevel(host:GetFrameLevel() + 1)
@@ -783,7 +812,8 @@ function HU:BuildTrade(host)
     body:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -62); body:SetPoint("BOTTOMRIGHT")
     body:SetFrameLevel(bg:GetFrameLevel() + 2)
     ui.body = body
-    ui.offMsg = DJ.C(host:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"), DJ.T.muted)
+    -- (el aviso de apagado, en el panel: en host quedaba por debajo de él y no se veía)
+    ui.offMsg = DJ.C(bg:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"), DJ.T.muted)
     ui.offMsg:SetPoint("CENTER"); ui.offMsg:SetWidth(420)
     ui.offMsg:SetText(L("El maestro de la hermandad ha desactivado el comercio (pestaña GuildUnion, Configuración → Comercio)."))
     HU:Listen("CHANGED", function(what) if what == "unionCfg" and ui:IsShown() then Paint() end end)
@@ -821,47 +851,6 @@ function HU:BuildTrade(host)
     ui.chatHint = chat:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.chatHint:SetPoint("LEFT", input, "LEFT", 2, 0); ui.chatHint:SetText(L("Elige un comercio con alguien para escribir"))
 
-    -- (en Privado, encima de la lista: Todas · Mías · De otros, como texto: el elegido, dorado y subrayado)
-    local bar = CreateFrame("Frame", nil, body)
-    bar:SetPoint("TOPLEFT", body, "TOPLEFT", 10, -2); bar:SetSize(260, 14)
-    ui.filterBar = bar
-    ui.filterBtns = {}
-    prev = nil
-    for _, t in ipairs({ { "all", L("Todas") }, { "mine", L("Mías") }, { "others", L("De otros") } }) do
-        local b = CreateFrame("Button", nil, bar)
-        b.label = t[2]
-        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        b.text:SetPoint("LEFT"); b.text:SetText(t[2])
-        b:SetSize(math.max(40, (b.text:GetStringWidth() or 40) + 4), 14)
-        b.line = b:CreateTexture(nil, "ARTWORK")
-        b.line:SetColorTexture(1, 0.82, 0, 0.9); b.line:SetHeight(1)
-        b.line:SetPoint("BOTTOMLEFT", 0, -1); b.line:SetPoint("BOTTOMRIGHT", 0, -1)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 14, 0) else b:SetPoint("LEFT", bar, "LEFT", 0, 0) end
-        b:SetScript("OnClick", function() filter = t[1]; Paint() end)
-        ui.filterBtns[t[1]] = b
-        prev = b
-    end
-
-    local pbar = CreateFrame("Frame", nil, body)
-    pbar:SetPoint("TOPLEFT", body, "TOPLEFT", 10, -2); pbar:SetSize(260, 14)
-    ui.pubFilterBar = pbar
-    ui.pubFilterBtns = {}
-    prev = nil
-    for _, t in ipairs({ { "all", L("Todas") }, { "open", L("Sin aceptar") } }) do
-        local b = CreateFrame("Button", nil, pbar)
-        b.label = t[2]
-        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        b.text:SetPoint("LEFT"); b.text:SetText(t[2])
-        b:SetSize(math.max(40, (b.text:GetStringWidth() or 40) + 4), 14)
-        b.line = b:CreateTexture(nil, "ARTWORK")
-        b.line:SetColorTexture(1, 0.82, 0, 0.9); b.line:SetHeight(1)
-        b.line:SetPoint("BOTTOMLEFT", 0, -1); b.line:SetPoint("BOTTOMRIGHT", 0, -1)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 14, 0) else b:SetPoint("LEFT", pbar, "LEFT", 0, 0) end
-        b:SetScript("OnClick", function() pubFilter = t[1]; Paint() end)
-        ui.pubFilterBtns[t[1]] = b
-        prev = b
-    end
-
     -- Las listas: las solicitudes y, al buscar, debajo, quién lo hace
     local function MakeList(n, sortable, sfName)
         local lst = { n = n, rows = {}, hdrCells = {} }
@@ -883,7 +872,8 @@ function HU:BuildTrade(host)
             hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.06)
             b:SetScript("OnClick", function(s)
                 local key = s.key
-                if not sortable or not key or key == "act" and view ~= "pub" then return end
+                -- (solo se ven los títulos de la vista, y Paint quita el orden de una columna que ya no está)
+                if not sortable or not key then return end
                 if sortKey == key then
                     if sortDesc then sortKey, sortDesc = nil, nil else sortDesc = true end
                 else
@@ -932,16 +922,16 @@ function HU:BuildTrade(host)
             itemBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.itemBtn = itemBtn
             -- (Público, última columna: Aceptar / Cancelar, o el nombre de quien la aceptó)
-            local accept = Flat(row, L("Aceptar"), ACT_W, 16, GREEN)
+            local accept = Flat(row, L("Aceptar"), ACT_W, 16)
             accept:SetPoint("RIGHT", row, "RIGHT", -2, 0)
             accept:SetScript("OnClick", function() if row.entry then Accept(row.entry) end end)
             local actText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             actText:SetPoint("RIGHT", row, "RIGHT", -2, 0); actText:SetWidth(ACT_W); actText:SetJustifyH("CENTER")
-            local cancel = Flat(row, L("Cancelar"), ACT_W, 16, RED)
+            local cancel = Flat(row, L("Cancelar"), ACT_W, 16)
             cancel:SetPoint("RIGHT", row, "RIGHT", -2, 0)
             cancel:SetScript("OnClick", function() if row.entry then Cancel(row.entry) end end)
             row.accept, row.cancel, row.actText = accept, cancel, actText
-            -- (Privado: el tic y la X, en las mías)
+            -- (Privado, en las abiertas: el tic acepta la que me piden a mí; la X cancela la mía o rechaza la que me piden)
             local no = CreateFrame("Button", nil, row)
             no:SetSize(16, 16); no:SetPoint("RIGHT", row, "RIGHT", -4, 0)
             no:SetNormalTexture(CROSS); no:SetHighlightTexture(CROSS, "ADD")
@@ -961,6 +951,10 @@ function HU:BuildTrade(host)
                 -- (en Privado: Ctrl suma o quita; Mayús elige desde la última hasta esta; clic solo, solo esa)
                 if view == "priv" and not Searching() then
                     if IsControlKeyDown() then
+                        -- (la elegida con un clic solo también cuenta: si no, quedaba fuera de las marcadas)
+                        if selected and selected ~= r.id and next(picks) == nil then
+                            for _, x in ipairs(ui.lastList or {}) do if x.id == selected then picks[selected] = true end end
+                        end
                         picks[r.id] = (not picks[r.id]) or nil
                     elseif IsShiftKeyDown() and lastPick then
                         local a, b
@@ -1000,8 +994,10 @@ function HU:BuildTrade(host)
     -- (destacado como «+ Nuevo evento»: las piezas del botón teñidas de verde y la letra blanca)
     for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
     new:SetNormalFontObject("GameFontHighlight")
-    -- (to: pedírsela a alguien en concreto, privada: «Pedir una receta» desde la búsqueda)
+    -- (to: pedírsela a alguien en concreto, privada: «Pedir una receta» desde la búsqueda. Con el comercio
+    -- apagado no se abre)
     function ui.OpenNew(to)
+        if HU:UnionCfg().tradeOff then return end
         newDlg.title:SetText(to and (L("Pedir una receta a ") .. HU:Short(to)) or L("Nueva solicitud"))
         newDlg.item:SetText(""); newDlg.to:SetText(to or ""); newDlg.qty:SetText("1")
         for _, box in ipairs(newDlg.coins) do box:SetText("") end
@@ -1012,7 +1008,9 @@ function HU:BuildTrade(host)
         newDlg:Show(); newDlg.item:SetFocus()
     end
     new:SetScript("OnClick", function() ui.OpenNew(nil) end)
-    ui.new = new
+    ui.new, ui.newDlg = new, newDlg
+    -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso)
+    ui.onlyOn = { body, search, test, rule, new, ui.viewBtns.pub, ui.viewBtns.priv }
     local del = Flat(body, "", 110, 22)
     del:SetPoint("LEFT", new, "RIGHT", 8, 0)
     del:SetScript("OnClick", function()
@@ -1030,4 +1028,4 @@ function HU:BuildTrade(host)
     Paint()
 end
 
-HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "UnionConfig" })
+HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "Lists", "UnionConfig" })
