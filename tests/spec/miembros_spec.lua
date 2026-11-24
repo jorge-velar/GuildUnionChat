@@ -545,7 +545,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.truthy(mine and mine:IsShown(), "«Solo mi hermandad», en Miembros")
         A.truthy(cover:IsShown(), "al principio, Miembros")
         A.equal(1, cover.tabs.selectedTab)
-        A.same({ "Comercio", "Calendario" }, { cover.side.entries[1].text:GetText(), cover.side.entries[2].text:GetText() },
+        A.same({ "Profesiones y comercio", "Calendario" }, { cover.side.entries[1].text:GetText(), cover.side.entries[2].text:GetText() },
             "Comercio y Calendario, en la columna de comunidades")
         cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
         A.matches("Jefa", cover.rows[1].cells.name:GetText())
@@ -591,12 +591,9 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("un clic en las notas de nuestra ficha (de mi hermandad) lleva a la lista del juego con esa persona marcada", function()
+    it("las notas de nuestra ficha solo se leen: un clic en ellas no hace nada (antes llevaba a la ficha del juego)", function()
         local a = F.Community()
-        local HU = a.HU
         GuildWindow(a)
-        local marked
-        F.Stub(HU, "MarkInGameList", function(name) marked = name end)
         local cover = a.env.GuildUnionUnionRoster
         cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
         local row = cover.rows[3]
@@ -604,20 +601,10 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         row:GetScript("OnClick")(row, "LeftButton")
         local card = a.env.GuildUnionMemberCard
         A.truthy(card and card:IsShown(), "nuestra ficha")
-        -- (el recuadro de la nota: el que tiene el texto de la nota)
-        local box
         for _, fr in ipairs(a.w.frames) do
-            if fr._parent == card and fr:GetScript("OnMouseUp") then box = fr end
+            if fr._parent == card then A.falsy(fr:GetScript("OnMouseUp"), "ningún recuadro de la ficha se pincha") end
         end
-        A.truthy(box, "las notas se pueden pinchar")
-        local n0 = #a.w.chat
-        box:GetScript("OnMouseUp")(box, "LeftButton")
-        A.truthy(HU.db.unionRosterMine, "«Solo mi hermandad»")
-        A.falsy(cover:IsShown(), "la lista del juego")
-        A.falsy(card:IsShown())
-        A.matches("ficha del juego", Chat(a, n0))
-        a.w:Advance(0.2)
-        A.matches("^Compi", marked or "", "marcada con el buscador")
+        A.falsy(a.HU.db.unionRosterMine, "sigue lo nuestro")
         A.same({}, a:Errors())
     end)
 
@@ -767,7 +754,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.falsy(a.env.GuildUnionRosterMine:IsShown(), "«Solo mi hermandad», solo en la vista de miembros")
         -- (Comercio en la columna: el botón seguro apunta la sección y el juego pasa a la vista de miembros)
         local trade = cover.side.entries[1]
-        A.equal("Comercio", trade.text:GetText())
+        A.equal("Profesiones y comercio", trade.text:GetText())
         trade:GetScript("PreClick")(trade)
         f.Chat.visible = false
         f.MemberList.ShowOfflineButton.visible = true
@@ -1101,7 +1088,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
                 fr.EnableMouse = function(self, v) self._mouse = v end
             end
             local sb = a.env.CreateFrame("Frame", nil, cl)
-            sb.ForEachFrame = function(_, fn) fn(club, { clubInfo = {} }); fn(join, { setJoinCommunity = true }) end
+            sb.ForEachFrame = function(_, fn) fn(club, { clubInfo = { clubType = 2 } }); fn(join, { setJoinCommunity = true }) end
             cl.ScrollBox = sb
         end)
         local side = a.env.GuildUnionUnionRoster.side
@@ -1118,6 +1105,13 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({ "TOPLEFT", side.entries[2], "BOTTOMLEFT", -16, -4 }, side.join._pts[1], "«Unirse…», a todo lo ancho")
         A.equal(join, side.join._clickbutton)
         A.truthy(side.join:IsShown())
+        -- (en Comercio, un clic en la entrada de la hermandad vuelve al chat: un botón seguro encima de ella; en Miembros, no)
+        side.home.SetAllPoints = function(self, fr) self._on = fr end
+        Section(a, 2)
+        A.truthy(side.home:IsShown(), "en Comercio")
+        A.equal(club, side.home._on, "encima de la entrada de la hermandad")
+        Section(a, 1)
+        A.falsy(side.home:IsShown(), "en Miembros, el clic es de la entrada")
         A.same({}, a:Errors())
     end)
 

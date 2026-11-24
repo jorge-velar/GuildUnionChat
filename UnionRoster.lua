@@ -42,7 +42,8 @@ local COLS = {
 -- Calendario, la nuestra (Media), entera: own = sin recortar el marco que traen los iconos del juego)
 local TABS = {
     { title = "Miembros", icon = "Interface/Icons/achievement_guildperk_everybodysfriend" },
-    { title = "Comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
+    -- (side: su nombre en la columna de comunidades, si no es el mismo. Jorge, 24/11: «se llama professions & trade»)
+    { title = "Comercio", side = "Profesiones y comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
     { title = "Calendario", calendar = true, icon = MEDIA .. "boton-calendario", own = true },
 }
 local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
@@ -393,17 +394,6 @@ end
 local card
 local RemoveFromGuild   -- (más abajo, con el clic derecho; lo usa también el botón de la ficha)
 
--- (las notas solo se guardan con la ficha del juego: un clic en las nuestras lleva a la lista del juego, «Solo mi
--- hermandad», con esa persona marcada por el buscador —flecha y resaltado, sin tocar la lista: BlizzTab.lua—)
-local function EditNotesInGame(e)
-    HU.db.unionRosterMine = true
-    if mine then mine:SetChecked(true) end
-    if card then card:Hide() end
-    if SyncNow then SyncNow() end
-    HU:Print(string.format(L("Las notas se cambian en la ficha del juego: pincha en %s en esta lista."), HU:Nice(e.name)))
-    HU.After(0.1, function() HU.MarkInGameList(e.name) end)
-end
-
 -- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; de las otras
 -- hermandades no llegan todavía)
 local function OwnProfessions(name)
@@ -523,23 +513,11 @@ local function BuildCard(f)
         t:SetJustifyH("LEFT"); t:SetJustifyV("TOP")
         return box, t
     end
+    -- (solo se leen: un clic en ellas ya no lleva a la ficha del juego para cambiarlas. Jorge, 24/11)
     local noteBox
     noteBox, card.lines[6] = NoteBox(GT("NOTE_COLON", "Nota"), rows, -4)
-    local offBox, offText = NoteBox(GT("OFFICER_NOTE_COLON", "Nota de oficial"), noteBox, -4)
+    local _, offText = NoteBox(GT("OFFICER_NOTE_COLON", "Nota de oficial"), noteBox, -4)
     card.lines[7] = offText
-    -- (de mi hermandad: un clic en una nota lleva a la ficha del juego, la única que las guarda)
-    for _, box in ipairs({ noteBox, offBox }) do
-        box:EnableMouse(true)
-        box:SetScript("OnMouseUp", function() if card.entry and card.entry.own then EditNotesInGame(card.entry) end end)
-        box:SetScript("OnEnter", function(s)
-            if not (card.entry and card.entry.own) then return end
-            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-            GameTooltip:SetText(L("Editar las notas"))
-            GameTooltip:AddLine(L("El juego solo deja cambiarlas en su ficha: te llevo a su lista con esta persona marcada."), 1, 1, 1, true)
-            GameTooltip:Show()
-        end)
-        box:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
 
     -- (abajo, como el juego: Echar e Invitar al grupo. Echar va por la ventana de órdenes, como el clic
     -- derecho: solo para los de mi hermandad y si tengo permiso)
@@ -846,8 +824,11 @@ local function Build(f)
         return b
     end
     -- (cada una, como una entrada del juego pero más baja: sus tiras de bluemenu-main (fondo, elegida y al pasar el ratón),
-    -- a la escala de su alto; el icono redondo con el aro dorado de las comunidades, y el nombre con su letra)
+    -- a la escala de su alto; el icono redondo con el aro dorado de las comunidades, y el nombre con su letra. Verdes,
+    -- como la hermandad (Jorge, 24/11: «que se vea más verde»): su tira verde de «elegida» siempre, floja, y fuerte en la
+    -- elegida; el nombre, en el verde del suyo) [+ARCHITECTURE.md]
     local BAR_H = math.floor(SIDE_ROW_H * 80 / ENTRY_H + 0.5)
+    local green = _G.GREEN_FONT_COLOR
     local function Row(text, icon, own)
         local b = Secure(SIDE_ROW_H)
         local function Bar(layer, sub, top, bottom)
@@ -858,7 +839,8 @@ local function Build(f)
             return t
         end
         Bar("BACKGROUND", 0, 0.75195313, 0.83007813)
-        b.sel = Bar("BACKGROUND", 1, 0.59179688, 0.66992188)
+        Bar("BACKGROUND", 1, 0.59179688, 0.66992188):SetAlpha(0.55)
+        b.sel = Bar("BACKGROUND", 2, 0.59179688, 0.66992188)
         b.sel:Hide()
         local hl = Bar("HIGHLIGHT", 0, 0.75195313, 0.83007813)
         hl:SetBlendMode("ADD"); hl:SetAlpha(0.8)
@@ -874,15 +856,20 @@ local function Build(f)
         local ring = b:CreateTexture(nil, "OVERLAY")
         ring:SetAtlas("communities-ring-gold"); ring:SetSize(33, 33); ring:SetPoint("CENTER", ic, "CENTER")
         b.icon = ic
+        -- (en dos líneas si no cabe en una: «Professions & Trade»)
         local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
         fs:SetPoint("LEFT", ic, "RIGHT", 10, 0); fs:SetPoint("RIGHT", -12, 0)
-        fs:SetJustifyH("LEFT"); fs:SetText(text)
+        fs:SetHeight(SIDE_ROW_H - 6)
+        fs:SetJustifyH("LEFT"); fs:SetJustifyV("MIDDLE"); fs:SetWordWrap(true)
+        if fs.SetMaxLines then fs:SetMaxLines(2) end
+        fs:SetText(text)
+        if green then fs:SetTextColor(green:GetRGB()) end
         b.text = fs
         return b
     end
     for i, t in ipairs(TABS) do
         if t.trade or t.calendar then
-            local b = Row(L(t.title), t.icon, t.own)
+            local b = Row(L(t.side or t.title), t.icon, t.own)
             b.tab = i
             b:SetAttribute("clickbutton", f.RosterTab)
             b:SetScript("PreClick", function() wantTab, side.fromSide = i, true end)
@@ -917,10 +904,23 @@ local function Build(f)
     join.text:SetPoint("LEFT", plus, "RIGHT", 13, 0); join.text:SetPoint("RIGHT", -24, 0)
     join.text:SetJustifyH("LEFT")
     join.text:SetText(type(_G.COMMUNITIES_JOIN_COMMUNITY) == "string" and _G.COMMUNITIES_JOIN_COMMUNITY or L("Unirse o crear una comunidad"))
-    local green = _G.GREEN_FONT_COLOR
     if green then join.text:SetTextColor(green:GetRGB()) end
     side.join = join
     side.join:Hide()
+    -- (en Comercio y Calendario, un clic en la entrada de la hermandad vuelve al chat (Jorge, 24/11): un botón seguro
+    -- invisible encima de ella que pulsa la pestaña de chat del juego, con su brillo al pasar el ratón; en las demás vistas
+    -- no está y el clic es de la entrada. El botón derecho pasa a ella: su menú sigue) [+ARCHITECTURE.md]
+    local home = Secure(ENTRY_H)
+    home:SetAttribute("clickbutton", f.ChatTab)
+    home:EnableMouse(true)
+    if home.SetPassThroughButtons then home:SetPassThroughButtons("RightButton") end
+    local hhl = home:CreateTexture(nil, "HIGHLIGHT")
+    hhl:SetTexture("Interface\\Common\\bluemenu-main")
+    hhl:SetTexCoord(0.00390625, 0.87890625, 0.75195313, 0.83007813)
+    hhl:SetHeight(80); hhl:SetPoint("LEFT"); hhl:SetPoint("RIGHT")
+    hhl:SetBlendMode("ADD"); hhl:SetAlpha(0.8)
+    home:Hide()
+    side.home = home
     cover.side = side
 
     -- Los títulos de las columnas, como los del juego; un clic ordena por esa columna
@@ -1158,15 +1158,20 @@ local function Build(f)
     local function PlaceSide()
         if not side.entries[1] or GameLocked() then return end
         local sb = type(cl.ScrollBox) == "table" and cl.ScrollBox or nil
-        local joinFrame, lastFrame, lastBottom
+        local joinFrame, lastFrame, lastBottom, guildFrame
         if sb and sb.ForEachFrame then
             sb:ForEachFrame(function(fr, data)
                 if type(data) == "table" and data.setJoinCommunity then joinFrame = fr end
+                local ci = type(data) == "table" and data.clubInfo
+                if type(ci) == "table" and ci.clubType == Enum.ClubType.Guild then guildFrame = fr end
                 local bottom = fr:GetBottom()
                 if type(bottom) == "number" and (not lastBottom or bottom < lastBottom) then lastFrame, lastBottom = fr, bottom end
             end)
         end
         local atJoin = joinFrame ~= nil and joinFrame == lastFrame
+        side.home:ClearAllPoints()
+        if guildFrame then side.home:SetAllPoints(guildFrame) end
+        side.guildFrame = guildFrame
         if hiddenJoin and not (atJoin and hiddenJoin == joinFrame) then
             hiddenJoin:SetAlpha(1); hiddenJoin:EnableMouse(true); hiddenJoin = nil
         end
@@ -1311,6 +1316,7 @@ local function Build(f)
         GuildDropdown()
         ListBar(m ~= nil)
         PlaceSide()
+        if not GameLocked() then side.home:SetShown(m == "roster" and tab >= 2 and side.guildFrame ~= nil) end
         for _, e in ipairs(cover.side.entries) do e.sel:SetShown(m == "roster" and e.tab == tab) end
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)

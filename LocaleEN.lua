@@ -840,6 +840,7 @@ E["Ausente"] = "Away"
 -- (pestañas de la lista de miembros: UnionRoster.lua)
 E["Clase"] = "Class"
 E["Comercio"] = "Trade"
+E["Profesiones y comercio"] = "Professions & Trade"
 E["Calendario"] = "Calendar"
 E["Unirse o crear una comunidad"] = "Join or Create Community"
 E["Banco"] = "Bank"
@@ -1111,9 +1112,6 @@ E["Peticiones de oficiales"] = "Officer Requests"
 E["Ayer"] = "Yesterday"
 
 E["Solo mi hermandad"] = "Only my guild"
-E["Las notas se cambian en la ficha del juego: pincha en %s en esta lista."] = "Notes are changed in the game's member card: click %s in this list."
-E["Editar las notas"] = "Edit notes"
-E["El juego solo deja cambiarlas en su ficha: te llevo a su lista con esta persona marcada."] = "The game only lets you change them in its own card: this takes you to its list with this player marked."
 
 E["Añadir a amigos"] = "Add friend"
 E["Buscar jugador"] = "Find player"

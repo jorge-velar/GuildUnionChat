@@ -2577,9 +2577,9 @@ juego bloquearía sus botones (expulsar, rango, notas). Con su aspecto y sus tex
 conexión, profesiones (solo de mi hermandad, `C_Club.GetMemberInfo`, y «Ver recetas»: `QueryGuildMemberRecipes`),
 nota y nota de oficial (si puedo verla; con «GU:», «(configuración de GuildUnion)»); abajo, Echar (como el clic
 derecho: activo con los de mi hermandad que mi rango puede echar, `HU:CanKickMember`, y con los de otra si soy
-oficial) e Invitar al grupo. Las notas de los de mi hermandad se pueden pinchar (`EditNotesInGame`): ponen «Solo
-mi hermandad» (la lista del juego) y marcan a esa persona con el buscador (`HU.MarkInGameList`, BlizzTab.lua),
-porque solo la ficha del juego las guarda. En la vista de chat, un clic en la lista de la derecha del juego abre
+oficial) e Invitar al grupo. Las notas solo se leen: hasta la 308, un clic en ellas ponía «Solo mi hermandad» y
+marcaba a esa persona para cambiarlas en la ficha del juego (la única que las guarda); Jorge (24/11) pidió quitarlo.
+En la vista de chat, un clic en la lista de la derecha del juego abre
 la ficha del juego, sin tocarla (hasta el 23/11 se cerraba y salía la nuestra: así no se podían guardar notas).
 
 ### Varios a la vez y clic derecho
@@ -2659,7 +2659,14 @@ hermandad, metidas `SIDE_INDENT` (16) hacia dentro y encima de «Unirse o crear 
 Wanted y LFG). Antes: en la 305, cajas del tamaño de las del juego («no me acaba de gustar»); de cuatro formas
 dibujadas (pestañas abajo, botones redondos arriba, una lista en esta columna e iconos a la derecha) eligió la lista;
 en la 306, filas finas («más grande, que se vea que es de la guild»); en la 307, filas con una línea desde el escudo de
-la hermandad y en verde («MUY feo»); y de tres esbozos eligió estas cajas pequeñas. Son botones
+la hermandad y en verde («MUY feo»); y de tres esbozos eligió estas cajas pequeñas. Después, «que se vea más verde»:
+llevan siempre, floja, la tira verde de «elegida» de la hermandad (fuerte en la elegida) y el nombre en su verde. La de
+Comercio se llama «Profesiones y comercio» (`side` en `TABS`; en inglés «Professions & Trade», en dos líneas si no
+cabe).
+- En Comercio y Calendario, un clic en la entrada de la hermandad vuelve al chat (Jorge, 24/11): un botón seguro
+  invisible (`side.home`) encima de ella, que pulsa la pestaña de chat del juego, con su brillo al pasar el ratón; el
+  botón derecho pasa a la entrada (`SetPassThroughButtons`) y su menú sigue. En las demás vistas no está. `PlaceSide`
+  lo pone encima de la entrada de la hermandad (`clubType` de su club) y `Sync` lo enseña, fuera de combate. Son botones
 seguros (`SecureActionButtonTemplate`, `type=click`) que pulsan la pestaña de miembros del juego: cambiar de vista
 desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas. `PreClick` apunta la sección
 (`wantTab`); si ya se ve la vista de miembros, la pestaña no cambia nada y la abre su `PostClick`. Son hijos de la
