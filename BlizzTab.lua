@@ -4,7 +4,7 @@ local L = HU.L
 
 -- Formato de texto del chat (botones de Ajustes): delante del nombre, "dot" (punto del color de la
 -- hermandad) o "tag" (<ETIQUETA>)
-HU:Saved({ account = { chatMark = "dot" } })
+HU:Saved({ account = { chatMark = "dot", "chatLevel" } })
 
 local tab, panel
 local KEEP = 60                 -- últimas líneas de otras hermandades que se repintan al volver al chat
@@ -530,15 +530,21 @@ local function BuildPanel()
     local rDot = Option("UIRadioButtonTemplate", 20, L("Punto"), rTagText, "RIGHT", 14)
     local lGuild = RowLabel(L("Hermandad"), -36)
     local cColor = Option("UICheckButtonTemplate", 26, L("En color"), lGuild, "LEFT", COL - 3)
-    local lEmotes = RowLabel(L("Emoticonos"), -62)
-    local cEmotes = Option("UICheckButtonTemplate", 26, L("Mostrar"), lEmotes, "LEFT", COL - 3)
+    -- (tercera fila: «Mostrar  [v] Emoticonos  [v] Nivel»: el nivel de quien escribe, delante de su nombre (Jorge, 24/11);
+    -- una cuarta fila no cabe con las herramientas de oficial encima)
+    local lShow = RowLabel(L("Mostrar"), -62)
+    local cEmotes, cEmotesText = Option("UICheckButtonTemplate", 26, L("Emoticonos"), lShow, "LEFT", COL - 3)
+    local cLevel = Option("UICheckButtonTemplate", 26, L("Nivel"), cEmotesText, "RIGHT", 14)
     local function FormatText()
         rTag:SetChecked(HU.db.chatMark == "tag")
         rDot:SetChecked(HU.db.chatMark ~= "tag")
         cColor:SetChecked(HU.db.chatGuildColor and true or false)
         cEmotes:SetChecked(not HU.db.emotesOff)
+        cLevel:SetChecked(HU.db.chatLevel and true or false)
     end
     cEmotes:SetScript("OnClick", function(s) HU.db.emotesOff = (not s:GetChecked()) or nil end)
+    cLevel:SetScript("OnClick", function(s) HU.db.chatLevel = s:GetChecked() and true or nil end)
+    Tip(cLevel, L("Formato de texto"), L("El nivel de quien escribe, delante de su nombre en el chat, si se sabe (de las listas de las hermandades)."))
     rTag:SetScript("OnClick", function() HU.db.chatMark = "tag"; FormatText() end)
     rDot:SetScript("OnClick", function() HU.db.chatMark = "dot"; FormatText() end)
     cColor:SetScript("OnClick", function(s) HU.db.chatGuildColor = s:GetChecked() and true or false end)

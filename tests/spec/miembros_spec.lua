@@ -775,6 +775,23 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("al pasar de Chat a Miembros, la pestaña de chat del juego queda sin marcar aunque se le haya quedado marcada", function()
+        local a = F.Community()
+        local f = GuildWindow(a, true)
+        f.ChatTab.SetChecked = function(self, v) self._checked = v end
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.equal(true, f.ChatTab._checked, "en Chat, marcada")
+        f.Chat.visible = false
+        f.MemberList.ShowOfflineButton.visible = true
+        f.MemberList.ShowOfflineButton:GetScript("OnShow")()
+        a.w:Advance(0.1)
+        A.equal(false, f.ChatTab._checked, "en Miembros, sin marcar")
+        A.same({}, a:Errors())
+    end)
+
     it("una pestaña de la derecha pulsada en la vista de chat y soltada fuera no deja nada apuntado", function()
         local a = F.Community()
         local f = GuildWindow(a, true)
@@ -1802,6 +1819,20 @@ describe("El chat de la ventana de hermandad del juego sigue el formato de Ajust
         head = HU:FormatLineParts("main", "DOS", "Bea-Reino", "hola", nil, "blizz")
         A.falsy(head:find("dot:0:0", 1, true), "sin punto")
         A.truthy(head:find("DOS", 1, true), "la etiqueta")
+        A.same({}, a:Errors())
+    end)
+
+    it("con «Nivel» en Ajustes (db.chatLevel), el nivel de quien escribe delante de su nombre, si se sabe", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU.remoteRoster.DOS = { members = { { name = "Bea-Reino", level = 42 } } }
+        local head = HU:FormatLineParts("main", "DOS", "Bea-Reino", "hola", nil, "blizz")
+        A.falsy(head:find("|cffaaaaaa42|r", 1, true), "sin la opción, nada")
+        HU.db.chatLevel = true
+        head = HU:FormatLineParts("main", "DOS", "Bea-Reino", "hola", nil, "blizz")
+        A.truthy(head:find("|cffaaaaaa42|r ", 1, true), "su nivel, en gris")
+        A.truthy(HU:FormatLine("main", "DOS", "Bea-Reino", "hola"):find("|cffaaaaaa42|r ", 1, true), "también en el chat del addon")
+        A.falsy(HU:FormatLine("main", "DOS", "Nadie-Reino", "hola"):find("|cffaaaaaa", 1, true), "sin nivel sabido, nada")
         A.same({}, a:Errors())
     end)
 end)

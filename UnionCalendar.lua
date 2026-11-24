@@ -5,10 +5,12 @@
 local _, HU = ...
 local L = HU.L
 
-local CARD_H, CARD_GAP = 100, 8    -- Eventos: tarjetas de 2 en 2 (2 filas a la vista)
+-- (Eventos: una tarjeta por línea, a todo lo ancho, y 4 a la vista; la rueda baja de una en una. Jorge, 24/11)
+local CARD_H, CARD_GAP, CARD_N = 62, 6, 4
 local GROUPS, PER_GROUP = 8, 5
 local MAX_RAIDS = 20
-local RAID_ROW = 10         -- pestañas de raid por fila (dos filas: 20)
+-- (las pestañas de raid de la ficha: botones rojos de 92 x 24 con la letra de siempre, 7 por fila; con 20, tres filas)
+local RAID_ROW, TAB_W, TAB_H, TAB_ROW_H = 7, 92, 24, 28
 local DETAIL_H = 480        -- alto de la ventana del evento con una fila de pestañas
 local BENCH_N = 12          -- filas del banquillo a la vista (con barra, el resto)
 local DAY_N, DAY_H = 5, 44  -- eventos del día a la vista en Calendario (con barra, el resto) y su alto
@@ -59,6 +61,7 @@ local selected              -- el evento cuya ficha está abierta (id)
 local month, year           -- el mes que se ve en Calendario
 local pickedDay             -- el día elegido en Calendario ("aaaa-mm-dd")
 local raidPick = 1          -- la raid que se ve
+local benchRole             -- el banquillo, solo de ese rol ("TANK", "HEALER", "DAMAGER"); nil, todos
 local testClass = {}        -- [nombre] = clase (modo prueba)
 local invites = {}          -- [nombre] = { s = "wait"|"ok"|"no", t } (lo que pasó al invitarlos)
 local dragName
@@ -281,7 +284,14 @@ local function AutoPlace(e, name)
     if r then AddToRaid(e, r, name); return true end
     return false
 end
--- «Colocar en raids»: los del banquillo, primero tanques, luego sanadores y luego daño
+-- (la primera raid con sitio, en su orden)
+local function FirstRaid(e)
+    for _, r in ipairs(e.raids or {}) do
+        if #Members(r) < GROUPS * PER_GROUP then return r end
+    end
+end
+-- «Colocar en raids»: los del banquillo, primero tanques, luego sanadores y luego daño, llenando las raids en orden: la 1
+-- hasta llenarla, luego la 2 y así hasta la última (Jorge, 24/11; antes repartía como al apuntarse, BestRaid)
 local function PlaceBench(e)
     local order = { TANK = 1, HEALER = 2, DAMAGER = 3 }
     local free = Unassigned(e)
@@ -291,7 +301,12 @@ local function PlaceBench(e)
         return a < b
     end)
     local placed = 0
-    for _, n in ipairs(free) do if AutoPlace(e, n) then placed = placed + 1 end end
+    for _, n in ipairs(free) do
+        local r = FirstRaid(e)
+        if not r then break end
+        AddToRaid(e, r, n)
+        placed = placed + 1
+    end
     HU:Print(string.format(L("Colocados %d en raids; %d se quedan sin raid."), placed, #free - placed))
 end
 -- (se llama «Raid N», con el número siguiente al más alto: al quitar una del medio no se repite)
@@ -432,7 +447,7 @@ end
 local function OpenDetail(id)
     local other = selected ~= id
     selected = id
-    if other then raidPick = 1; ScrollTop(ui.detail.benchScroll) end
+    if other then raidPick, benchRole = 1, nil; ScrollTop(ui.detail.benchScroll) end
     Paint()
 end
 
@@ -465,12 +480,12 @@ local function PaintDetail()
 
     if raidPick > #e.raids then raidPick = #e.raids end
     if raidPick < 1 and #e.raids > 0 then raidPick = 1 end
-    -- (pestañas de raid en filas de 10, bajo la descripción; «+ Añadir» va en el hueco siguiente. Con dos filas,
-    -- la ventana crece 26 y todo lo de debajo baja 26, y lo mismo con lo que ocupa la descripción: así no se sale
+    -- (pestañas de raid en filas de 7, bajo la descripción; «+ Añadir» va en el hueco siguiente. Con cada fila de más,
+    -- la ventana crece 28 y todo lo de debajo baja 28, y lo mismo con lo que ocupa la descripción: así no se sale
     -- ni se monta)
     local canAdd = manage and #e.raids < MAX_RAIDS
     local used = #e.raids + (canAdd and 1 or 0)
-    local shift = d.descH + (used > RAID_ROW and 26 or 0)
+    local shift = d.descH + (math.max(1, math.ceil(used / RAID_ROW)) - 1) * TAB_ROW_H
     d:SetHeight(DETAIL_H + shift)
     d.leaderBar:SetPoint("TOPLEFT", 176, -64 - shift)
     d.benchF:SetPoint("TOPLEFT", 12, -64 - shift)
@@ -482,7 +497,6 @@ local function PaintDetail()
             d.TabPoint(b, k)
             b:Label(r.name .. " (" .. #Members(r) .. ")")
             b:Pick(k == raidPick)
-            d.SmallFont(b)
             b:Show()
         else
             b:Hide()
@@ -510,13 +524,20 @@ local function PaintDetail()
     end
     local free = Unassigned(e)
     local levels = LevelMap()
-    d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. #free .. ")|r")
+    -- (con un rol elegido arriba del banquillo, solo los de ese rol; en la cabecera, cuántos de cuántos)
+    local shown = free
+    if benchRole then
+        shown = {}
+        for _, n in ipairs(free) do if RoleOf(e, n) == benchRole then shown[#shown + 1] = n end end
+    end
+    for _, b in ipairs(d.roleBtns) do b:Pick(b.role == benchRole) end
+    d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. (benchRole and (#shown .. "/") or "") .. #free .. ")|r")
     -- (con más de los que caben, la barra: las filas se estrechan para dejarle sitio)
-    FauxScrollFrame_Update(d.benchScroll, #free, BENCH_N, 18)
+    FauxScrollFrame_Update(d.benchScroll, #shown, BENCH_N, 18)
     local off = FauxScrollFrame_GetOffset(d.benchScroll)
-    local w = #free > BENCH_N and 122 or 142
+    local w = #shown > BENCH_N and 122 or 142
     for i, b in ipairs(d.bench) do
-        local n = free[off + i]
+        local n = shown[off + i]
         b.name = n
         b:SetWidth(w)
         b.fill:SetAlpha(1)
@@ -636,30 +657,24 @@ local function BuildDetail(host)
     d.desc:SetJustifyH("LEFT"); d.desc:SetWordWrap(true); d.desc:SetMaxLines(DESC_LINES)
     d.descH = 0
     d.rule = Line(cf, 0.45); d.rule:SetPoint("TOPLEFT", 10, -28); d.rule:SetPoint("TOPRIGHT", -10, -28)
-    -- (las raids: una pestaña por raid y «+ Añadir raid»)
+    -- (las raids: una pestaña por raid y «+ Añadir raid». Botones rojos del juego con su letra de siempre, que se lea
+    -- «Raid 20 (40)» (Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…»); la elegida, negra (DJ.PickRed). 7 por fila
+    -- de 92 + 4: 668 de ancho, cabe en los 704 del panel)
     d.raidTabs = {}
-    -- (10 por fila de 65 + 3: 677 de ancho, cabe en los 704 del panel; letra pequeña en todos sus estados,
-    -- para que no cambie de tamaño al pasar el ratón)
     function d.TabPoint(b, i)
         local col, row = (i - 1) % RAID_ROW, math.floor((i - 1) / RAID_ROW)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", cf, "TOPLEFT", 12 + col * 68, -34 - d.descH - row * 26)
-    end
-    function d.SmallFont(b)
-        b:SetNormalFontObject(b.picked and "GameFontHighlightSmall" or "GameFontNormalSmall")
-        b:SetHighlightFontObject("GameFontHighlightSmall")
-        b:SetDisabledFontObject("GameFontDisableSmall")
+        b:SetPoint("TOPLEFT", cf, "TOPLEFT", 12 + col * (TAB_W + 4), -34 - d.descH - row * TAB_ROW_H)
     end
     for i = 1, MAX_RAIDS do
-        local b = DJButton(cf, "", 65, 24)
+        local b = DJButton(cf, "", TAB_W, TAB_H)
         d.TabPoint(b, i)
         b.idx = i
         b:SetScript("OnClick", function() raidPick = i; Paint() end)
         b:Hide()
         d.raidTabs[i] = b
     end
-    d.addRaid = DJButton(cf, "+ " .. L("Añadir"), 65, 24)
-    d.SmallFont(d.addRaid)
+    d.addRaid = DJButton(cf, "+ " .. L("Añadir"), TAB_W, TAB_H)
     d.addRaid:SetScript("OnClick", function(s) AskLeader(s) end)
     -- (el líder, siempre arriba de los grupos: franja de cabecera)
     local lb = CreateFrame("Frame", nil, cf, "BackdropTemplate")
@@ -749,14 +764,32 @@ local function BuildDetail(host)
     d.benchHead = C(bench:CreateFontString(nil, "OVERLAY", "GameFontNormal"), T.title)
     d.benchHead:SetPoint("TOPLEFT", 9, -8)
     local bl = Line(bench, 0.45); bl:SetPoint("TOPLEFT", 6, -24); bl:SetPoint("TOPRIGHT", -6, -24)
+    -- (debajo de la raya, el filtro por rol: Todos, tanque, sanador y daño; el elegido, negro. Jorge, 24/11)
+    d.roleBtns = {}
+    local x = 7
+    for _, it in ipairs({ { false, L("Todos"), 44 }, { "TANK", RoleIcon("TANK"), 28 }, { "HEALER", RoleIcon("HEALER"), 28 },
+        { "DAMAGER", RoleIcon("DAMAGER"), 28 } }) do
+        local b = DJButton(bench, it[2], it[3], 18)
+        b:SetPoint("TOPLEFT", x, -28)
+        x = x + it[3] + 4
+        b.role = it[1] or nil
+        b:SetScript("OnClick", function(s) benchRole = s.role; ScrollTop(d.benchScroll); PaintDetail() end)
+        if b.role then
+            b:SetScript("OnEnter", function(s)
+                GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L(ROLE_NAME[s.role])); GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        d.roleBtns[#d.roleBtns + 1] = b
+    end
     local bsf = CreateFrame("ScrollFrame", "GuildUnionCalendarBenchScroll", bench, "FauxScrollFrameTemplate")
-    bsf:SetPoint("TOPLEFT", 7, -28); bsf:SetSize(122, BENCH_N * 18)
+    bsf:SetPoint("TOPLEFT", 7, -50); bsf:SetSize(122, BENCH_N * 18)
     bsf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, 18, PaintDetail) end)
     d.benchScroll = bsf
     d.bench = {}
     for i = 1, BENCH_N do
         local b = Slot(bench, 142)
-        b:SetPoint("TOPLEFT", 7, -28 - (i - 1) * 18)
+        b:SetPoint("TOPLEFT", 7, -50 - (i - 1) * 18)
         b.fill:SetColorTexture(T.row[1], T.row[2], T.row[3], 0.7)
         b.text:SetPoint("RIGHT", -3, 0) -- (en el banquillo no hay marca de invitación: el nombre, a todo lo ancho)
         d.bench[i] = b
@@ -868,19 +901,18 @@ local function BuildDetail(host)
 end
 
 ---------------------------------------------------------------------------
--- Eventos: tarjetas de 2 en 2, como las de las mazmorras del Dungeon Journal
+-- Eventos: una tarjeta por línea, a todo lo ancho, como las de las mazmorras del Dungeon Journal [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local function PaintCards()
     local list = Upcoming()
-    local rows = math.ceil(#list / 2)
-    FauxScrollFrame_Update(ui.scroll, rows, 2, CARD_H + CARD_GAP)
+    FauxScrollFrame_Update(ui.scroll, #list, CARD_N, CARD_H + CARD_GAP)
     -- (con barra, la zona de las tarjetas deja su hueco a la derecha dentro del panel: el panel sigue centrado)
-    local inset = rows > 2 and 30 or 8
+    local inset = #list > CARD_N and 30 or 8
     if ui.cardArea.inset ~= inset then
         ui.cardArea.inset = inset
         ui.cardArea:SetPoint("BOTTOMRIGHT", ui.list, "BOTTOMRIGHT", -inset, 8)
     end
-    local off = FauxScrollFrame_GetOffset(ui.scroll) * 2
+    local off = FauxScrollFrame_GetOffset(ui.scroll)
     for i, card in ipairs(ui.cards) do
         local e = list[off + i]
         card.id = e and e.id
@@ -894,7 +926,7 @@ local function PaintCards()
             card.num:SetText(tonumber(date("%d", e.t)))
             card.date:SetText(L(DAYS[WeekDay(e.t)]) .. "\n" .. L(MONTHS[tonumber(date("%m", e.t))]))
             card.who:SetText("|cffa0a4ad" .. L("por") .. "|r " .. WhoText(e))
-            card.going:SetText((e.signups[Me()] == "yes" and "|TInterface\\RaidFrame\\ReadyCheck-Ready:18:18|t " or "")
+            card.going:SetText((e.signups[Me()] == "yes" and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " or "")
                 .. Count(e) .. " " .. L("van"))
             local goingNames = {}
             for n, v in pairs(e.signups) do if v == "yes" then goingNames[#goingNames + 1] = n end end
@@ -1377,7 +1409,7 @@ function HU:BuildCalendar(host)
     Panel(body, T.content, T.border, 14, 4)
     Parchment(body, 0.18)
 
-    -- Eventos: tarjetas de 2 en 2
+    -- Eventos: una tarjeta por línea
     local list = CreateFrame("Frame", nil, body, "BackdropTemplate")
     list:SetPoint("TOPLEFT", body, "TOPLEFT", 12, -8); list:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", -12, BOTTOM_H)
     ui.list = list
@@ -1391,17 +1423,11 @@ function HU:BuildCalendar(host)
     sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, CARD_H + CARD_GAP, Paint) end)
     ui.scroll = sf
     ui.cards = {}
-    for i = 1, 4 do
-        local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+    for i = 1, CARD_N do
         local c = CreateFrame("Button", nil, list, "BackdropTemplate")
         c:SetHeight(CARD_H)
-        if col == 0 then
-            c:SetPoint("TOPLEFT", area, "TOPLEFT", 0, -row * (CARD_H + CARD_GAP))
-            c:SetPoint("RIGHT", area, "CENTER", -CARD_GAP / 2, 0)
-        else
-            c:SetPoint("TOPLEFT", area, "TOP", CARD_GAP / 2, -row * (CARD_H + CARD_GAP))
-            c:SetPoint("RIGHT", area, "RIGHT", 0, 0)
-        end
+        c:SetPoint("TOPLEFT", area, "TOPLEFT", 0, -(i - 1) * (CARD_H + CARD_GAP))
+        c:SetPoint("RIGHT", area, "RIGHT", 0, 0)
         c:SetBackdrop({ bgFile = WHITE, edgeFile = TIP_BORDER, tile = true, tileSize = 16, edgeSize = 12,
             insets = { left = 3, right = 3, top = 3, bottom = 3 } })
         c:SetBackdropColor(0.02, 0.02, 0.02, 0.45)
@@ -1413,50 +1439,52 @@ function HU:BuildCalendar(host)
         c.wash = c:CreateTexture(nil, "BACKGROUND", nil, 2)
         c.wash:SetPoint("TOPLEFT", 4, -4); c.wash:SetPoint("BOTTOMRIGHT", -4, 4)
         local topShade = c:CreateTexture(nil, "BACKGROUND", nil, 3)
-        topShade:SetPoint("TOPLEFT", 4, -4); topShade:SetPoint("TOPRIGHT", -4, -4); topShade:SetHeight(42)
+        topShade:SetPoint("TOPLEFT", 4, -4); topShade:SetPoint("TOPRIGHT", -4, -4); topShade:SetHeight(24)
         topShade:SetColorTexture(0, 0, 0, 0.42)
         local glow = c:CreateTexture(nil, "ARTWORK")
         glow:SetPoint("TOPLEFT", 4, -4); glow:SetPoint("TOPRIGHT", -4, -4); glow:SetHeight(1)
         glow:SetColorTexture(1.0, 0.84, 0.25, 0.30)
         local hl = c:CreateTexture(nil, "HIGHLIGHT")
         hl:SetPoint("TOPLEFT", 4, -4); hl:SetPoint("BOTTOMRIGHT", -4, 4); hl:SetColorTexture(1, 0.82, 0.18, 0.08)
-        -- (icono redondo del tipo, título dorado con sombra y tipo · hora)
-        c.icon = RoundIcon(c, 30)
-        c.icon:SetPoint("TOPLEFT", 12, -9)
-        c.title = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        C(c.title, { 1.00, 0.88, 0.24 }); c.title:SetShadowColor(0, 0, 0, 1); c.title:SetShadowOffset(1, -1)
-        c.title:SetPoint("TOPLEFT", 54, -9); c.title:SetJustifyH("LEFT"); c.title:SetWordWrap(false)
-        c.kind = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        c.kind:SetPoint("TOPLEFT", c.title, "BOTTOMLEFT", 0, -3)
-        -- (arriba a la derecha: cuántos van)
-        c.going = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), { 0.92, 0.92, 0.95 })
-        c.going:SetPoint("TOPRIGHT", -10, -10)
-        c.roles = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), { 0.90, 0.90, 0.93 })
-        c.roles:SetPoint("TOPRIGHT", c.going, "BOTTOMRIGHT", 0, -4)
-        c.title:SetPoint("RIGHT", c.going, "LEFT", -8, 0)
-        -- (abajo a la izquierda: el día grande, día de la semana y mes, y quién lo pone)
+        -- (a lo ancho, de izquierda a derecha: el día grande con el día de la semana y el mes; la imagen redonda; en tres
+        -- líneas, el título dorado, tipo · hora · nivel y quién lo pone, y a su derecha los roles y cuántos van; y a la
+        -- derecha del todo, Apuntarme encima de Más información)
         c.num = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
         C(c.num, T.title); Big(c.num, 26)
-        c.num:SetPoint("BOTTOMLEFT", 12, 26)
+        c.num:SetPoint("LEFT", 12, 1)
         c.date = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), { 0.90, 0.90, 0.93 })
         c.date:SetPoint("LEFT", c.num, "RIGHT", 6, 0); c.date:SetJustifyH("LEFT"); c.date:SetSpacing(1)
-        c.who = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        c.who:SetPoint("BOTTOMLEFT", 12, 9); c.who:SetJustifyH("LEFT"); c.who:SetWordWrap(false)
-        -- (abajo a la derecha: Apuntarme y Más información)
-        c.info = DJButton(c, L("Más información"), 116, 22)
-        c.info:SetPoint("BOTTOMRIGHT", -8, 8)
-        c.info:SetScript("OnClick", function() if c.id then OpenDetail(c.id) end end)
-        c.join = DJButton(c, L("Apuntarme"), 96, 22)
-        c.join:SetPoint("BOTTOMRIGHT", c.info, "TOPRIGHT", 0, 4)
+        c.icon = RoundIcon(c, 30)
+        c.icon:SetPoint("LEFT", c, "LEFT", 112, 0)
+        c.join = DJButton(c, L("Apuntarme"), 112, 22)
+        c.join:SetPoint("TOPRIGHT", -8, -7)
         c.join:SetScript("OnClick", function(s) local e = c.id and Find(c.id); if e then SignUp(e, s) end end)
-        c.who:SetPoint("RIGHT", c.info, "LEFT", -6, 0)
+        c.info = DJButton(c, L("Más información"), 112, 22)
+        c.info:SetPoint("BOTTOMRIGHT", -8, 7)
+        c.info:SetScript("OnClick", function() if c.id then OpenDetail(c.id) end end)
+        c.roles = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), { 0.90, 0.90, 0.93 })
+        c.roles:SetPoint("TOPRIGHT", -132, -27)
+        c.going = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), { 0.92, 0.92, 0.95 })
+        c.going:SetPoint("TOPRIGHT", -132, -43)
+        -- (el título, hasta los botones; tipo · hora · nivel, hasta los roles, y quién lo pone, hasta cuántos van)
+        c.title = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        C(c.title, { 1.00, 0.88, 0.24 }); c.title:SetShadowColor(0, 0, 0, 1); c.title:SetShadowOffset(1, -1)
+        c.title:SetPoint("TOPLEFT", 150, -8); c.title:SetPoint("TOPRIGHT", -132, -8)
+        c.title:SetJustifyH("LEFT"); c.title:SetWordWrap(false)
+        c.kind = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        c.kind:SetPoint("TOPLEFT", 150, -29); c.kind:SetPoint("TOPRIGHT", -250, -29)
+        c.kind:SetJustifyH("LEFT"); c.kind:SetWordWrap(false)
+        c.who = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        c.who:SetPoint("TOPLEFT", 150, -43); c.who:SetPoint("TOPRIGHT", -210, -43)
+        c.who:SetJustifyH("LEFT"); c.who:SetWordWrap(false)
         -- (al pasar el ratón, borde dorado)
         c:SetScript("OnEnter", function(s) s:SetBackdropBorderColor(T.hover[1], T.hover[2], T.hover[3], 1) end)
         c:SetScript("OnLeave", function(s) s:SetBackdropBorderColor(0.34, 0.34, 0.34, 1) end)
         c:SetScript("OnClick", function(s) if s.id then OpenDetail(s.id) end end)
         ui.cards[i] = c
     end
-    -- (la rueda del ratón mueve la barra de una fila de tarjetas en una fila)
+    -- (la rueda del ratón mueve la barra de una tarjeta en una: poco a poco, y la barra con ella. Jorge, 24/11: antes
+    -- bajaba una fila de dos, «de golpe»; el juego no pasa de los extremos de la barra)
     sf:EnableMouseWheel(true)
     sf:SetScript("OnMouseWheel", function(s, delta)
         local bar = s.ScrollBar or _G[s:GetName() .. "ScrollBar"]

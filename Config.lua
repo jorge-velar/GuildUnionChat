@@ -572,4 +572,23 @@ function RankInfoSlow(self, k)
     return nil
 end
 
+-- El nivel de alguien de la unión, si se sabe: de la lista de mi hermandad o de las listas de las otras. Para el chat,
+-- con db.chatLevel (Jorge, 24/11) [+ARCHITECTURE.md]
+function HU:LevelOf(name)
+    local k = self:Key(name)
+    if not k then return nil end
+    local e = self.roster[k]
+    local lv = e and e.level
+    if lv == nil then
+        for _, r in pairs(self.remoteRoster) do
+            local m = r.byKey and r.byKey[k]
+            if not r.byKey then
+                for _, m2 in ipairs(r.members or {}) do if m2.name:lower() == k then m = m2; break end end
+            end
+            if m then lv = m.level; break end
+        end
+    end
+    return (type(lv) == "number" and not HU.Secret(lv) and lv > 0) and lv or nil
+end
+
 HU:Module("Config", { "Channel", "Community", "Core", "Guard", "NoteConfig", "Popup", "Ranks", "Roster" })

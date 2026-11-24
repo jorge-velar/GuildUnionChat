@@ -2626,6 +2626,9 @@ capa `HIGH` para verse encima de lo nuestro, igual que el buscador). Los título
 franja; Comercio y Calendario empiezan arriba del todo, porque en ellos la franja no lleva nada del juego (la casilla
 queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porque de ella cuelgan los botones de abajo).
 
+- **En Comercio la piedra llega hasta su panel** (`TRADE_ROCK`, 78: Jorge, 24/11, «más grande lo gris claro de arriba»):
+  los botones Tablón · Mis encargos y la fila del buscador quedan enteros sobre lo gris; en las demás vistas, `TAB_H +
+  HDR_H`.
 - **La piedra gris** (Jorge, 24/11: «el gris claro hasta el chat y las listas»): en Miembros, Comercio y Calendario es
   la de lo nuestro (`cover.rock`, `TAB_H + HDR_H`), detrás de la franja y de los títulos. En la vista de chat esa no se
   ve (en la capa `HIGH` taparía los cascos y el «N/M en línea» del juego) y va la de abajo (`cover.band`): en el fondo
@@ -2961,6 +2964,11 @@ Dos defensas (la segunda, cambiada en la copia 84):
   sale en gris, compañero sin addon) y `HU:GuildColored` (el `[Hermandad]` en color). El manejador
   de `CHAT_MSG_GUILD` que guarda el historial usa `HU:GuildLineHidden` en vez de repetir sus
   condiciones. Pendiente para la división grande: Comm.lua (3.876 líneas), Channel.lua, History.lua.
+- **24/11: «Nivel» en Ajustes.** La tercera fila pasa a «Mostrar  [v] Emoticonos  [v] Nivel» (una cuarta no cabe con las
+  herramientas de oficial encima). Con `db.chatLevel` (apagado de serie), delante del nombre de quien escribe va su
+  nivel en gris (`HU:LevelText`, Channel.lua), si se sabe (`HU:LevelOf`, Config.lua: la lista de mi hermandad o las
+  de las otras). Lo ponen `NamePrefix` (líneas de las otras y las mías que repinta ChatPaint.lua, y Prat) y el formato
+  corto (`FormatLineParts`, chat del addon y de la ventana de hermandad).
 - **Copias 96–97 (14/11): Ajustes con casillas.** Tres filas bajo «Ajustes» (BlizzTab.lua): Marca
   (dos redondeles, etiqueta o punto), Hermandad (casilla «En color») y Emoticonos (casilla
   «Mostrar»), con una raya de división encima.
@@ -3471,13 +3479,18 @@ panel y en las dos vistas, «+ Nuevo evento» (`ui.new`), como hasta la copia 30
 centrado»): el botón rojo de 200 x 24 con sus piezas teñidas de verde y la letra blanca, igual que «+ Nueva solicitud»
 de Comercio. Va a 6 del borde de abajo del panel y es hijo de él; las tarjetas, el mes y el panel del día acaban
 `BOTTOM_H` (34) por encima, 4 por encima del botón. Con la ventana del juego a su alto de siempre (la sección, 366)
-caben las dos filas de tarjetas (208 de 262) y las 5 filas del día (calendario_spec). Piezas de DJStyle.lua (`HU.DJ`).
+caben las 4 tarjetas (282 de 284) y las 5 filas del día (calendario_spec). Piezas de DJStyle.lua (`HU.DJ`).
 Solo eventos de la unión: el calendario del juego no se toca.
-- **Eventos** (`PaintCards`): los próximos (desde hace 3 h, `Upcoming`), por fecha, en tarjetas de 2 en 2 (dos filas a
-  la vista): tinte del tipo, imagen, título, tipo · hora · «Nv. N+», día grande con día de la semana y mes, «por» quién
-  (yo en azul, los demás en amarillo, con su hermandad a color), «N van» (tic si voy), roles, y «Apuntarme» / «Más
-  información» (o clic en la tarjeta). Van en un panel centrado (`ui.list`) cuya zona de tarjetas (`ui.cardArea`) solo
-  deja el hueco de la barra con más de dos filas, para no descentrarse; la rueda baja de fila en fila.
+- **Eventos** (`PaintCards`): los próximos (desde hace 3 h, `Upcoming`), por fecha, **una tarjeta por línea, a todo lo
+  ancho** (Jorge, 24/11; antes, de 2 en 2): 62 de alto (`CARD_H`), 6 entre ellas (`CARD_GAP`) y 4 a la vista
+  (`CARD_N`). Lo de siempre, repartido de izquierda a derecha: el día grande con el día de la semana y el mes (desde 12),
+  la imagen redonda (112), tres líneas desde 150 —el título dorado (hasta 132 del borde derecho), tipo · hora · «Nv. N+»
+  y «por» quién (yo en azul, los demás en amarillo, con su hermandad a color)—, a su derecha los roles y «N van» (tic si
+  voy), y a la derecha del todo «Apuntarme» encima de «Más información» (112 de ancho; o clic en la tarjeta). Fondo con el
+  tinte del tipo, sombra arriba y la raya de brillo dorado, como antes. Van en un panel centrado (`ui.list`) cuya zona
+  de tarjetas (`ui.cardArea`) solo deja el hueco de la barra con más de 4, para no descentrarse. La rueda baja **de una
+  tarjeta en una** (Jorge, 24/11: «baja de golpe»; antes, una fila de dos): mueve la barra 68 por vuelta y la lista la
+  sigue.
 - **Calendario** (`PaintMonth`): el mes en casillas, lunes primero, flechas del libro de hechizos; solo las semanas que
   tiene (casillas más altas). Cada día: número, «+N evento(s)» y un cuadradito del color del primero; hoy con borde
   dorado, el elegido en azul. Clic en un día: el panel de la derecha (`PaintDay`) enseña sus eventos (clic: la ficha;
@@ -3515,9 +3528,11 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
   tanque guerrero, druida o paladín; sanador sacerdote, druida, paladín o chamán; daño, todas). Ya apuntado, pregunta
   «¿Seguro que quieres salir del evento?» (`ui.confirm`); salir te quita también de la raid.
 - Raids: `{ name, leader, groups = { {nombres} x 8 } }`, 8 grupos de 5, hasta 20 (`MAX_RAIDS`). Pestañas «Raid N
-  (cuántos)» en filas de 10 (65 de ancho, letra pequeña en todos sus estados: no cambia de tamaño al pasar el ratón) y,
-  para quien organiza, «+ Añadir» en el hueco siguiente; con segunda fila, la ventana crece 26 más (sumados a los de la
-  descripción) y lo de debajo baja otro tanto, para que nada se salga ni se monte. «+ Añadir» pregunta quién la lleva
+  (cuántos)»: botones rojos del juego de 92 x 24 (`TAB_W`, `TAB_H`) con su letra de siempre, que se lea «Raid 20 (40)»;
+  la elegida, negra con la letra blanca (`DJ.PickRed`). Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…» (antes,
+  de 65 y con letra pequeña, 10 por fila). Van 7 por fila (de 12 a 680 de los 704 del panel) y, para quien organiza,
+  «+ Añadir» en el hueco siguiente: con 20, tres filas. Con cada fila de más, la ventana crece 28 (`TAB_ROW_H`, sumados a
+  los de la descripción) y lo de debajo baja otro tanto, para que nada se salga ni se monte. «+ Añadir» pregunta quién la lleva
   en una ventanita con buscador y barra (`d.picker`; un menú no cabía con mucha gente), primero los apuntados sin raid.
   La nueva se llama «Raid N» con el número siguiente al más alto (`NewRaid`: al quitar una del medio no se repite).
 - Barra «Líder de la raid» (corona, roles de la raid) sobre los grupos. `SetLeader`: el líder va el primero del grupo
@@ -3528,8 +3543,16 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
 - Banquillo «Sin raid (N)» a la izquierda (`Unassigned`), con nivel (`LevelMap`) y color de clase (`ClassMap`: mi
   hermandad, las listas de las otras y el modo prueba); se ven 12 (`BENCH_N`) y, con más, la barra (las filas pasan de
   142 a 122 de ancho); al abrir otro evento vuelve arriba. Cada persona, en una sola raid del evento.
-  Al apuntarse se entra solo en una raid con sitio (`AutoPlace` → `BestRaid`: la que menos tiene de su rol y luego la
-  más vacía) o al banquillo; «Colocar en raids (N)» (`PlaceBench`) lo reparte igual: tanques, sanadores, daño.
+- **Filtro por rol del banquillo** (Jorge, 24/11): debajo de su raya, cuatro botones rojos pequeños (`d.roleBtns`, 18 de
+  alto): «Todos» (44) y los iconos de tanque, sanador y daño (28; al pasar el ratón, el rol). El elegido, negro; con un
+  rol (`benchRole`), solo salen los de ese rol y la cabecera dice cuántos de cuántos («Sin raid (3/11)»); los que no
+  tienen rol, solo con «Todos». Las filas empiezan debajo de los botones (-50) y siguen cabiendo las 12. Al abrir otro
+  evento, otra vez «Todos». «Colocar en raids» sigue colocando a todos.
+- Al apuntarse se entra solo en una raid con sitio (`AutoPlace` → `BestRaid`: la que menos tiene de su rol y luego la
+  más vacía) o al banquillo. **«Colocar en raids (N)»** (`PlaceBench`, Jorge, 24/11: «en orden») llena las raids en su
+  orden (`FirstRaid`): la 1 hasta tener 40, luego la 2 y así hasta la última, grupo a grupo; antes repartía como al
+  apuntarse. Primero tanques, luego sanadores y luego daño (los que no tienen rol, con el daño), y en cada rol por
+  nombre. Si no caben todos, los que sobran se quedan en el banquillo y lo dice.
 - Arrastrar (botón izquierdo, quien organiza; al líder, no): el nombre se va de su hueco y un rótulo sigue al ratón.
   Se suelta en un hueco (si hay otro, se cambian; si viene del banquillo, solo ese otro sale al banquillo; en el del
   líder, va a su lado, al hueco 2), un grupo (si cabe), la pestaña de otra raid, la barra del líder (lo hace líder) o

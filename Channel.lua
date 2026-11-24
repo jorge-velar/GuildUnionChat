@@ -1653,7 +1653,15 @@ function HU:NamePrefix(tag, author, mark, has)
         end
     end
     local rTag, rIdx = self:RankInfoOf(author)
-    return s .. self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
+    return s .. self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx)) .. self:LevelText(author)
+end
+
+-- (el nivel de quien escribe, en gris, delante de su nombre: si el jugador lo ha elegido (db.chatLevel, panel de
+-- GuildUnion → Ajustes) y se sabe, HU:LevelOf)
+function HU:LevelText(author)
+    if not self.db.chatLevel then return "" end
+    local lv = self:LevelOf(author)
+    return lv and ("|cffaaaaaa" .. lv .. "|r ") or ""
 end
 
 -- El trozo «[Hermandad]» en el color de la hermandad, si el jugador lo ha elegido (db.chatGuildColor)
@@ -1678,7 +1686,7 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
         local name = self:Nice(author)
         local rTag, rIdx = self:RankInfoOf(author)
         local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
-        local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
+        local nameLink = icon .. self:LevelText(author) .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
         local tagText
         if compact == "blizz" then
             -- (el chat de la ventana de hermandad del juego: punto o etiqueta, como diga Ajustes, db.chatMark)
