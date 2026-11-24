@@ -3157,17 +3157,21 @@ y la propina al pedir, y no la guarda. Con `HU:Changed("unionCfg")` se repinta.
 
 ## CraftItems.lua
 
-`HU.CRAFT_ITEMS[profesión] = { objeto, nivel, objeto, nivel, ... }`: lo que se fabrica en Forever (vanilla) y el nivel
-para aprender la receta. La clave es el número de profesión del juego, el de `C_Club.GetMemberInfo` (`profession1ID`,
+`HU.CRAFT_ITEMS[profesión] = { objeto, nivel, objeto, nivel, ... }`: lo que se fabrica en Forever y el nivel para
+aprender la receta. La clave es el número de profesión del juego, el de `C_Club.GetMemberInfo` (`profession1ID`,
 `profession2ID`): 129 Primeros auxilios, 164 Herrería, 165 Peletería, 171 Alquimia, 185 Cocina, 186 Minería (fundir),
-197 Sastrería, 202 Ingeniería y 333 Encantamiento. 1.373 objetos, sacados una vez de Wowhead Classic (hechizos de cada
-profesión, campo «creates»). Solo números: el nombre y el enlace los da el juego, en el idioma de cada uno.
+197 Sastrería, 202 Ingeniería y 333 Encantamiento. Solo números: el nombre y el enlace los da el juego, en el idioma de
+cada uno.
 
-`HU.CRAFT_SPELLS[333]`: los **encantamientos** de vanilla (132), que son hechizos que se lanzan sobre el objeto de
-otro y no crean objeto (los que sí, como varas, varitas y aceites, están en `CRAFT_ITEMS`). Sacados de la misma
-página de Wowhead: hechizos de Encantamiento sin «creates», que empiezan por «Enchant », con número menor de 100.000
-(sin los de Season of Discovery). Las recetas propias de Forever (p. ej. «Arcane Salvager») no están: Wowhead no las
-tiene; habría que leerlas del juego cuando un encantador abre su profesión.
+`HU.CRAFT_SPELLS[333]`: los **encantamientos**, hechizos que se lanzan sobre el objeto de otro y no crean objeto (los
+que sí, como varas, varitas y aceites, están en `CRAFT_ITEMS`).
+
+**De dónde salen (24/11):** de wow.gg (`/professions/forever/<profesión>`), que publica las recetas de Forever sacadas
+de los datos del juego: 2.004 objetos (892 nuevos de Forever, como el «Arcane Salvager» o las pociones de curación,
+que en Forever son de Primeros auxilios) y 165 encantamientos (33 nuevos). wow.gg da los encantamientos sin su número
+de hechizo: se cruzaron por nombre con los de vanilla de Wowhead Classic (119) y el resto se buscó en Wowhead
+(`/forever/search/suggestions-template`, hechizo con el nombre exacto: los 46 salieron sin dudas). Antes la lista era
+de Wowhead Classic y traía objetos de Season of Discovery que Forever no tiene: ya no.
 
 ### Los nombres: `LoadCraftNames` (en Trade.lua)
 
