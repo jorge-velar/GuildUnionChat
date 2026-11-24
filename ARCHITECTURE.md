@@ -2609,6 +2609,14 @@ cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los 
 - Cuatro sitios: el 0 es «Chat» (en la vista de miembros, el seguro; en la de chat, el nuestro, elegido) y del 1 al 3
   las secciones (en la vista de chat, los seguros). Un día fueron un solo botón que cambiaba entre Chat y Miembros;
   Jorge prefirió uno para cada uno (24/11).
+- **Arriba lo nuestro, debajo lo del juego** (Jorge, 24/11): la fila sube `ROW_UP` (31) al sitio del desplegable
+  «Guild» (vista de chat) o de la casilla «Mostrar desconectados» (vista de miembros), y esos bajan `DROP` (34) a donde
+  estaba la fila (`TopRow`): el desplegable (`StreamDropdown`, con nuestro buscador, que va atado a él), los cascos del
+  chat de voz (`VoiceChatHeadset`) y la casilla (que sube a la capa `HIGH` para verse encima de lo nuestro, igual que el
+  buscador). «Solo mi hermandad» baja con ellos. Lo de debajo no se mueve: los títulos, Comercio y Calendario van
+  `ROW_UP` más abajo de la fila, y en la vista de chat el chat y su lista también (`ChatAnchors`). El juego recoloca el
+  desplegable y los cascos al agrandar la ventana: un enganche a su `SetPoint` los vuelve a bajar. Solo fuera de
+  combate: la casilla lleva colgados nuestros botones seguros.
 - Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
   y 25 más; en la de chat, de la columna de comunidades al borde de la ventana) y de ahí `x0`, el principio de la
   fila. Con esa misma cuenta van los nuestros (atados a la fila) y los seguros (atados a la lista del juego o a la

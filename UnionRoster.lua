@@ -9,6 +9,9 @@ local TAB_H, HDR_H = 34, 24
 local ICON_W, BTN_H, ICON_SIZE = 46, 26, 20   -- los botones de arriba, con imagen (rojos, del juego)
 local CHAT_ICON = "Interface/Icons/UI_Chat"   -- (la del icono del chat del juego, a la derecha de la ventana)
 local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus títulos, no la casilla ni el buscador
+-- (arriba lo nuestro y debajo lo del juego, Jorge 24/11: la fila sube ROW_UP al sitio del desplegable «Guild» o de la
+-- casilla de desconectados, y esos bajan DROP a donde estaba la fila; lo de debajo no se mueve) [+ARCHITECTURE.md]
+local ROW_UP, DROP = 31, 34
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
@@ -260,7 +263,7 @@ local function Layout()
     tb.chatBtn:SetPoint("LEFT", tb, "LEFT", X(0), 0)
     if tb.chatSecure and not InCombatLockdown() then
         tb.chatSecure:ClearAllPoints()
-        tb.chatSecure:SetPoint("LEFT", ml, "TOPLEFT", -3 + X(0), TOP - TAB_H / 2)
+        tb.chatSecure:SetPoint("LEFT", ml, "TOPLEFT", -3 + X(0), TOP + ROW_UP - TAB_H / 2)
     end
     for i, b in ipairs(tb.Tabs) do
         b:SetShown(not chatMode)
@@ -272,7 +275,7 @@ local function Layout()
         for i, b in ipairs(tb.chatModeBtns) do
             b:ClearAllPoints()
             -- (con la fila, no con el chat, que baja)
-            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + X(i), -34 - TAB_H / 2)
+            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + X(i), -34 + ROW_UP - TAB_H / 2)
         end
     end
     cover:ClearAllPoints()
@@ -283,22 +286,22 @@ local function Layout()
         -- (justo debajo del desplegable «Guild» y del buscador: 59 bajo el borde de la ventana)
         -- (exactamente donde va en la vista de miembros: allí es la lista del juego, -3 y +26, y esa lista va
         -- a 26 y -60 de la columna de comunidades. Todo atado a la columna: la misma fila en las dos vistas)
-        cover:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 23, -34)
+        cover:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 23, -34 + ROW_UP)
         -- (en la vista de chat siempre está «Chat» elegido: solo la fila. A la derecha, hasta el borde de la
         -- ventana: atado a la ventana y no a la lista de la derecha, que baja; ver Sync)
         -- (el borde derecho, a 4 del de la ventana, pero a la misma altura: atado también a la columna)
         local clRight, fRight = f.CommunitiesList:GetRight(), f:GetRight()
         local dx = (type(clRight) == "number" and type(fRight) == "number") and (fRight - clRight - 4) or 640
-        cover:SetPoint("TOPRIGHT", f.CommunitiesList, "TOPRIGHT", dx, -34)
+        cover:SetPoint("TOPRIGHT", f.CommunitiesList, "TOPRIGHT", dx, -34 + ROW_UP)
         cover:SetHeight(TAB_H)
     else
-        cover:SetPoint("TOPLEFT", ml, "TOPLEFT", -3, TOP)
+        cover:SetPoint("TOPLEFT", ml, "TOPLEFT", -3, TOP + ROW_UP)
         -- (hasta 22 más a la derecha: tapa también la barra de la lista del juego, que se veía al lado de la nuestra)
         cover:SetPoint("BOTTOMRIGHT", ml, "BOTTOMRIGHT", 22, 0)
     end
     -- (con «Chat», los clics pasan al chat del juego salvo en los botones)
     cover:EnableMouse(tab ~= 0)
-    cover.rock:SetHeight(tab == 0 and TAB_H or TAB_H + HDR_H + 2)
+    cover.rock:SetHeight(tab == 0 and TAB_H or TAB_H + ROW_UP + HDR_H + 2)
     cover.dark:SetShown(tab ~= 0)
 end
 
@@ -702,7 +705,7 @@ local function Build(f)
     rock:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
     rock:SetHorizTile(true); rock:SetVertTile(true)
     rock:SetPoint("TOPLEFT", cover, "TOPLEFT"); rock:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
-    rock:SetHeight(TAB_H + HDR_H + 2)
+    rock:SetHeight(TAB_H + ROW_UP + HDR_H + 2)
     cover.rock = rock
     tabs.Tabs = {}
     -- (los botones de arriba, con imagen en vez de texto: la imagen en el centro y el nombre al pasar el ratón)
@@ -819,7 +822,8 @@ local function Build(f)
 
     -- Los títulos de las columnas, como los del juego; un clic ordena por esa columna
     local hdr = CreateFrame("Frame", nil, cover)
-    hdr:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2)
+    -- (debajo de la fila queda el hueco de lo del juego: la casilla de desconectados, «Solo mi hermandad» y el buscador)
+    hdr:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2 - ROW_UP)
     hdr:SetPoint("RIGHT", cover, "RIGHT", 0, 0)
     hdr:SetHeight(HDR_H)
     hdr:SetFrameLevel(cover:GetFrameLevel() + 6)
@@ -850,14 +854,14 @@ local function Build(f)
     cover.dark = dark
     -- (la sección Comercio, Trade.lua: debajo de los botones, hasta abajo)
     cover.trade = CreateFrame("Frame", nil, cover)
-    cover.trade:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2)
+    cover.trade:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2 - ROW_UP)
     cover.trade:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)
     cover.trade:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.trade:Hide()
     HU:BuildTrade(cover.trade)
     -- (la sección Calendario, UnionCalendar.lua: igual)
     cover.calendar = CreateFrame("Frame", nil, cover)
-    cover.calendar:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2)
+    cover.calendar:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2 - ROW_UP)
     cover.calendar:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)
     cover.calendar:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.calendar:Hide()
@@ -951,7 +955,7 @@ local function Build(f)
     -- («Solo mi hermandad», encima de la lista a la derecha: solo con los de mi hermandad)
     mine = CreateFrame("CheckButton", "GuildUnionRosterMine", f, "UICheckButtonTemplate")
     mine:SetSize(24, 24)
-    mine:SetPoint("BOTTOMLEFT", ml, "TOPRIGHT", -120, TOP + 2)
+    mine:SetPoint("BOTTOMLEFT", ml, "TOPRIGHT", -120, TOP + 2 - DROP)
     mine:SetFrameStrata("HIGH")
     mine:SetFrameLevel(cover:GetFrameLevel() + 2)
     if mine.Text then mine.Text:SetText(L("Solo mi hermandad")) end
@@ -965,15 +969,38 @@ local function Build(f)
         if InCombatLockdown() then secureLater = true; return true end
         return false
     end
-    -- (en la vista de chat, el chat y su lista de la derecha empiezan justo debajo de la fila de botones:
-    -- atados a ella, así no hay que calcular nada. De vuelta en la de miembros, Sync los devuelve a su sitio)
+    -- (en la vista de chat, el chat y su lista de la derecha empiezan debajo de la fila de botones y del desplegable
+    -- «Guild», que va debajo de ella: atados a la fila. De vuelta en la de miembros, Sync los devuelve a su sitio)
     local placing = false
     local function ChatAnchors()
         if GameLocked() then return end
         placing = true
-        ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -2)
-        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2)
+        ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -2 - ROW_UP)
+        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2 - ROW_UP)
         placing = false
+    end
+    -- Arriba lo nuestro, debajo lo del juego (Jorge, 24/11): el desplegable «Guild» (con nuestro buscador, atado a él)
+    -- y los cascos del chat de voz bajan DROP; en la vista de miembros, también la casilla de desconectados, que sube
+    -- de capa para verse encima de lo nuestro. Fuera de combate: la casilla lleva colgados nuestros botones seguros.
+    -- El juego los recoloca al agrandar la ventana: se vuelven a poner [+ARCHITECTURE.md]
+    local dd = type(f.StreamDropdown) == "table" and f.StreamDropdown or nil
+    local headset = type(f.VoiceChatHeadset) == "table" and f.VoiceChatHeadset or nil
+    local placingTop = false
+    local function TopRow()
+        if not mode or GameLocked() then return end
+        placingTop = true
+        if dd then dd:ClearAllPoints(); dd:SetPoint("TOPLEFT", f, "TOPLEFT", 195, -31 - DROP) end
+        if headset then headset:ClearAllPoints(); headset:SetPoint("TOPRIGHT", f, "TOPRIGHT", -180, -26 - DROP) end
+        anchor:ClearAllPoints()
+        anchor:SetPoint("BOTTOMLEFT", ml, "TOPLEFT", 0, TOP - DROP)
+        anchor:SetFrameStrata("HIGH")
+        anchor:SetFrameLevel(cover:GetFrameLevel() + 12)
+        local search = _G.GuildUnionReduceSearch
+        if search then search:SetFrameStrata("HIGH"); search:SetFrameLevel(cover:GetFrameLevel() + 12) end
+        placingTop = false
+    end
+    for _, w in ipairs({ dd, headset }) do
+        if w then hooksecurefunc(w, "SetPoint", function() if not placingTop and mode then TopRow() end end) end
     end
     -- (el juego vuelve a colocar la lista de la derecha a su aire —al actualizarla—: si está en la vista de
     -- chat con nuestra fila, se vuelve a poner debajo de la fila un instante después)
@@ -1066,6 +1093,7 @@ local function Build(f)
         cover:SetShown(m ~= nil and not RealList())
         if cover:IsShown() then ShowTab(tab) end
         if m == "chat" then ChatAnchors() end
+        TopRow()
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
         if InCombatLockdown() then secureLater = true end

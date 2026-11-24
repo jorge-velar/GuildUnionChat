@@ -832,6 +832,30 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("arriba nuestra fila y debajo lo del juego: bajan el desplegable «Guild», los cascos y la casilla de desconectados", function()
+        local a = F.Community()
+        -- (dónde se pide cada pieza del juego; antes de que el addon monte lo suyo, para que sus enganches sigan)
+        local function Track(b) b.SetPoint = function(self, ...) self._pt = { ... } end end
+        local dd, headset
+        local f = GuildWindow(a, true, function(w)
+            dd = a.env.CreateFrame("Frame", nil, w); w.StreamDropdown = dd; Track(dd)
+            headset = a.env.CreateFrame("Frame", nil, w); w.VoiceChatHeadset = headset; Track(headset)
+            Track(w.MemberList.ShowOfflineButton)
+        end)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.same({ "TOPLEFT", 195, -65 }, { dd._pt[1], dd._pt[4], dd._pt[5] }, "el desplegable, debajo de la fila")
+        A.same({ "TOPRIGHT", -180, -60 }, { headset._pt[1], headset._pt[4], headset._pt[5] })
+        local chk = f.MemberList.ShowOfflineButton
+        A.same({ "BOTTOMLEFT", 0, -8 }, { chk._pt[1], chk._pt[4], chk._pt[5] }, "la casilla, debajo de la fila")
+        -- (el juego lo vuelve a poner en su sitio al agrandar la ventana: baja otra vez)
+        dd:SetPoint("TOPLEFT", 195, -31)
+        A.same({ "TOPLEFT", 195, -65 }, { dd._pt[1], dd._pt[4], dd._pt[5] })
+        A.same({}, a:Errors())
+    end)
+
     it("los cuatro botones de arriba, con imagen y centrados: Chat (el seguro), Miembros, Comercio y Calendario", function()
         local a = F.Community()
         local f = GuildWindow(a)
