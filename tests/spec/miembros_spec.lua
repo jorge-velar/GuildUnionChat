@@ -1072,6 +1072,70 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("«Ver recetas» en la ficha: las mías abren mi profesión; las de otro se piden por su GUID; las de recoger, sin botón", function()
+        local a = F.Community()
+        -- (el WoW de mentira, recordando si un botón está apagado)
+        local meta = a.w.frameMeta
+        local base = meta.__index
+        meta.__index = function(f, k)
+            if k == "SetEnabled" then return function(self, v) rawset(self, "_off", not v) end end
+            if k == "IsEnabled" then return function(self) return not rawget(self, "_off") end end
+            return base(f, k)
+        end
+        local opened, asked = {}, {}
+        a.env.C_Club = {
+            GetGuildClubId = function() return 9 end,
+            GetClubMembers = function() return { 1, 2, 3 } end,
+            GetMemberInfo = function(_, id)
+                if id == 1 then
+                    return { name = "Tester", isSelf = true, guid = "Player-1-AAA", profession1ID = 182, profession1Name = "Herbalism",
+                        profession1Rank = 1, profession2ID = 186, profession2Name = "Mining", profession2Rank = 1 }
+                end
+                if id == 2 then return { name = "Compi", guid = "Player-1-BBB", profession1ID = 164, profession1Name = "Blacksmithing", profession1Rank = 1 } end
+                return { name = "Jefa", profession1ID = 197, profession1Name = "Tailoring", profession1Rank = 1 }
+            end,
+        }
+        a.env.C_TradeSkillUI = {
+            GetTradeSkillTexture = function(id) return "icono" .. id end,
+            OpenTradeSkill = function(id) opened[#opened + 1] = id; return true end,
+        }
+        a.env.C_GuildInfo = { QueryGuildMemberRecipes = function(guid, id) asked[#asked + 1] = guid .. "/" .. id end }
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local byName = {}
+        for _, r in ipairs(cover.rows) do if r.entry then byName[r.entry.name:match("^([^-]+)")] = r end end
+        local function Card(name)
+            local row = byName[name]
+            row:GetScript("OnClick")(row, "LeftButton")
+            return a.env.GuildUnionMemberCard.recipes, row
+        end
+        local function Press(b) b:GetScript("OnClick")(b) end
+        -- (las mías: Herboristería, de recoger, sin botón; Minería abre mi ventana de la profesión)
+        local rows, row = Card("Tester")
+        A.same({ false, true }, { rows.btns[1]:IsShown(), rows.btns[2]:IsShown() })
+        Press(rows.btns[2])
+        A.same({ 186 }, opened)
+        A.same({}, asked)
+        row:GetScript("OnClick")(row, "LeftButton")
+        -- (si el juego no la abre, se piden por mi GUID)
+        a.env.C_TradeSkillUI.OpenTradeSkill = function() return false end
+        rows, row = Card("Tester")
+        Press(rows.btns[2])
+        A.same({ "Player-1-AAA/186" }, asked)
+        row:GetScript("OnClick")(row, "LeftButton")
+        -- (las de otro, por su GUID)
+        rows, row = Card("Compi")
+        Press(rows.btns[1])
+        A.same({ "Player-1-AAA/186", "Player-1-BBB/164" }, asked)
+        row:GetScript("OnClick")(row, "LeftButton")
+        -- (sin GUID, ni en la comunidad ni en la lista del juego: apagado)
+        rows = Card("Jefa")
+        A.truthy(rows.btns[1]:IsShown())
+        A.falsy(rows.btns[1]:IsEnabled())
+        A.same({}, a:Errors())
+    end)
+
     it("la casilla «Mostrar desconectados» solo en Miembros: en Comercio y Calendario no se ve ni se pulsa", function()
         local a = F.Community()
         local box, label
@@ -1474,7 +1538,7 @@ describe("Comercio (Trade.lua)", function()
         a.env.IsControlKeyDown = function() return false end
     end
 
-    it("arriba, el buscador y el modo prueba; debajo, el «+» de pedir a la izquierda (su nombre, al pasar el ratón) y Público · Privado en su fila", function()
+    it("arriba, en una fila, el buscador, Tablón · Mis encargos y «Solo lo que puedo hacer»; abajo, «+ Nueva solicitud» en el centro, «Eliminar (N)» a su lado y el modo prueba a la derecha", function()
         local a = F.Community()
         -- (dónde se pide cada marco: el último sitio de cada punto)
         local meta = a.w.frameMeta
@@ -1487,22 +1551,17 @@ describe("Comercio (Trade.lua)", function()
         meta.__index = function(f, k) if k == "SetPoint" then return SetPoint end return base(f, k) end
         local tr = OpenTrade(a)
         local new, pub, priv = tr.new, tr.viewBtns.pub, tr.viewBtns.priv
-        A.equal("+", new:GetText(), "solo el «+»")
-        A.same({ tr, "TOPLEFT", 14, -30 }, new._pts.TOPLEFT, "a la izquierda, en la segunda fila")
-        A.same({ tr, "TOP", -2, -30 }, pub._pts.TOPRIGHT, "Público, en el centro de la misma fila")
-        A.same({ pub, "RIGHT", 4, 0 }, priv._pts.LEFT, "Privado, a su lado")
-        A.same({ new, "RIGHT", 8, 0 }, tr.delBtn._pts.LEFT, "«Eliminar (N)», junto al «+»")
-        A.same({ tr, "TOPLEFT", 14, -4 }, tr.search._pts.TOPLEFT, "el buscador, arriba")
-        A.same({ tr, "TOPRIGHT", -26, -3 }, tr.testBtn._pts.TOPRIGHT, "el modo prueba, arriba")
-        -- (la fila mide 24, de -30 a -54: la lista empieza debajo)
-        A.truthy(tr.body._pts.TOPLEFT[4] <= -30 - 24, "la lista no pisa la fila")
-        local tip = a.env.GameTooltip
-        tip:Hide()
-        new:GetScript("OnEnter")(new)
-        A.truthy(tip:IsShown())
-        A.equal("Nueva solicitud", tip:GetText())
-        new:GetScript("OnLeave")(new)
-        A.falsy(tip:IsShown())
+        A.equal("+ Nueva solicitud", new:GetText(), "con su texto, como antes")
+        A.same({ tr, "TOPLEFT", 14, -4 }, tr.search._pts.TOPLEFT, "el buscador, arriba a la izquierda")
+        A.same({ tr.search, "RIGHT", 8, 0 }, pub._pts.LEFT, "Tablón, a su derecha")
+        A.same({ pub, "RIGHT", 4, 0 }, priv._pts.LEFT, "Mis encargos, a su lado")
+        A.same({ priv, "RIGHT", 6, 0 }, tr.onlyCraft._pts.LEFT, "«Solo lo que puedo hacer», detrás")
+        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM, "«+ Nueva solicitud», abajo en el centro")
+        A.same({ new, "RIGHT", 8, 0 }, tr.delBtn._pts.LEFT, "«Eliminar (N)», junto a él")
+        A.same({ tr, "BOTTOMRIGHT", -8, 9 }, tr.testBtn._pts.BOTTOMRIGHT, "el modo prueba, abajo a la derecha")
+        -- (la fila mide 24, de -3 a -27: la lista empieza debajo y acaba encima del botón, que llega a 8 + 24)
+        A.truthy(tr.body._pts.TOPLEFT[4] <= -3 - 24, "la lista no pisa la fila")
+        A.truthy(tr.body._pts.BOTTOMRIGHT[4] >= 8 + 24, "ni el botón")
         Click(new)
         A.truthy(a.env.GuildUnionTradeNew:IsShown(), "abre la ventana de pedir")
         A.same({}, a:Errors())

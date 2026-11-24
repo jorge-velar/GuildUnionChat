@@ -11,8 +11,10 @@ HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft" } })
 -- con la ventana del juego a su alto de siempre: comercio_spec)
 local ROW_H, ROWS = 24, 10
 local HDR_H, CELL_PAD = 24, 4
-local TAB_W = 120           -- Tablón · Mis encargos (con el número de sin leer: «Mis encargos (2)»)
-local PLUS = 26             -- el «+» de pedir (DJ.Plus)
+local TAB_W = 116           -- Tablón · Mis encargos (con el número de sin leer: «Mis encargos (2)»)
+-- (abajo, «+ Nueva solicitud» (24 de alto, a 8 del borde) y el modo prueba: las listas y el chat acaban BOTTOM_H por
+-- encima del borde de abajo, para que el botón no tape nada) [+ARCHITECTURE.md]
+local BOTTOM_H = 36
 local SEARCH_ROWS = 4       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
 local MAX_OPEN = 5          -- solicitudes abiertas por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
@@ -1038,22 +1040,8 @@ end
 
 function HU:BuildTrade(host)
     ui = host
-    -- Arriba, el buscador, «Solo lo que puedo hacer» y el modo prueba; debajo, el «+» de pedir (a la izquierda) y
-    -- Tablón · Mis encargos (en el centro)
-    ui.viewBtns = {}
-    local prev
-    for _, t in ipairs({ { "pub", L("Tablón") }, { "priv", L("Mis encargos") } }) do
-        local b = Tab(host, t[2], TAB_W)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -30) end
-        b:SetScript("OnClick", function()
-            view, selected, picks = t[1], nil, {}
-            ui.search:SetText("")
-            FauxScrollFrame_SetOffset(ui.scroll, 0)
-            Paint()
-        end)
-        ui.viewBtns[t[1]] = b
-        prev = b
-    end
+    -- Arriba, en una fila: el buscador, Tablón · Mis encargos y «Solo lo que puedo hacer»; abajo, «+ Nueva solicitud» en
+    -- el centro y el modo prueba a la derecha (Jorge, 24/11) [+ARCHITECTURE.md]
     -- (el buscador, más visible: más ancho, con la ayuda en gris claro y un marco claro de borde dorado detrás)
     local search = CreateFrame("EditBox", "GuildUnionTradeSearch", host, "SearchBoxTemplate")
     search:SetSize(200, 22)
@@ -1072,10 +1060,25 @@ function HU:BuildTrade(host)
         Paint()
     end)
     ui.search = search
-    -- «Solo lo que puedo hacer»: en el Tablón (y en las publicadas al buscar), solo lo que HU:CanCraft deja; se
-    -- recuerda por personaje
+    -- (a su derecha, las pestañas)
+    ui.viewBtns = {}
+    local prev = search
+    for _, t in ipairs({ { "pub", L("Tablón") }, { "priv", L("Mis encargos") } }) do
+        local b = Tab(host, t[2], TAB_W)
+        b:SetPoint("LEFT", prev, "RIGHT", prev == search and 8 or 4, 0)
+        b:SetScript("OnClick", function()
+            view, selected, picks = t[1], nil, {}
+            ui.search:SetText("")
+            FauxScrollFrame_SetOffset(ui.scroll, 0)
+            Paint()
+        end)
+        ui.viewBtns[t[1]] = b
+        prev = b
+    end
+    -- «Solo lo que puedo hacer», a la derecha de las pestañas: en el Tablón (y en las publicadas al buscar), solo lo que
+    -- HU:CanCraft deja; se recuerda por personaje
     local only = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
-    only:SetSize(22, 22); only:SetPoint("LEFT", search, "RIGHT", 14, 0)
+    only:SetSize(22, 22); only:SetPoint("LEFT", prev, "RIGHT", 6, 0)
     if only.Text then only.Text:SetFontObject("GameFontHighlightSmall"); only.Text:SetText(L("Solo lo que puedo hacer")) end
     only:SetScript("OnClick", function(s)
         HU.db.tradeOnlyCraft = (not OnlyCraft()) or nil
@@ -1091,28 +1094,15 @@ function HU:BuildTrade(host)
     end)
     only:SetScript("OnLeave", function() GameTooltip:Hide() end)
     ui.onlyCraft = only
-    local test = Flat(host, L("Modo prueba"), 100, 22)
-    test:SetPoint("TOPRIGHT", host, "TOPRIGHT", -26, -3)
-    -- (el modo prueba se enciende y se apaga: apagado, se quita lo de prueba)
-    test:SetScript("OnClick", function(b)
-        if ui.testOn then ClearTest(); ui.testOn = nil else AddTest(); ui.testOn = true end
-        b:Pick(ui.testOn == true)
-        Paint()
-    end)
-    ui.testBtn = test
 
-    local rule = host:CreateTexture(nil, "ARTWORK")
-    rule:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.25); rule:SetHeight(1)
-    rule:SetPoint("TOPLEFT", host, "TOPLEFT", 6, -27); rule:SetPoint("TOPRIGHT", host, "TOPRIGHT", -24, -27)
-
-    -- (detrás de todo, el panel de la sección: color «content» y borde, como el calendario)
+    -- (detrás de todo, el panel de la sección, justo debajo de la fila: color «content» y borde, como el calendario)
     local bg = CreateFrame("Frame", nil, host, "BackdropTemplate")
-    bg:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -58); bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
+    bg:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -31); bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
     bg:SetFrameLevel(host:GetFrameLevel() + 1)
     DJ.Panel(bg, DJ.T.content, DJ.T.border, 14, 4)
     DJ.Parchment(bg, 0.18)
     local body = CreateFrame("Frame", nil, host)
-    body:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -62); body:SetPoint("BOTTOMRIGHT")
+    body:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -35); body:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, BOTTOM_H)
     body:SetFrameLevel(bg:GetFrameLevel() + 2)
     ui.body = body
     -- (el aviso de apagado, en el panel: en host quedaba por debajo de él y no se veía)
@@ -1301,15 +1291,13 @@ function HU:BuildTrade(host)
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
 
-    -- Debajo del buscador: «+», nueva solicitud (su nombre, al pasar el ratón). El verde claro de DJ.Plus, como el del
-    -- calendario
+    -- Abajo, en el centro: «+ Nueva solicitud», como hasta la copia 304 (teñido de verde, letra blanca); va en el panel,
+    -- para quedar encima de él [+ARCHITECTURE.md]
     local newDlg = BuildNewDialog(host)
-    local new = DJ.Plus(host, PLUS)
-    new:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -30)
-    new:SetScript("OnEnter", function(s)
-        GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L("Nueva solicitud")); GameTooltip:Show()
-    end)
-    new:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local new = Flat(bg, "+ " .. L("Nueva solicitud"), 200, 24)
+    new:SetPoint("BOTTOM", host, "BOTTOM", 0, 8)
+    for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
+    new:SetNormalFontObject("GameFontHighlight")
     -- (to: pedírsela a alguien en concreto, privada: «Pedir una receta» desde la búsqueda. Con el comercio
     -- apagado no se abre)
     function ui.OpenNew(to)
@@ -1325,9 +1313,8 @@ function HU:BuildTrade(host)
     end
     new:SetScript("OnClick", function() ui.OpenNew(nil) end)
     ui.new, ui.newDlg = new, newDlg
-    -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso)
-    ui.onlyOn = { body, search, sbox, only, test, rule, new, ui.viewBtns.pub, ui.viewBtns.priv }
-    local del = Flat(body, "", 110, 22)
+    -- (a su derecha, «Eliminar (N)», con algo marcado en Mis encargos)
+    local del = Flat(body, "", 86, 22)
     del:SetPoint("LEFT", new, "RIGHT", 8, 0)
     del:SetScript("OnClick", function()
         for id in pairs(picks) do local x = FindReq(id); if x then RemoveReq(x) end end
@@ -1336,6 +1323,17 @@ function HU:BuildTrade(host)
     end)
     del:Hide()
     ui.delBtn = del
+    -- (y a la derecha del todo, el modo prueba: se enciende y se apaga; apagado, se quita lo de prueba)
+    local test = Flat(bg, L("Modo prueba"), 96, 22)
+    test:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -8, 9)
+    test:SetScript("OnClick", function(b)
+        if ui.testOn then ClearTest(); ui.testOn = nil else AddTest(); ui.testOn = true end
+        b:Pick(ui.testOn == true)
+        Paint()
+    end)
+    ui.testBtn = test
+    -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso)
+    ui.onlyOn = { body, search, sbox, only, test, new, ui.viewBtns.pub, ui.viewBtns.priv }
 
     Suggest(ui.search, ItemMatches)
     host:HookScript("OnShow", function() LoadCraftNames(); Paint() end)

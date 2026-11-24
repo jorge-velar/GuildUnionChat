@@ -32,8 +32,9 @@ local COLS = {
     { key = "zone", title = "Zona", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_ZONE", w = 92 },
     { key = "rank", title = "Rango", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_RANK", w = 76 },
     { key = "guild", title = "Hermandad", game = "GUILD", w = 58 },
-    -- (las dos profesiones, con su icono y su nivel: Jorge, 24/11. Solo las de mi hermandad, que son las que da el juego)
-    { key = "prof", title = "Profesiones", game = "TRADE_SKILLS", w = 80 },
+    -- (las dos profesiones, solo su icono, juntos (Jorge, 24/11: «júntalos y haz esa pestaña más pequeña»): título corto,
+    -- que «Profesiones» no cabe. Solo las de mi hermandad, que son las que da el juego)
+    { key = "prof", title = "Prof.", w = 40 },
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
@@ -388,6 +389,40 @@ end
 local card
 local RemoveFromGuild   -- (más abajo, con el clic derecho; lo usa también el botón de la ficha)
 
+-- (el GUID de alguien de mi hermandad en la lista del juego: el 17.º dato de GetGuildRosterInfo)
+local function RosterGuid(name)
+    local want = (HU:FullName(name) or name):lower()
+    local n = GetNumGuildMembers and GetNumGuildMembers() or 0
+    if type(n) ~= "number" or HU.Secret(n) then return nil end
+    for i = 1, n do
+        local r = { GetGuildRosterInfo(i) }
+        local full = type(r[1]) == "string" and not HU.Secret(r[1]) and HU:FullName(r[1])
+        if full and full:lower() == want then
+            return (type(r[17]) == "string" and not HU.Secret(r[17])) and r[17] or nil
+        end
+    end
+    return nil
+end
+
+-- «Ver recetas»: las mías, abriendo la ventana de esa profesión (C_TradeSkillUI.OpenTradeSkill, como hace el juego); las de
+-- otro, pidiéndoselas al juego por su GUID (C_GuildInfo.QueryGuildMemberRecipes), que abre su ventana con ellas si el
+-- servidor las da. Jorge, 24/11: «no funciona»: sin el GUID de la comunidad no se pedía nada, ni siquiera las mías
+-- [+ARCHITECTURE.md]
+local function OpenRecipes(p)
+    if type(p) ~= "table" or type(p.id) ~= "number" then return end
+    if p.mine and C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill then
+        local ok, opened = pcall(C_TradeSkillUI.OpenTradeSkill, p.id)
+        if ok and opened then return end
+    end
+    local q = C_GuildInfo and C_GuildInfo.QueryGuildMemberRecipes
+    if q and p.guid then pcall(q, p.guid, p.id) end
+end
+-- (¿tiene recetas esa profesión? Las de recoger —Herboristería, Desuello— no: sin «Ver recetas». Las que fabrican, las de
+-- CraftItems.lua)
+local function HasRecipes(id)
+    return type(id) == "number" and ((HU.CRAFT_ITEMS and HU.CRAFT_ITEMS[id] ~= nil) or (HU.CRAFT_SPELLS and HU.CRAFT_SPELLS[id] ~= nil))
+end
+
 -- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; de las otras
 -- hermandades no llegan todavía)
 local function OwnProfessions(name)
@@ -401,6 +436,9 @@ local function OwnProfessions(name)
         local n = ok2 and info and info.name
         if type(n) == "string" and not HU.Secret(n) and (HU:FullName(n) or n):lower() == want then
             local out = HU:ClubProfessions(info)
+            -- (para «Ver recetas»: si son mías, y su GUID; si la comunidad no lo da, el de la lista del juego)
+            local guid = (type(info.guid) == "string" and not HU.Secret(info.guid)) and info.guid or RosterGuid(n)
+            for _, p in ipairs(out) do p.mine, p.guid = info.isSelf == true, guid end
             return #out > 0 and out or nil
         end
     end
@@ -470,14 +508,24 @@ local function BuildCard(f)
         local lvl = rows:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lvl:SetPoint("LEFT", icon, "RIGHT", 4, 0)
         lvl:SetWidth(24); lvl:SetJustifyH("LEFT")
-        local b = CreateFrame("Button", "GuildUnionMemberCardRecipes" .. k, rows, "UIPanelButtonTemplate")
-        b:SetSize(110, 20)
+        -- («Ver recetas»: oscuro, con borde fino y letra dorada que se aclara al pasar el ratón, como los paneles de Comercio
+        -- y Calendario (DJStyle.lua). Jorge, 24/11: «más bonito»; antes era el botón rojo del juego) [+ARCHITECTURE.md]
+        local DJ = HU.DJ
+        local b = CreateFrame("Button", "GuildUnionMemberCardRecipes" .. k, rows, "BackdropTemplate")
+        b:SetSize(92, 18)
         b:SetPoint("LEFT", lvl, "RIGHT", 2, 0)
+        DJ.Panel(b, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
+        local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("CENTER")
+        b:SetFontString(fs)
+        b:SetNormalFontObject("GameFontNormalSmall")
+        b:SetHighlightFontObject("GameFontHighlightSmall")
+        b:SetDisabledFontObject("GameFontDisableSmall")
+        local hl = b:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetPoint("TOPLEFT", 2, -2); hl:SetPoint("BOTTOMRIGHT", -2, 2)
+        hl:SetColorTexture(1, 0.82, 0, 0.15)
         b:SetText(L("Ver recetas"))
-        b:SetScript("OnClick", function(s)
-            local q = C_GuildInfo and C_GuildInfo.QueryGuildMemberRecipes
-            if q and s.prof and s.prof.guid and s.prof.id then pcall(q, s.prof.guid, s.prof.id) end
-        end)
+        b:SetScript("OnClick", function(s) OpenRecipes(s.prof) end)
         icon:Hide(); lvl:Hide(); b:Hide()
         rows.btns[k], rows.icons[k], rows.levels[k] = b, icon, lvl
     end
@@ -536,11 +584,14 @@ local function ShowCard(e, force)
     for k = 1, 2 do
         local p = profs[k]
         rows.btns[k].prof = p
-        rows.icons[k]:SetShown(p ~= nil); rows.levels[k]:SetShown(p ~= nil); rows.btns[k]:SetShown(p ~= nil)
+        rows.icons[k]:SetShown(p ~= nil); rows.levels[k]:SetShown(p ~= nil)
+        -- («Ver recetas», solo en las que fabrican; apagado si no se puede pedir: ni mía ni con GUID)
+        rows.btns[k]:SetShown(p ~= nil and HasRecipes(p.id))
         if p then
             rows.icons[k]:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             rows.levels[k]:SetText(p.rank and tostring(p.rank) or "")
             rows.btns[k]:SetText(p.icon and L("Ver recetas") or (p.name .. ": " .. L("Ver recetas")))
+            rows.btns[k]:SetEnabled(p.mine == true or p.guid ~= nil)
         end
     end
     v[5]:SetText(#profs == 0 and "—" or "")
@@ -963,12 +1014,12 @@ local function Build(f)
                 tex:SetPoint("LEFT", starts[k] + (col.w - 16) / 2, 0)
                 c.class = tex
             elseif col.key == "prof" then
-                -- (dos huecos, el icono de cada profesión, centrados en la columna)
+                -- (dos huecos, el icono de cada profesión, juntos y centrados en la columna)
                 c.prof = {}
                 for j = 1, 2 do
                     local icon = row:CreateTexture(nil, "ARTWORK")
                     icon:SetSize(14, 14)
-                    icon:SetPoint("LEFT", starts[k] + (col.w - 36) / 2 + (j - 1) * 22, 0)
+                    icon:SetPoint("LEFT", starts[k] + (col.w - 30) / 2 + (j - 1) * 16, 0)
                     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                     c.prof[j] = icon
                 end

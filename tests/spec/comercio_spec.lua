@@ -1,13 +1,13 @@
 -- Comercio (Trade.lua): las líneas sin leer, «¿puedo hacerlo?» (HU:CanCraft, con las recetas que se leen al abrir la
--- ventana de una profesión), «Solo lo que puedo hacer», el «+» de pedir y el aspecto. Lo de antes de Comercio sigue en
--- miembros_spec.
+-- ventana de una profesión), «Solo lo que puedo hacer», «+ Nueva solicitud» y el aspecto (qué va dónde y que quepa).
+-- Lo de antes de Comercio sigue en miembros_spec.
 local F = require("lib.fixtures")
 local A = assert_
 
 ---------------------------------------------------------------------------
 -- El WoW de mentira, con lo que aquí hace falta mirar
 ---------------------------------------------------------------------------
--- (lo que no guarda: activado, marcado, tamaño, alto, puntos y colores de fondo y borde)
+-- (lo que no guarda: activado, marcado, tamaño, alto, puntos, el tinte y la letra de los botones)
 local function Observe(a)
     local meta = a.w.frameMeta
     local base = meta.__index
@@ -24,10 +24,49 @@ local function Observe(a)
             rawset(self, "_pts", pts)
             pts[p] = { ... }
         end,
-        SetBackdropColor = function(self, ...) rawset(self, "_bg", { ... }) end,
-        SetBackdropBorderColor = function(self, ...) rawset(self, "_edge", { ... }) end,
+        SetVertexColor = function(self, ...) rawset(self, "_color", { ... }) end,
+        SetNormalFontObject = function(self, font) rawset(self, "_font", font) end,
     }
     meta.__index = function(f, k) return extra[k] or base(f, k) end
+end
+
+-- La sección con la ventana del juego a su tamaño de siempre (814 x 426). La lista de miembros del juego, en su vista
+-- (Blizzard_Communities: CommunitiesFrame.xml y CommunitiesMemberList.lua), va de 26 a la derecha de la columna de
+-- comunidades (que acaba en 170) a 26 del borde derecho, y de 60 por debajo de esa columna (que empieza 23 por debajo
+-- del borde de arriba) a 28 del de abajo. Lo nuestro (UnionRoster.lua) empieza 3 a su izquierda, acaba 22 a su derecha y
+-- sube 57 (TOP 26 y ROW_UP 31); la sección deja 2 arriba y 4 abajo
+local SECTION_W = (814 - 26 + 22) - (170 + 26 - 3)        -- 617
+local SECTION_H = (426 - 28 - 4) - ((23 + 60 - 57) + 2)   -- 366
+
+-- Lo que mide un texto en la letra del juego (Friz Quadrata, FRIZQT__.TTF; el WoW de mentira mide 0): el avance de cada
+-- letra en milésimas de su tamaño, leído del archivo de la letra (sin kerning), y un 5 % más por lo que redondea el juego
+local FRIZ = { [" "] = 261, ["("] = 322, [")"] = 325, ["+"] = 640, ["."] = 257,
+    A = 767, B = 633, C = 670, D = 743, E = 550, F = 469, G = 793, H = 791, I = 304, J = 290, K = 657, L = 552, M = 1003,
+    N = 788, O = 856, P = 577, Q = 855, R = 633, S = 580, T = 538, U = 752, V = 655, W = 1002, X = 722, Y = 638, Z = 654,
+    a = 545, b = 588, c = 521, d = 624, e = 582, f = 333, g = 619, h = 589, i = 256, j = 254, k = 528, l = 252, m = 926,
+    n = 593, o = 631, p = 627, q = 625, r = 349, s = 467, t = 347, u = 589, v = 568, w = 833, x = 552, y = 561, z = 517,
+    ["á"] = 545, ["é"] = 582, ["í"] = 256, ["ó"] = 631, ["ú"] = 589, ["ñ"] = 593, ["ü"] = 589,
+    ["Á"] = 767, ["É"] = 550, ["Í"] = 304, ["Ó"] = 856, ["Ú"] = 752, ["Ñ"] = 788 }
+for d = 0, 9 do FRIZ[tostring(d)] = 640 end
+local function TextWidth(text, size)
+    local w = 0
+    for ch in text:gmatch("[\1-\127\194-\244][\128-\191]*") do w = w + assert(FRIZ[ch], "sin el ancho de «" .. ch .. "»") end
+    return w * size / 1000 * 1.05
+end
+
+-- (de izquierda a derecha, dónde queda un marco de la sección (de 0 a SECTION_W): por su punto y su ancho, siguiendo a
+-- los marcos a los que se ata)
+local function Span(tr, f)
+    if f == tr then return 0, SECTION_W end
+    local n, p, pt = 0, nil, nil
+    for k, v in pairs(f._pts or {}) do n, p, pt = n + 1, k, v end
+    assert(n == 1, "se esperaba un solo punto")
+    local rl, rr = Span(tr, pt[1])
+    local x = (pt[2]:find("LEFT") and rl) or (pt[2]:find("RIGHT") and rr) or (rl + rr) / 2
+    x = x + (pt[3] or 0)
+    if p:find("LEFT") then return x, x + f._w end
+    if p:find("RIGHT") then return x - f._w, x end
+    return x - f._w / 2, x + f._w / 2
 end
 
 -- (¿se ve? él y todos los de encima, como IsVisible en el juego)
@@ -453,27 +492,88 @@ end)
 -- Aspecto
 ---------------------------------------------------------------------------
 describe("Comercio (Trade.lua): aspecto", function()
-    it("el «+» de Comercio y el de Calendario: verde claro con borde claro y más grande; apagado, gris", function()
+    it("«+ Nueva solicitud», como hasta la copia 304: con su texto, teñido de verde y con letra blanca, abajo en el centro; las listas y el chat acaban por encima", function()
         local a = F.Community()
         Observe(a)
         local tr = OpenTrade(a)
-        local P = a.HU.DJ.PLUS
-        for i, b in ipairs({ tr.new, a.env.GuildUnionUnionRoster.calendar.new }) do
-            A.equal("+", b:GetText(), "sigue siendo un «+», " .. i)
-            A.same({ 26, 26 }, { b._w, b._h }, "más grande, " .. i)
-            A.same(P.bg, b._bg, "verde, " .. i)
-            A.truthy(math.max(P.bg[1], P.bg[2], P.bg[3]) >= 0.5, "claro")
-            A.truthy(math.min(P.edge[1], P.edge[2], P.edge[3]) >= 0.6, "con el borde claro")
-            A.same(P.edge, b._edge)
-            b:GetScript("OnDisable")(b)
-            A.same({ P.offBg, P.offEdge }, { b._bg, b._edge }, "apagado, gris, " .. i)
-            b:GetScript("OnEnable")(b)
-            A.same(P.bg, b._bg)
-        end
-        -- (en su fila, sin pisar el panel de la sección, que empieza 4 por encima del cuerpo)
-        A.same({ tr, "TOPLEFT", 14, -30 }, tr.new._pts.TOPLEFT)
-        A.truthy(-30 - tr.new._h >= tr.body._pts.TOPLEFT[4] + 4, "el «+» no pisa el panel")
+        local new = tr.new
+        A.equal("+ Nueva solicitud", new:GetText())
+        A.same({ 200, 24 }, { new._w, new._h })
+        for _, k in ipairs({ "Left", "Middle", "Right" }) do A.same({ 0.45, 1, 0.45 }, new[k]._color, "teñido de verde: " .. k) end
+        A.equal("GameFontHighlight", new._font, "letra blanca")
+        A.is_nil(new:GetScript("OnEnter"), "al pasar el ratón, nada: ya se lee")
+        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM, "abajo, en el centro de la sección")
+        -- (va en el panel de la sección, que llega hasta abajo, para quedar encima de él)
+        A.same({ tr, "BOTTOMRIGHT", -2, 2 }, new:GetParent()._pts.BOTTOMRIGHT)
+        -- (lo de encima acaba antes: el cuerpo de las listas, 4 por encima del botón, y el chat de Mis encargos, dentro)
+        A.same({ tr, "BOTTOMRIGHT", 0, 8 + new._h + 4 }, tr.body._pts.BOTTOMRIGHT)
+        A.truthy(tr.chat._pts.BOTTOMRIGHT[2] >= 0, "el chat acaba dentro del cuerpo")
+        -- (clic: la ventana de pedir; buscando no sale, como antes)
+        Click(new)
+        A.truthy(a.env.GuildUnionTradeNew:IsShown())
+        Search(tr, "mitril")
+        A.falsy(new:IsShown())
+        Search(tr, "")
+        A.truthy(new:IsShown())
+        local en = F.Community({ locale = "enUS" })
+        A.equal("+ New request", OpenTrade(en).new:GetText())
         A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("arriba, en una línea y sin pisarse: el buscador, Tablón · Mis encargos y «Solo lo que puedo hacer»; abajo, «+ Nueva solicitud», «Eliminar (N)» y el modo prueba, a la derecha del todo (también en inglés)", function()
+        for _, locale in ipairs({ "esES", "enUS" }) do
+            local a = F.Community({ locale = locale })
+            Observe(a)
+            local L = a.HU.L
+            local tr = OpenTrade(a)
+            local search, pub, priv, only = tr.search, tr.viewBtns.pub, tr.viewBtns.priv, tr.onlyCraft
+            -- (cada uno a la derecha del anterior y a su misma altura: en una fila, la del buscador)
+            A.same({ tr, "TOPLEFT", 14, -4 }, search._pts.TOPLEFT)
+            A.same({ search, "RIGHT", 8, 0 }, pub._pts.LEFT)
+            A.same({ pub, "RIGHT", 4, 0 }, priv._pts.LEFT)
+            A.same({ priv, "RIGHT", 6, 0 }, only._pts.LEFT)
+            -- (la fila, encima del panel de la sección: las pestañas, las más altas, centradas con el buscador)
+            local rowBottom = -4 - search._h / 2 - pub._h / 2
+            A.truthy(rowBottom > tr.new:GetParent()._pts.TOPLEFT[4], "la fila no pisa el panel")
+            -- (de izquierda a derecha, sin pisarse: el marco del buscador va de 9 antes a 3 después; la casilla, con su texto,
+            -- que empieza 2 antes de su borde derecho, como en la plantilla del juego, y es de la letra pequeña, de 10)
+            local row = {}
+            local function Add(name, l, r) row[#row + 1] = { name = name, l = l, r = r } end
+            local sl, sr = Span(tr, search)
+            Add("el buscador", sl - 9, sr + 3)
+            Add("Tablón", Span(tr, pub))
+            Add("Mis encargos", Span(tr, priv))
+            local cl, cr = Span(tr, only)
+            Add("la casilla", cl, cr - 2 + TextWidth(only.Text:GetText(), 10))
+            for i = 2, #row do
+                A.truthy(row[i].l >= row[i - 1].r, locale .. ": " .. row[i].name .. " pisa " .. row[i - 1].name)
+            end
+            A.truthy(row[1].l >= 2 and row[#row].r <= SECTION_W - 6,
+                locale .. ": la fila cabe en la sección: de " .. row[1].l .. " a " .. row[#row].r .. " de " .. SECTION_W)
+            -- (el texto de cada pestaña cabe en ella, también con el número de sin leer; la letra de los botones, de 12)
+            for _, t in ipairs({ { pub, L("Tablón") }, { priv, string.format(L("Mis encargos (%d)"), 9) } }) do
+                A.truthy(TextWidth(t[2], 12) + 6 <= t[1]._w, locale .. ": «" .. t[2] .. "» cabe en su pestaña")
+            end
+            -- (abajo: «+ Nueva solicitud» en el centro, «Eliminar (N)» a su derecha y el modo prueba a la derecha del todo)
+            local new, del, test = tr.new, tr.delBtn, tr.testBtn
+            A.same({ tr, "BOTTOMRIGHT", -8, 9 }, test._pts.BOTTOMRIGHT)
+            A.same({ new, "RIGHT", 8, 0 }, del._pts.LEFT)
+            local bottom = {}
+            for _, b in ipairs({ { "«+ Nueva solicitud»", new, "+ " .. L("Nueva solicitud") },
+                { "«Eliminar (N)»", del, string.format(L("Eliminar (%d)"), 12) }, { "el modo prueba", test, L("Modo prueba") } }) do
+                local l, r = Span(tr, b[2])
+                bottom[#bottom + 1] = { name = b[1], l = l, r = r }
+                A.truthy(TextWidth(b[3], 12) + 6 <= b[2]._w, locale .. ": «" .. b[3] .. "» cabe en su botón")
+            end
+            for i = 2, #bottom do
+                A.truthy(bottom[i].l >= bottom[i - 1].r + 4, locale .. ": " .. bottom[i].name .. " pisa " .. bottom[i - 1].name)
+            end
+            A.truthy(bottom[#bottom].r <= SECTION_W - 6, locale .. ": abajo cabe")
+            -- (el modo prueba, a la altura de «+ Nueva solicitud»: centrado con él)
+            A.equal(8 + new._h / 2, 9 + test._h / 2)
+            A.same({}, a:Errors())
+        end
     end)
 
     it("nombres: Tablón · Mis encargos y «Buscar receta», también en inglés (Board · My Orders, Search recipe)", function()
@@ -508,9 +608,8 @@ describe("Comercio (Trade.lua): aspecto", function()
         local a = F.Community()
         Observe(a)
         local tr = OpenTrade(a)
-        -- (la ventana del juego mide 426 de alto: su lista de miembros, 426 - 63 - 28; la sección sube 26 por encima
-        -- y deja 2 arriba y 4 abajo; el cuerpo de las listas empieza 62 más abajo)
-        local BODY = (426 - 63 - 28) + 26 - 2 - 4 - 62
+        -- (el cuerpo de las listas: de debajo de la fila de arriba a encima de «+ Nueva solicitud»)
+        local BODY = SECTION_H + tr.body._pts.TOPLEFT[4] - tr.body._pts.BOTTOMRIGHT[4]
         A.truthy(tr.req.rows[1]._h >= 22, "filas más altas que las de 18: " .. tostring(tr.req.rows[1]._h))
         A.truthy(tr.req.hdr._h >= 24, "títulos")
         A.truthy(tr.req.list._h <= BODY, "el Tablón cabe: " .. tostring(tr.req.list._h) .. " de " .. BODY)
