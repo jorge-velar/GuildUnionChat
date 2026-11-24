@@ -3404,6 +3404,14 @@ para que nunca vayan cada una por su lado.
 - «Hecha» (arriba a la derecha del chat, para la elegida, si la hago yo) y «Marcar como hecha» la pasan a `done`
   (`MarkDone`): solo quien la hace y mientras está aceptada (`CanMarkDone`); ya hecha, «Hecha» queda apagado.
 
+### Lo guardado (`tradeReqs`, `tradeChats`, `tradeUnread`)
+
+Desde la copia 324 (Jorge, 24/11: «al hacer /reload se borra todo»): las solicitudes, los chats con cada persona y lo
+sin leer se guardan en el personaje (`HU:Saved` char, con `{}` de entrada). Al entrar (`HU:OnStart`), `reqs`, `chats` y
+`unread` pasan a ser esas tablas y `Tidy` quita lo de prueba (`test`, personas «-Prueba»), lo que no tiene forma de
+solicitud y lo pedido hace más de `KEEP_DAYS` (30) días; lo mismo al salir (`PLAYER_LOGOUT`), para que lo de prueba no
+llegue a guardarse. Todavía no viaja: con la red (conjunto `TR` de paquetes) las de los demás llegarán aparte.
+
 ### Modo prueba y configuración
 
 Sin botón ni comando (Jorge, 24/11: «quitando el test mode»; no quiere orden escrita): `HU:TradeTest(on)` pone lo de
@@ -3609,6 +3617,13 @@ Apagado, al pasar el ratón dice quién crea eventos según `calMake` (`NoMakeTi
 «Solo los oficiales crean eventos.»; con «Todos», nada; encendido, nada (su nombre ya se lee). Organizar (`CanManage`:
 añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» y «Convertir en banda»: el líder de esa
 raid. «Quitar raid»: quien creó el evento o ese líder. Apuntarse, ver la ficha, susurrar e invitar al grupo: cualquiera.
+
+### Lo guardado (`calEvents`)
+
+Desde la copia 324 (Jorge, 24/11: «al hacer /reload se borra todo»): los eventos, con quién va, sus roles y sus raids,
+se guardan en la cuenta (`HU:Saved` account, `{}` de entrada). Al entrar, `events` pasa a ser esa tabla y `Tidy` quita
+lo de prueba (`test`), lo que no tiene forma de evento y lo que pasó hace más de `KEEP_DAYS` (7) días; lo mismo al salir
+(`PLAYER_LOGOUT`). Todavía no viaja: con la red (conjunto `EV` de paquetes) los de los demás llegarán aparte.
 
 ### Modo prueba
 

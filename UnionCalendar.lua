@@ -5,6 +5,9 @@
 local _, HU = ...
 local L = HU.L
 
+-- (los eventos, para que /reload no los borre: ver Tidy)
+HU:Saved({ account = { calEvents = {} } })
+
 -- (Eventos: una tarjeta por línea, a todo lo ancho, y 4 a la vista; la rueda baja de una en una. Jorge, 24/11)
 local CARD_H, CARD_GAP, CARD_N = 62, 6, 4
 local GROUPS, PER_GROUP = 8, 5
@@ -1366,6 +1369,22 @@ local function AddTest()
     ui.testOn = true
     Paint()
 end
+
+-- Lo guardado, en la cuenta: los eventos, con quién va y sus raids (Jorge, 24/11: «al hacer /reload se borra todo»). Lo de
+-- prueba no se guarda, y un evento se quita KEEP_DAYS días después de su hora [+ARCHITECTURE.md]
+local KEEP_DAYS = 7
+local function Tidy()
+    local old = time() - KEEP_DAYS * 86400
+    for k = #events, 1, -1 do
+        local e = events[k]
+        if type(e) ~= "table" or e.test or type(e.t) ~= "number" or e.t < old or type(e.signups) ~= "table" then table.remove(events, k) end
+    end
+end
+HU:OnStart(function()
+    events = HU.db.calEvents
+    Tidy()
+end)
+HU:On("PLAYER_LOGOUT", Tidy)
 
 -- («+ Nuevo evento» apagado, al pasar el ratón: quién los crea según la configuración del calendario, calMake; con
 -- «Todos» siempre se puede, así que no sale. Encendido, nada: su nombre ya se lee)

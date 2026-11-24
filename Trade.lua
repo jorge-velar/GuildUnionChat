@@ -5,8 +5,9 @@
 local _, HU = ...
 local L = HU.L
 
--- (las recetas de cada profesión, leídas al abrir su ventana, y la casilla «Solo lo que puedo hacer»)
-HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft" } })
+-- (las recetas de cada profesión, leídas al abrir su ventana, y la casilla «Solo lo que puedo hacer»; y las solicitudes,
+-- los chats con cada persona y lo sin leer, para que /reload no los borre: ver Tidy)
+HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft", tradeReqs = {}, tradeChats = {}, tradeUnread = {} } })
 
 -- (filas y títulos de 24, con 4 de margen a cada lado del texto: Jorge, 24/11, «muy apelotonado». Caben en la sección
 -- con la ventana del juego a su alto de siempre: comercio_spec)
@@ -1057,6 +1058,27 @@ end
 function HU:TradeTest(on)
     if on then AddTest() else ClearTest(); Paint() end
 end
+
+---------------------------------------------------------------------------
+-- Lo guardado, por personaje: las solicitudes, los chats con cada persona y lo sin leer (Jorge, 24/11: «al hacer /reload
+-- se borra todo»). Lo de prueba no se guarda, y lo de hace más de KEEP_DAYS se quita al entrar [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local KEEP_DAYS = 30
+local function Tidy()
+    local old = time() - KEEP_DAYS * 86400
+    for k = #reqs, 1, -1 do
+        local r = reqs[k]
+        if type(r) ~= "table" or r.test or type(r.t) ~= "number" or r.t < old then table.remove(reqs, k) end
+    end
+    for key in pairs(chats) do if key:find("%-Prueba$") then chats[key] = nil end end
+    for key in pairs(unread) do if key:find("%-Prueba$") or not chats[key] then unread[key] = nil end end
+end
+HU:OnStart(function()
+    reqs, chats, unread = HU.db.tradeReqs, HU.db.tradeChats, HU.db.tradeUnread
+    Tidy()
+    HU:Changed("tradeUnread")
+end)
+HU:On("PLAYER_LOGOUT", Tidy)
 
 ---------------------------------------------------------------------------
 -- Montar la sección (UnionRoster.lua la pone en la pestaña Trade)
