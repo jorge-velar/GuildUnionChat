@@ -17,8 +17,9 @@ local ROW_UP, DROP = 31, 0
 -- lista empiezan justo debajo, y sus bordes empiezan 7 y 3 por encima de ellos) [+ARCHITECTURE.md]
 local INSET_EDGE = 3
 local CHAT_EDGE, LIST_EDGE = 7, 3
--- (en la columna de comunidades: nuestras filas finas y «Unirse…», alta como las del juego, CommunitiesListEntryTemplate)
-local SIDE_ROW_H, ENTRY_H, SIDE_GAP = 24, 68, 4
+-- (en la columna de comunidades: nuestras filas, colgando de la hermandad, y «Unirse…», alta como las del juego,
+-- CommunitiesListEntryTemplate. SIDE_INDENT: la línea que baja del escudo de la hermandad, bajo su centro)
+local SIDE_ROW_H, ENTRY_H, SIDE_GAP, SIDE_INDENT = 34, 68, 4, 31
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
 -- (la franja de esa barra, entre la columna y lo nuestro: toda oscura, de arriba abajo, con la barra por encima; mide
@@ -844,27 +845,39 @@ local function Build(f)
         b:SetAttribute("type", "click")
         return b
     end
+    -- (verde, como el nombre de la hermandad: son suyas)
+    local guildGreen = _G.GREEN_FONT_COLOR
     local function Row(text, icon, own)
         local b = Secure(SIDE_ROW_H)
-        -- (elegida, un tinte dorado; al pasar el ratón, más clara)
+        -- (elegida, un tinte verde; al pasar el ratón, más clara; las dos, desde la rama)
         b.sel = b:CreateTexture(nil, "BACKGROUND")
-        b.sel:SetAllPoints(); b.sel:SetColorTexture(1, 0.82, 0, 0.14)
+        b.sel:SetPoint("TOPLEFT", SIDE_INDENT + 10, -2); b.sel:SetPoint("BOTTOMRIGHT", -6, 2)
+        b.sel:SetColorTexture(0.25, 0.8, 0.25, 0.18)
         b.sel:Hide()
         local hl = b:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.08)
+        hl:SetPoint("TOPLEFT", SIDE_INDENT + 10, -2); hl:SetPoint("BOTTOMRIGHT", -6, 2)
+        hl:SetColorTexture(1, 1, 1, 0.08)
+        -- (la rama, de la línea de la hermandad a su icono)
+        local tick = b:CreateTexture(nil, "ARTWORK")
+        tick:SetColorTexture(0.45, 0.75, 0.35, 0.7)
+        tick:SetSize(14, 2); tick:SetPoint("LEFT", SIDE_INDENT, 0)
         local ic = b:CreateTexture(nil, "ARTWORK")
         ic:SetTexture(icon)
         -- (los iconos del juego traen un marco oscuro: se recorta; el nuestro va entero)
         if not own then ic:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        ic:SetSize(16, 16); ic:SetPoint("LEFT", 14, 0)
+        ic:SetSize(24, 24); ic:SetPoint("LEFT", SIDE_INDENT + 14, 0)
         local mask = b:CreateMaskTexture()
         mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         mask:SetAllPoints(ic)
         ic:AddMaskTexture(mask)
+        -- (con el aro dorado de los iconos de las comunidades)
+        local ring = b:CreateTexture(nil, "OVERLAY")
+        ring:SetAtlas("communities-ring-gold"); ring:SetSize(31, 31); ring:SetPoint("CENTER", ic, "CENTER")
         b.icon = ic
         local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        fs:SetPoint("LEFT", ic, "RIGHT", 8, 0); fs:SetPoint("RIGHT", -8, 0)
+        fs:SetPoint("LEFT", ic, "RIGHT", 9, 0); fs:SetPoint("RIGHT", -8, 0)
         fs:SetJustifyH("LEFT"); fs:SetText(text)
+        if guildGreen then fs:SetTextColor(guildGreen:GetRGB()) end
         b.text = fs
         return b
     end
@@ -905,10 +918,19 @@ local function Build(f)
     join.text:SetPoint("LEFT", plus, "RIGHT", 13, 0); join.text:SetPoint("RIGHT", -24, 0)
     join.text:SetJustifyH("LEFT")
     join.text:SetText(type(_G.COMMUNITIES_JOIN_COMMUNITY) == "string" and _G.COMMUNITIES_JOIN_COMMUNITY or L("Unirse o crear una comunidad"))
-    local green = _G.GREEN_FONT_COLOR
-    if green then join.text:SetTextColor(green:GetRGB()) end
+    if guildGreen then join.text:SetTextColor(guildGreen:GetRGB()) end
     side.join = join
     side.join:Hide()
+    -- (la línea que baja del escudo de la hermandad hasta la última fila: se ve que son suyas. Jorge, 24/11: «que se vea
+    -- que es de la guild»)
+    if side.entries[1] then
+        local branch = side.entries[1]:CreateTexture(nil, "ARTWORK")
+        branch:SetColorTexture(0.45, 0.75, 0.35, 0.7)
+        branch:SetWidth(2)
+        branch:SetPoint("TOPLEFT", side.entries[1], "TOPLEFT", SIDE_INDENT, 6)
+        branch:SetPoint("BOTTOMLEFT", side.entries[#side.entries], "LEFT", SIDE_INDENT, -1)
+        side.branch = branch
+    end
     cover.side = side
 
     -- Los títulos de las columnas, como los del juego; un clic ordena por esa columna
@@ -1162,10 +1184,10 @@ local function Build(f)
         first:ClearAllPoints()
         if atJoin then
             joinFrame:SetAlpha(0); joinFrame:EnableMouse(false); hiddenJoin = joinFrame
-            -- (4 de aire con la entrada de encima y con «Unirse…»: las filas son finas y se pegaban)
-            first:SetPoint("TOPLEFT", joinFrame, "TOPLEFT", 0, -SIDE_GAP); first:SetPoint("TOPRIGHT", joinFrame, "TOPRIGHT", 0, -SIDE_GAP)
+            -- (pegadas a la entrada de encima, la hermandad: cuelgan de ella)
+            first:SetPoint("TOPLEFT", joinFrame, "TOPLEFT"); first:SetPoint("TOPRIGHT", joinFrame, "TOPRIGHT")
         elseif lastFrame then
-            first:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT", 0, -SIDE_GAP); first:SetPoint("TOPRIGHT", lastFrame, "BOTTOMRIGHT", 0, -SIDE_GAP)
+            first:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT"); first:SetPoint("TOPRIGHT", lastFrame, "BOTTOMRIGHT")
         else
             -- (sin marcos de la lista a la vista: donde iría su primera entrada, tras los 40 de arriba)
             first:SetPoint("TOPLEFT", cl, "TOPLEFT", 3, -40); first:SetPoint("TOPRIGHT", cl, "TOPRIGHT", -2, -40)

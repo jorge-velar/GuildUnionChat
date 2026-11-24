@@ -1113,7 +1113,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         -- (la del juego, transparente y sin clics; las nuestras en su sitio; la nuestra igual, debajo, pulsa la suya)
         A.same({ 0, false }, { join._alpha, join._mouse })
         A.equal(nil, club._alpha, "la hermandad, sin tocar")
-        A.same({ "TOPLEFT", join, "TOPLEFT", 0, -4 }, side.entries[1]._pts[1])
+        A.same({ "TOPLEFT", join, "TOPLEFT" }, side.entries[1]._pts[1], "pegadas a la hermandad: cuelgan de ella")
         A.same({ "TOPLEFT", side.entries[1], "BOTTOMLEFT" }, side.entries[2]._pts[1])
         A.same({ "TOPLEFT", side.entries[2], "BOTTOMLEFT", 0, -4 }, side.join._pts[1])
         A.equal(join, side.join._clickbutton)
