@@ -215,11 +215,12 @@ local function Paint()
     cover.status:SetText(table.concat(parts, "  ·  "))
 end
 
--- Un clic del jugador aquí (botones, títulos, filas, la rueda, la barra de la lista y sus flechas): el único
--- momento en que el juego deja hacer /who (UnionMembers.lua). No con OnVerticalScroll: salta también cuando la
--- lista se recoloca sola (al pintarla o cambiar de tamaño), sin clic
+-- Un clic del jugador aquí (títulos, filas, la rueda, la barra de la lista y sus flechas): el único momento en que
+-- el juego deja hacer /who (UnionMembers.lua). No con OnVerticalScroll: salta también cuando la lista se recoloca
+-- sola (al pintarla o cambiar de tamaño), sin clic
 -- (nunca mientras colocamos la ventana: si el cambio de vista viene de un botón seguro del juego, el /who
 -- queda dentro de su clic y el juego lo bloquea: ADDON_ACTION_BLOCKED, visto el 23/11)
+-- (tampoco con los botones de arriba: «Miembros» lo pedía al volver de Comercio y el juego lo bloqueó, 24/11)
 local inSync = false
 local function WhoTick()
     if inSync or InCombatLockdown() then return end
@@ -234,18 +235,34 @@ local function Layout()
     if not (cover and ml) then return end
     local tb = cover.tabs
     local chatMode = mode == "chat" and f.Chat ~= nil
-    -- (los botones caben siempre: más estrechos si no hay sitio)
-    local w = cover:GetWidth()
+    -- (el ancho de lo nuestro en esta vista: en la de miembros, el de la lista del juego y 25 más (-3 y +22); en la
+    -- de chat, de la columna de comunidades (+23) al borde de la ventana (-4))
+    local W
+    if chatMode then
+        local clRight, fRight = f.CommunitiesList:GetRight(), f:GetRight()
+        if type(clRight) == "number" and type(fRight) == "number" then W = fRight - clRight - 4 - 23 end
+    else
+        local mw = ml:GetWidth()
+        if type(mw) == "number" and mw > 0 then W = mw + 25 end
+    end
+    -- (los botones caben siempre: más estrechos si no hay sitio; y centrados, todos con la misma cuenta: x0 desde la
+    -- izquierda de lo nuestro, también los seguros, que van atados a la lista del juego o a la columna)
+    local n = #TABS
     local bw = BTN_W
-    if type(w) == "number" and w > 0 then bw = math.min(BTN_W, math.floor((w - 16 - 6 * (#TABS - 1)) / #TABS)) end
+    if W then bw = math.max(40, math.min(BTN_W, math.floor((W - 16 - 6 * (n - 1)) / n))) end
+    local x0 = W and math.max(8, math.floor((W - n * bw - (n - 1) * 6) / 2)) or 8
     for _, b in ipairs(tb.Tabs) do b:SetWidth(bw) end
-    if tb.chatSecure and not InCombatLockdown() then tb.chatSecure:SetWidth(bw) end
+    if tb.chatSecure and not InCombatLockdown() then
+        tb.chatSecure:SetWidth(bw)
+        tb.chatSecure:ClearAllPoints()
+        tb.chatSecure:SetPoint("LEFT", ml, "TOPLEFT", -3 + x0, TOP - TAB_H / 2)
+    end
     -- El primer sitio cambia: en Miembros, «Chat» (el botón seguro, debajo); en Comercio y Calendario, «Miembros»
     -- (el nuestro, encima de él); en la vista de chat, «Miembros» (el seguro). Así sobra un botón [+ARCHITECTURE.md]
     for i, b in ipairs(tb.Tabs) do
         b:SetShown(not chatMode and (i > 1 or tab ~= 1))
         b:ClearAllPoints()
-        b:SetPoint("LEFT", tb, "LEFT", 8 + (i - 1) * (bw + 6), 0)
+        b:SetPoint("LEFT", tb, "LEFT", x0 + (i - 1) * (bw + 6), 0)
     end
     -- (en la vista de chat, los botones seguros que pasan a la vista de miembros con esa sección. Se colocan fuera
     -- de combate, que es cuando el juego deja mover un botón seguro)
@@ -254,7 +271,7 @@ local function Layout()
             b:SetWidth(bw)
             b:ClearAllPoints()
             -- (con la fila, no con el chat, que baja)
-            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + 8 + (i - 1) * (bw + 6), -34 - TAB_H / 2)
+            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + x0 + (i - 1) * (bw + 6), -34 - TAB_H / 2)
         end
     end
     cover:ClearAllPoints()
@@ -769,7 +786,7 @@ local function Build(f)
         b:SetText(L(t.title))
         if i == 1 then b:SetPoint("LEFT", tabs, "LEFT", 8, 0)
         else b:SetPoint("LEFT", tabs.Tabs[i - 1], "RIGHT", 6, 0) end
-        b:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(i); WhoTick() end)
+        b:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(i) end)
         tabs.Tabs[i] = b
     end
     -- («Miembros» va en el sitio del «Chat» seguro y, cuando se ve, encima de él: Layout)

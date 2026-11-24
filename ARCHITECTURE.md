@@ -2609,6 +2609,12 @@ cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los 
   «Miembros» nuestro (`Tabs[1]`, nivel de marco más alto) se pone encima y recibe el clic; en Miembros se esconde y
   queda el «Chat». Así no hay que enseñar ni esconder el seguro al cambiar de sección (en combate no se podría). En la
   vista de chat no hay «Chat»: ya se está en él; el primero es el «Miembros» seguro.
+- Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
+  y 25 más; en la de chat, de la columna de comunidades al borde de la ventana) y de ahí `x0`, el principio de la
+  fila. Con esa misma cuenta van los nuestros (atados a la fila) y los seguros (atados a la lista del juego o a la
+  columna, fuera de combate): el «Miembros» sigue justo encima del «Chat».
+- Los botones de arriba no piden /who (24/11: al volver de Comercio a Miembros, el juego lo bloqueó dentro de ese
+  clic); lo piden los títulos, las filas, la rueda y la barra (`WhoTick`).
 - En combate no se puede enseñar, esconder ni mover un botón seguro: cuelgan de algo que solo se ve en su vista
   (la casilla de desconectados; los de sección, el chat) y se colocan fuera de combate (`secureLater`). Tampoco se
   pueden crear: si `Blizzard_Communities` se carga en combate, la fila se monta al salir de él (`Setup`, `setupLater`).

@@ -830,6 +830,26 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("los botones de arriba, centrados en la fila; el «Chat» seguro, justo debajo del «Miembros»", function()
+        local a = F.Community()
+        local f = GuildWindow(a)
+        f.MemberList.GetWidth = function() return 600 end
+        local cover = a.env.GuildUnionUnionRoster
+        -- (dónde se pide cada uno)
+        local function Track(b) b.SetPoint = function(self, ...) self._pt = { ... } end end
+        for _, b in ipairs(cover.tabs.Tabs) do Track(b) end
+        Track(cover.tabs.chatSecure)
+        local t = cover.tabs.Tabs[2]
+        t:GetScript("OnClick")(t)
+        -- (lo nuestro mide 600 + 25 = 625; tres de 118 y dos huecos de 6 son 366: empiezan en 129)
+        local p1, p2, p3 = cover.tabs.Tabs[1]._pt, cover.tabs.Tabs[2]._pt, cover.tabs.Tabs[3]._pt
+        A.same({ "LEFT", 129 }, { p1[1], p1[4] })
+        A.same({ "LEFT", 253 }, { p2[1], p2[4] })
+        A.same({ "LEFT", 377 }, { p3[1], p3[4] })
+        A.equal(-3 + 129, cover.tabs.chatSecure._pt[4], "el «Chat» seguro, en el mismo sitio")
+        A.same({}, a:Errors())
+    end)
+
     it("Comercio y Calendario: cada uno su sección, sin la lista de miembros; el primer botón cambia", function()
         local a = F.Community()
         GuildWindow(a)
@@ -849,6 +869,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         t1:GetScript("OnClick")(t1)
         A.truthy(cover.hdr:IsShown())
         A.falsy(t1:IsShown(), "otra vez «Chat»")
+        A.same({}, a.w.whoSent, "los botones de arriba no piden /who (el juego lo bloqueó al volver a Miembros)")
         A.falsy(cover.trade:IsShown()); A.falsy(cover.calendar:IsShown())
         A.same({}, a:Errors())
     end)
