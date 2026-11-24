@@ -1833,6 +1833,30 @@ describe("El chat de la ventana de hermandad del juego sigue el formato de Ajust
         A.same({}, a:Errors())
     end)
 
+    it("las líneas de las otras hermandades, cada una en su chat de la ventana: las de oficiales, en el de oficiales", function()
+        local a = F.Community()
+        local HU = a.HU
+        local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
+        f.Chat = a.env.CreateFrame("Frame", nil, f)
+        f.Chat.MessageFrame = a.env.CreateFrame("Frame", nil, f.Chat)
+        local got = {}
+        f.Chat.MessageFrame.AddMessage = function(_, line) got[#got + 1] = line end
+        local stream = 1   -- (1: el de la hermandad; 2: el de oficiales, Enum.ClubStreamType)
+        f.GetSelectedClubId = function() return 7 end
+        f.GetSelectedStreamId = function() return stream end
+        a.env.C_Club = { GetClubInfo = function() return { clubType = 2 } end, GetStreamInfo = function(_, id) return { streamType = id } end }
+        HU:Display("off", "DOS", "Bea-Reino", "hola oficiales")
+        HU:Display("main", "DOS", "Bea-Reino", "hola todos")
+        A.equal(1, #got, "en el chat general, solo la general")
+        A.truthy(got[1]:find("hola todos", 1, true))
+        stream, got = 2, {}
+        HU:Display("off", "DOS", "Bea-Reino", "otra de oficiales")
+        HU:Display("main", "DOS", "Bea-Reino", "otra general")
+        A.equal(1, #got, "en el de oficiales, solo la de oficiales (Jorge, 24/11: «tiene que ser de todos»)")
+        A.truthy(got[1]:find("otra de oficiales", 1, true))
+        A.same({}, a:Errors())
+    end)
+
     it("con «Nivel» en Ajustes (db.chatLevel), el nivel de quien escribe delante de su nombre, si se sabe", function()
         local a = F.Community()
         local HU = a.HU

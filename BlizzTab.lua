@@ -8,62 +8,71 @@ HU:Saved({ account = { chatMark = "dot", "chatLevel" } })
 
 local tab, panel
 local KEEP = 60                 -- últimas líneas de otras hermandades que se repintan al volver al chat
-local recent = {}
+local recent = { main = {}, off = {} }   -- (las del chat general y las del de oficiales, cada una con el suyo)
 
 local function Win() return _G.CommunitiesFrame end
 
--- ¿Está la ventana enseñando el chat general de mi hermandad?
-local function GuildChatShown()
+-- ¿Qué chat de mi hermandad enseña la ventana? «main» (el general), «off» (el de oficiales) o nil
+local function ShownKind()
     local f = Win()
-    if not (f and f:IsShown() and f.Chat and f.Chat:IsShown() and f.Chat.MessageFrame) then return false end
+    if not (f and f:IsShown() and f.Chat and f.Chat:IsShown() and f.Chat.MessageFrame) then return nil end
     local clubId = f.GetSelectedClubId and f:GetSelectedClubId()
     local streamId = f.GetSelectedStreamId and f:GetSelectedStreamId()
-    if not (clubId and streamId and C_Club) then return false end
+    if not (clubId and streamId and C_Club) then return nil end
     local ok, info = pcall(C_Club.GetClubInfo, clubId)
-    if not ok or not info or info.clubType ~= Enum.ClubType.Guild then return false end
+    if not ok or not info or info.clubType ~= Enum.ClubType.Guild then return nil end
     local ok2, s = pcall(C_Club.GetStreamInfo, clubId, streamId)
-    return ok2 and s and s.streamType == Enum.ClubStreamType.Guild or false
+    if not (ok2 and type(s) == "table") then return nil end
+    if s.streamType == Enum.ClubStreamType.Guild then return "main" end
+    if s.streamType == Enum.ClubStreamType.Officer then return "off" end
+    return nil
 end
+-- ¿Está la ventana enseñando el chat general de mi hermandad?
+local function GuildChatShown() return ShownKind() == "main" end
 
 ---------------------------------------------------------------------------
--- El chat de las otras hermandades en el chat de la ventana
+-- El chat de las otras hermandades en el chat de la ventana: el general con el general y el de oficiales con el de
+-- oficiales (Jorge, 24/11: «el chat de oficiales es solo de los de tu guild, tiene que ser de todos») [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
-local function AddToWindow(line, r, g, b)
-    if not GuildChatShown() then return end
+local function AddToWindow(kind, line, r, g, b)
+    if ShownKind() ~= kind then return end
     pcall(Win().Chat.MessageFrame.AddMessage, Win().Chat.MessageFrame, line, r, g, b)
 end
 
 local origDisplay = HU.Display
 function HU:Display(kind, tag, author, msg, guid)
     origDisplay(self, kind, tag, author, msg, guid)
-    if kind ~= "main" or not tag or tag == self.myTag then return end
+    if (kind ~= "main" and kind ~= "off") or not tag or tag == self.myTag then return end
     -- (sin «[Guild]» delante: en esta ventana las líneas de Blizzard tampoco lo llevan)
     local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg, author, tag)
     local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, "blizz", nil, HU.MENTION_MARK[mentioned])
     local line = head .. body
     local r, g, b = self:KindColor(kind)
-    recent[#recent + 1] = { line, r, g, b, t = (GetServerTime and GetServerTime()) or time() }
-    if #recent > KEEP then table.remove(recent, 1) end
-    AddToWindow(line, r, g, b)
+    local list = recent[kind]
+    list[#list + 1] = { line, r, g, b, t = (GetServerTime and GetServerTime()) or time() }
+    if #list > KEEP then table.remove(list, 1) end
+    AddToWindow(kind, line, r, g, b)
 end
 
 -- Cuando Blizzard rehace su chat (al abrir la ventana o cambiar de canal), borra lo nuestro. Para [+ARCHITECTURE.md]
 local rebuild   -- { epochs = {...}, k = 0, ptr = 1 } mientras Blizzard repinta
 local function PutOurs(mf, upto)
-    while rebuild.ptr <= #recent and recent[rebuild.ptr].t * 1000000 < upto do
-        local e = recent[rebuild.ptr]
+    local list = recent[rebuild.kind]
+    while rebuild.ptr <= #list and list[rebuild.ptr].t * 1000000 < upto do
+        local e = list[rebuild.ptr]
         pcall(mf.AddMessage, mf, e[1], e[2], e[3], e[4])
         rebuild.ptr = rebuild.ptr + 1
     end
 end
 local function OnClear()
     rebuild = nil
-    if not GuildChatShown() or #recent == 0 then return end
+    local kind = ShownKind()
+    if not kind or #recent[kind] == 0 then return end
     local chat = Win().Chat
     local ok, msgs = pcall(chat.GetMessagesToDisplay, chat)
     local epochs = {}
     for i, m in ipairs(ok and msgs or {}) do epochs[i] = m.messageId and m.messageId.epoch or 0 end
-    rebuild = { epochs = epochs, k = 0, ptr = 1 }
+    rebuild = { kind = kind, epochs = epochs, k = 0, ptr = 1 }
     -- (lo nuestro más viejo que su primer mensaje, arriba del todo)
     PutOurs(chat.MessageFrame, epochs[1] or math.huge)
 end

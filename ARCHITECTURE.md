@@ -2501,6 +2501,13 @@ que vuelva intercalado por hora: al empezar (su Clear) se mira la lista de mensa
 pintar, y cada vez que pinta uno (su AddMessage) se meten detrás los nuestros que van antes del
 siguiente suyo. Al acabar (DisplayChat), los que queden. No se rehace nada suyo: solo se añade.
 
+**El chat de las otras hermandades en el de la ventana** (`HU:Display`, `ShownKind`): las líneas generales de las
+otras hermandades van al chat de la hermandad y las de sus oficiales, al de oficiales (Jorge, 24/11: «el chat de
+oficiales es solo de los de tu guild, tiene que ser de todos»; hasta la 321 solo iban las generales). Cada una con su
+lista de las últimas (`recent.main`, `recent.off`, `KEEP`), que se vuelven a meter al rehacer ese chat (`rebuild.kind`).
+Lo que se escribe en el de oficiales de la ventana ya iba a los oficiales de las otras (`C_Club.SendMessage`,
+Channel.lua). La lista de la derecha es la del juego: solo enseña a los de mi hermandad.
+
 ### Buscador de personajes en la pestaña de miembros de Blizzard, junt…
 
 Buscador de personajes en la pestaña de miembros de Blizzard, junto a su filtro (como el de
