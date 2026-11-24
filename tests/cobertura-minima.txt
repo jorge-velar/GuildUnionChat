@@ -3,7 +3,7 @@
 # Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)
 Audit.lua 83.7 13
 Blacklist.lua 88.3 14
-BlizzTab.lua 46.3 566
+BlizzTab.lua 58.4 443
 ChanPresence.lua 95.0 3
 Channel.lua 80.2 279
 Channels.lua 14.4 196
@@ -52,6 +52,6 @@ UIWindows.lua 95.0 3
 UnionCalendar.lua 98.5 17
 UnionConfig.lua 100.0 0
 UnionMembers.lua 93.4 18
-UnionRoster.lua 85.2 114
+UnionRoster.lua 87.7 109
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144
