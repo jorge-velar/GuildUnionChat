@@ -23,6 +23,8 @@ local INSET_EDGE = 3   -- (vista de chat: la piedra de la fila tapa el borde de 
 local CHAT_EDGE, LIST_EDGE = 7, 3
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
+-- (la franja de esa barra, entre la columna y lo nuestro: la piedra la cubre y la barra va por encima) [+ARCHITECTURE.md]
+local STRIP = 23
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
@@ -244,6 +246,23 @@ local function WhoTick()
     if cover and cover:IsShown() and tab == 1 and HU:UnionWhoTick(nil) then Paint() end
 end
 
+-- (en la vista de chat, sin la raya de arriba del chat ni de su lista (Jorge, 24/11): la piedra llega hasta ellos, como
+-- en Miembros. Solo transparente: el borde es del juego) [+ARCHITECTURE.md]
+local boxTopsShown = true
+local function BoxTops(f, show)
+    if show == boxTopsShown or not f then return end
+    boxTopsShown = show
+    for _, box in ipairs({ f.Chat, f.MemberList }) do
+        local inset = type(box) == "table" and type(box.InsetFrame) == "table" and box.InsetFrame or nil
+        local ns = inset and type(inset.NineSlice) == "table" and inset.NineSlice or nil
+        if ns then
+            for _, k in ipairs({ "TopEdge", "TopLeftCorner", "TopRightCorner" }) do
+                if type(ns[k]) == "table" then ns[k]:SetAlpha(show and 1 or 0) end
+            end
+        end
+    end
+end
+
 -- Dónde va lo nuestro: en la vista de miembros, encima de su lista; en la de chat, encima del chat y de
 -- su lista de la derecha. Con «Chat» elegido, solo la fila de botones: el chat del juego se ve debajo
 local function Layout()
@@ -315,6 +334,7 @@ local function Layout()
     cover.rock:SetHeight(tab == 0 and TAB_H + INSET_EDGE or TAB_H + ROW_UP + HDR_H + 2)
     cover.dark:SetShown(tab ~= 0)
     if cover.band then cover.band:SetShown(chatMode) end
+    BoxTops(f, not chatMode)
 end
 
 -- (el botón redondo elegido, con el brillo blanco alrededor; los demás, con su sombra)
@@ -702,6 +722,7 @@ local function Build(f)
     cover:HookScript("OnHide", function()
         HU.charSearchOff = false; HU.SyncCharSearch()
         if cover.band then cover.band:Hide() end
+        BoxTops(f, true)
     end)
     cover:SetPoint("TOPLEFT", ml, "TOPLEFT", -3, TOP)
     -- (hasta 22 más a la derecha: tapa también la barra de la lista del juego, que se veía al lado de la nuestra)
@@ -724,17 +745,18 @@ local function Build(f)
     local rock = cover:CreateTexture(nil, "BACKGROUND")
     rock:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
     rock:SetHorizTile(true); rock:SetVertTile(true)
-    rock:SetPoint("TOPLEFT", cover, "TOPLEFT"); rock:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
+    rock:SetPoint("TOPLEFT", cover, "TOPLEFT", -STRIP, 0); rock:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
     rock:SetHeight(TAB_H + ROW_UP + HDR_H + 2)
     cover.rock = rock
-    -- (en la vista de chat, la misma piedra hasta el chat y su lista (Jorge, 24/11): en el fondo del juego, debajo de
-    -- lo suyo, y desde la esquina de la fila, para que casen sin costura) [+ARCHITECTURE.md]
+    -- (en la vista de chat, la misma piedra hasta el chat y su lista (Jorge, 24/11): en el fondo del juego, encima de su
+    -- borde y debajo de lo suyo, y desde la misma esquina que la de la fila, para que casen sin costura) [+ARCHITECTURE.md]
     local inset = type(f.Inset) == "table" and f.Inset or nil
+    local edge = inset and type(inset.NineSlice) == "table" and inset.NineSlice or nil
     if inset then
-        local band = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
+        local band = edge and edge:CreateTexture(nil, "OVERLAY") or inset:CreateTexture(nil, "BACKGROUND", nil, 1)
         band:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
         band:SetHorizTile(true); band:SetVertTile(true)
-        band:SetPoint("TOPLEFT", cover, "TOPLEFT"); band:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
+        band:SetPoint("TOPLEFT", cover, "TOPLEFT", -STRIP, 0); band:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
         band:SetHeight(TAB_H + 2 + ROW_UP - LIST_EDGE)
         band:Hide()
         cover.band = band
@@ -1066,17 +1088,24 @@ local function Build(f)
         ddOff = off
         dd:SetAlpha(off and 0 or 1)
         dd:EnableMouse(not off)
+        -- (el buscador, al hueco que deja: BlizzTab.lua)
+        HU.guildDropdownOff = off
+        HU.SyncCharSearch()
     end
     if f.SelectStream then hooksecurefunc(f, "SelectStream", function() GuildDropdown() end) end
-    -- (la barra de la columna de comunidades, arriba del todo en nuestras vistas (Jorge, 24/11); en las demás, donde la
-    -- pone el juego. Solo se cambia su esquina de arriba: la de abajo sigue la suya) [+ARCHITECTURE.md]
+    -- (la barra de la columna de comunidades, arriba del todo y por encima de la piedra en nuestras vistas (Jorge, 24/11);
+    -- en las demás, donde y como la pone el juego. Solo se cambia su esquina de arriba: la de abajo sigue la suya)
+    -- [+ARCHITECTURE.md]
     local cl = type(f.CommunitiesList) == "table" and f.CommunitiesList or nil
     local clBar = cl and type(cl.ScrollBar) == "table" and cl.ScrollBar or nil
+    local clBarStrata, clBarLevel = clBar and clBar:GetFrameStrata(), clBar and clBar:GetFrameLevel()
     local clBarUp = false
     local function ListBar(up)
         if not clBar or up == clBarUp then return end
         clBarUp = up
         clBar:SetPoint("TOPLEFT", cl, "TOPRIGHT", 6, up and LIST_BAR_Y or LIST_BAR_Y_GAME)
+        clBar:SetFrameStrata(up and "HIGH" or clBarStrata)
+        clBar:SetFrameLevel(up and cover:GetFrameLevel() + 12 or clBarLevel)
     end
     -- (el juego vuelve a colocar la lista de la derecha a su aire —al actualizarla—: si está en la vista de
     -- chat con nuestra fila, se vuelve a poner debajo de la fila un instante después)

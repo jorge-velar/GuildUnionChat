@@ -1063,6 +1063,7 @@ function HU.MarkInGameList(name) ScrollTo(name) end
 
 local search
 HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
+HU.guildDropdownOff = false -- (UnionRoster.lua: en la vista de chat no se ve el desplegable «Guild»; el buscador va a su sitio)
 HU.SyncCharSearch = function() end
 -- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
 -- dónde es (antes se abría un susurro con él: Jorge, 10/11). Para susurrar, el clic derecho
@@ -1174,7 +1175,9 @@ local function BuildCharSearch(f)
             else box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -108, 30) end
             box:Show()
         elseif not ours and dd and dd:IsVisible() then
-            box:SetPoint("LEFT", dd, "RIGHT", 16, 0)
+            -- (sin el desplegable a la vista, en su sitio: Jorge, 24/11)
+            if HU.guildDropdownOff then box:SetPoint("LEFT", dd, "LEFT", 0, 0)
+            else box:SetPoint("LEFT", dd, "RIGHT", 16, 0) end
             box:Show()
         else
             box:Hide()
