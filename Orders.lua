@@ -296,3 +296,5 @@ function HU:RunOrders(newJob)
     Refresh()
     return true
 end
+
+HU:Module("Orders", { "Core", "Roster" })

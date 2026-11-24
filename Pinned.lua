@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "pinned" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local function Clean(s) return (tostring(s or ""):gsub("[~\r\n]", " ")) end
@@ -55,6 +57,7 @@ function HU:SetPinned(text)
     self:Print(text ~= "" and L("Mensaje fijado para toda la comunidad.") or L("Mensaje fijado quitado."))
 end
 
+HU:RegisterMessage("PN", { queue = "chat", ttl = 600 })
 HU.comm.PN = function(self, sender, f, dist, raw)
     local t, author, tag, text = HU.NetT(f[1]), f[2], f[3], f[4] or ""
     text = HU.SafeText(text, true)
@@ -72,6 +75,7 @@ HU.comm.PN = function(self, sender, f, dist, raw)
     end
 end
 
+HU:RegisterMessage("PQ")
 HU.comm.PQ = function(self, sender)
     if not self.db.pinned then return end
     if self:IsRelay() then return self:SharePinned(sender) end
@@ -85,7 +89,7 @@ end
 HU:OnStart(function()
     HU.After(30, function() if HU.myTag then HU:Send("PQ", "GUILD") end end)
     -- el enlace lo hace llegar también a las otras hermandades de vez en cuando
-    HU.NewTicker(300, function()
+    HU:Every(300, "fijado-repartir", function()
         if HU.db.pinned and HU.myTag and HU:IsRelay() then
             for _, tag in ipairs(HU:OtherTags()) do
                 local peer = HU:BestPeer(tag)
@@ -94,3 +98,5 @@ HU:OnStart(function()
         end
     end)
 end)
+
+HU:Module("Pinned", { "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "Protocol", "Ranks" })

@@ -1,0 +1,2 @@
+# Avisos de luacheck que ya había (no paran el CI). Se rehace con:
+#   luacheck . -q --formatter=plain --codes | lua tests/luacheck_nuevos.lua --actualizar

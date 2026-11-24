@@ -1,0 +1,90 @@
+# Comprobación de Guild Union en cada push y pull request: pruebas (Lua 5.1, el de WoW) y luacheck
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # (con las etiquetas: la prueba de versiones mezcladas carga la última publicada)
+
+      - name: Instalar Lua 5.1
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+
+      - name: Pruebas (tests/run.lua)
+        run: lua5.1 tests/run.lua
+
+      # Solo informa (en la 5.4.41 faltan 54). Cuando estén todas: añadir --estricto para que pare el CI
+      - name: Textos sin traducción al inglés
+        run: lua5.1 tests/traducciones.lua
+
+  # Cobertura (tests/cobertura.lua): ningún archivo baja de su mínimo (tests/cobertura-minima.txt) y,
+  # en una PR, lo nuevo o cambiado está probado al 70 %. La tabla sale en el resumen de la ejecución.
+  cobertura:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # (para comparar con la rama de destino)
+
+      - name: Instalar Lua 5.1 (trae luac5.1)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+
+      - name: Cobertura
+        run: lua5.1 tests/cobertura.lua --base "origin/${{ github.base_ref || 'main' }}" --al-dia cobertura-al-dia.txt
+
+      # Los valores de ahora, por si hay que guardarlos como mínimos (cuando suben): se descarga y se
+      # copia a tests/cobertura-minima.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cobertura-minima
+          path: cobertura-al-dia.txt
+          if-no-files-found: ignore
+
+  luacheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar luacheck y Lua 5.1
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua-check lua5.1
+
+      # Para solo con avisos NUEVOS: los que ya había están en tests/luacheck-conocidos.txt
+      # (los errores de sintaxis paran siempre: luacheck sale con 2 o más)
+      - name: luacheck (para con avisos nuevos)
+        run: |
+          set +e
+          luacheck . -q --formatter=plain --codes > luacheck.txt
+          code=$?
+          set -e
+          [ "$code" -ge 2 ] && { cat luacheck.txt; exit 1; }
+          lua5.1 tests/luacheck_nuevos.lua < luacheck.txt
+
+      # La lista al día, por si hay que guardarla (la primera vez, o tras arreglar avisos):
+      # se descarga desde la ejecución del CI y se copia a tests/luacheck-conocidos.txt
+      - name: Lista de avisos al día
+        if: always()
+        run: lua5.1 tests/luacheck_nuevos.lua --actualizar < luacheck.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: luacheck-conocidos
+          path: tests/luacheck-conocidos.txt

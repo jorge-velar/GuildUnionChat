@@ -4,4 +4,7 @@ package-as: GuildUnion
 ignore:
   - Tools
   - Bench
+  - docs
+  - tests
   - .gitignore
+  - CLAUDE.md

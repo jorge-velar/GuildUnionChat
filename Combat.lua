@@ -1,11 +1,13 @@
 -- Guild Union - modo combate: en combate dentro de una banda o mazmorra el addon solo muestra y manda [+ARCHITECTURE.md]
 local _, HU = ...
 
+HU:Saved({ char = { "pvpSince" } })
+
 -- (campos de batalla y arenas también: ahí el juego bloquea los envíos en combate y, sin este modo, la
 -- cola se llenaba de saludos que caducaban y se perdía el contacto con las otras hermandades. 11/11)
 local INSTANCE_KINDS = { party = true, raid = true, pvp = true, arena = true }
 local PVP_KINDS = { pvp = true, arena = true }
-local CEDE_PENALTY = 150         -- (lo mismo que resta Busy() en banda: Comm.lua)
+local CEDE_PENALTY = 150         -- (lo mismo que resta Busy() en banda: Net/Relay.lua)
 local CEDE_IN_DUNGEON = true     -- (en banda ya lo resta Busy(); esto lo añade en mazmorra)
 local DRAIN_MS = 0.8             -- trabajo por fotograma al salir de combate
 local REQ_MAX_AGE = 15           -- una petición más vieja que esto ya la ha contestado otro
@@ -17,14 +19,8 @@ local INBOX_MAX = 2000
 local ENC_MAX = 900              -- (por si no llega el fin del encuentro)
 
 -- lo que llega y se aplaza: "list" = listas de conectados, "data" = datos, "req" = peticiones [+ARCHITECTURE.md]
-local DEFER_IN = {
-    RB = "list",
-    RF = "req", NQ = "req", HQ = "req", OQ = "req", FQ = "req", WQ = "req",
-    HL = "data", PB = "data", OD = "data", OE = "data", WH = "data", WL = "data", WD = "data",
-    -- (quién es el enlace o los ayudantes de otra hermandad, contado por mi hermandad: vale el último)
-    PH = "last", PL = "last",
-}
-local BULK_PREFIX = { RB = true, RC = true, PB = true, OD = true, WL = true, HL = true }
+-- (lo declara cada orden con combat = ... en su HU:RegisterMessage, Protocol.lua)
+local function DeferKind(cmd) local s = HU.msgs[cmd] return s and s.combat end
 
 local clock = debugprofilestop or function() return GetTime() * 1000 end
 local inInst, instKind, regen, enc, encT = false, nil, false, false, 0
@@ -59,7 +55,7 @@ end
 
 local function Store(cmd, sender, f, dist, raw)
     if rawSeen[raw] then return end -- (la misma copia por otra vía o de otro ayudante)
-    local kind = DEFER_IN[cmd]
+    local kind = DeferKind(cmd)
     local e = { cmd = cmd, sender = sender, dist = dist, raw = raw }
     if kind == "list" then
         local tag = f[1] or ""
@@ -103,20 +99,17 @@ end
 -- lo que cuesta procesar cada orden (el más caro de los últimos, que va bajando poco a poco); se mide
 -- siempre, también fuera de combate, para saber si una lista cabe en un fotograma de combate
 local estBy = {}
-for cmd in pairs(DEFER_IN) do
-    local orig = HU.comm[cmd]
-    if orig then
-        HU.comm[cmd] = function(self, sender, f, dist, raw, ...)
-            -- (lo del canal no se guarda: al repetirlo faltaría con qué canal llegó)
-            if hold and not HU.combatReplay and dist ~= "CHANNEL" and type(raw) == "string" and sender then
-                return Store(cmd, sender, f, dist, raw)
-            end
-            if cmd ~= "RB" then return orig(self, sender, f, dist, raw, ...) end
-            local t0 = clock()
-            orig(self, sender, f, dist, raw, ...)
-            estBy.RB = math.max(clock() - t0, (estBy.RB or 0) * 0.9)
-        end
+-- Lo llama la entrada (HU.OnAddonMessage, Net/Security.lua) con las órdenes que declaran combat = ...:
+-- en combate se guarda para después; si no, se trata ya (h es su manejador)
+function HU.CombatDispatch(h, cmd, sender, f, dist, raw)
+    -- (lo del canal no se guarda: al repetirlo faltaría con qué canal llegó)
+    if hold and not HU.combatReplay and dist ~= "CHANNEL" and type(raw) == "string" and sender then
+        return Store(cmd, sender, f, dist, raw)
     end
+    if cmd ~= "RB" then return h(HU, sender, f, dist, raw) end
+    local t0 = clock()
+    h(HU, sender, f, dist, raw)
+    estBy.RB = math.max(clock() - t0, (estBy.RB or 0) * 0.9)
 end
 
 ---------------------------------------------------------------------------
@@ -133,7 +126,7 @@ local function NextInbox()
         pos = pos + 1
         if not e.dead then
             Kill(e)
-            if DEFER_IN[e.cmd] ~= "req" or GetTime() - e.t <= REQ_MAX_AGE then return e end
+            if DeferKind(e.cmd) ~= "req" or GetTime() - e.t <= REQ_MAX_AGE then return e end
         end
     end
     return nil
@@ -159,7 +152,7 @@ local function Replay(e)
     local t0 = clock()
     HU.combatReplay = true
     -- (por la entrada normal: vuelve a pasar el tope por remitente y la seguridad de siempre)
-    HU:SafeCall("combate", HU.OnAddonMessage, BULK_PREFIX[e.cmd] and HU.PREFIX_B or HU.PREFIX, raw, e.dist, e.sender)
+    HU:SafeCall("combate", HU.OnAddonMessage, HU:MessagePrefix(e.cmd), raw, e.dist, e.sender)
     HU.combatReplay = nil
     local ms = clock() - t0
     est = math.max(ms, est * 0.9)
@@ -174,7 +167,7 @@ local function HelloAgain()
     if GetTime() - helloT < 20 or not HU.myTag or not HU.HelloCycle then return end
     helloT = GetTime()
     HU:SafeCall("combate", HU.HelloCycle, HU)
-    if HU.AnnounceRelay then HU.After(1.5, function() HU:AnnounceRelay(true) end) end
+    HU.After(1.5, function() HU:AnnounceRelay(true) end)
 end
 local function CatchUp()
     -- (tras un combate largo o si se tiró algo: se piden a mi hermandad todas las listas de una vez; [+ARCHITECTURE.md]
@@ -226,7 +219,7 @@ local function StartDrain()
     diag.releaseT = GetTime()
     -- (mi hermandad, leída de nuevo: la lectura se dejó para después; con su freno de 15 s, que entre pulls
     -- se sale de combate cada pocos segundos)
-    if HU.RequestRoster then HU:RequestRoster() end
+    HU:RequestRoster()
     HU.After(0, Drain)
 end
 
@@ -299,7 +292,7 @@ if origScore then
     HU.RelayScore = function(self)
         local s = origScore(self)
         if CEDE_IN_DUNGEON and inInst and instKind == "party" then s = s - CEDE_PENALTY end
-        -- (dentro de la partida ya lo resta Busy(), en Comm.lua: aquí solo mientras se espera fuera)
+        -- (dentro de la partida ya lo resta Busy(), en Net/Relay.lua: aquí solo mientras se espera fuera)
         if queued and not inInst then s = s - CEDE_PENALTY end
         return s
     end
@@ -311,7 +304,7 @@ local function CedeNow()
     if not HU.myTag or not IsInGuild() or not HU.RosterSlot then return end
     if not HU:RosterSlot() then return end
     HU.myAdvScore = HU:RelayScore()
-    if HU.ForgetRelayMemo then HU.ForgetRelayMemo() end
+    HU.ForgetRelayMemo()
     -- (1,1 s: quién es el enlace se recuerda 1 s, MassLogin.lua)
     HU.After(1.1, function()
         if HU.myTag and IsInGuild() then HU:Send(HU:HelloText("HI"), "GUILD", nil, true) end
@@ -327,7 +320,7 @@ local function CheckQueue()
     elseif HU.myTag and HU.RelayScore then
         -- (ha salido de la cola sin entrar: la puntuación vuelve a la suya; se dirá en el saludo siguiente)
         HU.myAdvScore = HU:RelayScore()
-        if HU.ForgetRelayMemo then HU.ForgetRelayMemo() end
+        HU.ForgetRelayMemo()
     end
 end
 function HU:InPvpQueue() return queued end
@@ -458,11 +451,13 @@ HU:OnStart(function()
     -- (entro fuera de una partida con la hora de una vieja guardada, p. ej. tras caerse el juego dentro:
     -- ya se pide lo de «mientras no estabas» al arrancar, Social.lua)
     if not (inInst and PVP_KINDS[instKind]) and HU.db then HU.db.pvpSince = nil end
-    HU.NewTicker(2, function() HU:SafeCall("bloqueo del chat", CheckChatLock) end)
+    HU:Every(2, "bloqueo-del-chat", CheckChatLock)
     -- (red de seguridad: si se pierde el aviso de fin de combate, no se queda en pausa)
-    HU.NewTicker(5, function()
+    HU:Every(5, "combate-salida", function()
         if not hold then return end
         if regen and InCombatLockdown and not InCombatLockdown() then regen = false end
         Update()
     end)
 end)
+
+HU:Module("Combat", { "Config", "Core", "Net/Relay", "Net/Transport", "Protocol", "Roster", "Social" })

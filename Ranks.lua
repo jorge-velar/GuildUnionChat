@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "officerRanks", "remoteRanks" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 HU.remoteRanks = {}   -- [tag] = { "Maestro", "Oficial", ... }  (posición 1 = rango 0)
@@ -47,12 +49,13 @@ function HU:RankNamesMessage()
     local names = {}
     for _, n in ipairs(self:MyRankNames()) do names[#names + 1] = (n:gsub("[~,]", " ")) end
     if #names == 0 then return nil end
-    local officers = self.MyOfficerRanksText and self:MyOfficerRanksText() or ""
+    local officers = self:MyOfficerRanksText() or ""
     local head = "RN~" .. self.myTag .. "~"
     local room = 250 - #head - #officers - 1
     return head .. HU.Utf8Cut(table.concat(names, ","), room) .. "~" .. officers
 end
 
+HU:RegisterMessage("RN", { tagField = 1, bootstrap = true, remoteData = true })
 HU.comm.RN = function(self, sender, f, dist, raw)
     local tag = f[1]
     if not tag or tag == self.myTag or not self.cfg or not self.cfg.byTag[tag] then return end
@@ -76,7 +79,7 @@ HU.comm.RN = function(self, sender, f, dist, raw)
         self.officerRanks[tag] = set
         self.db.officerRanks = self.db.officerRanks or {}
         self.db.officerRanks[tag] = set
-        if self.RetryDeferred then self:RetryDeferred() end
+        self:RetryDeferred()
     end
     if dist == "WHISPER" then self:Send(raw, "GUILD") end
     self:Changed("members")
@@ -155,12 +158,14 @@ function HU:AnswerRank(data, accept)
     end
 end
 
+HU:RegisterMessage("RD")
 HU.comm.RD = function(self, _, f)
     local id = f[1]
     if not id then return end
     HU:HideDialogs("HERMANDADUNIDA_RANK", function(d) return d and d.id == id end)
 end
 
+HU:RegisterMessage("RR")
 HU.comm.RR = function(self, _, f)
     local id, result, who, target, why = f[1], f[2], f[3], f[4], f[5]
     local req = id and myRequests[id]
@@ -219,6 +224,7 @@ local function SharePunish(name, rank, by)
     HU:Send(table.concat({ "KS", HU:FullName(name) or name, rank, by or "", HU.StampNow() }, "~"), "GUILD", nil, true)
 end
 
+HU:RegisterMessage("KS")
 HU.comm.KS = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local name, rank, by, t = HU.SafeName(f[1]), tonumber(f[2]), f[3], HU.NetStamp(f[4])
@@ -243,7 +249,7 @@ local OFFER_AGAIN = 600
 function HU:OfferRestoreRank(name, force)
     local k = self:Key(name)
     local p = k and self.db.punished and self.db.punished[k]
-    if not p or self:IsTest() or not self:InMyGuild(name) then return end
+    if not p or not self:InMyGuild(name) then return end
     local idx = self:PunishRank()
     local _, cur = FindRosterIndex(name)
     if not cur or (idx and cur ~= idx) then self.db.punished[k] = nil return end -- (ya le han cambiado el rango)
@@ -299,6 +305,8 @@ end
 HU:OnStart(function()
     HU.After(20, function()
         CheckPunished()
-        HU.NewTicker(30, CheckPunished)
+        HU:Every(30, "castigos", CheckPunished)
     end)
 end)
+
+HU:Module("Ranks", { "Audit", "Config", "Core", "Lists", "Net/Transport", "Popup", "Protocol", "Roster", "Social" })

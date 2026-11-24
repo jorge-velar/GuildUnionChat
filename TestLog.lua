@@ -39,7 +39,7 @@ local function Add(kind, text, who, t, snap)
     while #d.entries > MAX do table.remove(d.entries, 1) end
     -- (lo de los demás llega al que dirige la prueba)
     if d.leader and not who and not HU.paused and HU:Key(d.leader) ~= HU:MeKey() then
-        if HU.MarkPinged then HU:MarkPinged(d.leader) end
+        HU:MarkPinged(d.leader)
         pcall(C_ChatInfo.SendAddonMessage, HU.TPREFIX,
             HU.Utf8Cut(table.concat({ e.t, kind, e.x, snap or "" }, "~"), 255), "WHISPER", d.leader)
     end
@@ -147,7 +147,7 @@ end)
 HU:OnStart(function()
     loginT = GetTime()
     if On() then Add("entra", "entra al juego", nil, nil, Snapshot()) end
-    HU.NewTicker(5, function()
+    HU:Every(5, "registro-listas", function()
         if not On() then return end
         if not listsDone then
             local all = #HU:OtherTags() > 0
@@ -155,9 +155,11 @@ HU:OnStart(function()
             if all then listsDone = true; Add("listas", string.format("todas las listas a los %d s de entrar", GetTime() - loginT), nil, nil, Snapshot()) end
         end
     end)
-    HU.NewTicker(300, function()
+    HU:Every(300, "registro-foto", function()
         if not On() then return end
         Add("foto", string.format("peor fotograma en 5 min: %d ms", worst * 1000), nil, nil, Snapshot())
         worst = 0
     end)
 end)
+
+HU:Module("TestLog", { "Channel", "Config", "Core", "Net/Transport" })

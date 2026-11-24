@@ -2,6 +2,8 @@
 local _, HU = ...
 local L = HU.L
 
+HU:Saved({ char = { "netCfg" } })
+
 -- (descripción del protocolo y detalles: ARCHITECTURE.md)
 
 local function NoteLine(note)
@@ -117,6 +119,7 @@ function HU:ShareNetCfg(target)
 end
 
 local parts = {}
+HU:RegisterMessage("NF")
 HU.comm.NF = function(self, sender, f, dist)
     if dist ~= "GUILD" and dist ~= "WHISPER" then return end
     -- solo de mi propia hermandad (por susurro, de alguien de mi hermandad)
@@ -145,6 +148,7 @@ HU.comm.NF = function(self, sender, f, dist)
     self:RefreshConfig(true)
 end
 
+HU:RegisterMessage("NK")
 HU.comm.NK = function(self, sender, f, dist)
     if dist ~= "GUILD" or not self:CanOfficer() or not self.db.netCfg then return end
     HU.After(math.random() * 4, function()
@@ -163,7 +167,7 @@ end
 HU:OnStart(function()
     HU.StampFix(HU.db.netCfg)
     HU.After(25, function()
-        if HU:IsTest() or not IsInGuild() or HU:CanOfficer() then return end
+        if not IsInGuild() or HU:CanOfficer() then return end
         -- solo si la Información dice que hay líneas en notas de oficial y me faltan
         -- (sin nada en la Información: quizá el juego no dejó escribirla; se pide la copia)
         if not HU.cfg then
@@ -196,3 +200,5 @@ function HU:MakeOfficerNotesPrivate()
     self:Print(L("Para que la contraseña no la vea cualquiera: en la ventana de la hermandad (Rangos), quita «Ver notas de oficial» a los rangos que no sean de oficiales."))
     return false, L("este cliente no deja cambiar los permisos desde un addon")
 end
+
+HU:Module("NoteConfig", { "Config", "Core", "Net/Transport", "Pinned", "Protocol", "Roster" })

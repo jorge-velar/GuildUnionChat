@@ -27,7 +27,7 @@ local function SharedOf(self, k)
         local m = r.byKey and r.byKey[k]
         if m and tag ~= self.myTag then
             local idx = m.rankIndex or m.rankHidden
-            if idx and self.RankRole and self:RankRole(tag, idx) then return tag, m end
+            if idx and self:RankRole(tag, idx) then return tag, m end
             local p = self.remote and self.remote[k]
             if p and p.relay then return tag, m end
             local h = self.helpers and self.helpers[tag]
@@ -62,7 +62,7 @@ local function Check(k, p)
     HU.ApplyRosterDelta(self, r, p.tag, { "-" .. self:Short(m.name) }, 1, p.st)
     if #r.members < before then
         HU.chanLeaveDropN = HU.chanLeaveDropN + 1
-        if HU.IndexRoster then HU.IndexRoster(r) end
+        HU.IndexRoster(r)
         r.online = math.max(0, (r.online or before) - 1)
         self:Changed("members")
         self:Debug("Presencia por el canal: fuera", m.name, "<" .. p.tag .. ">")
@@ -80,7 +80,7 @@ HU:On("CHAT_MSG_CHANNEL_LEAVE", function(_, author, _, fullName, _, _, _, _, bas
     HU.chanLeftT[k] = GetTime()
     local tag = SharedOf(HU, k)
     if not tag then return end
-    local p = { t = GetTime(), st = HU.ListStampNow and HU.ListStampNow() or 0, tag = tag }
+    local p = { t = GetTime(), st = HU.ListStampNow() or 0, tag = tag }
     pending[k] = p
     HU.After(WAIT, function() Check(k, p) end)
 end)
@@ -97,3 +97,5 @@ HU:On("CHAT_MSG_CHANNEL_NOTICE", function(notice, _, _, fullName, _, _, _, _, ba
         lastMineT = GetTime()
     end
 end)
+
+HU:Module("ChanPresence", { "Channel", "Config", "Core", "Net/RosterSync" })

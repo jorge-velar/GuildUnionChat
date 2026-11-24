@@ -103,7 +103,7 @@ local function Guarded(where, fn, ...)
     local ok, err = pcall(fn, ...)
     if ok then return end
     failures = failures + 1
-    if HU.RecordError then HU:RecordError(err, "historial " .. where) end
+    HU:RecordError(err, "historial " .. where)
     if failures >= 10 and not disabled then
         disabled = true
         if HU:CanPin() then HU:Print(L("El historial de oficiales ha dado errores y se ha apagado hasta que recargues (/gu errores para verlos).")) end
@@ -303,8 +303,8 @@ function HU:HistPrune()
                 if total <= cap * 0.9 then break end
                 local d = c.days[k]
                 if k == today then
-                    local freed, b = TrimDay(d, total - cap * 0.9)
-                    total = total - freed
+                    -- (hoy se recorta y ya no se mira más: lo liberado no hace falta restarlo de total)
+                    local _, b = TrimDay(d, total - cap * 0.9)
                     c.bytes = c.bytes - (b or 0)
                     break
                 end
@@ -402,12 +402,12 @@ function HU:HistInsert(e)
     end
     if not day.lines then day.lines = DayLines(day); day.chunks = nil end
     local idx = DayIndex(day)
-    local key = e.a:lower()
-    local id = idx[key]
+    local nameKey = e.a:lower()
+    local id = idx[nameKey]
     if not id then
         id = #day.names + 1
         day.names[id] = e.a
-        idx[key] = id
+        idx[nameKey] = id
     end
     local sec = e.t - day.s
     local msg = HU.Utf8Cut(Clean(e.m), 255)
@@ -607,7 +607,7 @@ local TTL_SYNC, TTL_ASK = 300, 60
 local CMD_TTL = { V = TTL_SYNC, v = TTL_SYNC, w = TTL_SYNC, S = TTL_SYNC, D = TTL_SYNC, F = TTL_SYNC,
     Q = TTL_ASK, R = TTL_ASK, E = TTL_ASK, X = TTL_ASK, Y = TTL_ASK, Z = TTL_ASK }
 local CLOSER = { w = true, F = true, E = true, Z = true }
--- lo que el juego contesta cuando va saturado (como en Comm.lua): el mensaje se vuelve a probar
+-- lo que el juego contesta cuando va saturado (como en Net/Transport.lua): el mensaje se vuelve a probar
 local THROTTLED = {}
 if Enum and Enum.SendAddonMessageResult then
     for _, k in ipairs({ "AddonMessageThrottle", "ChannelThrottle", "GeneralError" }) do
@@ -665,7 +665,7 @@ local function HFlush()
         else
             -- (en pausa por la versión mínima: no sale nada del addon)
             if HU.paused then htokens = htokens - 1 break end
-            if HU.MarkPinged then HU:MarkPinged(m[2]) end
+            HU:MarkPinged(m[2])
             local ok, r = pcall(C_ChatInfo.SendAddonMessage, HU.HPREFIX, m[1], "WHISPER", m[2])
             htokens = htokens - 1
             if ok and (r == false or (type(r) == "number" and THROTTLED[r])) then
@@ -948,7 +948,7 @@ local function DigestsAsync(a, b, size, done)
     local tick
     local function step()
         -- (en combate en banda o mazmorra se espera: ver Combat.lua)
-        if HU.CombatHold and HU:CombatHold() then C_Timer.After(0.5, tick) return end
+        if HU:CombatHold() then C_Timer.After(0.5, tick) return end
         local budget = DIGEST_SLICE
         -- (y como mucho DIGEST_CAP.MS de trabajo, mirado cada DIGEST_CAP.SUB líneas: 300 líneas eran 4-10 ms en un
         -- fotograma, y se notaba al acabar cada pull, cuando el relleno vuelve a arrancar)
@@ -978,19 +978,20 @@ local function DigestsAsync(a, b, size, done)
                 if not dk then return done(out) end
                 day = c.days[dk]
                 dc, part = digestCache[day], nil
-                if not day then
-                    -- (borrado mientras tanto)
-                elseif dc and dc.building then
-                    -- (otra cuenta lo está sumando ahora mismo: este día, línea a línea)
-                    scan = DayScanner(day, exact)
-                elseif dc and dc.n == day.n then
-                    budget = budget - 10
-                    if apply() then scan = DayScanner(day, exact) else day = nil end
-                else
-                    dc = { n = day.n, base = math.floor(day.s / BUCKET), lo = math.huge, hi = -math.huge, cn = {}, ch = {}, building = true }
-                    digestCache[day] = dc
-                    building = true
-                    scan = DayScanner(day, build)
+                -- (sin día: borrado mientras tanto, se pasa al siguiente)
+                if day then
+                    if dc and dc.building then
+                        -- (otra cuenta lo está sumando ahora mismo: este día, línea a línea)
+                        scan = DayScanner(day, exact)
+                    elseif dc and dc.n == day.n then
+                        budget = budget - 10
+                        if apply() then scan = DayScanner(day, exact) else day = nil end
+                    else
+                        dc = { n = day.n, base = math.floor(day.s / BUCKET), lo = math.huge, hi = -math.huge, cn = {}, ch = {}, building = true }
+                        digestCache[day] = dc
+                        building = true
+                        scan = DayScanner(day, build)
+                    end
                 end
             end
         end
@@ -1144,7 +1145,7 @@ end
 -- (want: seguir con ese compañero si sigue conectado; skip: no ese, que se acaba de callar)
 local syncTurn = 0
 function HU:HistStartSync(force, want, skip)
-    if not self:HistEnabled() or not IAmOfficer() or sync or self:IsTest() then return false end
+    if not self:HistEnabled() or not IAmOfficer() or sync then return false end
     if not force and GetTime() - lastSync < SYNC_EVERY * 0.9 then return false end
     lastSync = GetTime()
     -- (una vuelta normal, no de seguida: se vuelven a permitir las rápidas)
@@ -1559,7 +1560,7 @@ function HU:HistSearch(name, text)
     local opts = { name = name, text = text, since = since, tag = W.tagFilter }
     Show({}, L("Buscando..."))
     self:HistSearchLocal(opts, function(res) W.localRes = res; Render() end)
-    local asked = self:HistSearchRemote(opts, function(res)
+    local nAsked = self:HistSearchRemote(opts, function(res)
             W.remoteRes = res
             -- (llegan de uno en uno: se repinta como mucho cada 0,2 s)
             if W.renderSoon then return end
@@ -1567,7 +1568,7 @@ function HU:HistSearch(name, text)
             HU.After(0.2, function() W.renderSoon = nil; Render() end)
         end,
         function(res) W.remoteRes = res; W.waitingRemote = false; Render() end)
-    if asked == 0 then W.waitingRemote = false end
+    if nAsked == 0 then W.waitingRemote = false end
 end
 
 function HU:HistWindow(show)
@@ -1630,7 +1631,7 @@ function HU:HistWindow(show)
         gBtn:SetScript("OnClick", function()
             local tags = {}
             if HU.myTag then tags[1] = HU.myTag end
-            for _, t in ipairs(HU.OtherTags and HU:OtherTags() or {}) do tags[#tags + 1] = t end
+            for _, t in ipairs(HU:OtherTags() or {}) do tags[#tags + 1] = t end
             local at = 0
             for i, t in ipairs(tags) do if t == W.tagFilter then at = i end end
             W.tagFilter = tags[at + 1] -- (tras la última, nil: todas)
@@ -1648,7 +1649,7 @@ function HU:HistWindow(show)
         sf:SetScrollChild(content)
         W.scroll, W.content, W.rows = sf, content, {}
         -- (elegir un nombre de las sugerencias ya busca, como Intro)
-        if HU.NameSuggest then HU:NameSuggest(W.nameBox, function(s) s:ClearFocus(); go:Click() end) end
+        HU:NameSuggest(W.nameBox, function(s) s:ClearFocus(); go:Click() end)
         W:Hide()
     end
     if show == nil then show = not W:IsShown() end
@@ -1696,13 +1697,15 @@ HU:OnStart(function()
     Guarded("limpiar", HU.HistPrune, HU)
     -- (y otra vez cuando ya se sabe el rango: al entrar todavía no)
     HU.After(120, function() Guarded("limpiar", HU.HistPrune, HU) end)
-    HU.NewTicker(3600, function() Guarded("limpiar", HU.HistPrune, HU) end)
+    HU:Every(3600, "historial-limpiar", function() Guarded("limpiar", HU.HistPrune, HU) end)
     -- el juego deja 10 seguidos y luego 1 por segundo en cada prefijo: aquí, 8 y 1 cada 1,1 s
-    HU.NewTicker(1.1, function()
+    HU:Every(1.1, "historial-cupo", function()
         htokens = math.min(8, htokens + 1)
         HFlush()
     end)
     -- rellenar huecos: al entrar y cada 5 minutos (solo los oficiales piden)
     HU.After(25 + math.random() * 20, function() Guarded("rellenar", HU.HistStartSync, HU) end)
-    HU.NewTicker(SYNC_EVERY, function() Guarded("rellenar", HU.HistStartSync, HU) end)
+    HU:Every(SYNC_EVERY, "historial-rellenar", function() Guarded("rellenar", HU.HistStartSync, HU) end)
 end)
+
+HU:Module("History", { "BlizzTab", "Channel", "Combat", "Config", "Core", "Lists", "Net/Transport", "Pinned" })

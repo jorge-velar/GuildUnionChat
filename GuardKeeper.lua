@@ -129,7 +129,7 @@ local function ListsFirm(self)
 end
 
 local function OfficerGuard(self, now, force)
-    if self:IsTest() or not self:IsJoined("off") or not self:CanOfficer() then return end
+    if not self:IsJoined("off") or not self:CanOfficer() then return end
     if not force and now - lastOffScan < OFF_EVERY then return end
     lastOffScan = now
     -- (el chat de oficiales es pequeño: se lee de una vez y done se llama enseguida)
@@ -169,7 +169,8 @@ local function ReviewEvaluate(self, ask)
     if not r or not r.suspects then return end
     local missing = self:MissingLists()
     local full = #missing == 0
-    for _, t in ipairs(self:OtherTags()) do if not self:ListFresh(t) then full = false end end
+    -- (con otras hermandades nunca hay listas completas, que ya no existen: solo vale sin ninguna otra)
+    if #self:OtherTags() > 0 then full = false end
     local found, toAsk, pending = {}, {}, 0
     for k, name in pairs(r.suspects) do
         local v = self:GuardVerdict(name)
@@ -220,7 +221,7 @@ function HU:GuardReview()
             review = nil
             return HU:Print(L("La lista del canal no está disponible (abre Social > Chat una vez)"))
         end
-        local known = HU.GuardKnownSet and HU.GuardKnownSet(HU) or {}
+        local known = HU.GuardKnownSet(HU) or {}
         local me = HU:MeKey()
         r.suspects, r.total, r.union, r.untilT = {}, #list, 0, GetTime() + REVIEW_TTL
         for _, m in ipairs(list) do
@@ -262,3 +263,5 @@ HU:On("CHAT_MSG_CHANNEL_JOIN", function(_, author, _, fullName, _, _, _, _, base
         HU.After(5, function() HU:GuardOfficersNow() end)
     end
 end)
+
+HU:Module("GuardKeeper", { "Audit", "Channel", "Config", "Core", "Guard", "Lists", "Pinned", "Roster", "Social" })

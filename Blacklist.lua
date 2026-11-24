@@ -52,7 +52,7 @@ function HU:BlacklistCheck(again)
             local by = b.by and (self:Short(b.by) .. ((b.tag and b.tag ~= "") and (" <" .. b.tag .. ">") or "")) or "?"
             local name, tail = self:Short(b.name or k), L(" Lo vetó ") .. by .. "." .. (b.why and (L(" Motivo: ") .. b.why) or "")
             -- (y quién lo metió en la hermandad, si consta en el registro de invitaciones)
-            local inviter = self.InvitedBy and self:InvitedBy(k)
+            local inviter = self:InvitedBy(k)
             if inviter then tail = tail .. L(" Lo invitó ") .. self:Short(inviter) .. "." end
             local function Mine()
                 self:Print("|cffff4444" .. L("Lista negra") .. ":|r |cffffffff" .. name .. "|r " .. L("está en tu hermandad.") .. tail)
@@ -75,7 +75,7 @@ function HU:BlacklistCheck(again)
     end
 end
 HU:OnStart(function()
-    HU.NewTicker(60, function() HU:BlacklistCheck() end)
+    HU:Every(60, "lista-negra", function() HU:BlacklistCheck() end)
 end)
 
 ---------------------------------------------------------------------------
@@ -160,7 +160,7 @@ local function Build()
     lName:SetText(L("Nombre"))
     win.nameBox = HU.NewEditBox(win, 150)
     win.nameBox:SetPoint("LEFT", lName, "LEFT", 60, 0)
-    if HU.NameSuggest then HU:NameSuggest(win.nameBox) end
+    HU:NameSuggest(win.nameBox)
     local lWhy = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     lWhy:SetPoint("TOPLEFT", lName, "BOTTOMLEFT", 0, -12)
     lWhy:SetText(L("Motivo"))
@@ -197,3 +197,4 @@ function HU:ShowBlacklist()
     if win:IsShown() then win:Hide() else win:Show() end
 end
 
+HU:Module("Blacklist", { "BlizzTab", "Config", "Core", "InviteLog", "ListWindow", "Pinned", "Social" })

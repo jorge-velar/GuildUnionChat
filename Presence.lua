@@ -3,9 +3,6 @@
 local _, HU = ...
 
 local FAST_WAIT = 0.3  -- conectado/desconectado de los que se comparten: los de ~0,3 s van juntos, un mensaje por hermandad
-local WAIT = 3         -- el resto de cambios (fuera de la fase de lanzamiento) se juntan unos segundos
-local BUSY_WAIT = 15   -- y con la cola cargada, más
-local BUSY_QUEUE = 20
 local FAST_ROSTER = 15 -- quien reparte la lista la refresca más a menudo (por si los avisos están apagados)
 local FULL_GAP = 10    -- quien acaba de encargarse de una hermandad le manda la lista entera, como mucho cada 10 s
 
@@ -38,7 +35,7 @@ end
 
 -- Solo «ha entrado X» / «se ha ido X», enseguida y sin saber qué copia tiene esa hermandad (los cambios [+ARCHITECTURE.md]
 local function SendRecent(self, p, tag, fast)
-    local now, sig = GetTime(), self.RosterSigNow and self.RosterSigNow()
+    local now, sig = GetTime(), self.RosterSigNow()
     if not sig then return false end
     local pseudo, any = { sig = {}, hash = "0" }, false
     for n, sg in pairs(sig) do pseudo.sig[n] = sg end
@@ -70,13 +67,12 @@ end
 function HU:PresenceFlush(fast)
     if not self.myTag or not self:IsJoined("main") or not self:RosterSlot() then return end
     -- (primero las líneas de mi lista, en este fotograma; los cambios para cada hermandad, en los siguientes)
-    if self.WarmRosterEntries then self:WarmRosterEntries() end
-    local launch = self:LaunchPhase()
+    self:WarmRosterEntries()
     local all = self:OtherTags()
     local start, n = math.random(math.max(1, #all)), 0
     for i = 1, #all do
         local tag = all[((start + i - 2) % #all) + 1]
-        if self:HandlesTag(tag) or (fast and launch and BacksTag(self, tag)) then
+        if self:HandlesTag(tag) or (fast and BacksTag(self, tag)) then
             n = n + 1
             HU.After(0.02 * n, function() HU:PresenceFlushTag(tag, fast) end)
         end
@@ -84,24 +80,23 @@ function HU:PresenceFlush(fast)
 end
 function HU:PresenceFlushTag(tag, fast)
     if not self.myTag or not self:IsJoined("main") or not self:RosterSlot() then return end
-    local launch = self:LaunchPhase()
     if not self:HandlesTag(tag) then
         -- (suplente: solo los cambios pequeños, ya)
-        if fast and launch and BacksTag(self, tag) then
+        if fast and BacksTag(self, tag) then
             local p = self:BestPeer(tag)
             if p then SendRecent(self, p, tag, true) end
         end
         return
     end
     local p = self:BestPeer(tag)
-    local st = self.RosterStateFor and self.RosterStateFor(tag)
+    local st = self.RosterStateFor(tag)
     if p and st then
         -- (si son muchos cambios, la lista entera)
         if not self:SendRosterDelta(p.name, st, fast) then
             p.sentRoster = GetTime()
             self:SendRosterTo(p.name, fast)
         end
-    elseif p and launch and (not fullSent[tag] or GetTime() - fullSent[tag] > FULL_GAP) then
+    elseif p and (not fullSent[tag] or GetTime() - fullSent[tag] > FULL_GAP) then
         -- (me acaba de tocar esta hermandad, porque se ha ido quien la llevaba: no sé qué lista tienen. [+ARCHITECTURE.md]
         fullSent[tag] = GetTime()
         p.sentRoster = GetTime()
@@ -112,23 +107,14 @@ function HU:PresenceFlushTag(tag, fast)
     end
 end
 
--- fast: cambio de alguien que se comparte (GM, oficial, enlace, ayudante): sale ya, por delante
-local scheduled, scheduledFast = false, false
-function HU:PresenceSchedule(fast)
+-- (versión solo chat: todos los cambios salen ya, por delante; antes de ella, los que no eran de
+-- quien se comparte se juntaban unos segundos)
+local scheduledFast = false
+function HU:PresenceSchedule()
     if not self:RosterSlot() then return end
-    fast = fast or self:LaunchPhase()
-    -- (modo sencillo: todo por la vuelta normal, cada pocos segundos)
-    if self:SimpleMode() then fast = false end
-    if fast then
-        if scheduledFast then return end
-        scheduledFast = true
-        HU.After(FAST_WAIT, function() scheduledFast = false; HU:PresenceFlush(true) end)
-        return
-    end
-    if scheduled then return end
-    scheduled = true
-    local wait = (self:MainQueueSize() > BUSY_QUEUE) and BUSY_WAIT or WAIT
-    HU.After(wait, function() scheduled = false; HU:PresenceFlush() end)
+    if scheduledFast then return end
+    scheduledFast = true
+    HU.After(FAST_WAIT, function() scheduledFast = false; HU:PresenceFlush(true) end)
 end
 
 -- ¿Es el enlace o uno de sus ayudantes? (si se va, otro tiene que encargarse ya)
@@ -201,9 +187,9 @@ HU:On("CHAT_MSG_SYSTEM", function(text)
                 if IsFav(e.name) then FavNow() end
                 -- (se ha ido el enlace o un ayudante: el nuevo reparto sale ya, no a los 15 s)
                 if not p.on and InRelayGroup(HU, k) and HU:IsRelay() and HU.HelpersChangedHello then HU:HelpersChangedHello(true) end
-                local shared = HU.RankRole and HU:RankRole(HU.myTag, e.rankIndex) ~= nil or InRelayGroup(HU, k)
+                local shared = HU:RankRole(HU.myTag, e.rankIndex) ~= nil or InRelayGroup(HU, k)
                 HU:PresenceSchedule(shared)
-                if HU.RequestRoster then HU:RequestRoster() end
+                HU:RequestRoster()
             end
             return
         end
@@ -224,7 +210,7 @@ local function DropRemote(self, tag, k)
     local keep = {}
     for _, m in ipairs(r.members) do if m.name:lower() ~= k then keep[#keep + 1] = m end end
     r.members = keep
-    if HU.IndexRoster then HU.IndexRoster(r) end
+    HU.IndexRoster(r)
     r.online = math.max(0, (r.online or #keep + 1) - 1)
     self:Changed("members")
     if IsFav(k) then FavNow() end
@@ -249,6 +235,7 @@ function HU:PresenceNotFound(who)
     end
 end
 
+HU:RegisterMessage("PX")
 HU.comm.PX = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local tag, name = f[1], f[2]
@@ -281,6 +268,7 @@ local function MarkGuildmate(k, on)
     HU:PresenceSchedule(true)
 end
 
+HU:RegisterMessage("PV")
 HU.comm.PV = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local k = self:Key(sender)
@@ -288,6 +276,7 @@ HU.comm.PV = function(self, sender, f, dist)
     leavingPeers[k] = GetTime()
     MarkGuildmate(k, false)
 end
+HU:RegisterMessage("PW")
 HU.comm.PW = function(self, sender, f, dist)
     if dist ~= "GUILD" then return end
     local k = self:Key(sender)
@@ -303,11 +292,11 @@ local function Leaving()
     local e = me and HU.roster[me]
     if not (e and e.online) then return end
     local slot = HU:RosterSlot()
-    if not (slot or (HU.RankRole and HU:RankRole(HU.myTag, e.rankIndex))) then return end
+    if not (slot or (HU:RankRole(HU.myTag, e.rankIndex))) then return end
     leaving = true
     HU:Send("PV", "GUILD", nil, true, nil, true)
     -- («-yo» sobre cualquier copia: la huella va a 0 y los cambios valen igual)
-    local sig = slot and HU.RosterSigNow and HU.RosterSigNow()
+    local sig = slot and HU.RosterSigNow()
     local mine = e._re and e._re.short
     e.online = false
     HU.rosterVersion = (HU.rosterVersion or 0) + 1
@@ -318,7 +307,7 @@ local function Leaving()
         for i, tag in ipairs(HU:OtherTags()) do
             HU.After(0.02 * (i - 1), function()
                 local p = HU:BestPeer(tag)
-                if p then HU:SendRosterDelta(p.name, { sig = pseudo.sig, hash = "0" }, not HU:SimpleMode()) end
+                if p then HU:SendRosterDelta(p.name, { sig = pseudo.sig, hash = "0" }, true) end
             end)
         end
     end
@@ -361,7 +350,9 @@ end
 
 
 HU:OnStart(function()
-    HU.NewTicker(FAST_ROSTER, function()
+    HU:Every(FAST_ROSTER, "presencia-lista", function()
         if HU:RosterSlot() and HU.RequestRoster then HU:RequestRoster() end
     end)
 end)
+
+HU:Module("Presence", { "Channel", "Config", "Core", "Domain/Trust", "Net/Relay", "Net/RosterSync", "Net/Transport", "Protocol", "Roster" })

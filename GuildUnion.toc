@@ -18,6 +18,7 @@ Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\lib.xml
 
 Core.lua
+Protocol.lua
 Perf.lua
 LocaleEN.lua
 Popup.lua
@@ -29,6 +30,11 @@ ChatPaint.lua
 PratBridge.lua
 WMPanel.lua
 Comm.lua
+Net\Transport.lua
+Domain\Trust.lua
+Net\Relay.lua
+Net\RosterSync.lua
+Net\Security.lua
 Lists.lua
 Presence.lua
 ChanPresence.lua
@@ -36,10 +42,10 @@ Ranks.lua
 Audit.lua
 Pinned.lua
 ChatTabs.lua
-Test.lua
 Guard.lua
 GuardKeeper.lua
 Social.lua
+UnionMembers.lua
 History.lua
 Channels.lua
 Community.lua
@@ -52,9 +58,9 @@ MemGuard.lua
 Combat.lua
 UI.lua
 UIWindows.lua
-UIStubs.lua
 Minimap.lua
 BlizzTab.lua
+UnionRoster.lua
 ListWindow.lua
 Blacklist.lua
 InviteLog.lua
