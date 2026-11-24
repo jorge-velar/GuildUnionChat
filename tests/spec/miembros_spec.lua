@@ -593,6 +593,40 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("la lista entera se rehace solo si cambia algo (o cada 30 s); cada 2 s, solo las filas (Jorge, 24/11: «hasta un 5 % de procesador»)", function()
+        local a = F.Community()
+        local HU = a.HU
+        local f = GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        local built, orig = 0, HU.UnionRosterEntries
+        HU.UnionRosterEntries = function(...) built = built + 1; return orig(...) end
+        local tick = cover:GetScript("OnUpdate")
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        tick(cover, 2.1) -- (lo que se pide al mirarla ya está pedido)
+        built = 0
+        for _ = 1, 5 do tick(cover, 2.1) end
+        A.equal(0, built, "sin cambios, cada 2 s solo se pintan las filas")
+        A.matches("Jefa", cover.rows[1].cells.name:GetText())
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        A.equal(1, built, "cambia la lista del juego")
+        HU:Changed("unionMembers")
+        A.equal(2, built, "llega algo de otra hermandad")
+        HU.rosterVersion = (HU.rosterVersion or 0) + 1
+        tick(cover, 2.1)
+        A.equal(3, built, "alguien de mi hermandad entra o sale")
+        f.MemberList.ShowOfflineButton.GetChecked = function() return true end
+        tick(cover, 2.1)
+        A.equal(4, built, "«Mostrar desconectados»")
+        -- (y cada 30 s se rehace igual, por lo que caduca con el tiempo; luego, sin cambios, otra vez nada)
+        a.w:Advance(31)
+        tick(cover, 2.1)
+        A.truthy(built >= 5)
+        local n = built
+        for _ = 1, 3 do tick(cover, 2.1) end
+        A.equal(n, built)
+        A.same({}, a:Errors())
+    end)
+
     it("las notas de nuestra ficha solo se leen: un clic en ellas no hace nada (antes llevaba a la ficha del juego)", function()
         local a = F.Community()
         GuildWindow(a)

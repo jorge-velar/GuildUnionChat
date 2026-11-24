@@ -197,7 +197,7 @@ local function LoadCraftSpells()
             local okL, link = pcall(S.GetSpellLink, id)
             if okN and okL and type(name) == "string" and type(link) == "string" and not HU.Secret(name)
                 and not HU.Secret(link) then
-                craft["s" .. id] = { key = name:lower(), link = link, skill = skill, lv = list[i + 1] }
+                craft["s" .. id] = { key = HU.Fold(name), link = link, skill = skill, lv = list[i + 1] }
             end
         end
     end
@@ -225,7 +225,7 @@ local function LoadCraftNames()
             pos = pos + 1
             local ok, name, link = pcall(get, id)
             if ok and type(name) == "string" and type(link) == "string" and not HU.Secret(name) then
-                craft[id] = { key = name:lower(), link = link, skill = info[id].skill, lv = info[id].lv }
+                craft[id] = { key = HU.Fold(name), link = link, skill = info[id].skill, lv = info[id].lv }
             else
                 missing[#missing + 1] = id
             end
@@ -233,15 +233,19 @@ local function LoadCraftNames()
     end, { pauseInCombat = true })
 end
 
--- (las profesiones y el nivel que hacen falta para algo que encaje con q, por su nombre)
+-- (las profesiones y el nivel que hacen falta para algo que encaje con q, por su nombre. Solo cuenta lo que mejor encaja:
+-- con «bolsa», lo que lleva esa palabra entera y no «Bolsas» ni «Embolsar», si lo hay. Jorge, 24/11: «más al grano»)
 local function CraftNeeds(q)
-    local needs, any = {}, false
+    local needs, best = {}, nil
     for _, c in pairs(craft) do
-        if c.key:find(q, 1, true) and (needs[c.skill] == nil or c.lv < needs[c.skill]) then
-            needs[c.skill] = c.lv; any = true
+        local r = HU.TextRank(c.key, q)
+        if r then
+            local tier = (r <= 2 and 1) or (r <= 4 and 2) or 3
+            if not best or tier < best then best, needs = tier, {} end
+            if tier == best and (needs[c.skill] == nil or c.lv < needs[c.skill]) then needs[c.skill] = c.lv end
         end
     end
-    return any and needs or nil
+    return best and needs or nil
 end
 
 local function SearchMembers(q)
@@ -260,7 +264,7 @@ local function SearchMembers(q)
             for _, p in ipairs(HU:ClubProfessions(info)) do
                 local need = needs and type(p.id) == "number" and needs[p.id]
                 -- (sin nivel —el de los demás, que la comunidad no da—: sale si tiene la profesión)
-                if p.name:lower():find(q, 1, true) or (need and (p.rank == nil or p.rank >= need)) then
+                if HU.TextRank(p.name, q) or (need and (p.rank == nil or p.rank >= need)) then
                     out[#out + 1] = { name = HU:FullName(n) or n, tag = HU.myTag, prof = p.name, icon = p.icon, online = not off,
                         rank = p.rank }
                 end
@@ -312,7 +316,7 @@ local function CraftTargets(item)
     if id then return idx[tonumber(id)] end
     id = item:match("|Hspell:(%d+)") or item:match("|Henchant:(%d+)")
     if id then return idx["s" .. id] end
-    local name = Plain(item):lower():gsub("^%s*%[", ""):gsub("%]%s*$", "")
+    local name = HU.Fold(Plain(item)):gsub("^%s*%[", ""):gsub("%]%s*$", "")
     for k, c in pairs(craft) do if c.key == name then return idx[k] end end
     return nil
 end
@@ -457,7 +461,7 @@ end
 
 local function Matches(r, q)
     for _, v in ipairs({ HU:Short(r.who or ""), Plain(r.item), r.taker and HU:Short(r.taker) or "" }) do
-        if v:lower():find(q, 1, true) then return true end
+        if HU.TextRank(v, q) then return true end
     end
     return false
 end
@@ -784,11 +788,11 @@ end
 ---------------------------------------------------------------------------
 local SUGGEST_N = 6
 
--- (lo que encaja con lo escrito, de mejor a peor: el nombre exacto, los que empiezan así y los que lo llevan
--- dentro; en cada grupo, por nombre)
-local function Rank(k, q) if k == q then return 0 elseif k:sub(1, #q) == q then return 1 end return 2 end
+-- (lo que encaja con lo escrito, de mejor a peor (HU.TextRank: lo exacto y las palabras enteras primero); en cada grupo,
+-- el nombre más corto, que es el que más se parece a lo escrito, y luego por nombre)
 local function Better(x, y)
     if x.rank ~= y.rank then return x.rank < y.rank end
+    if #x.key ~= #y.key then return #x.key < #y.key end
     return x.key < y.key
 end
 
@@ -849,16 +853,17 @@ end
 -- fabricables. Todos los que encajan, de mejor a peor, y luego los primeros (antes se cortaba a 60 en el orden de
 -- la tabla y los mejores se podían quedar fuera)
 local function ItemMatches(text)
-    local q = text:lower()
     local out, seen = {}, {}
     local function push(link, k)
-        if seen[k] or not k:find(q, 1, true) then return end
+        if seen[k] then return end
+        local rank = HU.TextRank(k, text)
+        if not rank then return end
         seen[k] = true
-        out[#out + 1] = { text = link, value = link, key = k, rank = Rank(k, q) }
+        out[#out + 1] = { text = link, value = link, key = k, rank = rank }
     end
     local function add(link)
         if type(link) ~= "string" or HU.Secret(link) or not link:find("|H", 1, true) then return end
-        push(link, (Plain(link):lower():gsub("^%[", ""):gsub("%]$", "")))
+        push(link, (HU.Fold(Plain(link)):gsub("^%[", ""):gsub("%]$", "")))
     end
     local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     local ok, _, link = pcall(get, text)
@@ -881,16 +886,16 @@ end
 
 -- Personajes que conozco: mi hermandad, las listas de las otras y los que tienen GuildUnion
 local function NameMatches(text)
-    local q = text:lower()
     local out, seen = {}, { [Me():lower()] = true }
     local function add(full, tag)
         if type(full) ~= "string" or HU.Secret(full) then return end
         local k = full:lower()
         local short = HU:Short(full)
-        if seen[k] or not short:lower():find(q, 1, true) then return end
+        local rank = not seen[k] and HU.TextRank(short, text)
+        if not rank then return end
         seen[k] = true
         local t = tag and (" |cff" .. HU:GuildColorHex(tag) .. "<" .. tag .. ">|r") or ""
-        out[#out + 1] = { text = short .. t, value = full, key = short:lower(), rank = Rank(short:lower(), q) }
+        out[#out + 1] = { text = short .. t, value = full, key = HU.Fold(short), rank = rank }
     end
     for _, e in ipairs(HU.rosterList or {}) do add(e.name, HU.myTag) end
     for tag, rr in pairs(HU.remoteRoster or {}) do for _, m in ipairs(rr.members or {}) do add(m.name, tag) end end

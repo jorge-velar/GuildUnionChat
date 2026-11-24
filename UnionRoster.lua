@@ -58,6 +58,9 @@ local function RealList() return mode == "roster" and tab == 1 and HU.db.unionRo
 -- (los elegidos con clic, Mayús y Ctrl, por nombre en minúsculas; shown: la lista entera, en su orden)
 local sel, anchorKey, shown = {}, nil, {}
 local notes, notesDirty = {}, true
+-- (la lista entera se rehace solo si cambia algo de lo que la forma: ver Paint. listDirty, por un aviso de que ha cambiado)
+local listDirty, lastSig = true, nil
+local LIST_EVERY = 30   -- (y como mucho cada tantos segundos, por lo que caduca con el tiempo: quién sigue conectado)
 
 local function Win() return _G.CommunitiesFrame end
 
@@ -129,14 +132,15 @@ end
 local SORT = {
     level = function(e) return e.level or 0 end,
     class = function(e) return e.class or "" end,
-    name = function(e) return e.name:lower() end,
+    name = function(e) return e.k end,
     zone = function(e) return e.online == false and string.format("~%012d", e.offSecs or 0) or (e.zone or ""):lower() end,
     rank = function(e) return e.ri or 99 end,
     guild = function(e) return tostring(e.tag or "") end,
     prof = function(e) return (e.prof and e.prof[1] and e.prof[1].name or "~"):lower() end,
     note = function(e) return (e.note or ""):lower() end,
 }
--- Por defecto: rango de hermandad, nivel (de mayor a menor) y nombre, todas las hermandades mezcladas
+-- Por defecto: rango de hermandad, nivel (de mayor a menor) y nombre, todas las hermandades mezcladas. (k: el nombre en
+-- minúsculas, una vez por fila: pasarlo a minúsculas en cada comparación era lo que más tardaba al ordenar miles)
 local function Less(a, b)
     if sortKey then
         local va, vb = SORT[sortKey](a), SORT[sortKey](b)
@@ -144,7 +148,7 @@ local function Less(a, b)
     end
     if a.ri ~= b.ri then return a.ri < b.ri end
     if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
-    return a.name:lower() < b.name:lower()
+    return a.k < b.k
 end
 
 -- Todos: los conectados de la unión y, con la casilla del juego marcada, los desconectados de mi hermandad
@@ -155,7 +159,7 @@ local function Entries()
     if ShowOffline() then
         for _, e in ipairs(HU.rosterList) do
             if not e.online and e.name then
-                list[#list + 1] = { name = e.name, tag = HU.myTag, class = e.class, level = e.level, zone = e.zone,
+                list[#list + 1] = { name = e.name, k = e.name:lower(), tag = HU.myTag, class = e.class, level = e.level, zone = e.zone,
                     ri = e.rankIndex or 99, rank = e.rank or "", online = false, own = true, offSecs = e.offSecs }
             end
         end
@@ -164,20 +168,21 @@ local function Entries()
     -- rango): son las de «Oficiales conectados» y siempre están al día. Ponen el rango a quien llegó sin
     -- él (del /who) y añaden a quien falte (Jorge, 23/11)
     local byKey = {}
-    for _, e in ipairs(list) do byKey[e.name:lower()] = e end
+    for _, e in ipairs(list) do byKey[e.k] = e end
     for _, tag in ipairs(HU:OtherTags()) do
         local r = HU.remoteRoster and HU.remoteRoster[tag]
         for _, m in ipairs(r and r.members or {}) do
             if m.online and m.name and m.rankIndex then
                 local rank = (m.rank and m.rank ~= "") and m.rank or HU:RankName(tag, m.rankIndex) or ""
-                local have = byKey[m.name:lower()]
+                local k = m.name:lower()
+                local have = byKey[k]
                 if have then
                     if (have.ri or 99) >= 99 then have.ri, have.rank = m.rankIndex, rank end
                 else
-                    local e = { name = m.name, tag = tag, class = m.class, level = m.level, zone = m.zone, afk = m.afk,
+                    local e = { name = m.name, k = k, tag = tag, class = m.class, level = m.level, zone = m.zone, afk = m.afk,
                         ri = m.rankIndex, rank = rank, online = true }
                     list[#list + 1] = e
-                    byKey[m.name:lower()] = e
+                    byKey[k] = e
                 end
             end
         end
@@ -190,18 +195,35 @@ local function Entries()
     end
     for _, e in ipairs(list) do
         if (e.ri or 99) >= 99 then e.ri, e.noRank = low, true end
-        if e.own then e.note, e.offNote, e.prof = notes[e.name:lower()], offNotes[e.name:lower()], profCache[e.name:lower()] end
+        if e.own then e.note, e.offNote, e.prof = notes[e.k], offNotes[e.k], profCache[e.k] end
     end
     table.sort(list, Less)
     return list
+end
+
+-- (lo que forma la lista: si no ha cambiado nada, no se rehace. Rehacerla cada 2 s con 4 hermandades de 600 y los
+-- desconectados eran 16 ms y 2,4 MB de basura cada vez; Jorge, 24/11: «hasta un 5 % de procesador») [+ARCHITECTURE.md]
+local function ListSig()
+    local parts = { tostring(HU.rosterVersion), ShowOffline() and "o" or "-", tostring(sortKey), sortDesc and "d" or "a",
+        math.floor(GetTime() / LIST_EVERY) }
+    for _, t in ipairs(HU:OtherTags()) do
+        local st, rr = HU.unionMembers[t], HU.remoteRoster and HU.remoteRoster[t]
+        parts[#parts + 1] = table.concat({ t, tostring(st and st.t), tostring(st and st.cur and st.cur.got),
+            tostring(st and st.who and st.who.t), tostring(rr) }, ":")
+    end
+    return table.concat(parts, "|")
 end
 
 -- Las filas que caben: las demás, con la barra
 local function Paint()
     if not (cover and cover:IsShown() and tab == 1) then return end
     HU:WantUnionMembers(nil)
-    local list = Entries()
-    shown = list
+    -- (la huella, después de rehacerla: Entries también quita lo que ha caducado)
+    if listDirty or ListSig() ~= lastSig then
+        shown = Entries()
+        listDirty, lastSig = false, ListSig()
+    end
+    local list = shown
     local sf = cover.scroll
     local visible = ROWS
     local h = sf:GetHeight()
@@ -1067,8 +1089,8 @@ local function Build(f)
         ShowTab(tab)
     end)
     cover:RegisterEvent("GUILD_ROSTER_UPDATE")
-    cover:SetScript("OnEvent", function() notesDirty, profsDirty = true, true; Paint() end)
-    HU:Listen("CHANGED", function(what) if what == "unionMembers" then Paint() end end)
+    cover:SetScript("OnEvent", function() notesDirty, profsDirty, listDirty = true, true, true; Paint() end)
+    HU:Listen("CHANGED", function(what) if what == "unionMembers" then listDirty = true; Paint() end end)
     -- (la casilla del juego: al marcarla o quitarla, la nuestra se repinta; solo se lee, no se toca)
     anchor:HookScript("OnClick", function() HU.After(0, Paint) end)
     local acc = 0

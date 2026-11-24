@@ -410,14 +410,15 @@ function HU:UnionMemberEntries(tag)
         -- (la de Miembros, si la hay, que trae los rangos; si no, la del /who)
         local list = st and (st.members or (st.cur and Decode(self, t, st.cur.parts, st.cur.n)) or (st.who and st.who.members))
         for _, m in ipairs(list or {}) do
-            out[#out + 1] = { name = m.name, tag = t, class = m.class, level = m.level, zone = m.zone, afk = m.afk,
-                ri = m.rankIndex or 99, rank = m.rankIndex and self:RankName(t, m.rankIndex) or "", online = true }
+            out[#out + 1] = { name = m.name, k = m.name:lower(), tag = t, class = m.class, level = m.level, zone = m.zone,
+                afk = m.afk, ri = m.rankIndex or 99, rank = m.rankIndex and self:RankName(t, m.rankIndex) or "", online = true }
         end
     end
+    -- (k: el nombre en minúsculas, una vez por fila y no en cada comparación)
     table.sort(out, function(a, b)
         if a.tag ~= b.tag then return a.tag < b.tag end
         if a.ri ~= b.ri then return a.ri < b.ri end
-        return a.name:lower() < b.name:lower()
+        return a.k < b.k
     end)
     return out
 end
@@ -429,7 +430,7 @@ function HU:UnionRosterEntries()
     local out = {}
     for _, e in ipairs(self.rosterList or {}) do
         if e.online and e.name then
-            out[#out + 1] = { name = e.name, tag = self.myTag, class = e.class, level = e.level, zone = e.zone,
+            out[#out + 1] = { name = e.name, k = e.name:lower(), tag = self.myTag, class = e.class, level = e.level, zone = e.zone,
                 afk = e.afk, ri = e.rankIndex or 99, rank = e.rank or "", online = true, own = true }
         end
     end
@@ -438,7 +439,7 @@ function HU:UnionRosterEntries()
         if (a.own or false) ~= (b.own or false) then return a.own == true end
         if a.tag ~= b.tag then return tostring(a.tag) < tostring(b.tag) end
         if a.ri ~= b.ri then return a.ri < b.ri end
-        return a.name:lower() < b.name:lower()
+        return a.k < b.k
     end)
     return out
 end

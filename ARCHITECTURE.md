@@ -346,6 +346,16 @@ Momento de una acción que llega por la red, para «gana la más nueva»: como m
 minutos. Antes valía cualquier número: con t=1e300 (o 2^53) la acción falsa ya no la podía
 cambiar nadie, porque t+1 da lo mismo. Se recorta en vez de rechazar, por los relojes mal puestos.
 
+### `HU.TextRank`
+
+Cómo encaja lo escrito en un buscador con un nombre, sin mayúsculas ni acentos (`HU.Fold` en los dos), de mejor a peor:
+0 el nombre entero; 1 empieza por lo escrito como palabra entera («bolsa»: «Bolsa de lino»); 2 lo lleva como palabra
+entera («Gran bolsa»); 3 empieza por lo escrito pero a media palabra («Bolsas»); 4 una palabra de dentro empieza así;
+5 dentro de una palabra («Embolsar»); 6 varias palabras, cada una al principio de alguna, en cualquier orden («seda
+bolsa»); nil, no encaja. Palabra entera = lo que sigue no es letra ni número (los bytes de UTF-8 cuentan como letra).
+Lo usa Comercio (Trade.lua) en sus sugerencias, en «Quién lo hace» y al buscar en el Tablón. Jorge, 24/11: «que bolsa
+pille primero bolsa y no bolsas, así iremos más al grano».
+
 ### `local LINK_OK = { item = true, spell = true, quest = true, achievement = true…`
 
 Texto que llega de otro addon (chat oculto, fijado, notas, historial...): sin saltos de línea ni
@@ -2560,6 +2570,16 @@ título ordena por esa columna, otro al revés y el tercero vuelve al de siempre
 las filas que caben, pide las listas que falten (`HU:WantUnionMembers(nil)`) y dice abajo cómo va cada una
 (`HU:UnionMembersStatus`); se repinta con `GUILD_ROSTER_UPDATE`, `CHANGED` «unionMembers» y cada 2 s.
 
+**La lista entera solo se rehace si cambia algo** (copia 323; Jorge, 24/11: GuildUnion «hasta un 5 % de procesador»).
+Rehacerla (`Entries`: crear una fila por persona y ordenar miles) cada 2 s con 4 hermandades de 600 y los desconectados
+eran 16 ms y 2,4 MB de basura cada vez. Ahora `Paint` la guarda en `shown` y solo llama a `Entries` con `listDirty`
+(llegó `GUILD_ROSTER_UPDATE` o `CHANGED` «unionMembers») o si cambia su huella (`ListSig`): `HU.rosterVersion`
+(alguien de mi hermandad entra o sale), «Mostrar desconectados», el orden elegido, y de cada hermandad la hora de su
+lista de Miembros, lo que va llegando, su /who y su lista RB; más un trozo de reloj (`LIST_EVERY`, 30 s) por lo que
+caduca con el tiempo. Cada 2 s quedan solo las filas que se ven (0,3 ms). Al rehacerla tampoco se pasa el nombre a
+minúsculas en cada comparación: cada fila lleva el suyo (`k`), también en `HU:UnionRosterEntries` y
+`HU:UnionMemberEntries` (11 ms en vez de 16 con 4 × 600).
+
 **«Solo mi hermandad» = la lista del juego** (`mine`, solo en Miembros; se recuerda en `HU.db.unionRosterMine`;
 `RealList()`). Lo nuestro (`cover`) se esconde entero y queda la ventana del juego tal cual: sus títulos para
 ordenar, su casilla de desconectados y, al pinchar, **su ficha, la única que guarda notas**. En Forever ningún
@@ -3277,9 +3297,11 @@ negociar) y En el tablón Sí · No (de entrada, según la vista; con No, «Pers
 «Pedir» exige el objeto, que no pase del tope y que la que no va al Tablón tenga a quién («Si no va al tablón, pon a
 quién se la pides.»), y salta al Tablón o a Mis encargos. `ui.OpenNew(nombre)` la abre privada para esa
 persona («Pedir una receta a …»). Con el comercio apagado (`tradeOff`) no se pide: `ui.OpenNew` no la abre y «Pedir»
-la cierra y lo dice. Autorrelleno (`Suggest`): desde 2 letras, todo lo que encaja de mejor a peor (`Rank`, `Better`:
-el nombre exacto, los que empiezan por lo escrito y los que lo llevan dentro; en cada grupo, por nombre), y se ven los
-6 primeros (`SUGGEST_N`); clic o Intro (la primera) elige. Objetos (`ItemMatches`): el de ese nombre exacto si el
+la cierra y lo dice. Autorrelleno (`Suggest`): desde 2 letras, todo lo que encaja de mejor a peor (`HU.TextRank`, Core.lua:
+lo exacto y las palabras enteras primero, sin mayúsculas ni acentos; `Better`: en cada grupo, el nombre más corto, que es
+el que más se parece a lo escrito, y luego por nombre), y se ven los 6 primeros (`SUGGEST_N`); clic o Intro (la primera)
+elige. Los nombres de los fabricables se guardan ya sin acentos (`craft[...].key = HU.Fold(nombre)`), y lo escrito a mano
+se reconoce igual sin acentos ni mayúsculas (`CraftTargets`). Objetos (`ItemMatches`): el de ese nombre exacto si el
 juego lo conoce, los de mis bolsas, los de las solicitudes y los fabricables (CraftItems.lua). Nombres
 (`NameMatches`): mi hermandad, las listas de las otras y los que tienen GuildUnion, con su etiqueta y sin mí.
 
@@ -3290,7 +3312,9 @@ mitad del interruptor elegida, ni chat, ni «+ Nueva solicitud», y la vista se 
 - **Publicadas**: las del Tablón que encajan por quién la pide, el objeto o quién la aceptó (`Matches`), con «Solo lo
   que puedo hacer» si está puesta; si no hay ninguna, se esconde y «Quién lo hace» ocupa todo (8 filas).
 - **Quién lo hace** (`SearchMembers`): los de mi hermandad con una profesión cuyo nombre encaja, o con la profesión y
-  el nivel de un fabricable que encaja (`CraftNeeds`), de más nivel a menos. Es aproximado: el juego da sus dos
+  el nivel de un fabricable que encaja (`CraftNeeds`), de más nivel a menos. De los fabricables solo cuenta el grupo que
+  mejor encaja: palabra entera (0–2 de `HU.TextRank`), si no a media palabra (3–4), si no el resto; con «bolsa», las
+  bolsas y no «Bolsas» ni «Embolsar». Es aproximado: el juego da sus dos
   profesiones (`HU:ClubProfessions`), no sus recetas, y en Forever tampoco el nivel de los demás (la comunidad da 1):
   quien no lo tiene sale igual si tiene la profesión, con «—» y detrás; el mío, el de mi personaje. Las otras
   hermandades, con la red.

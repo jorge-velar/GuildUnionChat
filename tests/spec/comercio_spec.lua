@@ -761,4 +761,42 @@ describe("Comercio (Trade.lua): qué es un objeto, al pasar el ratón", function
         A.is_nil(shown, "sin enlace, nada")
         A.same({}, a:Errors())
     end)
+
+    it("al buscar, lo exacto primero: «bolsa» saca antes «Bolsa de…» (la más corta primero) que «Gran bolsa», «Bolsas» o «Embolsar»; sin acentos (Jorge, 24/11)", function()
+        local a = F.Community()
+        local HU = a.HU
+        local R = HU.TextRank
+        -- (cómo encaja, de mejor a peor: el nombre entero, empieza con la palabra entera, la lleva entera, empieza a
+        -- medias, una palabra empieza así, dentro de una palabra, y varias palabras sueltas)
+        A.same({ 0, 1, 2, 3, 4, 5, 6 }, {
+            R("Poción de maná", "pocion de MANA"), R("Bolsa de lino", "bolsa"), R("Gran bolsa de cuero", "Bolsa"),
+            R("Bolsas de pólvora", "bolsa"), R("Gran bolsaza", "bolsa"), R("Embolsar", "bolsa"),
+            R("Bolsa de seda verde", "seda  bolsa") })
+        A.is_nil(R("Bolsa de seda verde", "seda roja"))
+        A.is_nil(R("Bolsa", "  "))
+        -- (en las sugerencias del buscador, en ese orden; con la palabra entera, la más corta primero)
+        local list = HU.CRAFT_ITEMS[197]
+        local names = { [list[1]] = "Embolsar", [list[3]] = "Bolsas de pólvora", [list[5]] = "Gran bolsa de cuero",
+            [list[7]] = "Bolsa de bombas de cobre", [list[9]] = "Bolsa de lino" }
+        a.env.GetItemInfo = function(id)
+            if type(id) ~= "number" then return nil end
+            local name = names[id] or ("Objeto " .. id)
+            return name, ItemLink(id, name)
+        end
+        local tr = OpenTrade(a)
+        a.w:Advance(40) -- (los nombres se piden poco a poco: 30 cada medio segundo)
+        tr.search:SetText("bolsa")
+        tr.search:GetScript("OnTextChanged")(tr.search, true)
+        local shown = {}
+        for _, fr in ipairs(a.w.frames) do
+            local box = fr._parent and fr._parent._parent
+            if box == tr.search and fr.text and fr.value and fr:IsShown() then shown[#shown + 1] = fr.text:GetText():match("%[(.-)%]") end
+        end
+        A.same({ "Bolsa de lino", "Bolsa de bombas de cobre", "Gran bolsa de cuero", "Bolsas de pólvora", "Embolsar" }, shown)
+        -- (lo escrito a mano se reconoce también sin acentos ni mayúsculas)
+        Professions(a, {})
+        A.falsy((HU:CanCraft("bolsa DE lino")), "reconocida: me falta la profesión")
+        A.truthy((HU:CanCraft("Bolsa de linos")), "otro nombre: no se reconoce")
+        A.same({}, a:Errors())
+    end)
 end)
