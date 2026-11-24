@@ -3,7 +3,7 @@
 # Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)
 Audit.lua 83.7 13
 Blacklist.lua 88.3 14
-BlizzTab.lua 60.9 422
+BlizzTab.lua 61.6 417
 ChanPresence.lua 95.0 3
 Channel.lua 80.3 279
 Channels.lua 14.4 196
