@@ -2248,6 +2248,41 @@ Todos calculan igual quién hace cada cosa, sin hablar: el orden es por nombre y
 coincida con `h[i]`, sin volver a calcularla (`Valid`). Al entrar ya están los trozos de antes: solo se pide lo
 cambiado.
 
+### Propuestas (`WU`): los conjuntos que escribe cada uno
+
+Los conjuntos que no salen del juego (eventos, comercio, oficios) se declaran con `proposals = true` y
+`validate(nombre, clave, datos)`; opcionales `keep` (segundos de vida, 30 días si no), `alive(n, k, d, t, ahora)`,
+`publish(n, k, d)` (filtro al publicar) y `line`/`parse` (por defecto «Nombre-Reino,clave,hora en base 36,datos»; los
+datos pueden llevar comas). `RegisterPackSet` les pone `source`, `key`, `encode` y `version` (los cambios del almacén
+y la hora, por lo que caduca): el resto de la maquinaria es la de `MB`.
+
+- **Mandar** (`HU:Propose(conj, clave, datos)`): queda ya en mi almacén y sale por GUILD
+  `WU~etiq~conj~clave~hora~datos`. La hora es la del servidor (`HU.StampNow`), una más si repito en el mismo segundo.
+  Datos vacíos = borrada (con su hora: no resucita con una vieja).
+- **Recibir**: solo por GUILD y de mi etiqueta; el nombre lo pongo yo (el del remitente, nunca del mensaje); como
+  mucho 10 por minuto de cada uno en cada conjunto con hueco para 5 seguidas (`WU_RATE`, `WU_BURST`; también cuentan
+  las que no valen); `validate` y `HU.NetStamp` (nada del futuro). Gana la más nueva (`KeepEntry`).
+- **Almacén** (`HU.db.wuStore[etiqueta][conjunto]["nombre,clave"] = { n, k, t, d }`, cuenta): se guarda tras /reload;
+  `CleanStores` quita lo caducado al entrar y cada hora.
+- **Leer**: `HU:Proposals(conj)` da lo vivo de todas las hermandades `{ tag, n, k, t, d }`, sin lo borrado (lo mío,
+  del almacén; lo de las otras, de sus paquetes, comprobando forma y `validate`). `HU:PackLines(miEtiqueta, conj)`
+  también lee del almacén. `onChange` avisa con lo de mi hermandad y con lo que llega de las otras.
+- **Publicar**: el enlace publica su almacén como cualquier paquete, con lo borrado (así se borra en las otras). Un
+  enlace nuevo espera `FRESH_WAIT` (2 min) antes del primer anuncio de un conjunto de propuestas: su almacén puede
+  estar a medias y vaciaría el de las otras (visto en las pruebas: al volver a entrar, dos enlaces a la vez un rato).
+- **Lo mío otra vez** (`ResendAllMine`): cuando cambia el enlace (y al entrar), cada uno vuelve a mandar lo suyo vivo
+  al rato (5–35 s al azar), como mucho una vez cada 10 min (`RESEND_GAP`). Solo lo propio: nadie manda lo de otro.
+
+### Mi hermandad al día (`SyncMine`)
+
+Quien estaba fuera no oyó las `WU`. Al mirar (Calendario, Comercio, una ficha: `HU:PackNeed(miEtiqueta, conj)`),
+como mucho cada 5 min (`SYNC_EVERY`), pide por GUILD el anuncio de su hermandad al siguiente del equipo que no sea
+él (`WP~mía~mía~conj~turno~m`). Ese (`ServeMine`, tope de 60 mensajes por minuto) contesta con `WM` de mi etiqueta
+por GUILD; quien lo pidió compara con los trozos de su almacén, pide por GUILD los distintos que nadie acaba de pedir y
+los junta al llegar (`OwnChunk`: comprobados con ese anuncio, gana la más nueva, lo mío no se toca). Lo suyo que el
+equipo no tenía igual (`ResendMine`) lo vuelve a mandar. **Confianza**: anuncio y trozos de mi hermandad solo valen
+del equipo del enlace (`FromMyTeam`): un miembro cualquiera no puede meter líneas de otro.
+
 ### En Members
 
 Con «Mostrar desconectados» marcada, Members pide la lista completa de cada otra hermandad (`HU:PackNeed`) y

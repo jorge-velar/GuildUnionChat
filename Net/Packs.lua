@@ -4,12 +4,14 @@
 --   WP~deEtiq~etiq~conj~turno~3,7|m        pedir trozos («m»: el anuncio). Por GUILD, al porteador de mi
 --                                          hermandad; por susurro, del porteador al equipo dueño
 --   WT~etiq~conj~trozo~parte~partes~datos  un trozo, en partes de líneas enteras
+--   WU~etiq~conj~clave~hora~datos          una propuesta: mi línea de un conjunto, por GUILD (datos vacíos: la borro)
 -- No hay número de versión: la huella es la versión, y gana el último anuncio de quien puede hacerlo.
 -- Este archivo no sabe qué hay dentro: cada conjunto se declara con HU:RegisterPackSet (Packs/*.lua)
 local _, HU = ...
 
--- (se crea al llegar el primero: [etiq][conj] = { h = { huellas }, t = { [trozo] = { líneas } }, ok = { [trozo] = huella } })
-HU:Saved({ account = { "packs" } })
+-- (se crea al llegar el primero: [etiq][conj] = { h = { huellas }, t = { [trozo] = { líneas } }, ok = { [trozo] = huella } };
+-- y las propuestas de mi hermandad: wuStore[etiq][conj][«nombre,clave»] = { n, k, t, d })
+HU:Saved({ account = { "packs", wuStore = {} } })
 
 local PART = 200            -- letras de datos por mensaje (el mensaje entero no pasa de 255)
 local MAX_CHUNKS = 32
@@ -68,12 +70,72 @@ function HU.PackChunkOf(key, n)
 end
 
 ---------------------------------------------------------------------------
+-- Propuestas: los conjuntos que no salen del juego (eventos, comercio, oficios) los escribe cada uno con lo suyo [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local KEY_MAX, DATA_MAX = 24, 180
+local DAY = 86400
+local wuVer = {}            -- [conj] = cambios en lo de mi hermandad (Refresh rehace sus trozos con esto)
+local function StoreOf(tag, id, create)
+    local all = HU.db and HU.db.wuStore
+    if not (all and tag and id) then return nil end
+    if create then
+        all[tag] = all[tag] or {}
+        all[tag][id] = all[tag][id] or {}
+    end
+    return all[tag] and all[tag][id]
+end
+-- (viva: lo que diga el conjunto (alive) o, si no, keep segundos desde su hora; sin nada, 30 días)
+local function Alive(def, e, now)
+    if def.alive then return def.alive(e.n, e.k, e.d, e.t, now) and true or false end
+    return e.t >= now - (def.keep or 30 * DAY)
+end
+-- (la línea del paquete: la del conjunto o «Nombre-Reino,clave,hora en base 36,datos»; los datos pueden llevar comas)
+local function LineOf(def, e)
+    if def.line then return def.line(e.n, e.k, e.t, e.d) end
+    return e.n .. "," .. e.k .. "," .. HU.B36(e.t) .. "," .. e.d
+end
+local function ParseLine(def, l)
+    if def.parse then return def.parse(l) end
+    local n, k, t, d = tostring(l or ""):match("^([^,]+),([^,]+),(%w+),(.*)$")
+    return n, k, t and tonumber(t, 36), d
+end
+local function GoodKey(key) return type(key) == "string" and #key <= KEY_MAX and key:match("^[%w_]+$") ~= nil end
+local function GoodData(d) return type(d) == "string" and #d <= DATA_MAX and not d:find("[~;\n|]") end
+-- (gana la más nueva; una borrada son datos vacíos, y tampoco resucita con una más vieja)
+local function KeepEntry(tag, id, name, key, t, data)
+    local st = StoreOf(tag, id, true)
+    if not st then return false end
+    local k = name:lower() .. "," .. key
+    local old = st[k]
+    if old and old.t >= t then return false end
+    st[k] = { n = name, k = key, t = t, d = data }
+    if tag == HU.myTag then wuVer[id] = (wuVer[id] or 0) + 1 end
+    return true
+end
+
+---------------------------------------------------------------------------
 -- Conjuntos y lo guardado
 ---------------------------------------------------------------------------
 function HU:RegisterPackSet(id, def)
     if type(id) ~= "string" or not id:match("^%u%u$") then error("RegisterPackSet: nombre de 2 mayúsculas", 2) end
     if self.packSets[id] then error("RegisterPackSet: " .. id .. " repetido", 2) end
     if type(def.chunks) ~= "number" or def.chunks < 1 or def.chunks > MAX_CHUNKS then error("RegisterPackSet: chunks", 2) end
+    if def.proposals then
+        if type(def.validate) ~= "function" then error("RegisterPackSet: " .. id .. " sin validate", 2) end
+        -- (lo que publica el equipo sale del almacén de mi hermandad: lo vivo, también lo borrado, para que se borre en
+        -- los demás; con el filtro del conjunto, si lo tiene)
+        def.source = function()
+            local out, now = {}, HU.StampNow()
+            for _, e in pairs(StoreOf(HU.myTag, id) or {}) do
+                if Alive(def, e, now) and (e.d == "" or not def.publish or def.publish(e.n, e.k, e.d)) then out[#out + 1] = e end
+            end
+            return out
+        end
+        def.key = function(e) return e.n:lower() .. "," .. e.k end
+        def.encode = function(e) return LineOf(def, e) end
+        -- (su versión: los cambios del almacén, y la hora por lo que caduca)
+        def.version = function() return "w" .. (wuVer[id] or 0) .. ":" .. math.floor(HU.StampNow() / 3600) end
+    end
     self.packSets[id] = def
 end
 
@@ -104,8 +166,18 @@ local function SameHashes(a, b)
 end
 
 function HU:PackGet(tag, id) return Get(tag, id) end
--- Las líneas ya comprobadas de un conjunto de una hermandad, y si está completo
+-- Las líneas ya comprobadas de un conjunto de una hermandad, y si está completo (de mi hermandad, en los de propuestas:
+-- de mi almacén, sin lo borrado ni lo caducado)
 function HU:PackLines(tag, id)
+    local def = self.packSets[id]
+    if def and def.proposals and tag == self.myTag then
+        local out, now = {}, HU.StampNow()
+        for _, e in pairs(StoreOf(tag, id) or {}) do
+            if e.d ~= "" and Alive(def, e, now) then out[#out + 1] = LineOf(def, e) end
+        end
+        table.sort(out)
+        return out, true
+    end
     local p = Get(tag, id)
     local out = {}
     if not (p and p.h) then return out, false end
@@ -193,8 +265,10 @@ local mine = {} -- [conj] = { lineOf = { [clave] = línea }, chunkOf = { [clave]
 local function Refresh(id)
     local def = HU.packSets[id]
     local m = mine[id]
-    -- (si la lista del juego no ha cambiado desde la última vez, nada que hacer)
-    if m and m.v == HU.rosterVersion then return m end
+    -- (si lo que lo forma no ha cambiado desde la última vez, nada que hacer: la lista del juego o, en los de propuestas,
+    -- el almacén)
+    local ver = (def and def.version and def.version()) or HU.rosterVersion
+    if m and m.v == ver then return m end
     local list = def and def.source and def.source()
     if not list then return nil end
     local n = def.chunks
@@ -202,7 +276,7 @@ local function Refresh(id)
         m = { lineOf = {}, chunkOf = {}, chunks = {}, h = {} }
         mine[id] = m
     end
-    m.v = HU.rosterVersion
+    m.v = ver
     local seen, dirty = {}, {}
     for _, e in ipairs(list) do
         local line = def.encode(e)
@@ -337,19 +411,42 @@ local function Publish(id, m)
     pendingT[id] = nil
 end
 
+-- (un enlace nuevo no publica lo de propuestas hasta llevar FRESH_WAIT oyendo a su hermandad: su almacén puede estar a
+-- medias (estaba fuera) y lo vaciaría en las otras. Mientras, cada uno le vuelve a mandar lo suyo: ResendAllMine)
+local FRESH_WAIT = 120
+local freshT = {}     -- [conj] = desde cuándo soy enlace sin haber publicado
+local lastRelay       -- el enlace de mi hermandad en la vuelta anterior
+local ResendAllMine   -- (abajo, con las propuestas)
+-- (¿tengo algo mío en algún conjunto de propuestas?)
+local function HaveMine()
+    for id, def in pairs(HU.packSets) do
+        if def.proposals then
+            for _, e in pairs(StoreOf(HU.myTag, id) or {}) do if IsMe(e.n) then return true end end
+        end
+    end
+    return false
+end
 local function Tick()
     if not HU.myTag or not HU.db then return end
+    -- (cambia el enlace, o acabo de entrar: lo mío otra vez, por si no lo tiene. Solo con algo mío: si no, ni se sortea)
+    local rn = HU:RelayName()
+    if rn ~= lastRelay then
+        lastRelay = rn
+        if rn and not IsMe(rn) and HaveMine() then HU.After(5 + math.random() * 30, ResendAllMine) end
+    end
     local relay = HU:IsRelay()
     local team = relay or InMyTeam()
     for id, def in pairs(HU.packSets) do
-        if not relay then published[id], pendingT[id] = nil, nil end
+        if not relay then published[id], pendingT[id], freshT[id] = nil, nil, nil end
         if def.source and team then
             local m = Refresh(id)
             if relay and m then
                 local pub = published[id]
                 local now = GetTime()
                 if not pub then
-                    Publish(id, m) -- (acabo de ser enlace: lo anuncio ya)
+                    -- (acabo de ser enlace: lo anuncio ya; lo de propuestas, tras FRESH_WAIT)
+                    freshT[id] = freshT[id] or now
+                    if not def.proposals or now - freshT[id] >= FRESH_WAIT then Publish(id, m) end
                 elseif not SameHashes(pub.h, m.h) then
                     pendingT[id] = pendingT[id] or now
                     if now - pendingT[id] >= PUBLISH_WAIT then Publish(id, m) end
@@ -377,6 +474,7 @@ local function ParseListOf(s)
 end
 
 local Ask, Carry, Watch
+local SyncMine, ServeMine, OwnManifest, OwnChunk -- (mi hermandad al día, en los de propuestas: abajo)
 local function Retry(tag, id)
     local key = tag .. "|" .. id
     local st = asking[key]
@@ -437,9 +535,15 @@ Watch = function(tag, id)
     end)
 end
 
--- Quiero ver este conjunto de esa hermandad completo (Members con desconectados, una búsqueda...)
+-- Quiero ver este conjunto de esa hermandad completo (Members con desconectados, una búsqueda...). De mi hermandad, solo
+-- en los de propuestas: lo que me perdí estando fuera, al equipo del enlace (SyncMine)
 function HU:PackNeed(tag, id)
-    if not (self.myTag and tag and tag ~= self.myTag and self.packSets[id]) then return end
+    local def = self.packSets[id]
+    if not (self.myTag and tag and def) then return end
+    if tag == self.myTag then
+        if def.proposals then SyncMine(id) end
+        return
+    end
     local key = tag .. "|" .. id
     if asking[key] then return end
     local p = Get(tag, id)
@@ -533,7 +637,13 @@ HU.comm.WM = function(self, sender, f, dist, raw)
     local def = id and self.packSets[id]
     if not (tag and def and n == def.chunks) then return end
     local hs = ParseHashes(f[4], n)
-    if not hs or not Trusted(self, sender, tag, dist) then return end
+    if not hs then return end
+    -- (de mi hermandad, solo en los de propuestas: lo manda su equipo cuando alguien lo pide)
+    if tag == self.myTag then
+        if dist == "GUILD" and def.proposals then OwnManifest(self, sender, id, hs) end
+        return
+    end
+    if not Trusted(self, sender, tag, dist) then return end
     local p = Get(tag, id)
     if not (p and SameHashes(p.h, hs)) then
         -- (cómo es ahora: se quedan los trozos que no han cambiado)
@@ -586,8 +696,13 @@ HU.comm.WP = function(self, sender, f, dist)
     local want = ParseList(f[5], def.chunks)
     if not want then return end
     if dist == "GUILD" then
-        if from ~= self.myTag or tag == self.myTag then return end
+        if from ~= self.myTag then return end
         if want ~= "m" then for _, i in ipairs(want) do askSeen[K(tag, id, i)] = GetTime() end end
+        -- (mi hermandad pide el suyo, en los de propuestas: lo sirve a quien le toca del equipo)
+        if tag == self.myTag then
+            if def.proposals and IsMe(Pick(MyTeam(), TagIndex(tag), shift)) then ServeMine(id, want) end
+            return
+        end
         if IsMe(Pick(MyTeam(), TagIndex(tag), shift)) then Carry(tag, id, want, shift) end
     elseif dist == "WHISPER" and tag == self.myTag and from ~= self.myTag then
         ServeWhisper(sender, from, id, want)
@@ -603,7 +718,10 @@ HU.comm.WT = function(self, sender, f, dist)
     local tag, id, i, k, n = f[1], f[2], tonumber(f[3]), tonumber(f[4]), tonumber(f[5])
     local def = id and self.packSets[id]
     if not (tag and def and i and k and n and i >= 1 and i <= def.chunks and k >= 1 and k <= n and n <= MAX_PARTS) then return end
-    if tag == self.myTag then return end
+    if tag == self.myTag then
+        if dist == "GUILD" and def.proposals then OwnChunk(self, sender, id, i, k, n, f.data) end
+        return
+    end
     wtSeen[K(tag, id, i)] = GetTime()
     -- (sigue llegando: quien lo está esperando no pasa todavía al siguiente del equipo)
     local st = asking[tag .. "|" .. id]
@@ -638,10 +756,229 @@ HU.comm.WT = function(self, sender, f, dist)
 end
 
 ---------------------------------------------------------------------------
+-- Propuestas: mandar lo mío y guardar lo de mi hermandad (WU, solo por GUILD)
+---------------------------------------------------------------------------
+local WU_RATE, WU_BURST = 10, 5   -- al recibir: por remitente y conjunto, 10 por minuto, con hueco para 5 seguidas
+local RESEND_GAP = 600            -- lo mío que le falta al equipo se vuelve a mandar, como mucho una vez en este rato
+local wuBucket, resent = {}, {}
+
+-- Mi línea de un conjunto de propuestas: queda ya en mi almacén y sale por GUILD (datos vacíos o nil: la borro).
+-- Devuelve si ha podido
+function HU:Propose(id, key, data)
+    local def = self.packSets[id]
+    local me = self:Me()
+    data = data or ""
+    if not (def and def.proposals and self.myTag and me and GoodKey(key) and GoodData(data)) then return false end
+    if data ~= "" and not def.validate(me, key, data) then return false end
+    local st = StoreOf(self.myTag, id)
+    local old = st and st[me:lower() .. "," .. key]
+    -- (dos seguidas en el mismo segundo: la segunda, más nueva)
+    local t = math.max(HU.StampNow(), old and old.t + 1 or 0)
+    KeepEntry(self.myTag, id, me, key, t, data)
+    Changed(id, self.myTag)
+    self:Send("WU~" .. self.myTag .. "~" .. id .. "~" .. key .. "~" .. t .. "~" .. data, "GUILD")
+    return true
+end
+
+HU:RegisterMessage("WU", { tagField = 1, fields = { "tag", "id", "key", "t", "data*" }, queue = "blow", ttl = 300, combat = "data" })
+HU.comm.WU = function(self, sender, f, dist)
+    local tag, id, key, data = f[1], f[2], f[3], f.data or ""
+    local def = id and self.packSets[id]
+    if dist ~= "GUILD" or tag ~= self.myTag or not (def and def.proposals and GoodKey(key) and GoodData(data)) then return end
+    -- (la línea es de quien la manda: el nombre lo pongo yo, no viene en el mensaje)
+    local t, name = HU.NetStamp(f[4]), self:FullName(sender)
+    if not (t and name) or IsMe(name) then return end
+    local bk, now = name:lower() .. "|" .. id, GetTime()
+    local b = wuBucket[bk]
+    if not b then b = { n = WU_BURST, t = now }; wuBucket[bk] = b end
+    b.n, b.t = math.min(WU_BURST, b.n + (now - b.t) * WU_RATE / 60), now
+    if b.n < 1 then return end
+    b.n = b.n - 1
+    if data ~= "" and not def.validate(name, key, data) then return end
+    if KeepEntry(tag, id, name, key, t, data) then Changed(id, tag) end
+end
+
+-- Todo lo vivo de un conjunto de propuestas, de todas las hermandades: { tag, n, k, t, d } (sin lo borrado). Lo de las
+-- otras, de sus paquetes (HU:PackNeed lo pide); lo de la mía, de mi almacén
+function HU:Proposals(id)
+    local def = self.packSets[id]
+    local out, now = {}, HU.StampNow()
+    if not (def and def.proposals and self.myTag) then return out end
+    for _, e in pairs(StoreOf(self.myTag, id) or {}) do
+        if e.d ~= "" and Alive(def, e, now) then out[#out + 1] = { tag = self.myTag, n = e.n, k = e.k, t = e.t, d = e.d } end
+    end
+    for _, tag in ipairs(self:OtherTags()) do
+        for _, l in ipairs((self:PackLines(tag, id))) do
+            local n, k, t, d = ParseLine(def, l)
+            if n and GoodKey(k) and t and GoodData(d) and d ~= "" then
+                local e = { tag = tag, n = n, k = k, t = t, d = d }
+                if Alive(def, e, now) and def.validate(n, k, d) then out[#out + 1] = e end
+            end
+        end
+    end
+    return out
+end
+
+---------------------------------------------------------------------------
+-- Mi hermandad al día: quien mira (Calendario, Comercio...) pide al equipo del enlace lo que se perdió estando fuera [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local SYNC_EVERY, SERVE_MINE_MAX = 300, 60
+local ownSync = {}               -- [conj] = { t, shift, hs } (lo que he pedido y lo último que dijo el equipo)
+local servedMine = { t = 0, n = 0 }
+local function FromMyTeam(self, sender)
+    local k = self:Key(self:FullName(sender) or sender)
+    for _, n in ipairs(MyTeam()) do if self:Key(n) == k then return true end end
+    return false
+end
+-- (lo mío de ese trozo que el equipo no tiene igual: otra vez por GUILD, como mucho una vez cada RESEND_GAP)
+local function ResendMine(id, i, teamLines)
+    local def = HU.packSets[id]
+    local have, now = {}, GetTime()
+    for _, l in ipairs(teamLines) do have[l] = true end
+    for _, e in pairs(StoreOf(HU.myTag, id) or {}) do
+        if IsMe(e.n) and HU.PackChunkOf(e.n:lower() .. "," .. e.k, def.chunks) == i and not have[LineOf(def, e)]
+            and Alive(def, e, HU.StampNow()) then
+            local rk = id .. "|" .. e.k
+            if not resent[rk] or now - resent[rk] >= RESEND_GAP then
+                resent[rk] = now
+                HU:Send("WU~" .. HU.myTag .. "~" .. id .. "~" .. e.k .. "~" .. e.t .. "~" .. e.d, "GUILD")
+            end
+        end
+    end
+end
+SyncMine = function(id)
+    local s = ownSync[id] or { shift = -1 }
+    ownSync[id] = s
+    local now = GetTime()
+    if s.t and now - s.t < SYNC_EVERY then return end
+    local team = MyTeam()
+    -- (al siguiente del equipo que no sea yo; si solo estoy yo, lo mío es lo de la hermandad: nada que pedir, y se vuelve
+    -- a mirar la próxima vez)
+    for _ = 1, #team do
+        s.shift = (s.shift + 1) % #team
+        if not IsMe(Pick(team, TagIndex(HU.myTag), s.shift)) then
+            s.t = now
+            return HU:Send("WP~" .. HU.myTag .. "~" .. HU.myTag .. "~" .. id .. "~" .. s.shift .. "~m", "GUILD")
+        end
+    end
+end
+-- (todo lo mío vivo, otra vez por GUILD: al entrar y cuando cambia el enlace; como mucho una vez cada RESEND_GAP)
+ResendAllMine = function()
+    if not (HU.myTag and HU:Me()) then return end
+    local now, sent = GetTime(), 0
+    for id, def in pairs(HU.packSets) do
+        if def.proposals then
+            for _, e in pairs(StoreOf(HU.myTag, id) or {}) do
+                local rk = id .. "|" .. e.k
+                if sent < 30 and IsMe(e.n) and Alive(def, e, HU.StampNow()) and (not resent[rk] or now - resent[rk] >= RESEND_GAP) then
+                    resent[rk], sent = now, sent + 1
+                    HU:Send("WU~" .. HU.myTag .. "~" .. id .. "~" .. e.k .. "~" .. e.t .. "~" .. e.d, "GUILD")
+                end
+            end
+        end
+    end
+end
+ServeMine = function(id, want)
+    local m = Refresh(id)
+    if not m then return end
+    local now = GetTime()
+    if now - servedMine.t > 60 then servedMine.t, servedMine.n = now, 0 end
+    if want == "m" then
+        if servedMine.n < SERVE_MINE_MAX then
+            servedMine.n = servedMine.n + 1
+            HU:Send(ManifestText(HU.myTag, id, m.h), "GUILD")
+        end
+        return
+    end
+    for _, i in ipairs(want) do
+        local n = #Parts(m.chunks[i])
+        if servedMine.n + n > SERVE_MINE_MAX then break end
+        servedMine.n = servedMine.n + SendChunk(HU.myTag, id, m.chunks[i], i, "GUILD")
+    end
+end
+-- (lo que dice el equipo: pido los trozos que no tengo igual, si nadie de mi hermandad acaba de pedirlos; donde el
+-- equipo no tiene nada, lo mío otra vez)
+OwnManifest = function(self, sender, id, hs)
+    local s = ownSync[id]
+    if not (s and FromMyTeam(self, sender)) then return end
+    local m = Refresh(id)
+    if not m then return end
+    s.hs = hs
+    local want, now = {}, GetTime()
+    for i = 1, #hs do
+        if hs[i] ~= m.h[i] then
+            local k = K(self.myTag, id, i)
+            if hs[i] == EMPTY then
+                ResendMine(id, i, {})
+            elseif not Recent(askSeen, k) and not Recent(wtSeen, k) then
+                askSeen[k] = now
+                want[#want + 1] = i
+            end
+        end
+    end
+    if #want > 0 then
+        self:Send("WP~" .. self.myTag .. "~" .. self.myTag .. "~" .. id .. "~" .. s.shift .. "~" .. table.concat(want, ","), "GUILD")
+    end
+end
+-- (un trozo del equipo: se comprueba con su anuncio y se junta con mi almacén, gana la más nueva; lo mío no se toca)
+OwnChunk = function(self, sender, id, i, k, n, data)
+    local def, s = self.packSets[id], ownSync[id]
+    if not (s and s.hs and s.hs[i] and FromMyTeam(self, sender)) then return end
+    local ck = K(self.myTag, id, i)
+    wtSeen[ck] = GetTime()
+    local akey = ck .. "|" .. tostring(sender):lower()
+    local a = assembling[akey]
+    if not a or a.n ~= n or GetTime() - a.t > 120 then a = { parts = {}, got = 0, n = n }; assembling[akey] = a end
+    a.t = GetTime()
+    if not a.parts[k] then a.parts[k], a.got = data or "", a.got + 1 end
+    if a.got < n then return end
+    assembling[akey] = nil
+    local lines = {}
+    for kk = 1, n do
+        for l in a.parts[kk]:gmatch("[^;]+") do lines[#lines + 1] = l end
+    end
+    table.sort(lines)
+    if HashSorted(lines) ~= s.hs[i] then badChunks = badChunks + 1; return end
+    local changed = false
+    for _, l in ipairs(lines) do
+        local nm, ky, t, d = ParseLine(def, l)
+        t = t and HU.NetStamp(t)
+        if nm and not IsMe(nm) and GoodKey(ky) and t and GoodData(d) and (d == "" or def.validate(nm, ky, d))
+            and KeepEntry(self.myTag, id, nm, ky, t, d) then
+            changed = true
+        end
+    end
+    ResendMine(id, i, lines)
+    if changed then Changed(id, self.myTag) end
+end
+
+-- (lo que ha caducado sale del almacén: al entrar y cada hora)
+local function CleanStores()
+    local all = HU.db and HU.db.wuStore
+    if not all then return end
+    local now = HU.StampNow()
+    for tag, sets in pairs(all) do
+        for id, st in pairs(sets) do
+            local def = HU.packSets[id] or {}
+            local gone = false
+            for k, e in pairs(st) do
+                if type(e) ~= "table" or type(e.t) ~= "number" or type(e.d) ~= "string" or not Alive(def, e, now) then
+                    st[k], gone = nil, true
+                end
+            end
+            if gone and tag == HU.myTag then wuVer[id] = (wuVer[id] or 0) + 1 end
+        end
+    end
+end
+HU.PackCleanStores = CleanStores -- (para las pruebas)
+
+---------------------------------------------------------------------------
 -- Cada 30 s: el equipo lee su hermandad y el enlace publica lo que haya cambiado
 ---------------------------------------------------------------------------
 HU:OnStart(function()
+    CleanStores()
     HU:Every(30, "paquetes", Tick, { pauseInCombat = true })
+    HU:Every(3600, "propuestas", CleanStores)
 end)
 
 HU:Module("Net/Packs", { "Config", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Protocol" })

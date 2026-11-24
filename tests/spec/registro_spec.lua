@@ -38,6 +38,8 @@ local NEW = {
     WD = { tagField = 1, bootstrap = true, remoteData = true, queue = "blow", ttl = 300, combat = "data" },
     WP = { tagField = 1, bootstrap = true, queue = "blow", ttl = 60, combat = "req" },
     WT = { tagField = 1, bootstrap = true, queue = "blow", ttl = 120, combat = "data" },
+    -- (propuestas: mi línea de un conjunto, por GUILD; Net/Packs.lua)
+    WU = { tagField = 1, queue = "blow", ttl = 300, combat = "data" },
 }
 for cmd, marks in pairs(NEW) do
     for key, v in pairs(marks) do

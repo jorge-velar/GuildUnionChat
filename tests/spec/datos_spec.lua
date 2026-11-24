@@ -112,7 +112,9 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         bans = {}, grace = 120, debug = false, showChannel = false, audit = {}, history = {}, log = {}, profiles = {},
         offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {},
         -- (nuevo, copia 324: lo guardado de Comercio y Calendario, que empieza vacío)
-        tradeReqs = {}, tradeChats = {}, tradeUnread = {}, calEvents = {} }
+        tradeReqs = {}, tradeChats = {}, tradeUnread = {}, calEvents = {},
+        -- (nuevo, paquetes: las propuestas de mi hermandad, Net/Packs.lua)
+        wuStore = {} }
 
     it("da exactamente lo de antes: qué va en el personaje y los valores por defecto", function()
         local HU = F.Community().HU
