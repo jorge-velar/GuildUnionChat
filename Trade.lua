@@ -257,23 +257,22 @@ local function SearchMembers(q)
         local n = ok2 and info and info.name
         if type(n) == "string" and not HU.Secret(n) then
             local off = Enum and Enum.ClubMemberPresence and info.presence == Enum.ClubMemberPresence.Offline
-            for _, k in ipairs({ "1", "2" }) do
-                local pid, pn, pr = info["profession" .. k .. "ID"], info["profession" .. k .. "Name"], info["profession" .. k .. "Rank"]
-                local rank = (type(pr) == "number" and not HU.Secret(pr)) and pr or 0
-                local need = needs and type(pid) == "number" and needs[pid]
-                if type(pn) == "string" and not HU.Secret(pn) and (pn:lower():find(q, 1, true) or (need and rank >= need)) then
-                    local icon
-                    if type(pid) == "number" and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillTexture then
-                        local okI, tex = pcall(C_TradeSkillUI.GetTradeSkillTexture, pid)
-                        if okI and tex and not HU.Secret(tex) then icon = tex end
-                    end
-                    out[#out + 1] = { name = HU:FullName(n) or n, tag = HU.myTag, prof = pn, icon = icon, online = not off,
-                        rank = rank }
+            for _, p in ipairs(HU:ClubProfessions(info)) do
+                local need = needs and type(p.id) == "number" and needs[p.id]
+                -- (sin nivel —el de los demás, que la comunidad no da—: sale si tiene la profesión)
+                if p.name:lower():find(q, 1, true) or (need and (p.rank == nil or p.rank >= need)) then
+                    out[#out + 1] = { name = HU:FullName(n) or n, tag = HU.myTag, prof = p.name, icon = p.icon, online = not off,
+                        rank = p.rank }
                 end
             end
         end
     end
-    table.sort(out, function(a, b) if a.rank ~= b.rank then return a.rank > b.rank end return a.name < b.name end)
+    -- (los de nivel sabido primero, de más a menos; los demás, detrás)
+    table.sort(out, function(a, b)
+        local ra, rb = a.rank or -1, b.rank or -1
+        if ra ~= rb then return ra > rb end
+        return a.name < b.name
+    end)
     return out
 end
 
@@ -324,14 +323,40 @@ local function MyProfessions()
     if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then return false end
     local res = Pack(pcall(GetProfessions))
     if not res[1] then return false end
-    local out = {}
+    local out, byName = {}, {}
     for i = 2, res.n do
         if type(res[i]) == "number" then
             -- (nombre, icono, nivel, máximo, hechizos, desplazamiento, número de profesión…)
-            local ok, _, _, rank, _, _, _, skill = pcall(GetProfessionInfo, res[i])
+            local ok, name, _, rank, _, _, _, skill = pcall(GetProfessionInfo, res[i])
             if ok and type(skill) == "number" and not HU.Secret(skill) then
                 out[skill] = (type(rank) == "number" and not HU.Secret(rank)) and rank or 0
+                if type(name) == "string" and not HU.Secret(name) then byName[name:lower()] = out[skill] end
             end
+        end
+    end
+    return out, byName
+end
+
+-- Las profesiones de alguien de mi hermandad, de su ficha en la comunidad (C_Club.GetMemberInfo): { id, name, icon,
+-- guid, rank }. En Forever la comunidad da siempre nivel 1 (Jorge, 24/11: su Herboristería 195 y su Minería 111 salían a
+-- 1): el mío sale de mi personaje, como en Comercio; el de los demás no se sabe y queda sin nivel (nil). Lo usan la
+-- columna de profesiones y la ficha (UnionRoster.lua) y «Quién lo hace» [+ARCHITECTURE.md]
+function HU:ClubProfessions(info)
+    local out = {}
+    if type(info) ~= "table" then return out end
+    local mine, mineByName
+    if info.isSelf == true then mine, mineByName = MyProfessions() end
+    for _, k in ipairs({ "1", "2" }) do
+        local pid, pn, pr = info["profession" .. k .. "ID"], info["profession" .. k .. "Name"], info["profession" .. k .. "Rank"]
+        if type(pn) == "string" and pn ~= "" and not HU.Secret(pn) then
+            local icon
+            if type(pid) == "number" and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillTexture then
+                local okI, tex = pcall(C_TradeSkillUI.GetTradeSkillTexture, pid)
+                if okI and tex and not HU.Secret(tex) then icon = tex end
+            end
+            local rank = (type(pr) == "number" and not HU.Secret(pr) and pr > 1) and pr or nil
+            if mine then rank = (type(pid) == "number" and mine[pid]) or mineByName[pn:lower()] or rank end
+            out[#out + 1] = { id = pid, name = pn, icon = icon, guid = info.guid, rank = rank }
         end
     end
     return out
@@ -692,7 +717,7 @@ function Paint()
             -- (con su color de siempre y el circulito; clic derecho: pedir una receta)
             c[1]:SetText((e.name == Me() and MINE or OTHERS) .. HU:Short(e.name) .. "|r " .. (e.online and DOT_ON or DOT_OFF))
             c[2]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
-            c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof); c[4]:SetText(tostring(e.rank))
+            c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof); c[4]:SetText(e.rank and tostring(e.rank) or "—")
         end)
     end
     ui.req.empty:SetText(searching and L("Ninguna solicitud publicada encaja.")

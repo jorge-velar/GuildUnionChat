@@ -1030,6 +1030,39 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("profesiones con la comunidad de Forever, que da siempre nivel 1: las mías, de mi personaje; las de los demás, sin número", function()
+        local a = F.Community()
+        -- (lo que dio el juego de Jorge, 24/11: su personaje, Herboristería 195 y Minería 111; la comunidad, 1 y 1)
+        a.env.C_Club = {
+            GetGuildClubId = function() return 9 end,
+            GetClubMembers = function() return { 1, 2 } end,
+            GetMemberInfo = function(_, id)
+                if id == 1 then
+                    return { name = "Tester", isSelf = true, profession1ID = 182, profession1Name = "Herbalism", profession1Rank = 1,
+                        profession2ID = 186, profession2Name = "Mining", profession2Rank = 1 }
+                end
+                return { name = "Compi", profession1ID = 186, profession1Name = "Mining", profession1Rank = 1 }
+            end,
+        }
+        a.env.C_TradeSkillUI = { GetTradeSkillTexture = function(id) return "icono" .. id end }
+        a.env.GetProfessions = function() return 1, 2, nil, nil, 3 end
+        a.env.GetProfessionInfo = function(i)
+            if i == 1 then return "Herbalism", "icono", 195, 225, 1, 0, 182 end
+            if i == 2 then return "Mining", "icono", 111, 150, 2, 0, 186 end
+            if i == 3 then return "Cooking", "icono", 61, 75, 1, 0, 185 end
+        end
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local byName = {}
+        for _, r in ipairs(cover.rows) do if r.entry then byName[r.entry.name:match("^([^-]+)")] = r end end
+        local p = byName.Tester.cells.prof
+        A.same({ "195", "111" }, { p[1].text:GetText(), p[2].text:GetText() }, "las mías, de mi personaje")
+        local q = byName.Compi.cells.prof
+        A.same({ "", true }, { q[1].text:GetText(), q[1].icon:IsShown() }, "la de otro: su icono, sin número")
+        A.same({}, a:Errors())
+    end)
+
     it("la casilla «Mostrar desconectados» solo en Miembros: en Comercio y Calendario no se ve ni se pulsa", function()
         local a = F.Community()
         local box, label
@@ -1162,14 +1195,14 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         for i, look in ipairs(looks) do A.equal(0, look.alpha, "marca " .. i .. ", apagada") end
         gu:GetScript("OnClick")(gu)
         for i, look in ipairs(looks) do A.equal(1, look.alpha, "marca " .. i .. ", de vuelta") end
-        -- (Comercio con mensajes sin leer: su pestaña brilla; leídos, se apaga)
+        -- (Comercio con mensajes sin leer: su pestaña lleva el puntito; leídos, se va)
         local unread = 2
         a.HU.TradeUnread = function() return unread end
         a.HU:Changed("tradeUnread")
-        A.truthy(trade.unread:IsShown() and trade.badge:IsShown(), "brilla")
+        A.truthy(trade.badge:IsShown(), "el puntito")
         unread = 0
         a.HU:Changed("tradeUnread")
-        A.falsy(trade.unread:IsShown() or trade.badge:IsShown())
+        A.falsy(trade.badge:IsShown())
         -- (sin la hermandad elegida —sin Información—, no salen)
         info:Hide()
         f:GetScript("OnShow")(f)

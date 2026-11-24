@@ -110,18 +110,8 @@ local function ReadProfs()
         local ok2, info = pcall(C_Club.GetMemberInfo, cid, id)
         local n = ok2 and type(info) == "table" and info.name
         if type(n) == "string" and not HU.Secret(n) then
-            local list = {}
-            for _, k in ipairs({ "1", "2" }) do
-                local pid, pn, pr = info["profession" .. k .. "ID"], info["profession" .. k .. "Name"], info["profession" .. k .. "Rank"]
-                if type(pn) == "string" and pn ~= "" and not HU.Secret(pn) then
-                    local icon
-                    if type(pid) == "number" and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillTexture then
-                        local okI, tex = pcall(C_TradeSkillUI.GetTradeSkillTexture, pid)
-                        if okI and tex and not HU.Secret(tex) then icon = tex end
-                    end
-                    list[#list + 1] = { name = pn, icon = icon, rank = (type(pr) == "number" and not HU.Secret(pr)) and pr or nil }
-                end
-            end
+            -- (el nivel: el mío, de mi personaje; el de los demás, la comunidad de Forever no lo da: Trade.lua)
+            local list = HU:ClubProfessions(info)
             if #list > 0 then out[(HU:FullName(n) or n):lower()] = list end
         end
     end
@@ -412,19 +402,7 @@ local function OwnProfessions(name)
         local ok2, info = pcall(C_Club.GetMemberInfo, cid, id)
         local n = ok2 and info and info.name
         if type(n) == "string" and not HU.Secret(n) and (HU:FullName(n) or n):lower() == want then
-            local out = {}
-            for _, k in ipairs({ "1", "2" }) do
-                local pid, pn, pr = info["profession" .. k .. "ID"], info["profession" .. k .. "Name"], info["profession" .. k .. "Rank"]
-                if type(pn) == "string" and pn ~= "" and not HU.Secret(pn) then
-                    local icon
-                    if type(pid) == "number" and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillTexture then
-                        local okI, tex = pcall(C_TradeSkillUI.GetTradeSkillTexture, pid)
-                        if okI and tex and not HU.Secret(tex) then icon = tex end
-                    end
-                    out[#out + 1] = { id = pid, name = pn, icon = icon, guid = info.guid,
-                        rank = (type(pr) == "number" and not HU.Secret(pr)) and pr or nil }
-                end
-            end
+            local out = HU:ClubProfessions(info)
             return #out > 0 and out or nil
         end
     end
@@ -858,18 +836,13 @@ local function Build(f)
                 if SyncNow then SyncNow() end
             end)
             if t.trade then
-                -- (con mensajes sin leer en Comercio, la pestaña brilla, despacio, y lleva el aviso de las comunidades del
-                -- juego (Jorge, 24/11); al leerlos se apaga: HU:TradeUnread, Trade.lua) [+ARCHITECTURE.md]
-                local unread = b:CreateTexture(nil, "OVERLAY", nil, 1)
-                unread:SetTexture("Interface\\Buttons\\ButtonHilight-Square"); unread:SetBlendMode("ADD"); unread:SetAllPoints()
-                local pulse = unread:CreateAnimationGroup()
-                pulse:SetLooping("BOUNCE")
-                local fade = pulse:CreateAnimation("Alpha")
-                fade:SetFromAlpha(0.15); fade:SetToAlpha(0.9); fade:SetDuration(0.8)
+                -- (con mensajes sin leer en Comercio, la pestaña lleva el puntito de aviso de las comunidades del juego; al
+                -- leerlos se va: HU:TradeUnread, Trade.lua. Solo el puntito: Jorge, 24/11, lo prefirió al brillo)
+                -- [+ARCHITECTURE.md]
                 local badge = b:CreateTexture(nil, "OVERLAY", nil, 2)
                 badge:SetAtlas("communities-icon-notification"); badge:SetSize(16, 16); badge:SetPoint("TOPRIGHT", 3, 3)
-                unread:Hide(); badge:Hide()
-                b.unread, b.badge, b.pulse = unread, badge, pulse
+                badge:Hide()
+                b.badge = badge
                 side.trade = b
             end
             b:Hide()
@@ -1179,16 +1152,12 @@ local function Build(f)
     if f.UpdateCommunitiesTabs then
         hooksecurefunc(f, "UpdateCommunitiesTabs", function() PlaceTabs(); MoveGameTabs(); CheckTabs() end)
     end
-    -- (el brillo de Comercio, con mensajes sin leer)
-    local function TradeGlow()
-        local b = side.trade
-        if not b then return end
-        local on = HU:TradeUnread() > 0
-        b.unread:SetShown(on); b.badge:SetShown(on)
-        if on and not b.pulse:IsPlaying() then b.pulse:Play() elseif not on then b.pulse:Stop() end
+    -- (el puntito de Comercio, con mensajes sin leer)
+    local function TradeBadge()
+        if side.trade then side.trade.badge:SetShown(HU:TradeUnread() > 0) end
     end
-    HU:Listen("CHANGED", function(what) if what == "tradeUnread" then TradeGlow() end end)
-    TradeGlow()
+    HU:Listen("CHANGED", function(what) if what == "tradeUnread" then TradeBadge() end end)
+    TradeBadge()
     -- (la pestaña de miembros del juego, pulsada en la vista de miembros —no desde nuestras pestañas—: a Miembros)
     if type(f.RosterTab) == "table" then
         f.RosterTab:HookScript("OnClick", function()

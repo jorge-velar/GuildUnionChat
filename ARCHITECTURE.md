@@ -2674,9 +2674,10 @@ calendario.
   marcada (Jorge, 24/11: «el otro que tenía pulsado se queda también en amarillo»): las demás, las del juego y estas dos
   (`HU.sideTabs`), siguen marcadas por dentro como las deja el juego, pero sin su brillo de marcada (`OtherChecks`: alfa
   0 de su `CheckedTexture`); al cerrarlo o pasar el panel a la ventana propia, vuelve.
-- **Sin leer en Comercio** (Jorge, 24/11): la pestaña de Comercio brilla despacio (`ButtonHilight-Square` sumado, con
-  una animación de alfa que va y viene) y lleva el aviso de las comunidades del juego (`communities-icon-notification`)
-  mientras `HU:TradeUnread()` (Trade.lua) dé más de 0; se mira con cada `CHANGED` «tradeUnread» (`TradeGlow`).
+- **Sin leer en Comercio** (Jorge, 24/11): la pestaña de Comercio lleva el puntito de aviso de las comunidades del juego
+  (`communities-icon-notification`) mientras `HU:TradeUnread()` (Trade.lua) dé más de 0; se mira con cada `CHANGED`
+  «tradeUnread» (`TradeBadge`). En la 311 además brillaba despacio; al verlo, Jorge quiso solo el puntito. Las líneas
+  del modo prueba cuentan como sin leer: con él puesto, el puntito sale hasta abrir esas conversaciones.
 - **Cabida**: la ventana mide 426 y cada pestaña ocupa 52 (32 más 20) desde 36: caben 7. Hoy, con Información,
   preferencias, las dos nuestras y la de GuildUnion, son 7; con Wanted y LFG habrá que juntarlas o buscar otro sitio.
 - En Comercio y Calendario, un clic en la entrada de la hermandad de la columna de comunidades vuelve al chat (Jorge,
@@ -2696,6 +2697,11 @@ Las dos profesiones de cada uno de mi hermandad, con su icono y su nivel (Jorge,
 juego por la comunidad de la hermandad (`C_Club.GetMemberInfo`, `profession1ID`…), y de las otras hermandades no llegan.
 Se leen todas de una vez (`ReadProfs`) al cambiar la lista del juego, como mucho cada `PROF_EVERY` (30) segundos: son
 cientos de miembros y `Paint` corre cada 2 segundos. Los nombres de las profesiones, en la ficha.
+- **El nivel, en Forever**: la comunidad da siempre 1 (Jorge, 24/11: su personaje daba Herboristería 195 y Minería 111;
+  la comunidad, 1 y 1). Las lee `HU:ClubProfessions` (Trade.lua), también para la ficha y «Quién lo hace»: las mías
+  (`isSelf`) llevan el nivel de mi personaje (`GetProfessionInfo`, por número de profesión o, si no casa, por nombre);
+  las de los demás con nivel 1 o menos quedan sin nivel (`nil`): el icono, sin número. Para saber el de los demás haría
+  falta que cada uno lo mandara por la red.
 
 ### Botones de abajo: Peticiones de oficiales · Ver registro · Invitar miembro
 
@@ -3232,7 +3238,9 @@ pestaña elegida, ni chat, ni el «+» de pedir, y la vista se parte en dos de 4
   que puedo hacer» si está puesta; si no hay ninguna, se esconde y «Quién lo hace» ocupa todo (10 filas).
 - **Quién lo hace** (`SearchMembers`): los de mi hermandad con una profesión cuyo nombre encaja, o con la profesión y
   el nivel de un fabricable que encaja (`CraftNeeds`), de más nivel a menos. Es aproximado: el juego da sus dos
-  profesiones y su nivel (`C_Club.GetMemberInfo`), no sus recetas. Las otras hermandades, con la red.
+  profesiones (`HU:ClubProfessions`), no sus recetas, y en Forever tampoco el nivel de los demás (la comunidad da 1):
+  quien no lo tiene sale igual si tiene la profesión, con «—» y detrás; el mío, el de mi personaje. Las otras
+  hermandades, con la red.
 
 ### Chat con cada persona y circulitos
 

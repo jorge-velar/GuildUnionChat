@@ -526,3 +526,30 @@ describe("Comercio (Trade.lua): aspecto", function()
         A.same({}, a:Errors())
     end)
 end)
+
+---------------------------------------------------------------------------
+-- Quién lo hace, con la comunidad de Forever
+---------------------------------------------------------------------------
+describe("Comercio (Trade.lua): quién lo hace, con la comunidad de Forever", function()
+    it("la comunidad da nivel 1: el mío sale de mi personaje; el de los demás no se sabe («—», detrás)", function()
+        local a = F.Community()
+        a.env.C_Club = {
+            GetGuildClubId = function() return 9 end,
+            GetClubMembers = function() return { 1, 2, 3 } end,
+            GetMemberInfo = function(_, id)
+                if id == 1 then return { name = "Tester", isSelf = true, profession1ID = 186, profession1Name = "Mining", profession1Rank = 1 } end
+                if id == 2 then return { name = "Compi", profession1ID = 186, profession1Name = "Mining", profession1Rank = 1 } end
+                return { name = "Bea", profession1ID = 186, profession1Name = "Mining", profession1Rank = 250 }
+            end,
+        }
+        Professions(a, { [186] = 111 })
+        local tr = OpenTrade(a)
+        Search(tr, "mining")
+        local got = {}
+        for _, r in ipairs(tr.found.rows) do
+            if r:IsShown() and r.entry then got[#got + 1] = r.entry.name:match("^([^-]+)") .. " " .. r.cells[4]:GetText() end
+        end
+        A.same({ "Bea 250", "Tester 111", "Compi —" }, got)
+        A.same({}, a:Errors())
+    end)
+end)
