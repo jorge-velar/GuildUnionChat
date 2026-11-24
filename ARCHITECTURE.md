@@ -2626,7 +2626,7 @@ capa `HIGH` para verse encima de lo nuestro, igual que el buscador). Los título
 franja; Comercio y Calendario empiezan arriba del todo, porque en ellos la franja no lleva nada del juego (la casilla
 queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porque de ella cuelgan los botones de abajo).
 
-- **En Comercio la piedra llega hasta su panel** (`TRADE_ROCK`, 78: Jorge, 24/11, «más grande lo gris claro de arriba»):
+- **En Comercio la piedra llega hasta su panel** (`TRADE_ROCK`, 72: Jorge, 24/11, «más grande lo gris claro de arriba»):
   los botones Tablón · Mis encargos y la fila del buscador quedan enteros sobre lo gris; en las demás vistas, `TAB_H +
   HDR_H`. El fondo oscuro (`cover.dark`) empieza donde acaba lo gris (`Layout`): van en la misma capa y el oscuro,
   creado después, lo tapaba; en la 318 empezaba siempre en 58 y en Comercio seguía la franja oscura.
@@ -3203,7 +3203,7 @@ juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
 - **Qué es un objeto** (Jorge, 24/11: «que aparezca al pasar el ratón lo que es, pero que no moleste»): con un enlace
   escrito en el buscador o en una sugerencia (`Suggest`), al pasar el ratón sale su ficha del juego (`HyperTip`:
   `GameTooltip:SetHyperlink`) a la derecha del buscador o de la lista, sin taparlos. Sin enlace, nada.
-- **El panel** (`bg`) empieza en -76 y las listas (`ui.body`) en -80 (`BODY_Y`), hasta `BOTTOM_H` (36) por encima del
+- **El panel** (`bg`) empieza en -70 y las listas (`ui.body`) en -74 (`BODY_Y`; hasta la 319, -80: Jorge, 24/11, «un poco menos» de gris), hasta `BOTTOM_H` (36) por encima del
   borde de abajo, 4 por encima de «+ Nueva solicitud». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
   (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más). Hasta la 314 eran 10 y 4: el
   interruptor y la segunda fila ocupan más.

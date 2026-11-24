@@ -7,7 +7,7 @@ HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
 local TAB_H, HDR_H = 34, 24
-local TRADE_ROCK = 78   -- (lo gris de arriba, en Comercio: hasta su panel; ver Layout)
+local TRADE_ROCK = 72   -- (lo gris de arriba, en Comercio: hasta su panel; ver Layout)
 local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus títulos, no la casilla ni el buscador
 -- (la franja de arriba, TAB_H, va justo debajo de la barra del título: lo nuestro sube ROW_UP más, y ahí queda lo del
 -- juego en su sitio (buscador, casillas, cascos, «en línea»): DROP = 0. Antes había ahí una fila de botones redondos, que
@@ -331,7 +331,7 @@ local function Layout()
     cover:EnableMouse(tab ~= 0)
     cover.rock:SetShown(not chatMode)
     -- (en Comercio, hasta su panel: sus dos filas de arriba, botones y buscador, quedan enteras sobre lo gris (Jorge,
-    -- 24/11: «más grande lo gris claro de arriba»). Su panel empieza 78 por debajo de lo nuestro: 2 de la sección y 76
+    -- 24/11: «más grande lo gris claro de arriba»). Su panel empieza 72 por debajo de lo nuestro: 2 de la sección y 70
     -- de su BODY_Y + 4, Trade.lua)
     local rockH = (tab == 2) and TRADE_ROCK or (TAB_H + HDR_H)
     cover.rock:SetHeight(rockH)

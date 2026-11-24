@@ -16,7 +16,7 @@ local HDR_H, CELL_PAD = 24, 4
 -- listas van de BODY_Y a BOTTOM_H por encima del borde de abajo, donde va «+ Nueva solicitud» (24 de alto, a 8 del
 -- borde), para que no tape nada) [+ARCHITECTURE.md]
 local ROW2_Y, ROW2_H = -36, 28   -- (más pegada a los botones: Jorge, 24/11, «sube un poco más»)
-local BODY_Y, BOTTOM_H = -80, 36
+local BODY_Y, BOTTOM_H = -74, 36   -- (la lista, 6 por debajo del buscador: Jorge, 24/11, «un poco menos» de gris)
 local SEARCH_W = 200
 local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
 local MAX_OPEN = 5          -- solicitudes abiertas por persona

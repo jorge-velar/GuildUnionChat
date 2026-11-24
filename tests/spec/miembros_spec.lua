@@ -782,7 +782,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         cover.rock.SetHeight = function(self, h) self._h = h end
         cover.dark.SetPoint = function(self, p, _, _, _, y) if p == "TOPLEFT" then self._top = y end end
         Section(a, 2)
-        A.same({ 78, -78 }, { cover.rock._h, cover.dark._top }, "Comercio: hasta su panel (78)")
+        A.same({ 72, -72 }, { cover.rock._h, cover.dark._top }, "Comercio: hasta su panel (72)")
         Section(a, 1)
         A.same({ 58, -58 }, { cover.rock._h, cover.dark._top }, "Miembros: hasta los títulos (58)")
         A.same({}, a:Errors())
