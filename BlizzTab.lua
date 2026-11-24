@@ -1084,7 +1084,7 @@ end
 
 local search
 HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
-HU.guildDropdownOff = false -- (UnionRoster.lua: en la vista de chat no se ve el desplegable «Guild»; el buscador va a su sitio)
+HU.chatSearchSpot = false   -- (UnionRoster.lua: el sitio de siempre del desplegable «Guild»: ahí va el buscador, en las dos vistas)
 HU.sideTabs = {}            -- (UnionRoster.lua: Comercio y Calendario, pestañas de la derecha: con nuestro panel abierto, sin su marca)
 HU.SyncCharSearch = function() end
 -- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
@@ -1210,14 +1210,14 @@ local function BuildCharSearch(f)
         elseif not ours and anchor:IsVisible() then
             -- (en el mismo sitio que en la vista de chat: donde el desplegable «Guild», que en esta vista está escondido
             -- pero sigue en su sitio; las casillas van a la derecha, UnionRoster.lua. Jorge, 24/11)
-            if dd then box:SetPoint("LEFT", dd, "LEFT", 0, 0)
+            local spot = HU.chatSearchSpot or dd
+            if spot then box:SetPoint("LEFT", spot, "LEFT", 0, 0)
             else box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -108, 30) end
             ForChat(false)
             box:Show()
         elseif not ours and dd and dd:IsVisible() then
-            -- (sin el desplegable a la vista, en su sitio: Jorge, 24/11)
-            if HU.guildDropdownOff then box:SetPoint("LEFT", dd, "LEFT", 0, 0)
-            else box:SetPoint("LEFT", dd, "RIGHT", 16, 0) end
+            -- (en la vista de chat, en el mismo sitio: el desplegable se fue a la derecha, UnionRoster.lua. Jorge, 24/11)
+            box:SetPoint("LEFT", HU.chatSearchSpot or dd, "LEFT", 0, 0)
             ForChat(true)
             box:Show()
         else

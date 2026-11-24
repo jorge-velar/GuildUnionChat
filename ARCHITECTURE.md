@@ -2645,10 +2645,12 @@ queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porqu
   después, con piedra arriba y mármol abajo, la barra tenía dos fondos. Ahora es toda del mármol oscuro del fondo del
   juego, de arriba abajo (`cover.strip`, `STRIP_W` de ancho: en los 4 que quedan empieza el borde del chat), y la barra
   va encima, en la capa `HIGH`.
-- **El desplegable «Guild»** no se esconde (lo lleva el juego, `SetShown` por vista): queda transparente y sin clics
-  (`GuildDropdown`, en `Sync` y tras `SelectStream`), y solo en el canal de la hermandad: en el de oficiales o en una
-  comunidad se ve, para poder cambiar de canal (si no, quien lo tuviera en oficiales no podría volver). Sin él, el
-  buscador va a su sitio (`HU.guildDropdownOff`, BlizzTab.lua), igual que en Miembros. En la vista de chat, quien puede
+- **El desplegable «Guild»** (hermandad u oficiales): en la vista de chat va a la derecha (`TopRow`: `TOPRIGHT` de la
+  ventana, -14), donde estaban los cascos del chat de voz y el «N/M en línea» de mi hermandad, que quedan transparentes
+  y sin clics (`ChatTop`; el de toda la unión va en la barra del título). Jorge, 24/11: «quítalo y pon lo de cambiar de
+  chat al de oficial o el chat normal». Es el del juego, a la vista y con clics: cambiar de canal desde el addon
+  (`SelectStream`) dejaría la ventana «tocada». Hasta la 320 estaba transparente en el canal de la hermandad. Nuestro
+  buscador va en su sitio de siempre (`HU.chatSearchSpot`, BlizzTab.lua), en las dos vistas; en la de chat, quien puede
   ver el historial busca en el chat (`HistSearch` al pulsar Intro, History.lua); los demás, personajes.
 - **Las barras con flechas** (Jorge, 24/11: «la 1 la subes hasta arriba, la 2 la subes y la 3 la mantienes»): la de la
   columna de comunidades (`CommunitiesList.ScrollBar`) el juego la pone 45 por debajo de la columna: en nuestras vistas

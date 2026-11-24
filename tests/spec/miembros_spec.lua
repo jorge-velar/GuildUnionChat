@@ -878,7 +878,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("arriba, lo del juego en su sitio: el desplegable «Guild», los cascos y la casilla de desconectados (a la derecha)", function()
+    it("arriba, lo del juego en su sitio: el desplegable «Guild» (en la vista de chat, a la derecha), los cascos y la casilla de desconectados (a la derecha)", function()
         local a = F.Community()
         -- (dónde se pide cada pieza del juego; antes de que el addon monte lo suyo, para que sus enganches sigan)
         local function Track(b) b.SetPoint = function(self, ...) self._pt = { ... } end end
@@ -892,7 +892,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         f.Chat.visible = true
         f:GetScript("OnShow")(f)
         a.w:Advance(0.1)
-        A.same({ "TOPLEFT", 195, -31 }, { dd._pt[1], dd._pt[4], dd._pt[5] }, "el desplegable, en su sitio")
+        A.same({ "TOPRIGHT", -14, -31 }, { dd._pt[1], dd._pt[4], dd._pt[5] }, "en la vista de chat, el desplegable a la derecha, donde los cascos")
         A.same({ "TOPRIGHT", -180, -26 }, { headset._pt[1], headset._pt[4], headset._pt[5] })
         local chk = f.MemberList.ShowOfflineButton
         -- (a la derecha, delante de «Solo mi hermandad»: 120 + 14 de hueco + su texto (110 si no se sabe) + 26 de la casilla)
@@ -900,13 +900,13 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
             "la casilla, a la derecha")
         -- (el juego lo vuelve a colocar al agrandar la ventana: sigue en su sitio)
         dd:SetPoint("TOPLEFT", 195, -31)
-        A.same({ "TOPLEFT", 195, -31 }, { dd._pt[1], dd._pt[4], dd._pt[5] })
+        A.same({ "TOPRIGHT", -14, -31 }, { dd._pt[1], dd._pt[4], dd._pt[5] })
         A.same({}, a:Errors())
     end)
 
     it("en la vista de chat, sin «Guild» (el buscador a su sitio) y con la piedra hasta el chat y su lista, sin rayas; las barras de la izquierda y del chat, arriba", function()
         local a = F.Community()
-        local dd, inset, edge, listBar, chatBar
+        local dd, inset, edge, listBar, chatBar, headset, count
         local stream = { streamId = 1, streamType = 1 }   -- (el canal de la hermandad: Enum.ClubStreamType.Guild)
         local function Track(fr) fr.SetPoint = function(self, ...) self._pt = { ... } end end
         local function Alpha(fr) fr.SetAlpha = function(self, v) self._alpha = v end; return fr end
@@ -928,6 +928,11 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         local f = GuildWindow(a, true, function(w)
             dd = Alpha(a.env.CreateFrame("Frame", nil, w)); w.StreamDropdown = dd
             dd.EnableMouse = function(self, v) self._mouse = v end
+            Track(dd)
+            -- (los cascos del chat de voz y el «N/M en línea» de la lista de la derecha)
+            headset = Alpha(a.env.CreateFrame("Button", nil, w)); w.VoiceChatHeadset = headset
+            headset.EnableMouse = function(self, v) self._mouse = v end
+            count = Alpha(a.env.CreateFrame("Frame", nil, w.MemberList)); w.MemberList.MemberCount = count
             inset = a.env.CreateFrame("Frame", nil, w); w.Inset = inset
             edge = a.env.CreateFrame("Frame", nil, inset); inset.NineSlice = edge
             -- (la piedra de abajo: dónde se pide y cuánto mide)
@@ -957,7 +962,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.equal(34 + 3, band._h, "la franja y el borde de arriba del fondo del juego: ahí empiezan el chat y su lista")
         -- (en la vista de miembros: ni la piedra de abajo ni el desplegable; la barra de las comunidades, arriba del todo y encima)
         A.falsy(band:IsShown())
-        A.equal(nil, dd._alpha, "el desplegable, sin tocar")
+        A.same({ 1, true }, { dd._alpha, dd._mouse }, "el desplegable, como lo pone el juego")
+        A.same({ 1, true, 1 }, { headset._alpha, headset._mouse, count._alpha }, "los cascos y el «en línea», como siempre")
         A.same({ "TOPLEFT", f.CommunitiesList, "TOPRIGHT", 6, -3 }, listBar._pt, "la barra de las comunidades, arriba del todo")
         A.same({ "HIGH", 312 }, { listBar._strata, listBar:GetFrameLevel() }, "por encima de la piedra")
         -- (a la vista de chat)
@@ -967,21 +973,13 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         a.w:Advance(0.1)
         A.truthy(band:IsShown(), "la piedra baja hasta el chat")
         A.falsy(cover.rock:IsShown(), "la de lo nuestro, no: taparía los cascos y el «en línea»")
-        A.same({ 0, false }, { dd._alpha, dd._mouse }, "sin «Guild»: transparente y sin clics")
-        A.equal(true, a.HU.guildDropdownOff, "el buscador va a su sitio (BlizzTab.lua)")
+        A.same({ 1, true }, { dd._alpha, dd._mouse }, "«Guild», a la vista y con clics, para cambiar a oficiales")
+        A.same({ "TOPRIGHT", f, "TOPRIGHT", -14, -31 }, dd._pt, "a la derecha, donde los cascos")
+        A.same({ 0, false, 0 }, { headset._alpha, headset._mouse, count._alpha }, "sin cascos ni el «N/M en línea» de mi hermandad")
         A.same({ "TOPLEFT", cover, "BOTTOMLEFT", 6, -3 - 7 }, f.Chat._pt, "el borde del chat, donde acaba la piedra")
         A.same({ 0, 0, 0, 0, 0, 0 }, Tops(), "sin la raya de arriba del chat ni de la lista")
         A.same({ "TOPLEFT", f.Chat, "TOPRIGHT", 15, 1 }, chatBar._pt, "la barra del chat, arriba aunque haya mensaje fijado")
         A.same({ "TOPLEFT", f.CommunitiesList, "TOPRIGHT", 6, -3 }, listBar._pt)
-        -- (en el canal de oficiales vuelve, para poder cambiar; de vuelta en el de la hermandad, fuera otra vez)
-        stream = { streamId = 2, streamType = 2 }
-        f:SelectStream(7, 2)
-        A.same({ 1, true }, { dd._alpha, dd._mouse }, "oficiales")
-        a.w:Advance(0.1)
-        A.equal(false, a.HU.guildDropdownOff, "con el desplegable, el buscador a su derecha")
-        stream = { streamId = 1, streamType = 1 }
-        f:SelectStream(7, 1)
-        A.same({ 0, false }, { dd._alpha, dd._mouse })
         -- (de vuelta a la vista de miembros: como siempre)
         f.Chat.visible = false
         f.MemberList.ShowOfflineButton.visible = true
@@ -991,7 +989,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.truthy(cover.rock:IsShown())
         A.same({ 1, true }, { dd._alpha, dd._mouse })
         A.same({ 1, 1, 1, 1, 1, 1 }, Tops(), "los bordes, como los pone el juego")
-        A.equal(false, a.HU.guildDropdownOff)
+        A.same({ 1, true, 1 }, { headset._alpha, headset._mouse, count._alpha }, "de vuelta, los cascos y el «en línea»")
+        A.same({ "TOPLEFT", f, "TOPLEFT", 195, -31 }, dd._pt, "el desplegable, en su sitio de siempre")
         -- (en otra vista del juego, sin lo nuestro: la piedra de abajo se va y la barra de las comunidades vuelve a su sitio)
         f.MemberList.ShowOfflineButton.visible = false
         f.MemberList.ShowOfflineButton:GetScript("OnHide")()
@@ -1209,18 +1208,18 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.truthy(box, "el buscador")
         box.SetPoint = function(self, ...) self._pt = { ... } end
         a.HU.SyncCharSearch(); a.w:Advance(0.1)
-        A.same({ "LEFT", dd, "LEFT", 0, 0 }, box._pt, "en Miembros, donde el desplegable: las casillas van a la derecha")
+        local spot = a.HU.chatSearchSpot
+        A.same({ "LEFT", spot, "LEFT", 0, 0 }, box._pt, "en Miembros, donde iba el desplegable: las casillas van a la derecha")
         A.falsy(box.forChat)
         -- (vista de chat, sin el desplegable, y con permiso para ver el historial)
         local searched
         a.HU.CanPin = function() return true end
         a.HU.HistEnabled = function() return true end
         a.HU.HistSearch = function(_, name, text) searched = { name, text } end
-        a.HU.guildDropdownOff = true
         f.MemberList.ShowOfflineButton.visible = false
         f.Chat.visible = true
         a.HU.SyncCharSearch(); a.w:Advance(0.1)
-        A.same({ "LEFT", dd, "LEFT", 0, 0 }, box._pt)
+        A.same({ "LEFT", spot, "LEFT", 0, 0 }, box._pt, "en la vista de chat, en el mismo sitio (el desplegable, a la derecha)")
         A.truthy(box.forChat, "busca en el chat")
         A.equal("Buscar en el chat", box.Instructions:GetText())
         box:SetText("  mazmorra ")
@@ -1228,9 +1227,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({ nil, "mazmorra" }, searched, "lo busca en el historial")
         -- (sin permiso, personajes, como antes)
         a.HU.CanPin = function() return false end
-        a.HU.guildDropdownOff = false
         a.HU.SyncCharSearch(); a.w:Advance(0.1)
-        A.same({ "LEFT", dd, "RIGHT", 16, 0 }, box._pt, "con el desplegable a la vista, a su derecha")
+        A.same({ "LEFT", spot, "LEFT", 0, 0 }, box._pt, "en el mismo sitio")
         A.falsy(box.forChat)
         A.equal("Buscar personaje", box.Instructions:GetText())
     end)

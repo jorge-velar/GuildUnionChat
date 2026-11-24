@@ -1115,10 +1115,22 @@ local function Build(f)
     local dd = type(f.StreamDropdown) == "table" and f.StreamDropdown or nil
     local headset = type(f.VoiceChatHeadset) == "table" and f.VoiceChatHeadset or nil
     local placingTop = false
+    -- (el sitio del desplegable «Guild» de siempre: ahí va nuestro buscador, en las dos vistas, BlizzTab.lua)
+    local spot = CreateFrame("Frame", nil, f)
+    spot:SetPoint("TOPLEFT", f, "TOPLEFT", 195, -31 - DROP)
+    spot:SetSize(dd and dd:GetWidth() or 150, dd and dd:GetHeight() or 26)
+    HU.chatSearchSpot = spot
     local function TopRow()
         if not mode or GameLocked() then return end
         placingTop = true
-        if dd then dd:ClearAllPoints(); dd:SetPoint("TOPLEFT", f, "TOPLEFT", 195, -31 - DROP) end
+        -- (el desplegable «Guild»: en la vista de chat, a la derecha, donde los cascos y el «N/M en línea» de mi hermandad,
+        -- que se quitan (ChatTop). Jorge, 24/11: «pon lo de cambiar de chat al de oficial o el chat normal»)
+        -- [+ARCHITECTURE.md]
+        if dd then
+            dd:ClearAllPoints()
+            if mode == "chat" then dd:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -31 - DROP)
+            else dd:SetPoint("TOPLEFT", f, "TOPLEFT", 195, -31 - DROP) end
+        end
         if headset then headset:ClearAllPoints(); headset:SetPoint("TOPRIGHT", f, "TOPRIGHT", -180, -26 - DROP) end
         -- (a la derecha, delante de «Solo mi hermandad»: a la izquierda va el buscador, en el mismo sitio que en la vista de
         -- chat. Jorge, 24/11) [+ARCHITECTURE.md]
@@ -1136,24 +1148,19 @@ local function Build(f)
     for _, w in ipairs({ dd, headset }) do
         if w then hooksecurefunc(w, "SetPoint", function() if not placingTop and mode then TopRow() end end) end
     end
-    -- (el desplegable «Guild», fuera en la vista de chat (Jorge, 24/11): transparente y sin clics, que esconderlo es cosa
-    -- del juego. Solo en el canal de la hermandad: en el de oficiales o en una comunidad sigue, para poder cambiar)
-    -- [+ARCHITECTURE.md]
-    local ddOff = false
-    local function GuildDropdown()
-        if not dd then return end
-        local clubId = f.GetSelectedClubId and f:GetSelectedClubId()
-        local stream = clubId and f.GetSelectedStreamForClub and f:GetSelectedStreamForClub(clubId)
-        local off = mode == "chat" and type(stream) == "table" and stream.streamType == Enum.ClubStreamType.Guild
-        if off == ddOff then return end
-        ddOff = off
-        dd:SetAlpha(off and 0 or 1)
-        dd:EnableMouse(not off)
-        -- (el buscador, al hueco que deja: BlizzTab.lua)
-        HU.guildDropdownOff = off
-        HU.SyncCharSearch()
+    -- (en la vista de chat, fuera los cascos del chat de voz y el «N/M en línea» de mi hermandad (el de toda la unión va en
+    -- la barra del título): transparentes y sin clics, que esconderlos es cosa del juego. El desplegable «Guild», a la
+    -- vista y con clics, en su sitio de la derecha (TopRow). Jorge, 24/11) [+ARCHITECTURE.md]
+    local count = type(ml.MemberCount) == "table" and ml.MemberCount or nil
+    local chatTop
+    local function ChatTop()
+        local on = mode == "chat"
+        if on == chatTop then return end
+        chatTop = on
+        if headset then headset:SetAlpha(on and 0 or 1); headset:EnableMouse(not on) end
+        if count then count:SetAlpha(on and 0 or 1) end
+        if dd then dd:SetAlpha(1); dd:EnableMouse(true) end
     end
-    if f.SelectStream then hooksecurefunc(f, "SelectStream", function() GuildDropdown() end) end
     -- (la barra de la columna de comunidades, arriba del todo y por encima de la piedra en nuestras vistas (Jorge, 24/11);
     -- en las demás, donde y como la pone el juego. Solo se cambia su esquina de arriba: la de abajo sigue la suya)
     -- [+ARCHITECTURE.md]
@@ -1325,7 +1332,7 @@ local function Build(f)
         if cover:IsShown() then ShowTab(tab) end
         if m == "chat" then ChatAnchors() end
         TopRow()
-        GuildDropdown()
+        ChatTop()
         ListBar(m ~= nil)
         PlaceHome()
         PlaceTabs()
