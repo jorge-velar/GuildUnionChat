@@ -3186,10 +3186,14 @@ juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
   DJStyle.lua: dos de 150 x 28 con 6 entre ellos). Son `ui.viewBtns.pub` y `.priv` (`:SetSelected`, `:Label`,
   `:GetText`); «Mis encargos (2)» lleva el número de sin leer. Cambiar borra búsqueda, elegida y marcadas; mientras se
   busca, ninguno está elegido.
-- **Fila 2** (de -44 a -72, `ROW2_Y`, `ROW2_H`): a la izquierda, el buscador del juego, como hasta la 314: «Buscar
+- **Fila 2** (de -36 a -64, `ROW2_Y`, `ROW2_H`; en la 316 empezaba en -44 y Jorge pidió «sube un poco más»): a la
+  izquierda, el buscador del juego, como hasta la 314: «Buscar
   receta» (23, 200 x 22, `SEARCH_W`, centrado en la fila) con su ayuda en gris claro (`T.muted`) y detrás un marco oscuro
   de borde dorado (`ui.searchBox`, `DJ.Panel`). A la derecha, la casilla del juego «Solo lo que puedo hacer» (22) con
   su texto detrás, que acaba a 14 del borde derecho (se mide el texto, `GetStringWidth`; sin medida, 130).
+- **Qué es un objeto** (Jorge, 24/11: «que aparezca al pasar el ratón lo que es, pero que no moleste»): con un enlace
+  escrito en el buscador o en una sugerencia (`Suggest`), al pasar el ratón sale su ficha del juego (`HyperTip`:
+  `GameTooltip:SetHyperlink`) a la derecha del buscador o de la lista, sin taparlos. Sin enlace, nada.
 - **El panel** (`bg`) empieza en -76 y las listas (`ui.body`) en -80 (`BODY_Y`), hasta `BOTTOM_H` (36) por encima del
   borde de abajo, 4 por encima de «+ Nueva solicitud». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
   (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más). Hasta la 314 eran 10 y 4: el

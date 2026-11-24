@@ -576,20 +576,20 @@ describe("Comercio (Trade.lua): aspecto", function()
                 A.truthy(TextWidth(t[2], 12) + 16 <= t[1]._w, locale .. ": «" .. t[2] .. "» cabe en su botón")
             end
             -- (fila 2, debajo: el buscador del juego, como antes, 200 x 22, centrado en la fila, con su marco de borde dorado)
-            A.same({ tr, "TOPLEFT", 23, -47 }, search._pts.TOPLEFT)
+            A.same({ tr, "TOPLEFT", 23, -39 }, search._pts.TOPLEFT)
             A.same({ 200, 22 }, { search._w, search._h })
-            A.truthy(-4 - sw._h > -47 + 3, "debajo de los botones, sin pisarlos")
+            A.truthy(-4 - sw._h > -39 + 3, "debajo de los botones, sin pisarlos")
             A.same({ 1, 0.82, 0, 0.55 }, tr.searchBox._edge, "el marco, con borde dorado")
             -- (y la casilla del juego a la derecha, centrada en la fila, con su texto detrás que acaba en el borde: el WoW de
             -- mentira no mide textos y se usa el ancho de reserva, 130)
-            A.same({ tr, "TOPRIGHT", -(14 + 22 + 2 + 130), -44 - 28 / 2 }, only._pts.LEFT)
+            A.same({ tr, "TOPRIGHT", -(14 + 22 + 2 + 130), -36 - 28 / 2 }, only._pts.LEFT)
             A.equal("GameFontHighlightSmall", only.Text._fontObj)
             local cl = Span(tr, only)
             local _, sr = Span(tr, search)
             A.truthy(cl >= sr + 3 + 8, locale .. ": la casilla no pisa el buscador: empieza en " .. cl)
             A.truthy(cl + 22 + 2 + TextWidth(only.Text:GetText(), 10) <= SECTION_W, locale .. ": su texto cabe")
             -- (las dos filas, encima del panel de la sección, donde empiezan las listas)
-            A.truthy(-47 - search._h - 3 > tr.new:GetParent()._pts.TOPLEFT[4], "las filas no pisan el panel")
+            A.truthy(-39 - search._h - 3 > tr.new:GetParent()._pts.TOPLEFT[4], "las filas no pisan el panel")
             A.same({}, a:Errors())
         end
     end)
@@ -734,6 +734,31 @@ describe("Comercio (Trade.lua): quién lo hace, con la comunidad de Forever", fu
             if r:IsShown() and r.entry then got[#got + 1] = r.entry.name:match("^([^-]+)") .. " " .. r.cells[4]:GetText() end
         end
         A.same({ "Bea 250", "Tester 111", "Compi —" }, got)
+        A.same({}, a:Errors())
+    end)
+end)
+
+---------------------------------------------------------------------------
+-- La ficha al pasar el ratón
+---------------------------------------------------------------------------
+describe("Comercio (Trade.lua): qué es un objeto, al pasar el ratón", function()
+    it("en el buscador y en sus sugerencias, la ficha del juego del enlace, al lado sin taparlo; sin enlace, nada", function()
+        local a = F.Community()
+        Observe(a)
+        local tr = OpenTrade(a)
+        local tip = a.env.GameTooltip
+        local shown
+        tip.SetHyperlink = function(_, link) shown = link end
+        local link = ItemLink(2589, "Paño de lino")
+        tr.search:SetText(link)
+        tr.search:GetScript("OnEnter")(tr.search)
+        A.equal("item:2589::::::::60:::::::", shown, "la ficha del objeto escrito")
+        local pt = tip._pts.TOPLEFT
+        A.truthy(pt[1] == tr.search and pt[2] == "TOPRIGHT" and pt[3] == 4, "a la derecha del buscador")
+        shown = nil
+        tr.search:SetText("lino")
+        tr.search:GetScript("OnEnter")(tr.search)
+        A.is_nil(shown, "sin enlace, nada")
         A.same({}, a:Errors())
     end)
 end)

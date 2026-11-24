@@ -15,7 +15,7 @@ local HDR_H, CELL_PAD = 24, 4
 -- (arriba, dos filas: los botones Tablón · Mis encargos (DJ.Switch) y, en ROW2_Y, el buscador y la casilla; las
 -- listas van de BODY_Y a BOTTOM_H por encima del borde de abajo, donde va «+ Nueva solicitud» (24 de alto, a 8 del
 -- borde), para que no tape nada) [+ARCHITECTURE.md]
-local ROW2_Y, ROW2_H = -44, 28
+local ROW2_Y, ROW2_H = -36, 28   -- (más pegada a los botones: Jorge, 24/11, «sube un poco más»)
 local BODY_Y, BOTTOM_H = -80, 36
 local SEARCH_W = 200
 local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
@@ -793,6 +793,17 @@ local function Better(x, y)
 end
 
 -- Lista de sugerencias bajo una caja: source(q) da { { text, value, key, rank } }; clic o Intro (la primera) la elige
+-- (la ficha del juego de lo que lleva `text`, si es un enlace, a la derecha de `owner`, sin taparlo: Jorge, 24/11, «que
+-- aparezca al pasar el ratón lo que es, pero que no moleste»)
+local function HyperTip(owner, text)
+    local link = type(text) == "string" and not HU.Secret(text) and text:match("|H(.-)|h")
+    if not link then return end
+    GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+    GameTooltip:ClearAllPoints()
+    GameTooltip:SetPoint("TOPLEFT", owner, "TOPRIGHT", 4, 0)
+    if pcall(GameTooltip.SetHyperlink, GameTooltip, link) then GameTooltip:Show() else GameTooltip:Hide() end
+end
+
 local function Suggest(box, source)
     local list = CreateFrame("Frame", nil, box, "BackdropTemplate")
     list:SetPoint("TOPLEFT", box, "BOTTOMLEFT", -6, -1)
@@ -811,6 +822,9 @@ local function Suggest(box, source)
         local hl = b:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints(); hl:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.15)
         b:SetScript("OnClick", function(s) if s.value then Pick(s.value) end end)
+        -- (un objeto: al pasar el ratón, su ficha, al lado de la lista)
+        b:SetScript("OnEnter", function(s) HyperTip(list, s.value) end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
         btns[i] = b
     end
     box:HookScript("OnTextChanged", function(s, user)
@@ -1081,6 +1095,9 @@ function HU:BuildTrade(host)
     sbox:SetFrameLevel(search:GetFrameLevel())
     search:SetFrameLevel(sbox:GetFrameLevel() + 2)
     ui.searchBox = sbox
+    -- (con un objeto escrito, al pasar el ratón, su ficha, a la derecha del buscador)
+    search:HookScript("OnEnter", function(s) HyperTip(s, s:GetText()) end)
+    search:HookScript("OnLeave", function() GameTooltip:Hide() end)
     search:HookScript("OnTextChanged", function()
         if not ui.found then return end
         FauxScrollFrame_SetOffset(ui.req.scroll, 0); FauxScrollFrame_SetOffset(ui.found.scroll, 0)
