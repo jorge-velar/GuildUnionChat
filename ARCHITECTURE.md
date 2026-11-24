@@ -2518,10 +2518,11 @@ al marcarla se marca a la persona)
 ### Qué hay en el archivo
 
 Una fila de botones rojos del juego sobre la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
-`Blizzard_Communities`): **Chat/Miembros · Comercio · Calendario**. Miembros es la lista de toda la unión;
-Comercio y Calendario son marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`. El primer botón
-cambia (24/11, para que haya menos): en Miembros dice «Chat»; en Comercio, en Calendario y en la vista de chat,
-«Miembros» (ver «La fila en las dos vistas»). El botón elegido va negro con letra blanca (`HU.DJ.PickRed`); el
+`Blizzard_Communities`): **Chat · Miembros · Comercio · Calendario**, con imagen en vez de texto (24/11, Jorge: el
+nombre sale al pasar el ratón; `Iconize`): Chat y Miembros, las de los iconos del juego a la derecha de la ventana
+(`UI_Chat`, `achievement_guildperk_everybodysfriend`); Comercio, el martillo de herrería; Calendario, el calendario del
+minimapa de Forever (atlas `ui-hud-minimap-calendar-button`). Miembros es la lista de toda la unión; Comercio y
+Calendario son marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`. El botón elegido va negro (`HU.DJ.PickRed`); el
 buscador de personajes solo sale en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3
 = las otras) y `mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no
 enseñaba los bancos de las otras hermandades y las peticiones no le llegaban a nadie; está en el historial de Git.
@@ -2605,14 +2606,13 @@ Cambiar de vista desde el addon dejaría la ventana «tocada» y el juego bloque
 cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los pulsa el juego.
 - «Chat» en la vista de miembros (`GuildUnionRosterChatSecure`) pulsa `ChatTab`; Miembros, Comercio y Calendario en
   la de chat (`GuildUnionChatSection1`…`3`) pulsan `RosterTab`; su `PreClick` apunta la sección (`wantTab`).
-- El primer sitio de la fila: en la vista de miembros está siempre el «Chat» seguro; en Comercio y Calendario, el
-  «Miembros» nuestro (`Tabs[1]`, nivel de marco más alto) se pone encima y recibe el clic; en Miembros se esconde y
-  queda el «Chat». Así no hay que enseñar ni esconder el seguro al cambiar de sección (en combate no se podría). En la
-  vista de chat no hay «Chat»: ya se está en él; el primero es el «Miembros» seguro.
+- Cuatro sitios: el 0 es «Chat» (en la vista de miembros, el seguro; en la de chat, el nuestro, elegido) y del 1 al 3
+  las secciones (en la vista de chat, los seguros). Un día fueron un solo botón que cambiaba entre Chat y Miembros;
+  Jorge prefirió uno para cada uno (24/11).
 - Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
   y 25 más; en la de chat, de la columna de comunidades al borde de la ventana) y de ahí `x0`, el principio de la
   fila. Con esa misma cuenta van los nuestros (atados a la fila) y los seguros (atados a la lista del juego o a la
-  columna, fuera de combate): el «Miembros» sigue justo encima del «Chat».
+  columna, fuera de combate).
 - Los botones de arriba no piden /who (24/11: al volver de Comercio a Miembros, el juego lo bloqueó dentro de ese
   clic); lo piden los títulos, las filas, la rueda y la barra (`WhoTick`).
 - En combate no se puede enseñar, esconder ni mover un botón seguro: cuelgan de algo que solo se ve en su vista

@@ -6,7 +6,8 @@ HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
 local TAB_H, HDR_H = 34, 24
-local BTN_W, BTN_H = 118, 24
+local ICON_W, BTN_H, ICON_SIZE = 46, 26, 20   -- los botones de arriba, con imagen (rojos, del juego)
+local CHAT_ICON = "Interface/Icons/UI_Chat"   -- (la del icono del chat del juego, a la derecha de la ventana)
 local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus títulos, no la casilla ni el buscador
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
@@ -19,10 +20,12 @@ local COLS = {
     { key = "guild", title = "Hermandad", game = "GUILD", w = 58 },
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
+-- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
+-- Calendario, la del calendario del minimapa de Forever)
 local TABS = {
-    { title = "Miembros" },
-    { title = "Comercio", trade = true },
-    { title = "Calendario", calendar = true },
+    { title = "Miembros", icon = "Interface/Icons/achievement_guildperk_everybodysfriend" },
+    { title = "Comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
+    { title = "Calendario", calendar = true, atlas = "ui-hud-minimap-calendar-button" },
 }
 local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
@@ -245,33 +248,31 @@ local function Layout()
         local mw = ml:GetWidth()
         if type(mw) == "number" and mw > 0 then W = mw + 25 end
     end
-    -- (los botones caben siempre: más estrechos si no hay sitio; y centrados, todos con la misma cuenta: x0 desde la
-    -- izquierda de lo nuestro, también los seguros, que van atados a la lista del juego o a la columna)
-    local n = #TABS
-    local bw = BTN_W
-    if W then bw = math.max(40, math.min(BTN_W, math.floor((W - 16 - 6 * (n - 1)) / n))) end
-    local x0 = W and math.max(8, math.floor((W - n * bw - (n - 1) * 6) / 2)) or 8
-    for _, b in ipairs(tb.Tabs) do b:SetWidth(bw) end
+    -- (Chat y una por sección, con imagen; centrados, todos con la misma cuenta: x0 desde la izquierda de lo nuestro,
+    -- también los seguros, que van atados a la lista del juego o a la columna) [+ARCHITECTURE.md]
+    local n = #TABS + 1
+    local x0 = W and math.max(8, math.floor((W - n * ICON_W - (n - 1) * 6) / 2)) or 8
+    local function X(slot) return x0 + slot * (ICON_W + 6) end
+    -- (sitio 0: «Chat»; en la vista de miembros, el seguro que pulsa el icono del chat del juego; en la de chat, el
+    -- nuestro, elegido. Los demás, las secciones: en la vista de chat, los seguros que pasan a la de miembros)
+    tb.chatBtn:SetShown(chatMode)
+    tb.chatBtn:ClearAllPoints()
+    tb.chatBtn:SetPoint("LEFT", tb, "LEFT", X(0), 0)
     if tb.chatSecure and not InCombatLockdown() then
-        tb.chatSecure:SetWidth(bw)
         tb.chatSecure:ClearAllPoints()
-        tb.chatSecure:SetPoint("LEFT", ml, "TOPLEFT", -3 + x0, TOP - TAB_H / 2)
+        tb.chatSecure:SetPoint("LEFT", ml, "TOPLEFT", -3 + X(0), TOP - TAB_H / 2)
     end
-    -- El primer sitio cambia: en Miembros, «Chat» (el botón seguro, debajo); en Comercio y Calendario, «Miembros»
-    -- (el nuestro, encima de él); en la vista de chat, «Miembros» (el seguro). Así sobra un botón [+ARCHITECTURE.md]
     for i, b in ipairs(tb.Tabs) do
-        b:SetShown(not chatMode and (i > 1 or tab ~= 1))
+        b:SetShown(not chatMode)
         b:ClearAllPoints()
-        b:SetPoint("LEFT", tb, "LEFT", x0 + (i - 1) * (bw + 6), 0)
+        b:SetPoint("LEFT", tb, "LEFT", X(i), 0)
     end
-    -- (en la vista de chat, los botones seguros que pasan a la vista de miembros con esa sección. Se colocan fuera
-    -- de combate, que es cuando el juego deja mover un botón seguro)
+    -- (se colocan fuera de combate, que es cuando el juego deja mover un botón seguro)
     if chatMode and tb.chatModeBtns and not InCombatLockdown() then
         for i, b in ipairs(tb.chatModeBtns) do
-            b:SetWidth(bw)
             b:ClearAllPoints()
             -- (con la fila, no con el chat, que baja)
-            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + x0 + (i - 1) * (bw + 6), -34 - TAB_H / 2)
+            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + X(i), -34 - TAB_H / 2)
         end
     end
     cover:ClearAllPoints()
@@ -311,6 +312,7 @@ local function ShowTab(i)
     end
     -- (el botón elegido, negro con borde dorado y letra blanca; los demás, rojos: DJStyle.lua)
     cover.tabs.selectedTab = i
+    HU.DJ.PickRed(cover.tabs.chatBtn, i == 0)
     for k, b in ipairs(cover.tabs.Tabs) do HU.DJ.PickRed(b, k == i) end
     local members = i == 1
     cover.hdr:SetShown(members); cover.scroll:SetShown(members); cover.status:SetShown(members)
@@ -703,6 +705,29 @@ local function Build(f)
     rock:SetHeight(TAB_H + HDR_H + 2)
     cover.rock = rock
     tabs.Tabs = {}
+    -- (los botones de arriba, con imagen en vez de texto: la imagen en el centro y el nombre al pasar el ratón)
+    local function Iconize(b, name, icon, atlas)
+        b:SetText("")
+        b.guName = name
+        local t = b:CreateTexture(nil, "ARTWORK")
+        t:SetSize(ICON_SIZE, ICON_SIZE)
+        t:SetPoint("CENTER", 0, 0)
+        if atlas then t:SetAtlas(atlas) else t:SetTexture(icon) end
+        b.guIcon = t
+        b:HookScript("OnEnter", function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(s.guName)
+            GameTooltip:Show()
+        end)
+        b:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    -- («Chat», solo en la vista de chat, elegido: deja ver el chat del juego)
+    local chatBtn = CreateFrame("Button", "GuildUnionRosterSectionChat", tabs, "UIPanelButtonTemplate")
+    chatBtn:SetSize(ICON_W, BTN_H)
+    Iconize(chatBtn, L("Chat"), CHAT_ICON)
+    chatBtn:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(0) end)
+    chatBtn:Hide()
+    tabs.chatBtn = chatBtn
     -- Abajo, como en la vista del chat: Peticiones de oficiales · Registro · Invitar miembro, a la izquierda de
     -- «Ajustes de hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo
     -- pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
@@ -742,8 +767,8 @@ local function Build(f)
     -- de desconectados, que solo se ve en la vista de miembros: así no hay que enseñarlo ni esconderlo en
     -- combate, que el juego no deja hacer con un botón seguro)
     local chatSecure = CreateFrame("Button", "GuildUnionRosterChatSecure", anchor, "SecureActionButtonTemplate,UIPanelButtonTemplate")
-    chatSecure:SetSize(BTN_W, BTN_H)
-    chatSecure:SetText(L("Chat"))
+    chatSecure:SetSize(ICON_W, BTN_H)
+    Iconize(chatSecure, L("Chat"), CHAT_ICON)
     chatSecure:SetPoint("LEFT", ml, "TOPLEFT", 5, TOP - TAB_H / 2)
     chatSecure:SetFrameStrata("HIGH")
     chatSecure:SetFrameLevel(cover:GetFrameLevel() + 8)
@@ -768,8 +793,8 @@ local function Build(f)
         tabs.chatModeBtns = {}
         for i, t in ipairs(TABS) do
             local b = CreateFrame("Button", "GuildUnionChatSection" .. i, f.Chat, "SecureActionButtonTemplate,UIPanelButtonTemplate")
-            b:SetSize(BTN_W, BTN_H)
-            b:SetText(L(t.title))
+            b:SetSize(ICON_W, BTN_H)
+            Iconize(b, L(t.title), t.icon, t.atlas)
             b:SetFrameStrata("HIGH")
             b:SetFrameLevel(cover:GetFrameLevel() + 8)
             b:RegisterForClicks("AnyUp", "AnyDown")
@@ -782,15 +807,11 @@ local function Build(f)
     end
     for i, t in ipairs(TABS) do
         local b = CreateFrame("Button", "GuildUnionRosterSection" .. i, tabs, "UIPanelButtonTemplate")
-        b:SetSize(BTN_W, BTN_H)
-        b:SetText(L(t.title))
-        if i == 1 then b:SetPoint("LEFT", tabs, "LEFT", 8, 0)
-        else b:SetPoint("LEFT", tabs.Tabs[i - 1], "RIGHT", 6, 0) end
+        b:SetSize(ICON_W, BTN_H)
+        Iconize(b, L(t.title), t.icon, t.atlas)
         b:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(i) end)
         tabs.Tabs[i] = b
     end
-    -- («Miembros» va en el sitio del «Chat» seguro y, cuando se ve, encima de él: Layout)
-    tabs.Tabs[1]:SetFrameLevel(cover:GetFrameLevel() + 10)
     tabs.numTabs = #TABS
     cover.tabs = tabs
     -- (los botones, por encima de todo lo nuestro: que nada los tape)
