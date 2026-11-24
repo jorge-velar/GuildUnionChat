@@ -7,33 +7,34 @@ HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
 local TAB_H, HDR_H = 34, 24
--- (los botones de arriba, redondos y sin aro (Jorge, 24/11); el halo y la sombra sobresalen lo de
--- Tools/botones_redondos.py, que dibuja sus imágenes) [+ARCHITECTURE.md]
-local ICON_SIZE, ICON_GAP = 30, 10
-local GLOW_PAD, SHADOW_PAD = 12, 8
 local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local CHAT_ICON = "Interface/Icons/UI_Chat"   -- (la del icono del chat del juego, a la derecha de la ventana)
 local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus títulos, no la casilla ni el buscador
--- (arriba lo nuestro y debajo lo del juego, Jorge 24/11: la fila sube ROW_UP al sitio del desplegable «Guild» o de la
--- casilla de desconectados, y esos bajan DROP a donde estaba la fila; lo de debajo no se mueve) [+ARCHITECTURE.md]
-local ROW_UP, DROP = 31, 34
-local INSET_EDGE = 3   -- (vista de chat: la piedra de la fila tapa el borde de arriba del fondo del juego) [+ARCHITECTURE.md]
--- (en la vista de chat la piedra llega justo al borde del chat y de su lista, que empiezan 7 y 3 por encima de ellos: el
--- chat baja 4 para que casen) [+ARCHITECTURE.md]
+-- (la franja de arriba, TAB_H, va justo debajo de la barra del título: lo nuestro sube ROW_UP más, y ahí queda lo del
+-- juego en su sitio (buscador, casillas, cascos, «en línea»): DROP = 0. Antes había ahí una fila de botones redondos, que
+-- se quitó al pasar Comercio y Calendario a la columna de comunidades: Jorge, 24/11) [+ARCHITECTURE.md]
+local ROW_UP, DROP = 31, 0
+-- (vista de chat: la piedra de la franja baja INSET_EDGE más y tapa el borde de arriba del fondo del juego; el chat y su
+-- lista empiezan justo debajo, y sus bordes empiezan 7 y 3 por encima de ellos) [+ARCHITECTURE.md]
+local INSET_EDGE = 3
 local CHAT_EDGE, LIST_EDGE = 7, 3
+-- (las entradas de la columna de comunidades, como las del juego: CommunitiesListEntryTemplate)
+local ENTRY_H = 68
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
--- (la franja de esa barra, entre la columna y lo nuestro: la piedra la cubre y la barra va por encima) [+ARCHITECTURE.md]
-local STRIP = 23
+-- (la franja de esa barra, entre la columna y lo nuestro: toda oscura, de arriba abajo, con la barra por encima; mide
+-- STRIP_W, y en los 4 que quedan hasta lo nuestro empieza el borde del chat, que no se tapa) [+ARCHITECTURE.md]
+local STRIP, STRIP_W = 23, 19
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
     { key = "level", title = "Nivel", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_LEVEL", w = 34 },
     { key = "class", title = "Clase", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_CLASS", w = 45 },
     { key = "name", title = "Nombre", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NAME", w = 105 },
-    { key = "zone", title = "Zona", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_ZONE", w = 100 },
-    { key = "rank", title = "Rango", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_RANK", w = 85 },
+    { key = "zone", title = "Zona", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_ZONE", w = 92 },
+    { key = "rank", title = "Rango", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_RANK", w = 76 },
     { key = "guild", title = "Hermandad", game = "GUILD", w = 58 },
+    -- (las dos profesiones, con su icono y su nivel: Jorge, 24/11. Solo las de mi hermandad, que son las que da el juego)
+    { key = "prof", title = "Profesiones", game = "TRADE_SKILLS", w = 80 },
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
@@ -92,6 +93,41 @@ local function ReadNotes()
     end
 end
 
+-- Profesiones de mi hermandad (las da el juego por su comunidad: de las otras no llegan), para la columna: se leen al
+-- cambiar la lista del juego, como mucho cada PROF_EVERY segundos (son cientos de miembros) [+ARCHITECTURE.md]
+local PROF_EVERY = 30
+local profCache, profsDirty, profsAt = {}, true, nil
+local function ReadProfs()
+    local now = GetTime()
+    if profsAt and now - profsAt < PROF_EVERY then return end
+    profsDirty, profsAt = false, now
+    local cid = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
+    if not cid or HU.Secret(cid) then return end
+    local ok, ids = pcall(C_Club.GetClubMembers, cid)
+    if not ok or type(ids) ~= "table" then return end
+    local out = {}
+    for _, id in ipairs(ids) do
+        local ok2, info = pcall(C_Club.GetMemberInfo, cid, id)
+        local n = ok2 and type(info) == "table" and info.name
+        if type(n) == "string" and not HU.Secret(n) then
+            local list = {}
+            for _, k in ipairs({ "1", "2" }) do
+                local pid, pn, pr = info["profession" .. k .. "ID"], info["profession" .. k .. "Name"], info["profession" .. k .. "Rank"]
+                if type(pn) == "string" and pn ~= "" and not HU.Secret(pn) then
+                    local icon
+                    if type(pid) == "number" and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillTexture then
+                        local okI, tex = pcall(C_TradeSkillUI.GetTradeSkillTexture, pid)
+                        if okI and tex and not HU.Secret(tex) then icon = tex end
+                    end
+                    list[#list + 1] = { name = pn, icon = icon, rank = (type(pr) == "number" and not HU.Secret(pr)) and pr or nil }
+                end
+            end
+            if #list > 0 then out[(HU:FullName(n) or n):lower()] = list end
+        end
+    end
+    profCache = out
+end
+
 local function ShowOffline()
     local f = Win()
     local b = f and f.MemberList and f.MemberList.ShowOfflineButton
@@ -105,6 +141,7 @@ local SORT = {
     zone = function(e) return e.online == false and string.format("~%012d", e.offSecs or 0) or (e.zone or ""):lower() end,
     rank = function(e) return e.ri or 99 end,
     guild = function(e) return tostring(e.tag or "") end,
+    prof = function(e) return (e.prof and e.prof[1] and e.prof[1].name or "~"):lower() end,
     note = function(e) return (e.note or ""):lower() end,
 }
 -- Por defecto: rango de hermandad, nivel (de mayor a menor) y nombre, todas las hermandades mezcladas
@@ -121,6 +158,7 @@ end
 -- Todos: los conectados de la unión y, con la casilla del juego marcada, los desconectados de mi hermandad
 local function Entries()
     if notesDirty then ReadNotes() end
+    if profsDirty then ReadProfs() end
     local list = HU:UnionRosterEntries()
     if ShowOffline() then
         for _, e in ipairs(HU.rosterList) do
@@ -160,7 +198,7 @@ local function Entries()
     end
     for _, e in ipairs(list) do
         if (e.ri or 99) >= 99 then e.ri, e.noRank = low, true end
-        if e.own then e.note, e.offNote = notes[e.name:lower()], offNotes[e.name:lower()] end
+        if e.own then e.note, e.offNote, e.prof = notes[e.name:lower()], offNotes[e.name:lower()], profCache[e.name:lower()] end
     end
     table.sort(list, Less)
     return list
@@ -219,6 +257,20 @@ local function Paint()
             -- (la etiqueta de la hermandad, corta; el nombre entero, en la barra de abajo y en el menú)
             c.guild:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
             c.note:SetText(e.note or "")
+            -- (profesiones: icono y nivel; los nombres, en la ficha)
+            for j = 1, 2 do
+                local slot, p = c.prof[j], e.prof and e.prof[j]
+                if p then
+                    slot.icon:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    slot.icon:SetDesaturated(dim)
+                    slot.icon:Show()
+                    slot.text:SetText(p.rank and tostring(p.rank) or "")
+                else
+                    slot.icon:Hide()
+                    slot.text:SetText("")
+                end
+                slot.text:SetAlpha(dim and 0.5 or 1)
+            end
             for _, k in ipairs({ "level", "zone", "rank", "note" }) do c[k]:SetAlpha(dim and 0.5 or 1) end
             row:Show()
         else
@@ -263,63 +315,18 @@ local function BoxTops(f, show)
     end
 end
 
--- Dónde va lo nuestro: en la vista de miembros, encima de su lista; en la de chat, encima del chat y de
--- su lista de la derecha. Con «Chat» elegido, solo la fila de botones: el chat del juego se ve debajo
+-- Dónde va lo nuestro: en la vista de miembros, encima de su lista; en la de chat, solo la franja de arriba (el chat del
+-- juego se ve debajo)
 local function Layout()
     local f = Win()
     local ml = f and f.MemberList
     if not (cover and ml) then return end
-    local tb = cover.tabs
     local chatMode = mode == "chat" and f.Chat ~= nil
-    -- (el ancho de lo nuestro en esta vista: en la de miembros, el de la lista del juego y 25 más (-3 y +22); en la
-    -- de chat, de la columna de comunidades (+23) al borde de la ventana (-4))
-    local W
-    if chatMode then
-        local clRight, fRight = f.CommunitiesList:GetRight(), f:GetRight()
-        if type(clRight) == "number" and type(fRight) == "number" then W = fRight - clRight - 4 - 23 end
-    else
-        local mw = ml:GetWidth()
-        if type(mw) == "number" and mw > 0 then W = mw + 25 end
-    end
-    -- (Chat y una por sección, con imagen; centrados, todos con la misma cuenta: x0 desde la izquierda de lo nuestro,
-    -- también los seguros, que van atados a la lista del juego o a la columna) [+ARCHITECTURE.md]
-    local n = #TABS + 1
-    local x0 = W and math.max(8, math.floor((W - n * ICON_SIZE - (n - 1) * ICON_GAP) / 2)) or 8
-    local function X(slot) return x0 + slot * (ICON_SIZE + ICON_GAP) end
-    -- (sitio 0: «Chat»; en la vista de miembros, el seguro que pulsa el icono del chat del juego; en la de chat, el
-    -- nuestro, elegido. Los demás, las secciones: en la vista de chat, los seguros que pasan a la de miembros)
-    tb.chatBtn:SetShown(chatMode)
-    tb.chatBtn:ClearAllPoints()
-    tb.chatBtn:SetPoint("LEFT", tb, "LEFT", X(0), 0)
-    if tb.chatSecure and not InCombatLockdown() then
-        tb.chatSecure:ClearAllPoints()
-        tb.chatSecure:SetPoint("LEFT", ml, "TOPLEFT", -3 + X(0), TOP + ROW_UP - TAB_H / 2)
-    end
-    for i, b in ipairs(tb.Tabs) do
-        b:SetShown(not chatMode)
-        b:ClearAllPoints()
-        b:SetPoint("LEFT", tb, "LEFT", X(i), 0)
-    end
-    -- (se colocan fuera de combate, que es cuando el juego deja mover un botón seguro)
-    if chatMode and tb.chatModeBtns and not InCombatLockdown() then
-        for i, b in ipairs(tb.chatModeBtns) do
-            b:ClearAllPoints()
-            -- (con la fila, no con el chat, que baja)
-            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + X(i), -34 + ROW_UP - TAB_H / 2)
-        end
-    end
     cover:ClearAllPoints()
     if chatMode then
-        -- (el chat empieza 17 más arriba que su lista de la derecha; y 6 más arriba aún, para tapar el
-        -- borde de arriba del chat, que se veía como una raya encima de los botones)
-        -- (atado a la ventana y a la columna de comunidades, no al chat, que baja: ver Sync)
-        -- (justo debajo del desplegable «Guild» y del buscador: 59 bajo el borde de la ventana)
-        -- (exactamente donde va en la vista de miembros: allí es la lista del juego, -3 y +26, y esa lista va
-        -- a 26 y -60 de la columna de comunidades. Todo atado a la columna: la misma fila en las dos vistas)
+        -- (justo debajo de la barra del título, de la columna de comunidades (+23) al borde de la ventana (-4); atado a la
+        -- columna y no al chat, que va debajo de la franja: ver Sync)
         cover:SetPoint("TOPLEFT", f.CommunitiesList, "TOPRIGHT", 23, -34 + ROW_UP)
-        -- (en la vista de chat siempre está «Chat» elegido: solo la fila. A la derecha, hasta el borde de la
-        -- ventana: atado a la ventana y no a la lista de la derecha, que baja; ver Sync)
-        -- (el borde derecho, a 4 del de la ventana, pero a la misma altura: atado también a la columna)
         local clRight, fRight = f.CommunitiesList:GetRight(), f:GetRight()
         local dx = (type(clRight) == "number" and type(fRight) == "number") and (fRight - clRight - 4) or 640
         cover:SetPoint("TOPRIGHT", f.CommunitiesList, "TOPRIGHT", dx, -34 + ROW_UP)
@@ -329,18 +336,28 @@ local function Layout()
         -- (hasta 22 más a la derecha: tapa también la barra de la lista del juego, que se veía al lado de la nuestra)
         cover:SetPoint("BOTTOMRIGHT", ml, "BOTTOMRIGHT", 22, 0)
     end
-    -- (con «Chat», los clics pasan al chat del juego salvo en los botones)
+    -- (en la vista de chat los clics pasan al chat del juego; la piedra de la franja es la de abajo, cover.band, que va
+    -- debajo de lo del juego (cascos, «en línea»): la de lo nuestro, en la capa HIGH, lo taparía)
     cover:EnableMouse(tab ~= 0)
-    cover.rock:SetHeight(tab == 0 and TAB_H + INSET_EDGE or TAB_H + ROW_UP + HDR_H + 2)
+    cover.rock:SetShown(not chatMode)
+    cover.rock:SetHeight(TAB_H + HDR_H)
     cover.dark:SetShown(tab ~= 0)
     if cover.band then cover.band:SetShown(chatMode) end
     BoxTops(f, not chatMode)
 end
 
--- (el botón redondo elegido, con el brillo blanco alrededor; los demás, con su sombra)
-local function PickRound(b, on)
-    b.guGlow:SetShown(on)
-    b.guShadow:SetShown(not on)
+-- (la casilla «Mostrar desconectados» del juego solo pinta algo en Miembros: en Comercio y Calendario, ni se ve ni se
+-- pulsa (Jorge, 24/11). Solo sus dibujos y su texto: de ella cuelgan nuestros botones seguros y los de abajo, que siguen)
+-- [+ARCHITECTURE.md]
+local offlineShown = true
+local function OfflineBox(show)
+    if show == offlineShown then return end
+    local f = Win()
+    local b = f and f.MemberList and f.MemberList.ShowOfflineButton
+    if type(b) ~= "table" then return end
+    offlineShown = show
+    for _, r in ipairs({ b:GetRegions() }) do r:SetAlpha(show and 1 or 0) end
+    b:EnableMouse(show)
 end
 
 local function ShowTab(i)
@@ -352,8 +369,8 @@ local function ShowTab(i)
         return
     end
     cover.tabs.selectedTab = i
-    PickRound(cover.tabs.chatBtn, i == 0)
-    for k, b in ipairs(cover.tabs.Tabs) do PickRound(b, k == i) end
+    -- (la entrada de la sección, en la columna de comunidades, marcada como la elegida)
+    for _, e in ipairs(cover.side and cover.side.entries or {}) do e.sel:SetShown(mode == "roster" and e.tab == i) end
     local members = i == 1
     cover.hdr:SetShown(members); cover.scroll:SetShown(members); cover.status:SetShown(members)
     for _, row in ipairs(cover.rows) do if not members then row:Hide() end end
@@ -364,6 +381,7 @@ local function ShowTab(i)
     HU.charSearchOff = i >= 2
     HU.SyncCharSearch()
     if mine then mine:SetShown(i == 1) end
+    OfflineBox(i <= 1)
     Layout()
     Paint()
 end
@@ -723,6 +741,7 @@ local function Build(f)
         HU.charSearchOff = false; HU.SyncCharSearch()
         if cover.band then cover.band:Hide() end
         BoxTops(f, true)
+        OfflineBox(true)
     end)
     cover:SetPoint("TOPLEFT", ml, "TOPLEFT", -3, TOP)
     -- (hasta 22 más a la derecha: tapa también la barra de la lista del juego, que se veía al lado de la nuestra)
@@ -736,73 +755,41 @@ local function Build(f)
     cover:EnableMouse(true)
     cover:Hide()
 
-    -- Arriba, los botones redondos, uno por sección
+    -- Arriba, la franja (TAB_H) donde queda lo del juego: el buscador, las casillas, los cascos y el «en línea»
     local tabs = CreateFrame("Frame", nil, cover)
     tabs:SetPoint("TOPLEFT", 0, 0); tabs:SetPoint("TOPRIGHT", 0, 0); tabs:SetHeight(TAB_H)
-    -- (detrás de los botones y de los títulos, la misma piedra que el juego pone encima, como en su
-    -- lista: así no se ven rayas; el fondo oscuro empieza en la primera fila)
-    -- (en el marco de abajo del todo, no en el de los botones: si no, tapa los títulos)
+    tabs.selectedTab = 1
+    -- (detrás de la franja y de los títulos, la misma piedra que el juego pone encima, como en su lista: así no se ven
+    -- rayas; el fondo oscuro empieza en la primera fila. En el marco de abajo del todo: si no, tapa los títulos)
     local rock = cover:CreateTexture(nil, "BACKGROUND")
     rock:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
     rock:SetHorizTile(true); rock:SetVertTile(true)
-    rock:SetPoint("TOPLEFT", cover, "TOPLEFT", -STRIP, 0); rock:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
-    rock:SetHeight(TAB_H + ROW_UP + HDR_H + 2)
+    rock:SetPoint("TOPLEFT", cover, "TOPLEFT", STRIP_W - STRIP, 0); rock:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
+    rock:SetHeight(TAB_H + HDR_H)
     cover.rock = rock
+    -- (la franja de la barra de la columna de comunidades: el mismo mármol oscuro del fondo del juego, de arriba abajo
+    -- (Jorge, 24/11: «un solo formato para todas las páginas»); la barra va encima, en la capa HIGH: ListBar)
+    local strip = cover:CreateTexture(nil, "BACKGROUND")
+    strip:SetTexture("Interface\\FrameGeneral\\UI-Background-Marble", "REPEAT", "REPEAT")
+    strip:SetHorizTile(true); strip:SetVertTile(true)
+    strip:SetPoint("TOPLEFT", cover, "TOPLEFT", -STRIP, 0)
+    if type(f.CommunitiesList) == "table" then
+        strip:SetPoint("BOTTOMRIGHT", f.CommunitiesList, "BOTTOMRIGHT", STRIP_W, 0)
+    end
+    cover.strip = strip
     -- (en la vista de chat, la misma piedra hasta el chat y su lista (Jorge, 24/11): en el fondo del juego, encima de su
-    -- borde y debajo de lo suyo, y desde la misma esquina que la de la fila, para que casen sin costura) [+ARCHITECTURE.md]
+    -- borde y debajo de lo suyo, y desde la misma esquina que la de la franja, para que casen sin costura) [+ARCHITECTURE.md]
     local inset = type(f.Inset) == "table" and f.Inset or nil
     local edge = inset and type(inset.NineSlice) == "table" and inset.NineSlice or nil
     if inset then
         local band = edge and edge:CreateTexture(nil, "OVERLAY") or inset:CreateTexture(nil, "BACKGROUND", nil, 1)
         band:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
         band:SetHorizTile(true); band:SetVertTile(true)
-        band:SetPoint("TOPLEFT", cover, "TOPLEFT", -STRIP, 0); band:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
-        band:SetHeight(TAB_H + 2 + ROW_UP - LIST_EDGE)
+        band:SetPoint("TOPLEFT", cover, "TOPLEFT", STRIP_W - STRIP, 0); band:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
+        band:SetHeight(TAB_H + INSET_EDGE)
         band:Hide()
         cover.band = band
     end
-    tabs.Tabs = {}
-    -- (los botones de arriba: el icono en un círculo con un borde negro fino; detrás, la sombra o, si está elegido,
-    -- el brillo (PickRound); al pasar el ratón, más claro y con su nombre) [+ARCHITECTURE.md]
-    local function Iconize(b, name, icon, own)
-        b:SetSize(ICON_SIZE, ICON_SIZE)
-        b.guName = name
-        local function Layer(layer, file, size, dy)
-            local t = b:CreateTexture(nil, layer)
-            t:SetTexture(file)
-            t:SetSize(size, size)
-            t:SetPoint("CENTER", 0, dy or 0)
-            return t
-        end
-        b.guShadow = Layer("BACKGROUND", MEDIA .. "boton-sombra", ICON_SIZE + 2 * SHADOW_PAD, -2)
-        b.guShadow:SetVertexColor(0, 0, 0)
-        b.guGlow = Layer("BACKGROUND", MEDIA .. "boton-brillo", ICON_SIZE + 2 * GLOW_PAD)
-        b.guGlow:Hide()
-        Layer("BORDER", MEDIA .. "boton-circulo", ICON_SIZE + 2):SetVertexColor(0, 0, 0)
-        local t = Layer("ARTWORK", icon, ICON_SIZE)
-        -- (los iconos del juego traen un marco oscuro: se recorta)
-        if not own then t:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        local mask = b:CreateMaskTexture()
-        mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(t)
-        t:AddMaskTexture(mask)
-        b.guIcon = t
-        local hl = Layer("HIGHLIGHT", MEDIA .. "boton-circulo", ICON_SIZE)
-        hl:SetBlendMode("ADD")
-        hl:SetAlpha(0.25)
-        b:HookScript("OnEnter", function(s)
-            GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(s.guName)
-            GameTooltip:Show()
-        end)
-        b:HookScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-    -- («Chat», solo en la vista de chat, elegido: deja ver el chat del juego)
-    local chatBtn = CreateFrame("Button", "GuildUnionRosterSectionChat", tabs)
-    Iconize(chatBtn, L("Chat"), CHAT_ICON)
-    chatBtn:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(0) end)
-    chatBtn:Hide()
-    tabs.chatBtn = chatBtn
     -- Abajo, como en la vista del chat: Peticiones de oficiales · Registro · Invitar miembro, a la izquierda de
     -- «Ajustes de hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo
     -- pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
@@ -837,62 +824,87 @@ local function Build(f)
         rq:HookScript("OnShow", SyncRequests)
         SyncRequests()
     end
-    -- («Chat» en la vista de miembros: un botón seguro que pulsa el icono del chat del juego. Si lo pulsara
-    -- el addon, la ventana quedaría «tocada» y el juego bloquearía rangos y notas. Es hijo de la casilla
-    -- de desconectados, que solo se ve en la vista de miembros: así no hay que enseñarlo ni esconderlo en
-    -- combate, que el juego no deja hacer con un botón seguro)
-    local chatSecure = CreateFrame("Button", "GuildUnionRosterChatSecure", anchor, "SecureActionButtonTemplate")
-    Iconize(chatSecure, L("Chat"), CHAT_ICON)
-    chatSecure:SetPoint("LEFT", ml, "TOPLEFT", 5, TOP - TAB_H / 2)
-    chatSecure:SetFrameStrata("HIGH")
-    chatSecure:SetFrameLevel(cover:GetFrameLevel() + 8)
-    chatSecure:RegisterForClicks("AnyUp", "AnyDown")
-    chatSecure:SetAttribute("type", "click")
-    chatSecure:SetAttribute("clickbutton", f.ChatTab)
-    tabs.chatSecure = chatSecure
-    -- (al pulsarlo, la vista cambia y el botón se esconde antes de soltar el ratón: se quedaba «pulsado», con la
-    -- letra movida hacia abajo. Al volver a verse, se deja suelto) [+ARCHITECTURE.md]
-    local function Unpress(b)
-        b:HookScript("OnShow", function(s2)
-            if InCombatLockdown() then return end
-            pcall(s2.SetButtonState, s2, "NORMAL")
-            local up = s2:GetScript("OnMouseUp")
-            if up then pcall(up, s2, "LeftButton") end
-        end)
-    end
-    Unpress(chatSecure)
-    -- (Miembros, Comercio y Calendario en la vista de chat: botones seguros que pulsan el icono de miembros del juego; antes,
-    -- PreClick apunta qué sección abrir al llegar. Hijos del chat del juego: solo se ven en esa vista)
-    if f.Chat then
-        tabs.chatModeBtns = {}
-        for i, t in ipairs(TABS) do
-            local b = CreateFrame("Button", "GuildUnionChatSection" .. i, f.Chat, "SecureActionButtonTemplate")
-            Iconize(b, L(t.title), t.icon, t.own)
-            b:SetFrameStrata("HIGH")
-            b:SetFrameLevel(cover:GetFrameLevel() + 8)
-            b:RegisterForClicks("AnyUp", "AnyDown")
-            b:SetAttribute("type", "click")
-            b:SetAttribute("clickbutton", f.RosterTab)
-            b:SetScript("PreClick", function() wantTab = i end)
-            Unpress(b)
-            tabs.chatModeBtns[i] = b
+    cover.tabs = tabs
+    tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
+
+    -- Comercio y Calendario, en la columna de comunidades, con el aspecto de sus entradas y encima de «Unirse o crear
+    -- comunidad» (Jorge, 24/11; luego irán Wanted y LFG). Botones seguros que pulsan la pestaña de miembros del juego
+    -- (PreClick apunta la sección; si ya se ve esa vista, PostClick la abre), hijos de la columna para verse con ella. La
+    -- lista del juego no se toca (si el addon la tocara, su ficha bloquearía notas y rangos): su «Unirse…» queda
+    -- transparente y debajo de las nuestras va una igual que la pulsa (PlaceSide) [+ARCHITECTURE.md]
+    local cl = f.CommunitiesList
+    local side = { entries = {}, fromSide = false }
+    local function Entry(text, icon, round)
+        local b = CreateFrame("Button", nil, cl, "SecureActionButtonTemplate")
+        b:SetHeight(ENTRY_H)
+        local sb = type(cl.ScrollBox) == "table" and cl.ScrollBox or cl
+        b:SetFrameLevel(sb:GetFrameLevel() + 10)
+        -- (las tiras de bluemenu-main que usa la plantilla del juego: fondo, elegida y al pasar el ratón)
+        local function Bar(layer, sub, top, bottom)
+            local t = b:CreateTexture(nil, layer, nil, sub)
+            t:SetTexture("Interface\\Common\\bluemenu-main")
+            t:SetTexCoord(0.00390625, 0.87890625, top, bottom)
+            t:SetHeight(80); t:SetPoint("LEFT"); t:SetPoint("RIGHT")
+            return t
         end
+        Bar("BACKGROUND", 0, 0.75195313, 0.83007813)
+        b.sel = Bar("BACKGROUND", 1, 0.59179688, 0.66992188)
+        b.sel:Hide()
+        local hl = Bar("HIGHLIGHT", 0, 0.75195313, 0.83007813)
+        hl:SetBlendMode("ADD"); hl:SetAlpha(0.8)
+        local ic = b:CreateTexture(nil, "ARTWORK")
+        if round then
+            -- (como el icono de una comunidad: redondo y con el aro dorado)
+            ic:SetTexture(icon)
+            ic:SetSize(38, 38); ic:SetPoint("TOPLEFT", 11, -15)
+            local mask = b:CreateMaskTexture()
+            mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetPoint("TOPLEFT", ic, "TOPLEFT", 2, -2); mask:SetPoint("BOTTOMRIGHT", ic, "BOTTOMRIGHT", -2, 2)
+            ic:AddMaskTexture(mask)
+            local ring = b:CreateTexture(nil, "OVERLAY")
+            ring:SetAtlas("communities-ring-gold"); ring:SetSize(48, 48); ring:SetPoint("CENTER", ic, "CENTER")
+        else
+            ic:SetAtlas(icon)
+            ic:SetSize(30, 30); ic:SetPoint("TOPLEFT", 17, -18)
+        end
+        b.icon = ic
+        local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        fs:SetPoint("LEFT", ic, "RIGHT", round and 11 or 13, 0); fs:SetPoint("RIGHT", -24, 0)
+        fs:SetJustifyH("LEFT"); fs:SetText(text)
+        b.text = fs
+        b:RegisterForClicks("AnyUp", "AnyDown")
+        b:SetAttribute("type", "click")
+        return b
     end
     for i, t in ipairs(TABS) do
-        local b = CreateFrame("Button", "GuildUnionRosterSection" .. i, tabs)
-        Iconize(b, L(t.title), t.icon, t.own)
-        b:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(i) end)
-        tabs.Tabs[i] = b
+        if t.trade or t.calendar then
+            local b = Entry(L(t.title), t.icon, true)
+            b.tab = i
+            b:SetAttribute("clickbutton", f.RosterTab)
+            b:SetScript("PreClick", function() wantTab, side.fromSide = i, true end)
+            -- (ya en la vista de miembros, la pestaña del juego no cambia nada: la sección se abre aquí)
+            b:SetScript("PostClick", function()
+                side.fromSide = false
+                if mode ~= "roster" then return end
+                wantTab, tab = nil, i
+                PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
+                if SyncNow then SyncNow() end
+            end)
+            side.entries[#side.entries + 1] = b
+        end
     end
-    tabs.numTabs = #TABS
-    cover.tabs = tabs
-    -- (los botones, por encima de todo lo nuestro: que nada los tape)
-    tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
+    -- («Unirse o crear comunidad», como la del juego y en verde: pulsa la suya, que queda transparente)
+    local joinText = type(_G.COMMUNITIES_JOIN_COMMUNITY) == "string" and _G.COMMUNITIES_JOIN_COMMUNITY or L("Unirse o crear una comunidad")
+    side.join = Entry(joinText, "communities-icon-addgroupplus", false)
+    local green = _G.GREEN_FONT_COLOR
+    if green then side.join.text:SetTextColor(green:GetRGB()) end
+    side.join:Hide()
+    cover.side = side
 
     -- Los títulos de las columnas, como los del juego; un clic ordena por esa columna
     local hdr = CreateFrame("Frame", nil, cover)
-    -- (debajo de la fila queda el hueco de lo del juego: la casilla de desconectados, «Solo mi hermandad» y el buscador)
-    hdr:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2 - ROW_UP)
+    -- (justo debajo de la franja, donde están la casilla de desconectados, «Solo mi hermandad» y el buscador)
+    hdr:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, 0)
     hdr:SetPoint("RIGHT", cover, "RIGHT", 0, 0)
     hdr:SetHeight(HDR_H)
     hdr:SetFrameLevel(cover:GetFrameLevel() + 6)
@@ -923,14 +935,15 @@ local function Build(f)
     cover.dark = dark
     -- (la sección Comercio, Trade.lua: debajo de los botones, hasta abajo)
     cover.trade = CreateFrame("Frame", nil, cover)
-    cover.trade:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2 - ROW_UP)
+    -- (desde arriba del todo: en Comercio y Calendario la franja no lleva nada del juego, y sus botones van ahí)
+    cover.trade:SetPoint("TOPLEFT", cover, "TOPLEFT", 0, -2)
     cover.trade:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)
     cover.trade:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.trade:Hide()
     HU:BuildTrade(cover.trade)
     -- (la sección Calendario, UnionCalendar.lua: igual)
     cover.calendar = CreateFrame("Frame", nil, cover)
-    cover.calendar:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2 - ROW_UP)
+    cover.calendar:SetPoint("TOPLEFT", cover, "TOPLEFT", 0, -2)
     cover.calendar:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)
     cover.calendar:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.calendar:Hide()
@@ -980,6 +993,19 @@ local function Build(f)
                 tex:SetSize(16, 16)
                 tex:SetPoint("LEFT", starts[k] + (col.w - 16) / 2, 0)
                 c.class = tex
+            elseif col.key == "prof" then
+                -- (dos huecos, icono y nivel de cada profesión)
+                c.prof = {}
+                for j = 1, 2 do
+                    local icon = row:CreateTexture(nil, "ARTWORK")
+                    icon:SetSize(14, 14)
+                    icon:SetPoint("LEFT", starts[k] + 4 + (j - 1) * 38, 0)
+                    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                    local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    fs:SetPoint("LEFT", icon, "RIGHT", 2, 0)
+                    fs:SetWidth(22); fs:SetJustifyH("LEFT"); fs:SetWordWrap(false)
+                    c.prof[j] = { icon = icon, text = fs }
+                end
             else
                 local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 fs:SetPoint("LEFT", x, 0)
@@ -1011,7 +1037,7 @@ local function Build(f)
         ShowTab(tab)
     end)
     cover:RegisterEvent("GUILD_ROSTER_UPDATE")
-    cover:SetScript("OnEvent", function() notesDirty = true; Paint() end)
+    cover:SetScript("OnEvent", function() notesDirty, profsDirty = true, true; Paint() end)
     HU:Listen("CHANGED", function(what) if what == "unionMembers" then Paint() end end)
     -- (la casilla del juego: al marcarla o quitarla, la nuestra se repinta; solo se lee, no se toca)
     anchor:HookScript("OnClick", function() HU.After(0, Paint) end)
@@ -1044,8 +1070,8 @@ local function Build(f)
     local function ChatAnchors()
         if GameLocked() then return end
         placing = true
-        ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -2 - ROW_UP)
-        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2 - ROW_UP - (CHAT_EDGE - LIST_EDGE))
+        ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -INSET_EDGE - LIST_EDGE)
+        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -INSET_EDGE - CHAT_EDGE)
         -- (la barra del chat, arriba del todo como la de su lista (Jorge, 24/11): la franja del mensaje fijado,
         -- BlizzTab.lua, baja los mensajes y la barra iba con ellos. Los mismos 15 y 1 que le da el juego)
         local chatBar = type(f.Chat.ScrollBar) == "table" and f.Chat.ScrollBar or nil
@@ -1064,8 +1090,13 @@ local function Build(f)
         placingTop = true
         if dd then dd:ClearAllPoints(); dd:SetPoint("TOPLEFT", f, "TOPLEFT", 195, -31 - DROP) end
         if headset then headset:ClearAllPoints(); headset:SetPoint("TOPRIGHT", f, "TOPRIGHT", -180, -26 - DROP) end
+        -- (a la derecha, delante de «Solo mi hermandad»: a la izquierda va el buscador, en el mismo sitio que en la vista de
+        -- chat. Jorge, 24/11) [+ARCHITECTURE.md]
+        local label = type(anchor.Text) == "table" and anchor.Text or nil
+        local lw = label and label:GetStringWidth()
+        lw = (type(lw) == "number" and lw > 0 and not HU.Secret(lw)) and lw or 110
         anchor:ClearAllPoints()
-        anchor:SetPoint("BOTTOMLEFT", ml, "TOPLEFT", 0, TOP - DROP)
+        anchor:SetPoint("BOTTOMLEFT", ml, "TOPRIGHT", -120 - 14 - lw - 26, TOP - DROP)
         anchor:SetFrameStrata("HIGH")
         anchor:SetFrameLevel(cover:GetFrameLevel() + 12)
         local search = _G.GuildUnionReduceSearch
@@ -1096,26 +1127,60 @@ local function Build(f)
     -- (la barra de la columna de comunidades, arriba del todo y por encima de la piedra en nuestras vistas (Jorge, 24/11);
     -- en las demás, donde y como la pone el juego. Solo se cambia su esquina de arriba: la de abajo sigue la suya)
     -- [+ARCHITECTURE.md]
-    local cl = type(f.CommunitiesList) == "table" and f.CommunitiesList or nil
-    local clBar = cl and type(cl.ScrollBar) == "table" and cl.ScrollBar or nil
+    local clBar = type(cl.ScrollBar) == "table" and cl.ScrollBar or nil
     local clBarStrata, clBarLevel = clBar and clBar:GetFrameStrata(), clBar and clBar:GetFrameLevel()
-    -- (a la derecha, sin las pestañas del juego que ya están en nuestra fila (Jorge, 24/11): Chat y Miembros, transparentes
-    -- y sin clics mientras se ve lo nuestro (nuestros botones seguros las siguen pulsando), y las demás suben a su sitio. En
-    -- las otras vistas del juego (Información…) vuelven: son el camino de vuelta) [+ARCHITECTURE.md]
-    local chatTab = type(f.ChatTab) == "table" and f.ChatTab or nil
-    local rosterTab = type(f.RosterTab) == "table" and f.RosterTab or nil
-    local sideOff = false
-    local function SideTabs(off)
-        if not (chatTab and rosterTab) or off == sideOff then return end
-        sideOff = off
-        for _, t in ipairs({ chatTab, rosterTab }) do
-            t:SetAlpha(off and 0 or 1)
-            t:EnableMouse(not off)
+    -- (Comercio y Calendario, en el sitio de «Unirse…» del juego, y la nuestra igual debajo; si no es la última de la
+    -- lista o no se ve, debajo de la última entrada. La lista recicla sus marcos: el que se dejó transparente y ya no es
+    -- «Unirse…» vuelve a verse. Fuera de combate: son botones seguros) [+ARCHITECTURE.md]
+    local hiddenJoin
+    local function PlaceSide()
+        if not side.entries[1] or GameLocked() then return end
+        local sb = type(cl.ScrollBox) == "table" and cl.ScrollBox or nil
+        local joinFrame, lastFrame, lastBottom
+        if sb and sb.ForEachFrame then
+            sb:ForEachFrame(function(fr, data)
+                if type(data) == "table" and data.setJoinCommunity then joinFrame = fr end
+                local bottom = fr:GetBottom()
+                if type(bottom) == "number" and (not lastBottom or bottom < lastBottom) then lastFrame, lastBottom = fr, bottom end
+            end)
         end
-        -- (la de Miembros, justo encima de la de Chat: la siguiente, que va 20 por debajo de ella, queda en su sitio)
-        rosterTab:ClearAllPoints()
-        if off then rosterTab:SetPoint("BOTTOMLEFT", chatTab, "TOPLEFT", 0, 20)
-        else rosterTab:SetPoint("TOPLEFT", chatTab, "BOTTOMLEFT", 0, -20) end
+        local atJoin = joinFrame ~= nil and joinFrame == lastFrame
+        if hiddenJoin and not (atJoin and hiddenJoin == joinFrame) then
+            hiddenJoin:SetAlpha(1); hiddenJoin:EnableMouse(true); hiddenJoin = nil
+        end
+        local first = side.entries[1]
+        first:ClearAllPoints()
+        if atJoin then
+            joinFrame:SetAlpha(0); joinFrame:EnableMouse(false); hiddenJoin = joinFrame
+            first:SetPoint("TOPLEFT", joinFrame, "TOPLEFT"); first:SetPoint("TOPRIGHT", joinFrame, "TOPRIGHT")
+        elseif lastFrame then
+            first:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT"); first:SetPoint("TOPRIGHT", lastFrame, "BOTTOMRIGHT")
+        else
+            -- (sin marcos de la lista a la vista: donde iría su primera entrada, tras los 40 de arriba)
+            first:SetPoint("TOPLEFT", cl, "TOPLEFT", 3, -40); first:SetPoint("TOPRIGHT", cl, "TOPRIGHT", -2, -40)
+        end
+        local above = first
+        for k = 2, #side.entries do
+            local e = side.entries[k]
+            e:ClearAllPoints()
+            e:SetPoint("TOPLEFT", above, "BOTTOMLEFT"); e:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT")
+            above = e
+        end
+        side.join:ClearAllPoints()
+        side.join:SetPoint("TOPLEFT", above, "BOTTOMLEFT"); side.join:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT")
+        side.join:SetAttribute("clickbutton", atJoin and joinFrame or nil)
+        side.join:SetShown(atJoin)
+    end
+    -- (al cambiar la lista del juego, y al enseñarse la columna, otra vez en su sitio)
+    if cl.Update then hooksecurefunc(cl, "Update", function() HU.After(0, PlaceSide) end) end
+    cl:HookScript("OnShow", function() HU.After(0, PlaceSide) end)
+    -- (la pestaña de miembros del juego, pulsada en la vista de miembros —no desde nuestras entradas—: a Miembros)
+    if type(f.RosterTab) == "table" then
+        f.RosterTab:HookScript("OnClick", function()
+            if cover.side.fromSide or mode ~= "roster" or tab == 1 then return end
+            tab = 1
+            if SyncNow then SyncNow() end
+        end)
     end
     local clBarUp = false
     local function ListBar(up)
@@ -1219,7 +1284,8 @@ local function Build(f)
         TopRow()
         GuildDropdown()
         ListBar(m ~= nil)
-        SideTabs(m ~= nil)
+        PlaceSide()
+        for _, e in ipairs(cover.side.entries) do e.sel:SetShown(m == "roster" and e.tab == tab) end
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
         if InCombatLockdown() then secureLater = true end

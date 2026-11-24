@@ -1113,6 +1113,8 @@ local function BuildCharSearch(f)
     end
     pop.more = pop:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     local function Fill()
+        -- (buscando en el chat no hay lista de personajes: se busca al pulsar Intro)
+        if box.forChat then return pop:Hide() end
         local list = FindChars(box:GetText())
         if HU.Trim(box:GetText() or "") == "" then ClearMark(); return pop:Hide() end
         local shown = math.min(#list, 10)
@@ -1154,6 +1156,13 @@ local function BuildCharSearch(f)
     box:HookScript("OnEditFocusLost", function() HU.After(0.2, function() if not box:HasFocus() then pop:Hide() end end) end)
     box:SetScript("OnEscapePressed", function(s) s:SetText(""); pop:Hide(); s:ClearFocus() end)
     box:SetScript("OnEnterPressed", function(s)
+        -- (en la vista de chat, quien puede ver el historial busca en el chat: HistSearch, History.lua. Jorge, 24/11)
+        if s.forChat then
+            local text = HU.Trim(s:GetText() or "")
+            pop:Hide(); s:ClearFocus()
+            if text ~= "" then HU:HistSearch(nil, text) end
+            return
+        end
         local first = FindChars(s:GetText())[1]
         pop:Hide(); s:ClearFocus()
         if first then Pick(first) end
@@ -1162,6 +1171,14 @@ local function BuildCharSearch(f)
     -- del desplegable «Guild». No sale en Información ni en nuestra pestaña: Jorge, 10/11. IsVisible
     -- y no IsShown: la casilla sigue «puesta» aunque su lista esté escondida)
     local dd = f.StreamDropdown
+    -- (busca personajes o, en la vista de chat y con permiso para ver el historial, en el chat)
+    local function ForChat(on)
+        on = on and HU:CanPin() and HU:HistEnabled() or false
+        if box.forChat == on then return end
+        box.forChat = on
+        if box.Instructions then box.Instructions:SetText(on and L("Buscar en el chat") or L("Buscar personaje")) end
+        pop:Hide()
+    end
     local function Sync()
         box:ClearAllPoints()
         local ours = panel and panel.where == "blizz" and panel:IsShown()
@@ -1169,15 +1186,17 @@ local function BuildCharSearch(f)
             box:Hide()
             ClearMark()
         elseif not ours and anchor:IsVisible() then
-            -- (en el mismo sitio que en la vista de chat: a la derecha del desplegable «Guild», que en esta
-            -- vista está escondido pero sigue en su sitio. Jorge, 23/11)
-            if dd then box:SetPoint("LEFT", dd, "RIGHT", 16, 0)
+            -- (en el mismo sitio que en la vista de chat: donde el desplegable «Guild», que en esta vista está escondido
+            -- pero sigue en su sitio; las casillas van a la derecha, UnionRoster.lua. Jorge, 24/11)
+            if dd then box:SetPoint("LEFT", dd, "LEFT", 0, 0)
             else box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -108, 30) end
+            ForChat(false)
             box:Show()
         elseif not ours and dd and dd:IsVisible() then
             -- (sin el desplegable a la vista, en su sitio: Jorge, 24/11)
             if HU.guildDropdownOff then box:SetPoint("LEFT", dd, "LEFT", 0, 0)
             else box:SetPoint("LEFT", dd, "RIGHT", 16, 0) end
+            ForChat(true)
             box:Show()
         else
             box:Hide()

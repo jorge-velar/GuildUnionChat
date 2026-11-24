@@ -2596,83 +2596,88 @@ su ficha, como el buscador de personajes (`HU.UnionRosterPick`). Clic derecho: s
   todos de la misma y se saben sus rangos, «Pedir a su hermandad cambio de rango» (`HU:AskGuildRank`, GP). Va por
   susurro a alguien suyo con el addon, que lo reparte; a sus oficiales les sale en «Peticiones de oficiales».
 
-### La fila en las dos vistas: `Sync` y `Layout`
+### Las vistas: `Sync` y `Layout`
 
 `Sync` mira la vista con `IsVisible` (el `IsShown` de la casilla sigue verdadero con su lista escondida): «roster»
 si se ve la casilla de desconectados; «chat» si se ven el chat y su lista (la ventana pequeña, sin lista, no
-cuenta). Al entrar en la de chat se empieza en Chat; en la de miembros, en Miembros o en la sección pulsada desde
-el chat (`wantTab`). Corre con `OnShow`/`OnHide` de la casilla, la lista y el chat, al abrir la ventana y, en el
-acto, tras `SetDisplayMode` (si no, se ven un instante los botones en el sitio de la vista anterior).
-`Layout`: los cinco botones caben siempre (se estrechan) y la fila va en el mismo sitio en las dos vistas
-(23 y -34 de `CommunitiesList`). En la de miembros, `cover` tapa la lista; en la de chat es solo la fila (los clics
-pasan al chat) y el chat y su lista se atan debajo (`ChatAnchors`); el juego recoloca esa lista al actualizarla y
-un `hooksecurefunc` sobre su `SetPoint` la vuelve a poner en el acto (`placing`). Al volver a la de miembros, lista
-y chat vuelven a sus sitios del juego antes de poner la fila encima (si no, lista y fila quedarían atadas la una a
-la otra); el chat, a mano: el juego solo lo coloca al maximizar. En combate ni la lista ni el chat se mueven: llevan
-colgados nuestros botones seguros y el juego lo bloquea (`ADDON_ACTION_BLOCKED`); `GameLocked` lo apunta
-(`secureLater`) y se colocan al salir del combate (`PLAYER_REGEN_ENABLED` → `Sync`). `cover` sale siempre en las dos
-vistas (`HU.db.unionRosterOff` no se usa: `Sync` lo borra).
+cuenta). Al entrar en la de chat se empieza en Chat; en la de miembros, en Miembros o en la sección pulsada en la
+columna de comunidades (`wantTab`). Corre con `OnShow`/`OnHide` de la casilla, la lista y el chat, al abrir la ventana
+y, en el acto, tras `SetDisplayMode`.
+`Layout`: en la de miembros, `cover` tapa la lista del juego desde justo debajo de la barra del título; en la de chat
+es solo la franja de arriba (los clics pasan al chat) y el chat y su lista se atan debajo (`ChatAnchors`); el juego
+recoloca esa lista al actualizarla y un `hooksecurefunc` sobre su `SetPoint` la vuelve a poner en el acto
+(`placing`). Al volver a la de miembros, lista y chat vuelven a sus sitios del juego antes de poner lo nuestro encima
+(si no, quedarían atadas la una a lo otro); el chat, a mano: el juego solo lo coloca al maximizar. En combate ni la
+lista ni el chat se mueven (el juego lo bloquea: `ADDON_ACTION_BLOCKED`); `GameLocked` lo apunta (`secureLater`) y se
+colocan al salir del combate (`PLAYER_REGEN_ENABLED` → `Sync`). `cover` sale siempre en las dos vistas
+(`HU.db.unionRosterOff` no se usa: `Sync` lo borra).
 
-### Botones seguros
+### Arriba: la franja, y lo del juego en su sitio
 
-Cambiar de vista desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas: los botones que
-cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los pulsa el juego.
-- «Chat» en la vista de miembros (`GuildUnionRosterChatSecure`) pulsa `ChatTab`; Miembros, Comercio y Calendario en
-  la de chat (`GuildUnionChatSection1`…`3`) pulsan `RosterTab`; su `PreClick` apunta la sección (`wantTab`).
-- Cuatro sitios: el 0 es «Chat» (en la vista de miembros, el seguro; en la de chat, el nuestro, elegido) y del 1 al 3
-  las secciones (en la vista de chat, los seguros). Un día fueron un solo botón que cambiaba entre Chat y Miembros;
-  Jorge prefirió uno para cada uno (24/11).
-- **Arriba lo nuestro, debajo lo del juego** (Jorge, 24/11): la fila sube `ROW_UP` (31) al sitio del desplegable
-  «Guild» (vista de chat) o de la casilla «Mostrar desconectados» (vista de miembros), y esos bajan `DROP` (34) a donde
-  estaba la fila (`TopRow`): el desplegable (`StreamDropdown`, con nuestro buscador, que va atado a él), los cascos del
-  chat de voz (`VoiceChatHeadset`) y la casilla (que sube a la capa `HIGH` para verse encima de lo nuestro, igual que el
-  buscador). «Solo mi hermandad» baja con ellos. Lo de debajo no se mueve: los títulos, Comercio y Calendario van
-  `ROW_UP` más abajo de la fila, y en la vista de chat el chat y su lista también (`ChatAnchors`). El juego recoloca el
-  desplegable y los cascos al agrandar la ventana: un enganche a su `SetPoint` los vuelve a bajar. Solo fuera de
-  combate: la casilla lleva colgados nuestros botones seguros.
-- **La vista de chat, como la de miembros** (Jorge, 24/11): sin el desplegable «Guild» y con la piedra gris de la fila
-  hasta el chat y su lista. La piedra de abajo (`cover.band`) va en el fondo de la ventana del juego, en la capa
-  `OVERLAY` de su borde (`f.Inset.NineSlice`; si no lo hay, en `f.Inset`): tapa su mármol oscuro y su borde (la raya
-  de arriba y la de la derecha, que se veían debajo de la fila), y quedan por encima los cascos y el «N/M en línea» del
-  juego, que en la capa `HIGH` de lo nuestro quedarían tapados. Empieza en la misma esquina que `cover.rock`, para que
-  las dos piedras casen sin costura, y llega justo al borde del chat y de su lista, no más (en la 301 bajaba hasta el
-  chat mismo y se veía piedra dentro de su borde: «te has pasado un poco»). Los bordes del juego empiezan 7 por
-  encima del chat y 3 por encima de su lista (`CHAT_EDGE`, `LIST_EDGE`): en `ChatAnchors` el chat baja 4 para que los
-  dos casen, y la piedra mide `TAB_H + 2 + ROW_UP - LIST_EDGE`. La raya de arriba de esos dos bordes tampoco se ve
-  (`BoxTops`: borde de arriba y sus esquinas transparentes, como en Miembros, donde la piedra pasa a la lista sin
-  raya). `cover.rock` baja `INSET_EDGE` (3) más que la fila, por si acaso. La piedra de abajo se ve solo en la vista de
-  chat (`Layout`) y se va con lo nuestro (`OnHide` de `cover`), que también devuelve los bordes.
-- **La franja de la izquierda** (Jorge, 24/11): entre la columna de comunidades y lo nuestro quedan `STRIP` (23) de
-  fondo del juego, con la barra de esa columna; arriba se veía otro fondo y una raya. Las dos piedras empiezan `STRIP`
-  más a la izquierda, y la barra pasa a la capa `HIGH`, por encima de ellas (`ListBar`).
+Hasta la 304 había arriba una fila de botones redondos (Chat · Miembros · Comercio · Calendario). En la 305 (Jorge,
+24/11) Comercio y Calendario pasaron a la columna de comunidades y Chat y Miembros volvieron a ser las pestañas de la
+derecha del juego, así que la fila se quitó. Queda la franja (`TAB_H`, justo debajo de la barra del título): lo nuestro
+sube `TOP + ROW_UP` sobre la lista del juego y ahí está lo del juego en su sitio (`DROP` = 0, `TopRow`): el buscador
+(nuestro, atado al desplegable «Guild»), los cascos del chat de voz y, en Miembros, «Mostrar desconectados» y «Solo mi
+hermandad», las dos a la derecha (la casilla del juego, delante de la nuestra según lo que mida su texto; sube a la
+capa `HIGH` para verse encima de lo nuestro, igual que el buscador). Los títulos de Miembros van justo debajo de la
+franja; Comercio y Calendario empiezan arriba del todo, porque en ellos la franja no lleva nada del juego (la casilla
+queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porque de ella cuelgan los botones de abajo).
+
+- **La piedra gris** (Jorge, 24/11: «el gris claro hasta el chat y las listas»): en Miembros, Comercio y Calendario es
+  la de lo nuestro (`cover.rock`, `TAB_H + HDR_H`), detrás de la franja y de los títulos. En la vista de chat esa no se
+  ve (en la capa `HIGH` taparía los cascos y el «N/M en línea» del juego) y va la de abajo (`cover.band`): en el fondo
+  de la ventana del juego, en la capa `OVERLAY` de su borde (`f.Inset.NineSlice`; si no lo hay, en `f.Inset`), encima
+  de su mármol y de su borde y debajo de lo suyo. Las dos empiezan en la misma esquina, para casar sin costura. La de
+  abajo mide `TAB_H + INSET_EDGE`: tapa también el borde de arriba del fondo del juego, y ahí empiezan el chat y su
+  lista (`ChatAnchors`: sus bordes van 7 y 3 por encima de ellos, `CHAT_EDGE`, `LIST_EDGE`; en la 301 la piedra se
+  metía dentro del chat: «te has pasado un poco»). La raya de arriba de esos dos bordes no se ve (`BoxTops`: borde de
+  arriba y sus esquinas transparentes), como en Miembros, donde la piedra pasa a la lista sin raya. La de abajo se ve
+  solo en la vista de chat (`Layout`) y se va con lo nuestro (`OnHide` de `cover`), que también devuelve los bordes.
+- **La franja de la izquierda** (Jorge, 24/11: «un solo formato para todas las páginas»): entre la columna de
+  comunidades y lo nuestro quedan `STRIP` (23) con la barra de esa columna; arriba se veía otro fondo y una raya, y
+  después, con piedra arriba y mármol abajo, la barra tenía dos fondos. Ahora es toda del mármol oscuro del fondo del
+  juego, de arriba abajo (`cover.strip`, `STRIP_W` de ancho: en los 4 que quedan empieza el borde del chat), y la barra
+  va encima, en la capa `HIGH`.
 - **El desplegable «Guild»** no se esconde (lo lleva el juego, `SetShown` por vista): queda transparente y sin clics
   (`GuildDropdown`, en `Sync` y tras `SelectStream`), y solo en el canal de la hermandad: en el de oficiales o en una
   comunidad se ve, para poder cambiar de canal (si no, quien lo tuviera en oficiales no podría volver). Sin él, el
-  buscador va a su sitio (`HU.guildDropdownOff`, BlizzTab.lua): en el hueco quedaba un vacío.
+  buscador va a su sitio (`HU.guildDropdownOff`, BlizzTab.lua), igual que en Miembros. En la vista de chat, quien puede
+  ver el historial busca en el chat (`HistSearch` al pulsar Intro, History.lua); los demás, personajes.
 - **Las barras con flechas** (Jorge, 24/11: «la 1 la subes hasta arriba, la 2 la subes y la 3 la mantienes»): la de la
-  columna de comunidades (`CommunitiesList.ScrollBar`) el juego la pone 45 por debajo de la columna y su flecha de
-  arriba se veía suelta en todas las pestañas: en nuestras vistas su esquina de arriba sube a 3 y pasa a la capa
-  `HIGH` (`ListBar` en `Sync`, `LIST_BAR_Y`); en las demás, vuelve a la del juego, con su capa y su nivel. La del
-  chat iba atada a los mensajes, que la franja del mensaje fijado (BlizzTab.lua) baja: en `ChatAnchors` se ata al
-  chat con los mismos 15 y 1 que le da el juego, y queda a la altura de la de su lista. La de la lista de la derecha,
-  como está. Solo se cambia la esquina de arriba de cada barra (la de abajo sigue la del juego).
-- **Pestañas de la derecha sin repetidos** (Jorge, 24/11, opción B de tres que vio dibujadas): Chat y Miembros del juego
-  (`f.ChatTab`, `f.RosterTab`) ya están en nuestra fila, así que mientras se ve lo nuestro quedan transparentes y sin
-  clics (`SideTabs` en `Sync`); nuestros botones seguros las siguen pulsando (`Click` no mira si se ven). La de
-  Miembros se pone justo encima de la de Chat: la siguiente (Ventajas o Información), que va 20 por debajo de ella,
-  sube al sitio de Chat, y detrás las demás y la nuestra. En las otras vistas del juego (Información, Preferencias)
-  vuelven a su sitio: son el camino de vuelta, que allí no está nuestra fila.
-- Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
-  y 25 más; en la de chat, de la columna de comunidades al borde de la ventana) y de ahí `x0`, el principio de la
-  fila. Con esa misma cuenta van los nuestros (atados a la fila) y los seguros (atados a la lista del juego o a la
-  columna, fuera de combate).
-- Los botones de arriba no piden /who (24/11: al volver de Comercio a Miembros, el juego lo bloqueó dentro de ese
+  columna de comunidades (`CommunitiesList.ScrollBar`) el juego la pone 45 por debajo de la columna: en nuestras vistas
+  su esquina de arriba sube a 3 y pasa a la capa `HIGH` (`ListBar` en `Sync`, `LIST_BAR_Y`); en las demás, vuelve a la
+  del juego, con su capa y su nivel. La del chat iba atada a los mensajes, que la franja del mensaje fijado
+  (BlizzTab.lua) baja: en `ChatAnchors` se ata al chat con los mismos 15 y 1 que le da el juego, y queda a la altura de
+  la de su lista. La de la lista de la derecha, como está. Solo se cambia la esquina de arriba de cada barra.
+
+### Comercio y Calendario, en la columna de comunidades
+
+Con el aspecto de sus entradas (las tiras de `bluemenu-main` de `CommunitiesListEntryTemplate`, el icono redondo con
+el aro dorado y el nombre) y encima de «Unirse o crear comunidad» (Jorge, 24/11; luego irán Wanted y LFG). Son botones
+seguros (`SecureActionButtonTemplate`, `type=click`) que pulsan la pestaña de miembros del juego: cambiar de vista
+desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas. `PreClick` apunta la sección
+(`wantTab`); si ya se ve la vista de miembros, la pestaña no cambia nada y la abre su `PostClick`. Son hijos de la
+columna, así que se ven con ella, y la entrada de la sección abierta sale marcada (`sel`).
+- La lista del juego no se toca (si el addon la tocara, sus marcos y su ficha quedarían «tocados»): `PlaceSide` busca
+  entre sus marcos el de «Unirse…» (`setJoinCommunity`), lo deja transparente y sin clics, pone las nuestras en su
+  sitio y debajo una «Unirse…» igual, en verde, que pulsa la suya (`side.join`, `clickbutton`). Si «Unirse…» no es la
+  última entrada o no se ve, las nuestras van debajo de la última. La lista recicla sus marcos: el que se dejó
+  transparente y ya no es «Unirse…» vuelve a verse. Corre al actualizarse la lista (`Update`), al enseñarse la
+  columna y en `Sync`, fuera de combate (son botones seguros). Con muchas comunidades la lista crece o se desplaza y
+  las nuestras pueden salirse de la columna: no se ha hecho nada para eso.
+- La pestaña de miembros del juego, pulsada ya en esa vista (no desde nuestras entradas, `side.fromSide`), vuelve a
+  Miembros. Cambiar de sección no pide /who (24/11: al volver de Comercio a Miembros, el juego lo bloqueó dentro de ese
   clic); lo piden los títulos, las filas, la rueda y la barra (`WhoTick`).
-- En combate no se puede enseñar, esconder ni mover un botón seguro: cuelgan de algo que solo se ve en su vista
-  (la casilla de desconectados; los de sección, el chat) y se colocan fuera de combate (`secureLater`). Tampoco se
-  pueden crear: si `Blizzard_Communities` se carga en combate, la fila se monta al salir de él (`Setup`, `setupLater`).
-- `Unpress`: la vista cambia antes de soltar el ratón y se quedaban «pulsados»; al volver a verse se sueltan. (Era
-  con los botones rojos, que bajaban la letra al pulsarlos; los redondos no tienen plantilla, pero se deja por si acaso.)
+- Si `Blizzard_Communities` se carga en combate, todo esto se monta al salir de él (`Setup`, `setupLater`): los
+  botones seguros no se pueden crear en combate.
+
+### La columna de profesiones
+
+Las dos profesiones de cada uno de mi hermandad, con su icono y su nivel (Jorge, 24/11: «que se vea bien»). Las da el
+juego por la comunidad de la hermandad (`C_Club.GetMemberInfo`, `profession1ID`…), y de las otras hermandades no llegan.
+Se leen todas de una vez (`ReadProfs`) al cambiar la lista del juego, como mucho cada `PROF_EVERY` (30) segundos: son
+cientos de miembros y `Paint` corre cada 2 segundos. Los nombres de las profesiones, en la ficha.
 
 ### Botones de abajo: Peticiones de oficiales · Ver registro · Invitar miembro
 
@@ -3133,9 +3138,10 @@ pedir objetos fabricados a la unión, en un tablón (Público) o a alguien concr
 **Fase 1: solo la ventana, sin red.** Nada viaja: las solicitudes (`reqs`) y los chats (`chats`) son tablas del
 archivo, solo de esta sesión (se pierden con /reload), y nadie más las ve; el «Modo prueba» la llena de datos. La red
 está prevista con los paquetes con huella: el conjunto `TR` (`Net/Packs.lua`, aún sin escribir).
-Arriba, el buscador (150 de ancho: más ancho chocaba con «Público»), Público · Privado (cambiar borra búsqueda,
-elegida y marcadas) y «Modo prueba»; debajo, «+ Nueva solicitud» (`ui.new`), teñido de verde como «+ Nuevo evento»,
-que no sale mientras se busca. El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua,
+Arriba, el buscador (150 de ancho) a la izquierda y «Modo prueba» a la derecha; debajo, en una misma fila, el «+» de
+pedir a la izquierda (`ui.new`: cuadrado de 24, teñido de verde como el del calendario, con su nombre al pasar el ratón;
+no sale mientras se busca) y Público · Privado en el centro (cambiar borra búsqueda, elegida y marcadas). Jorge, 24/11:
+«new request quedará como un + nada más y lo pones a la izquierda; bajamos public y private a donde new request». El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua,
 `HU.charSearchOff`) y no Trade.lua, porque el `Sync` de BlizzTab.lua lo volvería a sacar.
 
 ### Una solicitud
@@ -3183,7 +3189,7 @@ juego lo conoce, los de mis bolsas, los de las solicitudes y los fabricables (Cr
 ### Buscar
 
 Sugiere objetos como al pedir; compara en texto llano (`Query`: de un enlace, su nombre). Mientras se busca no hay
-pestaña elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos de 4 filas:
+pestaña elegida, ni chat, ni el «+» de pedir, y la vista se parte en dos de 4 filas:
 - **Publicadas**: las del tablón que encajan por quién la pide, el objeto o quién la aceptó (`Matches`); si no hay
   ninguna, se esconde y «Quién lo hace» ocupa todo (10 filas).
 - **Quién lo hace** (`SearchMembers`): los de mi hermandad con una profesión cuyo nombre encaja, o con la profesión y
@@ -3205,7 +3211,7 @@ vistos hace menos de 5 min (`HU.remote`) y los de prueba. Yo, siempre verde; en 
   «Marcar como hecha» (si se puede: ver abajo) y «Eliminar» («Eliminar (N)» con varias marcadas); y «Cancelar», que
   cierra el menú.
 - En Privado, Ctrl+clic suma o quita una fila (la elegida con un clic solo entra también) y Mayús+clic, el tramo desde
-  la última (`picks`); con algo marcado sale «Eliminar (N)» junto a «+ Nueva solicitud». `RemoveReq`: la mía sin
+  la última (`picks`); con algo marcado sale «Eliminar (N)» junto al «+» de pedir. `RemoveReq`: la mía sin
   aceptar se cancela; las demás salen de mi lista.
 - «Hecha» (arriba a la derecha del chat, para la elegida, si la hago yo) y «Marcar como hecha» la pasan a `done`
   (`MarkDone`): solo quien la hace y mientras está aceptada (`CanMarkDone`); ya hecha, «Hecha» queda apagado.
@@ -3218,7 +3224,7 @@ y Bea conectados, Lyra y Jandra no) y el enlace de verdad si el juego conoce el 
 `tradeOff` y `tipsOff`, en la configuración de la hermandad (`HU:UnionCfg()`, Configuración → Comercio,
 UnionConfig.lua), los cambia el maestro y de momento solo valen en su personaje; sin poner, todo activo. `tradeOff`
 deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, buscador, Público · Privado,
-«Modo prueba» y «+ Nueva solicitud»), cierra la ventana de pedir y no deja pedir. `tipsOff` quita la columna Propina
+«Modo prueba» y el «+» de pedir), cierra la ventana de pedir y no deja pedir. `tipsOff` quita la columna Propina
 y la propina al pedir, y no la guarda. Con `HU:Changed("unionCfg")` se repinta.
 
 ## CraftItems.lua
@@ -3292,8 +3298,8 @@ que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ
 ### Qué hay en el archivo
 
 La sección Calendario de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
-Arriba, Eventos · Calendario en el centro, «+ Nuevo evento» debajo (verde y centrado: abajo pisaba las tarjetas) y
-«Modo prueba» a la derecha. Piezas de DJStyle.lua (`HU.DJ`). Solo eventos de la unión: el calendario del juego no se toca.
+Arriba a la derecha, «Modo prueba»; debajo, en una misma fila, el «+» de nuevo evento a la izquierda (`ui.new`: cuadrado
+de 24 y verde, como el de Comercio) y Eventos · Calendario en el centro (Jorge, 24/11). Piezas de DJStyle.lua (`HU.DJ`). Solo eventos de la unión: el calendario del juego no se toca.
 - **Eventos** (`PaintCards`): los próximos (desde hace 3 h, `Upcoming`), por fecha, en tarjetas de 2 en 2 (dos filas a
   la vista): tinte del tipo, imagen, título, tipo · hora · «Nv. N+», día grande con día de la semana y mes, «por» quién
   (yo en azul, los demás en amarillo, con su hermandad a color), «N van» (tic si voy), roles, y «Apuntarme» / «Más
@@ -3367,9 +3373,10 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
 
 ### Permisos
 
-«+ Nuevo evento» (los dos): `HU:CanMakeEvents()` (UnionConfig.lua) o el modo prueba; se pone al día con `CHANGED`
-«unionCfg». Apagado, al pasar el ratón dice quién crea eventos según `calMake` (`NoMakeTip`): «Solo el maestro crea
-eventos.» o «Solo los oficiales crean eventos.». Organizar (`CanManage`: añadir raid, mover, colocar, hacer líder):
+El «+» de arriba y el «+ Nuevo evento» del día: `HU:CanMakeEvents()` (UnionConfig.lua) o el modo prueba; se ponen al
+día con `CHANGED` «unionCfg». Al pasar el ratón, el «+» dice «Nuevo evento» y, apagado, debajo, quién crea eventos según
+`calMake` (`NewTip`); el del día solo lo dice apagado (`NoMakeTip`). El texto sale de `NoMakeText`: «Solo el maestro crea
+eventos.» o «Solo los oficiales crean eventos.»; con «Todos», nada. Organizar (`CanManage`: añadir raid, mover, colocar, hacer líder):
 quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» y «Convertir en banda»: el líder de esa
 raid. «Quitar raid»: quien creó el evento o ese líder. Apuntarse, ver la ficha, susurrar e invitar al grupo: cualquiera.
 

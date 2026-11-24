@@ -1334,14 +1334,25 @@ local function AddTest()
     Paint()
 end
 
--- («+ Nuevo evento» apagado, al pasar el ratón: quién los crea según la configuración del calendario, calMake; con
--- «Todos» siempre se puede, así que no sale)
+-- (crear eventos apagado: quién los crea según la configuración del calendario, calMake; con «Todos» siempre se
+-- puede, así que no hay aviso)
+local function NoMakeText()
+    local who = HU:UnionCfg().calMake or "officers"
+    return (who == "gm" and L("Solo el maestro crea eventos.")) or (who == "officers" and L("Solo los oficiales crean eventos.")) or nil
+end
+-- («+ Nuevo evento» del día, al pasar el ratón: solo el aviso, si está apagado)
 local function NoMakeTip(s)
     if s:IsEnabled() then return end
-    local who = HU:UnionCfg().calMake or "officers"
-    local text = (who == "gm" and L("Solo el maestro crea eventos.")) or (who == "officers" and L("Solo los oficiales crean eventos."))
+    local text = NoMakeText()
     if not text then return end
     GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(text); GameTooltip:Show()
+end
+-- (el «+» de arriba, al pasar el ratón: su nombre y, si está apagado, el aviso debajo)
+local function NewTip(s)
+    GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L("Nuevo evento"))
+    local why = not s:IsEnabled() and NoMakeText()
+    if why then GameTooltip:AddLine(why, 1, 1, 1, true) end
+    GameTooltip:Show()
 end
 
 ---------------------------------------------------------------------------
@@ -1352,12 +1363,13 @@ function HU:BuildCalendar(host)
     local now = date("*t")
     month, year = now.month, now.year
 
-    -- Arriba: Eventos · Calendario (en el centro) y el modo prueba (a la derecha)
+    -- Arriba, el modo prueba (a la derecha); debajo, el «+» de nuevo evento (a la izquierda, ver más abajo) y
+    -- Eventos · Calendario (en el centro)
     ui.viewBtns = {}
     local prev
     for _, t in ipairs({ { "list", L("Eventos") }, { "month", L("Calendario") } }) do
         local b = DJButton(host, t[2], 120, 24)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -2) end
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -30) end
         b:SetScript("OnClick", function() view = t[1]; PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); Paint() end)
         ui.viewBtns[t[1]] = b
         prev = b
@@ -1590,10 +1602,10 @@ function HU:BuildCalendar(host)
         cfm:Show()
     end
 
-    -- Arriba, en el centro: «+ Nuevo evento» (quien puede crearlos, HU:CanMakeEvents, o con el modo prueba); en
+    -- Debajo, a la izquierda: «+», nuevo evento (quien puede crearlos, HU:CanMakeEvents, o con el modo prueba); en
     -- Calendario, para el día elegido
-    local new = DJButton(host, "+ " .. L("Nuevo evento"), 200, 24)
-    new:SetPoint("TOP", host, "TOP", 0, -30)
+    local new = DJButton(host, "+", 24, 24)
+    new:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -30)
     -- (destacado: las piezas del botón teñidas de verde y la letra blanca)
     for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
     new:SetNormalFontObject("GameFontHighlight")
@@ -1605,7 +1617,7 @@ function HU:BuildCalendar(host)
         end
         ui.newDlg.Open(t)
     end)
-    new:SetScript("OnEnter", NoMakeTip)
+    new:SetScript("OnEnter", NewTip)
     new:SetScript("OnLeave", function() GameTooltip:Hide() end)
     new:SetMotionScriptsWhileDisabled(true)
     ui.new = new
@@ -1615,7 +1627,7 @@ function HU:BuildCalendar(host)
     Paint()
 end
 
--- (si cambia quién crea eventos, el botón «+ Nuevo evento» se pone al día)
+-- (si cambia quién crea eventos, el «+» de arriba y el «+ Nuevo evento» del día se ponen al día)
 HU:Listen("CHANGED", function(what) if what == "unionCfg" then Paint() end end)
 
 HU:Module("UnionCalendar", { "BlizzTab", "Config", "Core", "ListWindow", "UnionConfig" })

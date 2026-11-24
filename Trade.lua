@@ -780,12 +780,12 @@ end
 ---------------------------------------------------------------------------
 function HU:BuildTrade(host)
     ui = host
-    -- Arriba: Público · Privado, el buscador y el modo prueba
+    -- Arriba, el buscador y el modo prueba; debajo, el «+» de pedir (a la izquierda) y Público · Privado (en el centro)
     ui.viewBtns = {}
     local prev
     for _, t in ipairs({ { "pub", L("Público") }, { "priv", L("Privado") } }) do
         local b = Tab(host, t[2], 100)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -1) end
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -30) end
         b:SetScript("OnClick", function()
             view, selected, picks = t[1], nil, {}
             ui.search:SetText("")
@@ -1004,13 +1004,17 @@ function HU:BuildTrade(host)
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
 
-    -- Abajo: Nueva solicitud
+    -- Debajo del buscador: «+», nueva solicitud (su nombre, al pasar el ratón)
     local newDlg = BuildNewDialog(host)
-    local new = Flat(host, "+ " .. L("Nueva solicitud"), 200, 24)
-    new:SetPoint("TOP", host, "TOP", 0, -30)
-    -- (destacado como «+ Nuevo evento»: las piezas del botón teñidas de verde y la letra blanca)
+    local new = Flat(host, "+", 24, 24)
+    new:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -30)
+    -- (destacado como el «+» del calendario: las piezas del botón teñidas de verde y la letra blanca)
     for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
     new:SetNormalFontObject("GameFontHighlight")
+    new:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L("Nueva solicitud")); GameTooltip:Show()
+    end)
+    new:SetScript("OnLeave", function() GameTooltip:Hide() end)
     -- (to: pedírsela a alguien en concreto, privada: «Pedir una receta» desde la búsqueda. Con el comercio
     -- apagado no se abre)
     function ui.OpenNew(to)

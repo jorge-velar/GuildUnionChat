@@ -78,6 +78,8 @@ local function Later(a, secs) a.w.epoch = a.w.epoch + secs end
 local function GuildWindow(a)
     local f = a.env.CreateFrame("Frame", "CommunitiesFrame")
     f.Chat, f.GuildInfoTab, f.CommunitiesControlFrame = false, false, false
+    -- (la pestaña de miembros del juego: pulsada en su vista, vuelve a Miembros)
+    f.RosterTab = a.env.CreateFrame("CheckButton", nil, f)
     f.CommunitiesList = a.env.CreateFrame("Frame", nil, f)
     f.MemberList = a.env.CreateFrame("Frame", nil, f)
     f.MemberList.IsVisible = function() return true end
@@ -90,6 +92,21 @@ end
 
 local function Click(b, ...) return b:GetScript("OnClick")(b, ...) end
 
+-- (abrir una sección como el jugador: Calendario, con su entrada de la columna de comunidades; Miembros, con la pestaña
+-- de miembros del juego)
+local function Section(a, i)
+    if i == 1 then
+        local rt = a.env.CommunitiesFrame.RosterTab
+        return rt:GetScript("OnClick")(rt)
+    end
+    for _, e in ipairs(a.env.GuildUnionUnionRoster.side.entries) do
+        if e.tab == i then
+            e:GetScript("PreClick")(e)
+            return e:GetScript("PostClick")(e)
+        end
+    end
+end
+
 -- La sección Calendario abierta desde su pestaña: devuelve su marco (ui en UnionCalendar.lua) y la lista
 local function Open(a)
     GuildWindow(a)
@@ -101,7 +118,7 @@ local function Open(a)
     Bar(a, a.env.GuildUnionCalendarTimeScroll)
     Bar(a, a.env.GuildUnionCalendarBenchScroll)
     Bar(a, a.env.GuildUnionCalendarDayScroll)
-    Click(cover.tabs.Tabs[3])
+    Section(a, 3)
     return ui, cover
 end
 
@@ -122,6 +139,17 @@ local function Said(a, text)
 end
 
 local function TestMode(a, ui) Click(Child(a, ui, "Modo prueba")) end
+-- (lo que sale al pasar el ratón por un botón: el título y las líneas de debajo; nil si no sale nada)
+local function Hover(a, b)
+    local tip = a.env.GameTooltip
+    local lines = {}
+    tip:Hide(); tip:SetText("")
+    tip.AddLine = function(_, text) lines[#lines + 1] = text end
+    b:GetScript("OnEnter")(b)
+    if not tip:IsShown() then return nil end
+    table.insert(lines, 1, tip:GetText())
+    return lines
+end
 local function Card(ui, title)
     for _, c in ipairs(ui.cards) do if c:IsShown() and c.title:GetText() == title then return c end end
 end
@@ -294,7 +322,7 @@ describe("Calendario: la sección", function()
     it("sale en la pestaña Calendario, en la vista Eventos y sin eventos", function()
         local a = Community()
         local ui, cover = Open(a)
-        A.equal("Calendario", cover.tabs.Tabs[3].guName)
+        A.equal("Calendario", cover.side.entries[2].text:GetText(), "su entrada, en la columna de comunidades")
         A.truthy(ui:IsShown())
         A.truthy(ui.viewBtns.list.picked)
         A.falsy(ui.viewBtns.month.picked)
@@ -310,7 +338,7 @@ describe("Calendario: la sección", function()
 
     it("Eventos y Calendario cambian la vista; al salir de la pestaña se cierra la ficha", function()
         local a = Community()
-        local ui, cover = Open(a)
+        local ui = Open(a)
         TestMode(a, ui)
         Click(ui.viewBtns.month)
         A.truthy(ui.viewBtns.month.picked)
@@ -323,13 +351,32 @@ describe("Calendario: la sección", function()
         A.falsy(ui.month:IsShown())
         Detail(ui, "Núcleo de Magma")
         A.truthy(ui.detail:IsShown())
-        Click(cover.tabs.Tabs[1]) -- (a Miembros)
+        Section(a, 1) -- (a Miembros)
         A.falsy(ui:IsShown())
         A.falsy(ui.detail:IsShown())
-        Click(cover.tabs.Tabs[3])
+        Section(a, 3)
         A.truthy(ui:IsShown())
         A.falsy(ui.detail:IsShown(), "al volver, sin ficha abierta")
         A.equal(4, #Titles(ui))
+        A.same({}, a:Errors())
+    end)
+
+    it("arriba, el modo prueba; debajo, el «+» de nuevo evento a la izquierda (su nombre, al pasar el ratón) y Eventos · Calendario en su fila", function()
+        local a = Community()
+        local ui = Open(a)
+        local new, list, month = ui.new, ui.viewBtns.list, ui.viewBtns.month
+        A.equal("+", new:GetText(), "solo el «+»")
+        A.same({ ui, "TOPLEFT", 14, -30 }, new._pts.TOPLEFT, "a la izquierda, en la segunda fila")
+        A.same({ ui, "TOP", -2, -30 }, list._pts.TOPRIGHT, "Eventos, en el centro de la misma fila")
+        A.same({ list, "RIGHT", 4, 0 }, month._pts.LEFT, "Calendario, a su lado")
+        A.same({ ui, "TOPRIGHT", -26, -2 }, Child(a, ui, "Modo prueba")._pts.TOPRIGHT, "el modo prueba, arriba")
+        -- (la fila mide 24, de -30 a -54: el panel de la sección empieza debajo)
+        A.truthy(ui.list:GetParent()._pts.TOPLEFT[4] <= -30 - 24, "el panel no pisa la fila")
+        A.same({ "Nuevo evento" }, Hover(a, new))
+        new:GetScript("OnLeave")(new)
+        A.falsy(a.env.GameTooltip:IsShown())
+        Click(new)
+        A.truthy(ui.newDlg:IsShown(), "abre la ventana de nuevo evento")
         A.same({}, a:Errors())
     end)
 end)
@@ -341,16 +388,12 @@ describe("Calendario: quién crea eventos (HU:CanMakeEvents)", function()
         local tip = a.env.GameTooltip
         A.truthy(a.HU:CanMakeEvents(), "soy oficial")
         A.truthy(ui.new:IsEnabled())
-        tip:Hide()
-        ui.new:GetScript("OnEnter")(ui.new)
-        A.falsy(tip:IsShown(), "encendido, sin aviso")
+        A.same({ "Nuevo evento" }, Hover(a, ui.new), "encendido: su nombre, sin aviso")
         F.Stub(a.HU, "CanPin", false) -- (ya no soy oficial)
         a.HU:Changed("unionCfg")
         A.falsy(a.HU:CanMakeEvents())
         A.falsy(ui.new:IsEnabled())
-        ui.new:GetScript("OnEnter")(ui.new)
-        A.truthy(tip:IsShown())
-        A.equal("Solo los oficiales crean eventos.", tip:GetText())
+        A.same({ "Nuevo evento", "Solo los oficiales crean eventos." }, Hover(a, ui.new), "apagado: su nombre y, debajo, el aviso")
         ui.new:GetScript("OnLeave")(ui.new)
         A.falsy(tip:IsShown())
         A.same({}, a:Errors())
@@ -421,30 +464,25 @@ describe("Calendario: quién crea eventos (HU:CanMakeEvents)", function()
         local a = Community()
         local ui = Open(a)
         local tip = a.env.GameTooltip
-        local function Tip(b)
-            tip:Hide(); tip:SetText("")
-            b:GetScript("OnEnter")(b)
-            return tip:IsShown() and tip:GetText() or nil
-        end
         a.HU.db.unionCfg = { calMake = "gm" }
         a.HU:Changed("unionCfg")
         A.falsy(ui.new:IsEnabled(), "soy oficial, no el maestro")
-        A.equal("Solo el maestro crea eventos.", Tip(ui.new))
+        A.same({ "Nuevo evento", "Solo el maestro crea eventos." }, Hover(a, ui.new))
         Click(ui.viewBtns.month)
         Click(ui.grid.cells[22])
         A.falsy(ui.side.new:IsEnabled())
-        A.equal("Solo el maestro crea eventos.", Tip(ui.side.new), "el del día, igual")
+        A.same({ "Solo el maestro crea eventos." }, Hover(a, ui.side.new), "el del día, como siempre: solo el aviso")
         ui.side.new:GetScript("OnLeave")(ui.side.new)
         A.falsy(tip:IsShown())
         F.Stub(a.HU, "CanPin", false) -- (ya no soy oficial)
         a.HU.db.unionCfg = { calMake = "officers" }
         a.HU:Changed("unionCfg")
-        A.equal("Solo los oficiales crean eventos.", Tip(ui.new))
+        A.same({ "Nuevo evento", "Solo los oficiales crean eventos." }, Hover(a, ui.new))
         a.HU.db.unionCfg = { calMake = "all" }
         a.HU:Changed("unionCfg")
         A.truthy(ui.new:IsEnabled())
-        A.is_nil(Tip(ui.new), "puedo crear: sin aviso")
-        A.is_nil(Tip(ui.side.new))
+        A.same({ "Nuevo evento" }, Hover(a, ui.new), "puedo crear: sin aviso")
+        A.is_nil(Hover(a, ui.side.new), "el del día, encendido: nada")
         A.same({}, a:Errors())
     end)
 end)
