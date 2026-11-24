@@ -2,6 +2,7 @@
 -- mirarlos (MP) y llegan en trozos (ML), solo para verlos
 local red = require("lib.red")
 local F = require("lib.fixtures")
+local runner = require("lib.runner")
 local A = assert_
 
 -- Los nombres (cortos) de una lista de filas
@@ -856,7 +857,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("los cuatro botones de arriba, con imagen y centrados: Chat (el seguro), Miembros, Comercio y Calendario", function()
+    it("los cuatro botones de arriba, redondos, con imagen y centrados: Chat (el seguro), Miembros, Comercio y Calendario", function()
         local a = F.Community()
         local f = GuildWindow(a)
         f.MemberList.GetWidth = function() return 600 end
@@ -874,13 +875,50 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         Track(cover.tabs.chatSecure)
         local t = cover.tabs.Tabs[2]
         t:GetScript("OnClick")(t)
-        -- (lo nuestro mide 600 + 25 = 625; cuatro de 46 y tres huecos de 6 son 202: empiezan en 211)
-        A.equal(-3 + 211, cover.tabs.chatSecure._pt[4], "Chat, el primero")
+        -- (lo nuestro mide 600 + 25 = 625; cuatro de 30 y tres huecos de 10 son 150: empiezan en 237)
+        A.equal(-3 + 237, cover.tabs.chatSecure._pt[4], "Chat, el primero")
         local p1, p2, p3 = cover.tabs.Tabs[1]._pt, cover.tabs.Tabs[2]._pt, cover.tabs.Tabs[3]._pt
-        A.same({ "LEFT", 263 }, { p1[1], p1[4] })
-        A.same({ "LEFT", 315 }, { p2[1], p2[4] })
-        A.same({ "LEFT", 367 }, { p3[1], p3[4] })
+        A.same({ "LEFT", 277 }, { p1[1], p1[4] })
+        A.same({ "LEFT", 317 }, { p2[1], p2[4] })
+        A.same({ "LEFT", 357 }, { p3[1], p3[4] })
         A.same({}, a:Errors())
+    end)
+
+    it("el botón elegido brilla y los demás llevan sombra; en la vista de chat brilla «Chat»", function()
+        local a = F.Community()
+        local f = GuildWindow(a, true)
+        local tb = a.env.GuildUnionUnionRoster.tabs
+        -- (cada botón, con el brillo o con la sombra, nunca las dos cosas; devuelve si brilla)
+        local function Lit(b)
+            A.equal(not b.guGlow:IsShown(), b.guShadow:IsShown(), b.guName)
+            return b.guGlow:IsShown()
+        end
+        local t2 = tb.Tabs[2]
+        t2:GetScript("OnClick")(t2)
+        A.same({ false, true, false }, { Lit(tb.Tabs[1]), Lit(tb.Tabs[2]), Lit(tb.Tabs[3]) }, "Comercio")
+        A.falsy(Lit(tb.chatSecure), "Chat, el seguro: sin brillo")
+        -- (en la vista de chat, el elegido es «Chat», el nuestro; los seguros, sin brillo)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.equal(0, tb.selectedTab)
+        A.truthy(Lit(tb.chatBtn), "Chat")
+        A.same({ false, false, false }, { Lit(tb.Tabs[1]), Lit(tb.Tabs[2]), Lit(tb.Tabs[3]) })
+        for _, b in ipairs(tb.chatModeBtns) do A.falsy(Lit(b), b.guName) end
+        A.same({}, a:Errors())
+    end)
+
+    it("las imágenes de los botones redondos están en Media: .tga de 64x64 sin comprimir y con transparencia", function()
+        -- (las dibuja Tools/botones_redondos.py; el juego solo lee .tga de lados potencia de 2)
+        for _, name in ipairs({ "boton-calendario", "boton-circulo", "boton-brillo", "boton-sombra" }) do
+            local fh = io.open(runner.here .. "/../Media/" .. name .. ".tga", "rb")
+            A.truthy(fh, name)
+            local head = fh:read(18)
+            fh:close()
+            A.same({ 2, 64, 64, 32, 8 }, { head:byte(3), head:byte(13) + head:byte(14) * 256,
+                head:byte(15) + head:byte(16) * 256, head:byte(17), head:byte(18) % 16 }, name)
+        end
     end)
 
     it("Comercio y Calendario: cada uno su sección, sin la lista de miembros; Chat y Miembros, cada uno su botón", function()

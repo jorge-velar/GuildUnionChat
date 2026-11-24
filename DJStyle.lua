@@ -52,8 +52,7 @@ function DJ.Line(f, alpha)
 end
 
 -- Un botón rojo del juego (UIPanelButtonTemplate) elegido: sus tres piezas se quedan en gris oscuro (la misma
--- forma, en negro) con letra blanca; sin elegir, vuelve a rojo con letra dorada. Vale para cualquier botón rojo (también
--- los de arriba de la lista de miembros, UnionRoster.lua) [+ARCHITECTURE.md]
+-- forma, en negro) con letra blanca; sin elegir, vuelve a rojo con letra dorada. Vale para cualquier botón rojo [+ARCHITECTURE.md]
 function DJ.PickRed(b, on)
     on = on and true or false
     if b.djPicked == on then return end

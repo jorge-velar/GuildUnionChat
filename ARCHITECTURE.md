@@ -2517,13 +2517,26 @@ al marcarla se marca a la persona)
 
 ### Qué hay en el archivo
 
-Una fila de botones rojos del juego sobre la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
+Una fila de botones redondos sobre la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
 `Blizzard_Communities`): **Chat · Miembros · Comercio · Calendario**, con imagen en vez de texto (24/11, Jorge: el
 nombre sale al pasar el ratón; `Iconize`): Chat y Miembros, las de los iconos del juego a la derecha de la ventana
-(`UI_Chat`, `achievement_guildperk_everybodysfriend`); Comercio, el martillo de herrería; Calendario, el calendario del
-minimapa de Forever (atlas `ui-hud-minimap-calendar-button`). Miembros es la lista de toda la unión; Comercio y
-Calendario son marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`. El botón elegido va negro (`HU.DJ.PickRed`); el
-buscador de personajes solo sale en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3
+(`UI_Chat`, `achievement_guildperk_everybodysfriend`); Comercio, el martillo de herrería; Calendario, una imagen nuestra
+(`Media/boton-calendario.tga`: ningún icono del juego convenció a Jorge). Miembros es la lista de toda la unión; Comercio y
+Calendario son marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`. El buscador de personajes solo
+sale en Chat y Miembros (`HU.charSearchOff`).
+
+**Los botones redondos** (24/11; Jorge eligió entre varias vistas previas el «sin aro»: ni el aro dorado del minimapa
+ni uno plateado). Cada uno es un botón sin plantilla de `ICON_SIZE` (30) separados `ICON_GAP` (10), con cinco capas:
+- el icono, recortado en círculo con la máscara de los retratos del juego (`TempPortraitAlphaMask`); a los iconos del
+  juego se les quita antes el marco oscuro que traen (`SetTexCoord` 0,08-0,92), a la imagen nuestra no (`own`);
+- un círculo negro 1 px mayor detrás (`boton-circulo`, teñido): el borde fino;
+- detrás de todo, la sombra (`boton-sombra`, teñida de negro, 2 px hacia abajo) o, si es el elegido, el brillo blanco
+  (`boton-brillo`); `PickRound` cambia una por otra;
+- al pasar el ratón, el mismo círculo en blanco sumado al 25 % (capa `HIGHLIGHT`): el icono, más claro.
+Las cuatro imágenes de `Media/boton-*.tga` las dibuja `Tools/botones_redondos.py` (64x64, sin nada que instalar). El
+halo y la sombra están medidos para `ICON_SIZE` y sobresalen `GLOW_PAD` (12) y `SHADOW_PAD` (8): si cambia el tamaño,
+se cambia también en el script y se vuelven a dibujar. Ojo al probar: una imagen nueva del addon el juego solo la
+encuentra al abrirse (con /reload no basta; sin cerrar el juego, sale un cuadrado verde). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3
 = las otras) y `mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no
 enseñaba los bancos de las otras hermandades y las peticiones no le llegaban a nadie; está en el historial de Git.
 
@@ -2626,7 +2639,8 @@ cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los 
 - En combate no se puede enseñar, esconder ni mover un botón seguro: cuelgan de algo que solo se ve en su vista
   (la casilla de desconectados; los de sección, el chat) y se colocan fuera de combate (`secureLater`). Tampoco se
   pueden crear: si `Blizzard_Communities` se carga en combate, la fila se monta al salir de él (`Setup`, `setupLater`).
-- `Unpress`: la vista cambia antes de soltar el ratón y se quedaban «pulsados»; al volver a verse se sueltan.
+- `Unpress`: la vista cambia antes de soltar el ratón y se quedaban «pulsados»; al volver a verse se sueltan. (Era
+  con los botones rojos, que bajaban la letra al pulsarlos; los redondos no tienen plantilla, pero se deja por si acaso.)
 
 ### Botones de abajo: Peticiones de oficiales · Ver registro · Invitar miembro
 
@@ -3233,8 +3247,8 @@ que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ
 
 - `DJ.Button(parent, text, w, h)`: el botón rojo del juego (`UIPanelButtonTemplate`, 22 de alto si no se dice);
   `:Pick(on)` lo deja elegido (`b.picked` lo dice) y `:Label(t)` es `SetText`.
-- `DJ.PickRed(b, on)` vale para cualquier botón rojo: también los de arriba de la lista de miembros (`ShowTab`,
-  UnionRoster.lua), las pestañas de las ventanas «Registro» (Invitaciones · Salidas) y «Peticiones de oficiales»
+- `DJ.PickRed(b, on)` vale para cualquier botón rojo (los de arriba de la lista de miembros, UnionRoster.lua, ya no:
+  desde el 24/11 son redondos y usan `PickRound`): las pestañas de las ventanas «Registro» (Invitaciones · Salidas) y «Peticiones de oficiales»
   (Todas · Echar · Rango) de InviteLog.lua y Miembros · Oficiales (BlizzTab.lua). Elegido, sus tres piezas (`Left`,
   `Middle`, `Right`) se desaturan y oscurecen hasta el negro y la letra pasa a blanca; sin elegir, rojo con letra
   dorada. Si ya está así no hace nada (`djPicked`): se llama en cada repintado.

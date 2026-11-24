@@ -1,12 +1,17 @@
--- Guild Union - secciones de la lista de miembros del juego (botones rojos): Miembros (todos los de la unión), Comercio, Calendario y Banco [+ARCHITECTURE.md]
-local _, HU = ...
+-- Guild Union - secciones de la lista de miembros del juego (botones redondos): Miembros (todos los de la unión), Comercio y Calendario [+ARCHITECTURE.md]
+local ADDON_NAME, HU = ...
 local L = HU.L
+local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\"
 -- (unionRosterOff: la casilla «GuildUnion» de antes, que ya no está: se borra; unionRosterMine: «Solo mi hermandad»)
 HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
 local TAB_H, HDR_H = 34, 24
-local ICON_W, BTN_H, ICON_SIZE = 46, 26, 20   -- los botones de arriba, con imagen (rojos, del juego)
+-- (los botones de arriba, redondos y sin aro (Jorge, 24/11); el halo y la sombra sobresalen lo de
+-- Tools/botones_redondos.py, que dibuja sus imágenes) [+ARCHITECTURE.md]
+local ICON_SIZE, ICON_GAP = 30, 10
+local GLOW_PAD, SHADOW_PAD = 12, 8
+local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local CHAT_ICON = "Interface/Icons/UI_Chat"   -- (la del icono del chat del juego, a la derecha de la ventana)
 local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus títulos, no la casilla ni el buscador
 -- (arriba lo nuestro y debajo lo del juego, Jorge 24/11: la fila sube ROW_UP al sitio del desplegable «Guild» o de la
@@ -24,11 +29,11 @@ local COLS = {
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
--- Calendario, la del calendario del minimapa de Forever)
+-- Calendario, la nuestra (Media), entera: own = sin recortar el marco que traen los iconos del juego)
 local TABS = {
     { title = "Miembros", icon = "Interface/Icons/achievement_guildperk_everybodysfriend" },
     { title = "Comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
-    { title = "Calendario", calendar = true, atlas = "ui-hud-minimap-calendar-button" },
+    { title = "Calendario", calendar = true, icon = MEDIA .. "boton-calendario", own = true },
 }
 local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
@@ -254,8 +259,8 @@ local function Layout()
     -- (Chat y una por sección, con imagen; centrados, todos con la misma cuenta: x0 desde la izquierda de lo nuestro,
     -- también los seguros, que van atados a la lista del juego o a la columna) [+ARCHITECTURE.md]
     local n = #TABS + 1
-    local x0 = W and math.max(8, math.floor((W - n * ICON_W - (n - 1) * 6) / 2)) or 8
-    local function X(slot) return x0 + slot * (ICON_W + 6) end
+    local x0 = W and math.max(8, math.floor((W - n * ICON_SIZE - (n - 1) * ICON_GAP) / 2)) or 8
+    local function X(slot) return x0 + slot * (ICON_SIZE + ICON_GAP) end
     -- (sitio 0: «Chat»; en la vista de miembros, el seguro que pulsa el icono del chat del juego; en la de chat, el
     -- nuestro, elegido. Los demás, las secciones: en la vista de chat, los seguros que pasan a la de miembros)
     tb.chatBtn:SetShown(chatMode)
@@ -305,6 +310,12 @@ local function Layout()
     cover.dark:SetShown(tab ~= 0)
 end
 
+-- (el botón redondo elegido, con el brillo blanco alrededor; los demás, con su sombra)
+local function PickRound(b, on)
+    b.guGlow:SetShown(on)
+    b.guShadow:SetShown(not on)
+end
+
 local function ShowTab(i)
     tab = i
     if RealList() then
@@ -313,10 +324,9 @@ local function ShowTab(i)
         if mine then mine:Show() end
         return
     end
-    -- (el botón elegido, negro con borde dorado y letra blanca; los demás, rojos: DJStyle.lua)
     cover.tabs.selectedTab = i
-    HU.DJ.PickRed(cover.tabs.chatBtn, i == 0)
-    for k, b in ipairs(cover.tabs.Tabs) do HU.DJ.PickRed(b, k == i) end
+    PickRound(cover.tabs.chatBtn, i == 0)
+    for k, b in ipairs(cover.tabs.Tabs) do PickRound(b, k == i) end
     local members = i == 1
     cover.hdr:SetShown(members); cover.scroll:SetShown(members); cover.status:SetShown(members)
     for _, row in ipairs(cover.rows) do if not members then row:Hide() end end
@@ -695,7 +705,7 @@ local function Build(f)
     cover:EnableMouse(true)
     cover:Hide()
 
-    -- Arriba, los botones rojos del juego (como «Guild Settings»), uno por sección
+    -- Arriba, los botones redondos, uno por sección
     local tabs = CreateFrame("Frame", nil, cover)
     tabs:SetPoint("TOPLEFT", 0, 0); tabs:SetPoint("TOPRIGHT", 0, 0); tabs:SetHeight(TAB_H)
     -- (detrás de los botones y de los títulos, la misma piedra que el juego pone encima, como en su
@@ -708,15 +718,34 @@ local function Build(f)
     rock:SetHeight(TAB_H + ROW_UP + HDR_H + 2)
     cover.rock = rock
     tabs.Tabs = {}
-    -- (los botones de arriba, con imagen en vez de texto: la imagen en el centro y el nombre al pasar el ratón)
-    local function Iconize(b, name, icon, atlas)
-        b:SetText("")
+    -- (los botones de arriba: el icono en un círculo con un borde negro fino; detrás, la sombra o, si está elegido,
+    -- el brillo (PickRound); al pasar el ratón, más claro y con su nombre) [+ARCHITECTURE.md]
+    local function Iconize(b, name, icon, own)
+        b:SetSize(ICON_SIZE, ICON_SIZE)
         b.guName = name
-        local t = b:CreateTexture(nil, "ARTWORK")
-        t:SetSize(ICON_SIZE, ICON_SIZE)
-        t:SetPoint("CENTER", 0, 0)
-        if atlas then t:SetAtlas(atlas) else t:SetTexture(icon) end
+        local function Layer(layer, file, size, dy)
+            local t = b:CreateTexture(nil, layer)
+            t:SetTexture(file)
+            t:SetSize(size, size)
+            t:SetPoint("CENTER", 0, dy or 0)
+            return t
+        end
+        b.guShadow = Layer("BACKGROUND", MEDIA .. "boton-sombra", ICON_SIZE + 2 * SHADOW_PAD, -2)
+        b.guShadow:SetVertexColor(0, 0, 0)
+        b.guGlow = Layer("BACKGROUND", MEDIA .. "boton-brillo", ICON_SIZE + 2 * GLOW_PAD)
+        b.guGlow:Hide()
+        Layer("BORDER", MEDIA .. "boton-circulo", ICON_SIZE + 2):SetVertexColor(0, 0, 0)
+        local t = Layer("ARTWORK", icon, ICON_SIZE)
+        -- (los iconos del juego traen un marco oscuro: se recorta)
+        if not own then t:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        local mask = b:CreateMaskTexture()
+        mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(t)
+        t:AddMaskTexture(mask)
         b.guIcon = t
+        local hl = Layer("HIGHLIGHT", MEDIA .. "boton-circulo", ICON_SIZE)
+        hl:SetBlendMode("ADD")
+        hl:SetAlpha(0.25)
         b:HookScript("OnEnter", function(s)
             GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
             GameTooltip:SetText(s.guName)
@@ -725,8 +754,7 @@ local function Build(f)
         b:HookScript("OnLeave", function() GameTooltip:Hide() end)
     end
     -- («Chat», solo en la vista de chat, elegido: deja ver el chat del juego)
-    local chatBtn = CreateFrame("Button", "GuildUnionRosterSectionChat", tabs, "UIPanelButtonTemplate")
-    chatBtn:SetSize(ICON_W, BTN_H)
+    local chatBtn = CreateFrame("Button", "GuildUnionRosterSectionChat", tabs)
     Iconize(chatBtn, L("Chat"), CHAT_ICON)
     chatBtn:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(0) end)
     chatBtn:Hide()
@@ -769,8 +797,7 @@ local function Build(f)
     -- el addon, la ventana quedaría «tocada» y el juego bloquearía rangos y notas. Es hijo de la casilla
     -- de desconectados, que solo se ve en la vista de miembros: así no hay que enseñarlo ni esconderlo en
     -- combate, que el juego no deja hacer con un botón seguro)
-    local chatSecure = CreateFrame("Button", "GuildUnionRosterChatSecure", anchor, "SecureActionButtonTemplate,UIPanelButtonTemplate")
-    chatSecure:SetSize(ICON_W, BTN_H)
+    local chatSecure = CreateFrame("Button", "GuildUnionRosterChatSecure", anchor, "SecureActionButtonTemplate")
     Iconize(chatSecure, L("Chat"), CHAT_ICON)
     chatSecure:SetPoint("LEFT", ml, "TOPLEFT", 5, TOP - TAB_H / 2)
     chatSecure:SetFrameStrata("HIGH")
@@ -795,9 +822,8 @@ local function Build(f)
     if f.Chat then
         tabs.chatModeBtns = {}
         for i, t in ipairs(TABS) do
-            local b = CreateFrame("Button", "GuildUnionChatSection" .. i, f.Chat, "SecureActionButtonTemplate,UIPanelButtonTemplate")
-            b:SetSize(ICON_W, BTN_H)
-            Iconize(b, L(t.title), t.icon, t.atlas)
+            local b = CreateFrame("Button", "GuildUnionChatSection" .. i, f.Chat, "SecureActionButtonTemplate")
+            Iconize(b, L(t.title), t.icon, t.own)
             b:SetFrameStrata("HIGH")
             b:SetFrameLevel(cover:GetFrameLevel() + 8)
             b:RegisterForClicks("AnyUp", "AnyDown")
@@ -809,9 +835,8 @@ local function Build(f)
         end
     end
     for i, t in ipairs(TABS) do
-        local b = CreateFrame("Button", "GuildUnionRosterSection" .. i, tabs, "UIPanelButtonTemplate")
-        b:SetSize(ICON_W, BTN_H)
-        Iconize(b, L(t.title), t.icon, t.atlas)
+        local b = CreateFrame("Button", "GuildUnionRosterSection" .. i, tabs)
+        Iconize(b, L(t.title), t.icon, t.own)
         b:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(i) end)
         tabs.Tabs[i] = b
     end
