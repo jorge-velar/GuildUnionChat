@@ -46,12 +46,12 @@ Report.lua 57.7 178
 Roster.lua 87.2 16
 Social.lua 68.3 215
 TestLog.lua 33.3 60
-Trade.lua 89.7 90
+Trade.lua 92.3 68
 UI.lua 87.5 3
 UIWindows.lua 95.0 3
 UnionCalendar.lua 98.5 17
 UnionConfig.lua 100.0 0
 UnionMembers.lua 93.4 18
-UnionRoster.lua 88.1 109
+UnionRoster.lua 89.0 98
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144
