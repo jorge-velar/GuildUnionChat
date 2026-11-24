@@ -17,8 +17,8 @@ local ROW_UP, DROP = 31, 0
 -- lista empiezan justo debajo, y sus bordes empiezan 7 y 3 por encima de ellos) [+ARCHITECTURE.md]
 local INSET_EDGE = 3
 local CHAT_EDGE, LIST_EDGE = 7, 3
--- (las entradas de la columna de comunidades, como las del juego: CommunitiesListEntryTemplate)
-local ENTRY_H = 68
+-- (en la columna de comunidades: nuestras filas finas y «Unirse…», alta como las del juego, CommunitiesListEntryTemplate)
+local SIDE_ROW_H, ENTRY_H, SIDE_GAP = 24, 68, 4
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
 -- (la franja de esa barra, entre la columna y lo nuestro: toda oscura, de arriba abajo, con la barra por encima; mide
@@ -827,58 +827,50 @@ local function Build(f)
     cover.tabs = tabs
     tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
 
-    -- Comercio y Calendario, en la columna de comunidades, con el aspecto de sus entradas y encima de «Unirse o crear
-    -- comunidad» (Jorge, 24/11; luego irán Wanted y LFG). Botones seguros que pulsan la pestaña de miembros del juego
-    -- (PreClick apunta la sección; si ya se ve esa vista, PostClick la abre), hijos de la columna para verse con ella. La
-    -- lista del juego no se toca (si el addon la tocara, su ficha bloquearía notas y rangos): su «Unirse…» queda
-    -- transparente y debajo de las nuestras va una igual que la pulsa (PlaceSide) [+ARCHITECTURE.md]
+    -- Comercio y Calendario, en la columna de comunidades: filas finas, con su icono pequeño y su nombre, debajo de la
+    -- hermandad y encima de «Unirse o crear comunidad» (Jorge, 24/11: opción C de cuatro que vio dibujadas; luego irán
+    -- Wanted y LFG). Botones seguros que pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve
+    -- esa vista, PostClick la abre), hijos de la columna para verse con ella. La lista del juego no se toca (si el addon
+    -- la tocara, su ficha bloquearía notas y rangos): su «Unirse…» queda transparente y debajo de las nuestras va una
+    -- igual que la pulsa (PlaceSide) [+ARCHITECTURE.md]
     local cl = f.CommunitiesList
     local side = { entries = {}, fromSide = false }
-    local function Entry(text, icon, round)
+    local function Secure(h)
         local b = CreateFrame("Button", nil, cl, "SecureActionButtonTemplate")
-        b:SetHeight(ENTRY_H)
+        b:SetHeight(h)
         local sb = type(cl.ScrollBox) == "table" and cl.ScrollBox or cl
         b:SetFrameLevel(sb:GetFrameLevel() + 10)
-        -- (las tiras de bluemenu-main que usa la plantilla del juego: fondo, elegida y al pasar el ratón)
-        local function Bar(layer, sub, top, bottom)
-            local t = b:CreateTexture(nil, layer, nil, sub)
-            t:SetTexture("Interface\\Common\\bluemenu-main")
-            t:SetTexCoord(0.00390625, 0.87890625, top, bottom)
-            t:SetHeight(80); t:SetPoint("LEFT"); t:SetPoint("RIGHT")
-            return t
-        end
-        Bar("BACKGROUND", 0, 0.75195313, 0.83007813)
-        b.sel = Bar("BACKGROUND", 1, 0.59179688, 0.66992188)
-        b.sel:Hide()
-        local hl = Bar("HIGHLIGHT", 0, 0.75195313, 0.83007813)
-        hl:SetBlendMode("ADD"); hl:SetAlpha(0.8)
-        local ic = b:CreateTexture(nil, "ARTWORK")
-        if round then
-            -- (como el icono de una comunidad: redondo y con el aro dorado)
-            ic:SetTexture(icon)
-            ic:SetSize(38, 38); ic:SetPoint("TOPLEFT", 11, -15)
-            local mask = b:CreateMaskTexture()
-            mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            mask:SetPoint("TOPLEFT", ic, "TOPLEFT", 2, -2); mask:SetPoint("BOTTOMRIGHT", ic, "BOTTOMRIGHT", -2, 2)
-            ic:AddMaskTexture(mask)
-            local ring = b:CreateTexture(nil, "OVERLAY")
-            ring:SetAtlas("communities-ring-gold"); ring:SetSize(48, 48); ring:SetPoint("CENTER", ic, "CENTER")
-        else
-            ic:SetAtlas(icon)
-            ic:SetSize(30, 30); ic:SetPoint("TOPLEFT", 17, -18)
-        end
-        b.icon = ic
-        local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        fs:SetPoint("LEFT", ic, "RIGHT", round and 11 or 13, 0); fs:SetPoint("RIGHT", -24, 0)
-        fs:SetJustifyH("LEFT"); fs:SetText(text)
-        b.text = fs
         b:RegisterForClicks("AnyUp", "AnyDown")
         b:SetAttribute("type", "click")
         return b
     end
+    local function Row(text, icon, own)
+        local b = Secure(SIDE_ROW_H)
+        -- (elegida, un tinte dorado; al pasar el ratón, más clara)
+        b.sel = b:CreateTexture(nil, "BACKGROUND")
+        b.sel:SetAllPoints(); b.sel:SetColorTexture(1, 0.82, 0, 0.14)
+        b.sel:Hide()
+        local hl = b:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.08)
+        local ic = b:CreateTexture(nil, "ARTWORK")
+        ic:SetTexture(icon)
+        -- (los iconos del juego traen un marco oscuro: se recorta; el nuestro va entero)
+        if not own then ic:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        ic:SetSize(16, 16); ic:SetPoint("LEFT", 14, 0)
+        local mask = b:CreateMaskTexture()
+        mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(ic)
+        ic:AddMaskTexture(mask)
+        b.icon = ic
+        local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        fs:SetPoint("LEFT", ic, "RIGHT", 8, 0); fs:SetPoint("RIGHT", -8, 0)
+        fs:SetJustifyH("LEFT"); fs:SetText(text)
+        b.text = fs
+        return b
+    end
     for i, t in ipairs(TABS) do
         if t.trade or t.calendar then
-            local b = Entry(L(t.title), t.icon, true)
+            local b = Row(L(t.title), t.icon, t.own)
             b.tab = i
             b:SetAttribute("clickbutton", f.RosterTab)
             b:SetScript("PreClick", function() wantTab, side.fromSide = i, true end)
@@ -893,11 +885,29 @@ local function Build(f)
             side.entries[#side.entries + 1] = b
         end
     end
-    -- («Unirse o crear comunidad», como la del juego y en verde: pulsa la suya, que queda transparente)
-    local joinText = type(_G.COMMUNITIES_JOIN_COMMUNITY) == "string" and _G.COMMUNITIES_JOIN_COMMUNITY or L("Unirse o crear una comunidad")
-    side.join = Entry(joinText, "communities-icon-addgroupplus", false)
+    -- («Unirse o crear comunidad», como la del juego (CommunitiesListEntryTemplate: sus tiras de bluemenu-main, el «+» y el
+    -- nombre en verde): pulsa la suya, que queda transparente)
+    local join = Secure(ENTRY_H)
+    local function Bar(layer, top, bottom)
+        local t = join:CreateTexture(nil, layer)
+        t:SetTexture("Interface\\Common\\bluemenu-main")
+        t:SetTexCoord(0.00390625, 0.87890625, top, bottom)
+        t:SetHeight(80); t:SetPoint("LEFT"); t:SetPoint("RIGHT")
+        return t
+    end
+    Bar("BACKGROUND", 0.75195313, 0.83007813)
+    local jhl = Bar("HIGHLIGHT", 0.75195313, 0.83007813)
+    jhl:SetBlendMode("ADD"); jhl:SetAlpha(0.8)
+    local plus = join:CreateTexture(nil, "ARTWORK")
+    plus:SetAtlas("communities-icon-addgroupplus")
+    plus:SetSize(30, 30); plus:SetPoint("TOPLEFT", 17, -18)
+    join.text = join:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    join.text:SetPoint("LEFT", plus, "RIGHT", 13, 0); join.text:SetPoint("RIGHT", -24, 0)
+    join.text:SetJustifyH("LEFT")
+    join.text:SetText(type(_G.COMMUNITIES_JOIN_COMMUNITY) == "string" and _G.COMMUNITIES_JOIN_COMMUNITY or L("Unirse o crear una comunidad"))
     local green = _G.GREEN_FONT_COLOR
-    if green then side.join.text:SetTextColor(green:GetRGB()) end
+    if green then join.text:SetTextColor(green:GetRGB()) end
+    side.join = join
     side.join:Hide()
     cover.side = side
 
@@ -1152,9 +1162,10 @@ local function Build(f)
         first:ClearAllPoints()
         if atJoin then
             joinFrame:SetAlpha(0); joinFrame:EnableMouse(false); hiddenJoin = joinFrame
-            first:SetPoint("TOPLEFT", joinFrame, "TOPLEFT"); first:SetPoint("TOPRIGHT", joinFrame, "TOPRIGHT")
+            -- (4 de aire con la entrada de encima y con «Unirse…»: las filas son finas y se pegaban)
+            first:SetPoint("TOPLEFT", joinFrame, "TOPLEFT", 0, -SIDE_GAP); first:SetPoint("TOPRIGHT", joinFrame, "TOPRIGHT", 0, -SIDE_GAP)
         elseif lastFrame then
-            first:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT"); first:SetPoint("TOPRIGHT", lastFrame, "BOTTOMRIGHT")
+            first:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT", 0, -SIDE_GAP); first:SetPoint("TOPRIGHT", lastFrame, "BOTTOMRIGHT", 0, -SIDE_GAP)
         else
             -- (sin marcos de la lista a la vista: donde iría su primera entrada, tras los 40 de arriba)
             first:SetPoint("TOPLEFT", cl, "TOPLEFT", 3, -40); first:SetPoint("TOPRIGHT", cl, "TOPRIGHT", -2, -40)
@@ -1167,7 +1178,7 @@ local function Build(f)
             above = e
         end
         side.join:ClearAllPoints()
-        side.join:SetPoint("TOPLEFT", above, "BOTTOMLEFT"); side.join:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT")
+        side.join:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -SIDE_GAP); side.join:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT", 0, -SIDE_GAP)
         side.join:SetAttribute("clickbutton", atJoin and joinFrame or nil)
         side.join:SetShown(atJoin)
     end

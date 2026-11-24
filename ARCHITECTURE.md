@@ -2653,15 +2653,18 @@ queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porqu
 
 ### Comercio y Calendario, en la columna de comunidades
 
-Con el aspecto de sus entradas (las tiras de `bluemenu-main` de `CommunitiesListEntryTemplate`, el icono redondo con
-el aro dorado y el nombre) y encima de «Unirse o crear comunidad» (Jorge, 24/11; luego irán Wanted y LFG). Son botones
+En filas finas (`SIDE_ROW_H`, 24: icono pequeño redondo y nombre; la elegida, con un tinte dorado) debajo de la
+hermandad y encima de «Unirse o crear comunidad» (Jorge, 24/11; luego irán Wanted y LFG). En la 305 eran cajas grandes
+como las del juego y no le acabó de gustar: de cuatro formas dibujadas (pestañas abajo, botones redondos arriba, esta
+lista y iconos a la derecha) eligió esta. Son botones
 seguros (`SecureActionButtonTemplate`, `type=click`) que pulsan la pestaña de miembros del juego: cambiar de vista
 desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas. `PreClick` apunta la sección
 (`wantTab`); si ya se ve la vista de miembros, la pestaña no cambia nada y la abre su `PostClick`. Son hijos de la
 columna, así que se ven con ella, y la entrada de la sección abierta sale marcada (`sel`).
 - La lista del juego no se toca (si el addon la tocara, sus marcos y su ficha quedarían «tocados»): `PlaceSide` busca
   entre sus marcos el de «Unirse…» (`setJoinCommunity`), lo deja transparente y sin clics, pone las nuestras en su
-  sitio y debajo una «Unirse…» igual, en verde, que pulsa la suya (`side.join`, `clickbutton`). Si «Unirse…» no es la
+  sitio (4 más abajo, `SIDE_GAP`) y debajo una «Unirse…» como la del juego, en verde, que pulsa la suya (`side.join`,
+`clickbutton`). Si «Unirse…» no es la
   última entrada o no se ve, las nuestras van debajo de la última. La lista recicla sus marcos: el que se dejó
   transparente y ya no es «Unirse…» vuelve a verse. Corre al actualizarse la lista (`Update`), al enseñarse la
   columna y en `Sync`, fuera de combate (son botones seguros). Con muchas comunidades la lista crece o se desplaza y
