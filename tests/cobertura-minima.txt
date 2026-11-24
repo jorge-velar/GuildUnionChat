@@ -14,7 +14,7 @@ Comm.lua 59.5 34
 Community.lua 7.2 371
 Config.lua 70.0 102
 Core.lua 85.3 76
-DJStyle.lua 99.0 1
+DJStyle.lua 98.7 1
 Domain/Trust.lua 75.3 60
 ErrorShare.lua 29.2 46
 Guard.lua 55.0 216
@@ -46,7 +46,7 @@ Report.lua 57.7 178
 Roster.lua 87.2 16
 Social.lua 68.3 215
 TestLog.lua 33.3 60
-Trade.lua 92.4 68
+Trade.lua 92.3 68
 UI.lua 87.5 3
 UIWindows.lua 95.0 3
 UnionCalendar.lua 98.5 17
