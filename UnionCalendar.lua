@@ -1353,28 +1353,27 @@ function HU:BuildCalendar(host)
     local now = date("*t")
     month, year = now.month, now.year
 
-    -- Arriba, el modo prueba (a la derecha); debajo, Eventos · Calendario (en el centro); abajo, en el centro, «+ Nuevo
-    -- evento» (ver más abajo)
-    ui.viewBtns = {}
-    local prev
-    for _, t in ipairs({ { "list", L("Eventos") }, { "month", L("Calendario") } }) do
-        local b = DJButton(host, t[2], 120, 24)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -30) end
-        b:SetScript("OnClick", function() view = t[1]; PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); Paint() end)
-        ui.viewBtns[t[1]] = b
-        prev = b
+    -- Arriba, en el centro, el interruptor Eventos | Calendario, el mismo que en Comercio (Jorge, 24/11: la «opción 3»),
+    -- y a su derecha el modo prueba; abajo, en el centro, «+ Nuevo evento» (ver más abajo) [+ARCHITECTURE.md]
+    local sw = DJ.Switch(host, { { "list", L("Eventos") }, { "month", L("Calendario") } })
+    sw:SetPoint("TOP", host, "TOP", 0, -4)
+    ui.switch = sw
+    ui.viewBtns = sw.btns
+    for k, b in pairs(sw.btns) do
+        b:SetScript("OnClick", function() view = k; PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); Paint() end)
     end
+    -- (el modo prueba, a la altura del interruptor, en el hueco de su derecha; se enciende y se apaga: apagado, se quita
+    -- lo de prueba)
     local test = DJButton(host, L("Modo prueba"), 104, 24)
-    test:SetPoint("TOPRIGHT", host, "TOPRIGHT", -26, -2)
-    -- (el modo prueba se enciende y se apaga: apagado, se quita lo de prueba)
+    test:SetPoint("TOPRIGHT", host, "TOPRIGHT", -8, -4 - (DJ.SWITCH.h - 24) / 2)
     test:SetScript("OnClick", function(b)
         if ui.testOn then ClearTest(); ui.testOn = nil else AddTest(); ui.testOn = true end
         b:Pick(ui.testOn == true)
         Paint()
     end)
-    -- (el panel de la sección: color «content», borde y pergamino)
+    -- (el panel de la sección, 6 por debajo del interruptor: color «content», borde y pergamino)
     local body = CreateFrame("Frame", nil, host, "BackdropTemplate")
-    body:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -58); body:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
+    body:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -4 - DJ.SWITCH.h - 6); body:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
     Panel(body, T.content, T.border, 14, 4)
     Parchment(body, 0.18)
 

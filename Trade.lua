@@ -1,6 +1,7 @@
 -- Guild Union - Comercio (la sección Trade de la lista de miembros) [+ARCHITECTURE.md]
 -- Fase 1 (copias 211-214): solo la ventana, sin red. Lo que se pide o se escribe se queda en tu sesión, y
--- el «Modo prueba» rellena solicitudes y chats de mentira. Diseño: Obsidian/Addons/GuildUnion - Comercio (diseño).md
+-- HU:TradeTest (solo por código: las pruebas) la rellena de solicitudes y chats de mentira. Diseño:
+-- Obsidian/Addons/GuildUnion - Comercio (diseño).md
 local _, HU = ...
 local L = HU.L
 
@@ -9,13 +10,15 @@ HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft" } })
 
 -- (filas y títulos de 24, con 4 de margen a cada lado del texto: Jorge, 24/11, «muy apelotonado». Caben en la sección
 -- con la ventana del juego a su alto de siempre: comercio_spec)
-local ROW_H, ROWS = 24, 10
+local ROW_H, ROWS = 24, 9
 local HDR_H, CELL_PAD = 24, 4
-local TAB_W = 116           -- Tablón · Mis encargos (con el número de sin leer: «Mis encargos (2)»)
--- (abajo, «+ Nueva solicitud» (24 de alto, a 8 del borde) y el modo prueba: las listas y el chat acaban BOTTOM_H por
--- encima del borde de abajo, para que el botón no tape nada) [+ARCHITECTURE.md]
-local BOTTOM_H = 36
-local SEARCH_ROWS = 4       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
+-- (arriba, dos filas: el interruptor Tablón | Mis encargos (DJ.Switch) y, en ROW2_Y, el buscador y la casilla; las
+-- listas van de BODY_Y a BOTTOM_H por encima del borde de abajo, donde va «+ Nueva solicitud» (24 de alto, a 8 del
+-- borde), para que no tape nada) [+ARCHITECTURE.md]
+local ROW2_Y, ROW2_H = -44, 28
+local BODY_Y, BOTTOM_H = -80, 36
+local SEARCH_W = 220
+local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
 local MAX_OPEN = 5          -- solicitudes abiertas por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
 local TICK = "Interface\\RaidFrame\\ReadyCheck-Ready"
@@ -28,14 +31,9 @@ local ACT_W = 84            -- la última columna: el botón (Aceptar / Cancelar
 local COIN_ICON = { "Interface\\MoneyFrame\\UI-GoldIcon", "Interface\\MoneyFrame\\UI-SilverIcon", "Interface\\MoneyFrame\\UI-CopperIcon" }
 local GOLD = { 1, 0.82, 0.2 }
 
--- Botones y pestañas con el estilo del Dungeon Journal (DJStyle.lua): rojos, y negros los elegidos
+-- Botones con el estilo del Dungeon Journal (DJStyle.lua): rojos, y negros los elegidos
 local DJ = HU.DJ
 local function Flat(parent, text, w, h) return DJ.Button(parent, text, w, h) end
-local function Tab(parent, text, w)
-    local b = DJ.Button(parent, text, w, 24)
-    function b:SetSelected(on) self:Pick(on) end
-    return b
-end
 
 -- Columnas: en el Tablón, con materiales; en Mis encargos (más estrecha, con el chat al lado), sin ellos
 local COLS = {
@@ -464,7 +462,7 @@ local function Matches(r, q)
     return false
 end
 
--- (¿está puesta «Solo lo que puedo hacer»? vale en el Tablón y en las publicadas al buscar)
+-- (¿está puesta «Solo lo que puedo hacer»? vale en las dos vistas y al buscar)
 local function OnlyCraft() return HU.db ~= nil and HU.db.tradeOnlyCraft == true end
 
 -- (profs: las de MyProfessions, si ya están leídas)
@@ -472,7 +470,7 @@ local function Visible(profs)
     local out = {}
     local q = Searching() and Query()
     local priv = view == "priv" and not q
-    local only = not priv and OnlyCraft()
+    local only = OnlyCraft()
     if only and profs == nil then profs = MyProfessions() end
     for i = #reqs, 1, -1 do
         local r = reqs[i]
@@ -488,8 +486,12 @@ local function Visible(profs)
             -- (una pública sin aceptar no tiene a nadie al otro lado: solo sale en el Tablón)
             ok = Involved(r) and not r.closed and not (r.pub and r.state == "open")
         end
-        -- (con la casilla: solo lo que se reconoce y puedo hacer)
-        if ok and only then ok = CraftTargets(r.item) ~= nil and (CraftCheck(r.item, profs)) end
+        -- (con la casilla: en el Tablón y al buscar, solo lo que se reconoce y puedo hacer; en Mis encargos, fuera lo que
+        -- haría yo y no puedo hacer, y lo que pedí yo, siempre: Jorge, 24/11)
+        if ok and only then
+            if priv then ok = IsMine(r) or (CraftCheck(r.item, profs))
+            else ok = CraftTargets(r.item) ~= nil and (CraftCheck(r.item, profs)) end
+        end
         if ok and r.state ~= "gone" then out[#out + 1] = r end
     end
     if sortKey then
@@ -654,7 +656,8 @@ local function Layout(cols, list)
     req.list:SetShown(not noPub)
     req.n = searching and SEARCH_ROWS or ROWS
     Titled(req, searching and L("Publicadas") or nil)
-    found.n = noPub and ROWS or SEARCH_ROWS
+    -- (quién lo hace, sola: con su título, cabe una fila menos)
+    found.n = noPub and ROWS - 1 or SEARCH_ROWS
     found.list:ClearAllPoints()
     if noPub then found.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0)
     else found.list:SetPoint("TOPLEFT", req.list, "BOTTOMLEFT", 0, -6) end
@@ -663,6 +666,10 @@ local function Layout(cols, list)
     found.list:SetShown(searching)
     Columns(req, cols, priv and 44 or 4)
     if searching then Columns(found, COLS.search, 4) end
+    -- («+ Nueva solicitud», en el centro de la sección; en Mis encargos, en el de la lista, que deja la derecha al chat:
+    -- así no choca con él. Jorge, 24/11)
+    ui.new:ClearAllPoints()
+    ui.new:SetPoint("BOTTOM", ui, "BOTTOM", withChat and -(24 + CHAT_W) / 2 or 0, 8)
     ui.new:SetShown(not searching)
 end
 
@@ -688,7 +695,7 @@ end
 
 function Paint()
     if not (ui and ui:IsShown()) then return end
-    -- (comercio apagado por el maestro: solo el panel con el aviso; ni pestañas, ni buscador, ni modo prueba, ni pedir)
+    -- (comercio apagado por el maestro: solo el panel con el aviso; ni interruptor, ni buscador, ni casilla, ni pedir)
     local off = HU:UnionCfg().tradeOff and true or false
     ui.offMsg:SetShown(off)
     for _, w in ipairs(ui.onlyOn) do w:SetShown(not off) end
@@ -708,10 +715,9 @@ function Paint()
     local profs = MyProfessions()
     ui.lastList = Visible(profs)
     Layout(cols, ui.lastList)
-    -- («Solo lo que puedo hacer»: en el Tablón y al buscar, que es donde vale)
+    -- («Solo lo que puedo hacer»: vale y se ve en las dos vistas y al buscar)
     local only = OnlyCraft()
     ui.onlyCraft:SetChecked(only)
-    ui.onlyCraft:SetShown(view == "pub" or searching)
     if searching then
         ui.found.empty:SetText(L("Nadie de tu hermandad lo hace (profesión u objeto fabricable). Otras hermandades, con la red."))
         PaintRows(ui.found, SearchMembers(Query()), function(row, e)
@@ -986,7 +992,8 @@ local function BuildNewDialog(host)
 end
 
 ---------------------------------------------------------------------------
--- Modo prueba: solicitudes y chats de mentira; no se manda nada
+-- Modo prueba: solicitudes y chats de mentira; no se manda nada. Sin botón ni comando (Jorge, 24/11: «quitando el
+-- test mode»): solo por código, con HU:TradeTest; lo usan las pruebas
 ---------------------------------------------------------------------------
 -- (quitar lo de prueba: sus solicitudes y los chats con los de prueba)
 local function ClearTest()
@@ -1027,6 +1034,11 @@ local function AddTest()
     Paint()
 end
 
+-- Poner (on) o quitar lo de prueba
+function HU:TradeTest(on)
+    if on then AddTest() else ClearTest(); Paint() end
+end
+
 ---------------------------------------------------------------------------
 -- Montar la sección (UnionRoster.lua la pone en la pestaña Trade)
 ---------------------------------------------------------------------------
@@ -1040,46 +1052,65 @@ end
 
 function HU:BuildTrade(host)
     ui = host
-    -- Arriba, en una fila: el buscador, Tablón · Mis encargos y «Solo lo que puedo hacer»; abajo, «+ Nueva solicitud» en
-    -- el centro y el modo prueba a la derecha (Jorge, 24/11) [+ARCHITECTURE.md]
-    -- (el buscador, más visible: más ancho, con la ayuda en gris claro y un marco claro de borde dorado detrás)
+    -- Arriba, el interruptor Tablón | Mis encargos, en el centro; debajo, el buscador a la izquierda y «Solo lo que puedo
+    -- hacer» a la derecha; abajo, «+ Nueva solicitud» (Jorge, 24/11: la «opción 3») [+ARCHITECTURE.md]
+    local sw = DJ.Switch(host, { { "pub", L("Tablón") }, { "priv", L("Mis encargos") } })
+    sw:SetPoint("TOP", host, "TOP", 0, -4)
+    ui.switch = sw
+    ui.viewBtns = sw.btns
+    for k, b in pairs(sw.btns) do
+        b:SetScript("OnClick", function()
+            view, selected, picks = k, nil, {}
+            ui.search:SetText("")
+            FauxScrollFrame_SetOffset(ui.scroll, 0)
+            Paint()
+        end)
+    end
+    -- (el buscador: un recuadro liso con borde dorado, el suyo del juego escondido, y letra de 12 que se vea)
+    local gold = DJ.SWITCH.gold
     local search = CreateFrame("EditBox", "GuildUnionTradeSearch", host, "SearchBoxTemplate")
-    search:SetSize(200, 22)
-    search:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -4)
+    search:SetSize(SEARCH_W, ROW2_H)
+    search:SetPoint("TOPLEFT", host, "TOPLEFT", 14, ROW2_Y)
+    search:SetFontObject("GameFontHighlight")
+    search:SetTextInsets(24, 22, 0, 0)
+    for _, k in ipairs({ "Left", "Middle", "Right" }) do
+        local t = search[k]
+        if type(t) == "table" then t:SetAlpha(0) end
+    end
+    if type(search.searchIcon) == "table" then search.searchIcon:ClearAllPoints(); search.searchIcon:SetPoint("LEFT", 8, -1) end
     if search.Instructions then
-        search.Instructions:SetText(L("Buscar receta")); DJ.C(search.Instructions, DJ.T.muted)
+        local hint = search.Instructions
+        hint:SetFontObject("GameFontNormal")
+        hint:ClearAllPoints(); hint:SetPoint("TOPLEFT", 24, 0); hint:SetPoint("BOTTOMRIGHT", -22, 0)
+        hint:SetText(L("Buscar receta")); DJ.C(hint, DJ.T.muted)
     end
     local sbox = CreateFrame("Frame", nil, host, "BackdropTemplate")
-    sbox:SetPoint("TOPLEFT", search, "TOPLEFT", -9, 3); sbox:SetPoint("BOTTOMRIGHT", search, "BOTTOMRIGHT", 3, -3)
-    DJ.Panel(sbox, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
+    sbox:SetAllPoints(search)
+    DJ.Box(sbox, DJ.T.row, gold, DJ.SWITCH.edge)
     sbox:SetFrameLevel(search:GetFrameLevel())
     search:SetFrameLevel(sbox:GetFrameLevel() + 2)
+    ui.searchBox = sbox
     search:HookScript("OnTextChanged", function()
         if not ui.found then return end
         FauxScrollFrame_SetOffset(ui.req.scroll, 0); FauxScrollFrame_SetOffset(ui.found.scroll, 0)
         Paint()
     end)
     ui.search = search
-    -- (a su derecha, las pestañas)
-    ui.viewBtns = {}
-    local prev = search
-    for _, t in ipairs({ { "pub", L("Tablón") }, { "priv", L("Mis encargos") } }) do
-        local b = Tab(host, t[2], TAB_W)
-        b:SetPoint("LEFT", prev, "RIGHT", prev == search and 8 or 4, 0)
-        b:SetScript("OnClick", function()
-            view, selected, picks = t[1], nil, {}
-            ui.search:SetText("")
-            FauxScrollFrame_SetOffset(ui.scroll, 0)
-            Paint()
-        end)
-        ui.viewBtns[t[1]] = b
-        prev = b
+    -- «Solo lo que puedo hacer», a la derecha de la misma fila: el texto, claro, y a su derecha la caja, lisa con borde
+    -- dorado (las de la plantilla, escondidas: queda la marca). En el Tablón (y al buscar), solo lo que HU:CanCraft
+    -- deja; en Mis encargos, fuera lo que haría yo y no puedo hacer. Se recuerda por personaje
+    local only = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate, BackdropTemplate")
+    only:SetSize(24, 24); only:SetPoint("RIGHT", host, "TOPRIGHT", -24, ROW2_Y - ROW2_H / 2)
+    DJ.Box(only, DJ.T.row, gold, DJ.SWITCH.edge)
+    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture" }) do
+        local t = only[get](only)
+        if type(t) == "table" then t:SetAlpha(0) end
     end
-    -- «Solo lo que puedo hacer», a la derecha de las pestañas: en el Tablón (y en las publicadas al buscar), solo lo que
-    -- HU:CanCraft deja; se recuerda por personaje
-    local only = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
-    only:SetSize(22, 22); only:SetPoint("LEFT", prev, "RIGHT", 6, 0)
-    if only.Text then only.Text:SetFontObject("GameFontHighlightSmall"); only.Text:SetText(L("Solo lo que puedo hacer")) end
+    if only.Text then
+        only.Text:SetFontObject("GameFontHighlight"); DJ.C(only.Text, DJ.T.text)
+        only.Text:ClearAllPoints(); only.Text:SetPoint("RIGHT", only, "LEFT", -6, 0)
+        only.Text:SetText(L("Solo lo que puedo hacer"))
+    end
     only:SetScript("OnClick", function(s)
         HU.db.tradeOnlyCraft = (not OnlyCraft()) or nil
         s:SetChecked(OnlyCraft())
@@ -1089,20 +1120,20 @@ function HU:BuildTrade(host)
     only:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_BOTTOMRIGHT")
         GameTooltip:SetText(L("Solo lo que puedo hacer"))
-        GameTooltip:AddLine(L("En el tablón, solo lo que puedes hacer con tus profesiones y tus recetas (lo que no se sabe qué es, tampoco)."), 1, 1, 1, true)
+        GameTooltip:AddLine(L("En el tablón, solo lo que puedes hacer con tus profesiones y tus recetas (lo que no se sabe qué es, tampoco). En Mis encargos, esconde los que harías tú y no puedes hacer; los que pides tú se ven siempre."), 1, 1, 1, true)
         GameTooltip:Show()
     end)
     only:SetScript("OnLeave", function() GameTooltip:Hide() end)
     ui.onlyCraft = only
 
-    -- (detrás de todo, el panel de la sección, justo debajo de la fila: color «content» y borde, como el calendario)
+    -- (detrás de todo, el panel de la sección, justo debajo de las dos filas: color «content» y borde, como el calendario)
     local bg = CreateFrame("Frame", nil, host, "BackdropTemplate")
-    bg:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -31); bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
+    bg:SetPoint("TOPLEFT", host, "TOPLEFT", 2, BODY_Y + 4); bg:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
     bg:SetFrameLevel(host:GetFrameLevel() + 1)
     DJ.Panel(bg, DJ.T.content, DJ.T.border, 14, 4)
     DJ.Parchment(bg, 0.18)
     local body = CreateFrame("Frame", nil, host)
-    body:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -35); body:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, BOTTOM_H)
+    body:SetPoint("TOPLEFT", host, "TOPLEFT", 0, BODY_Y); body:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, BOTTOM_H)
     body:SetFrameLevel(bg:GetFrameLevel() + 2)
     ui.body = body
     -- (el aviso de apagado, en el panel: en host quedaba por debajo de él y no se veía)
@@ -1111,9 +1142,11 @@ function HU:BuildTrade(host)
     ui.offMsg:SetText(L("El maestro de la hermandad ha desactivado el comercio (pestaña GuildUnion, Configuración → Comercio)."))
     HU:Listen("CHANGED", function(what) if what == "unionCfg" and ui:IsShown() then Paint() end end)
 
-    -- Derecha (solo en Mis encargos): el chat de la persona del comercio que eliges
+    -- Derecha (solo en Mis encargos): el chat de la persona del comercio que eliges, de arriba abajo: desde debajo del
+    -- buscador hasta el borde de abajo de la sección (Jorge, 24/11)
     local chat = CreateFrame("Frame", nil, body, "BackdropTemplate")
-    chat:SetPoint("TOPRIGHT", -24, 0); chat:SetPoint("BOTTOMRIGHT", -24, 10); chat:SetWidth(CHAT_W)
+    chat:SetPoint("TOPRIGHT", body, "TOPRIGHT", -24, 0); chat:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -24, 8)
+    chat:SetWidth(CHAT_W)
     DJ.Panel(chat, DJ.T.panel, DJ.T.border, 12, 3)
     DJ.Parchment(chat, 0.13)
     ui.chat = chat
@@ -1291,8 +1324,8 @@ function HU:BuildTrade(host)
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
 
-    -- Abajo, en el centro: «+ Nueva solicitud», como hasta la copia 304 (teñido de verde, letra blanca); va en el panel,
-    -- para quedar encima de él [+ARCHITECTURE.md]
+    -- Abajo: «+ Nueva solicitud», como hasta la copia 304 (teñido de verde, letra blanca), centrado debajo de la lista
+    -- (Layout); va en el panel, para quedar encima de él [+ARCHITECTURE.md]
     local newDlg = BuildNewDialog(host)
     local new = Flat(bg, "+ " .. L("Nueva solicitud"), 200, 24)
     new:SetPoint("BOTTOM", host, "BOTTOM", 0, 8)
@@ -1313,9 +1346,9 @@ function HU:BuildTrade(host)
     end
     new:SetScript("OnClick", function() ui.OpenNew(nil) end)
     ui.new, ui.newDlg = new, newDlg
-    -- (a su derecha, «Eliminar (N)», con algo marcado en Mis encargos)
-    local del = Flat(body, "", 86, 22)
-    del:SetPoint("LEFT", new, "RIGHT", 8, 0)
+    -- (a su derecha, «Eliminar (N)», con algo marcado en Mis encargos: cabe antes del chat)
+    local del = Flat(body, "", 80, 22)
+    del:SetPoint("LEFT", new, "RIGHT", 6, 0)
     del:SetScript("OnClick", function()
         for id in pairs(picks) do local x = FindReq(id); if x then RemoveReq(x) end end
         picks, selected = {}, nil
@@ -1323,17 +1356,8 @@ function HU:BuildTrade(host)
     end)
     del:Hide()
     ui.delBtn = del
-    -- (y a la derecha del todo, el modo prueba: se enciende y se apaga; apagado, se quita lo de prueba)
-    local test = Flat(bg, L("Modo prueba"), 96, 22)
-    test:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -8, 9)
-    test:SetScript("OnClick", function(b)
-        if ui.testOn then ClearTest(); ui.testOn = nil else AddTest(); ui.testOn = true end
-        b:Pick(ui.testOn == true)
-        Paint()
-    end)
-    ui.testBtn = test
     -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso)
-    ui.onlyOn = { body, search, sbox, only, test, new, ui.viewBtns.pub, ui.viewBtns.priv }
+    ui.onlyOn = { body, sw, search, sbox, only, new }
 
     Suggest(ui.search, ItemMatches)
     host:HookScript("OnShow", function() LoadCraftNames(); Paint() end)

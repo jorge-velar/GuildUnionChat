@@ -7,16 +7,23 @@ local A = assert_
 ---------------------------------------------------------------------------
 -- El WoW de mentira, con lo que aquí hace falta mirar
 ---------------------------------------------------------------------------
--- (lo que no guarda: activado, marcado, tamaño, alto, puntos, el tinte y la letra de los botones)
+-- (lo que no guarda: activado, marcado, tamaño, alto, puntos, colores (tinte, relleno, letra, fondo y borde), letras,
+-- transparencia, y las texturas de casilla (una de mentira por marco))
 local function Observe(a)
     local meta = a.w.frameMeta
     local base = meta.__index
+    local function Tex(self, key)
+        local t = rawget(self, key)
+        if not t then t = self:CreateTexture(); rawset(self, key, t) end
+        return t
+    end
     local extra = {
         SetEnabled = function(self, v) rawset(self, "_off", not v) end,
         IsEnabled = function(self) return not rawget(self, "_off") end,
         SetChecked = function(self, v) rawset(self, "_checked", v and true or false) end,
         GetChecked = function(self) return rawget(self, "_checked") == true end,
         SetSize = function(self, w, h) rawset(self, "_w", w); rawset(self, "_h", h) end,
+        SetWidth = function(self, w) rawset(self, "_w", w) end,
         SetHeight = function(self, h) rawset(self, "_h", h) end,
         ClearAllPoints = function(self) rawset(self, "_pts", {}) end,
         SetPoint = function(self, p, ...)
@@ -25,7 +32,17 @@ local function Observe(a)
             pts[p] = { ... }
         end,
         SetVertexColor = function(self, ...) rawset(self, "_color", { ... }) end,
+        SetColorTexture = function(self, ...) rawset(self, "_fill", { ... }) end,
+        SetTextColor = function(self, ...) rawset(self, "_textColor", { ... }) end,
+        SetBackdropColor = function(self, ...) rawset(self, "_bg", { ... }) end,
+        SetBackdropBorderColor = function(self, ...) rawset(self, "_edge", { ... }) end,
+        SetBackdrop = function(self, b) rawset(self, "_backdrop", b) end,
         SetNormalFontObject = function(self, font) rawset(self, "_font", font) end,
+        SetFontObject = function(self, font) rawset(self, "_fontObj", font) end,
+        SetFont = function(self, _, size) rawset(self, "_fontSize", size) end,
+        SetAlpha = function(self, v) rawset(self, "_alpha", v) end,
+        GetNormalTexture = function(self) return Tex(self, "_normalTex") end,
+        GetPushedTexture = function(self) return Tex(self, "_pushedTex") end,
     }
     meta.__index = function(f, k) return extra[k] or base(f, k) end
 end
@@ -171,7 +188,7 @@ describe("Comercio (Trade.lua): líneas sin leer", function()
         A.equal(0, HU:TradeUnread())
         A.equal("Mis encargos", tr.viewBtns.priv:GetText())
         -- (el modo prueba trae una línea de Lyra, una de Pepe y una de Bea; en el Tablón no se ve ningún chat)
-        Click(tr.testBtn)
+        HU:TradeTest(true)
         A.equal(3, HU:TradeUnread())
         A.same({ 1, 2, 3 }, seen)
         A.equal("Mis encargos (3)", tr.viewBtns.priv:GetText())
@@ -214,7 +231,7 @@ describe("Comercio (Trade.lua): líneas sin leer", function()
         HU:Changed("unionCfg")
         A.equal(2, HU:TradeUnread())
         -- (fuera el modo prueba: fuera sus líneas sin leer)
-        Click(tr.testBtn)
+        HU:TradeTest(false)
         A.equal(0, HU:TradeUnread())
         A.equal("Mis encargos", tr.viewBtns.priv:GetText())
         A.same({ 1, 2, 3, 2, 3, 2, 3, 2, 3, 2, 0 }, seen, "un aviso «tradeUnread» con cada cambio")
@@ -225,7 +242,7 @@ describe("Comercio (Trade.lua): líneas sin leer", function()
         local a = F.Community()
         local HU = a.HU
         local tr = OpenTrade(a)
-        Click(tr.testBtn)
+        HU:TradeTest(true)
         Click(Row(tr, "Bolsa").accept)
         A.equal("taken", Row(tr, "Bolsa").entry.state)
         A.equal(3, HU:TradeUnread(), "la de Pepe, sin leer")
@@ -239,7 +256,7 @@ describe("Comercio (Trade.lua): líneas sin leer", function()
     it("en inglés, la pestaña con el número: «My Orders (3)»", function()
         local a = F.Community({ locale = "enUS" })
         local tr = OpenTrade(a)
-        Click(tr.testBtn)
+        a.HU:TradeTest(true)
         A.same({ "Board", "My Orders (3)" }, { tr.viewBtns.pub:GetText(), tr.viewBtns.priv:GetText() })
         A.same({}, a:Errors())
     end)
@@ -395,7 +412,7 @@ describe("Comercio (Trade.lua): ¿puedo hacerlo? (HU:CanCraft)", function()
         Observe(a)
         Professions(a, { [129] = 200, [164] = 230 })
         local tr = OpenTrade(a)
-        Click(tr.testBtn)
+        a.HU:TradeTest(true)
         local pocion, bolsa = Row(tr, "Poción"), Row(tr, "Bolsa")
         A.falsy(pocion.accept:IsEnabled())
         A.same({ "Te falta nivel (215)" }, Hover(a, pocion.accept))
@@ -434,11 +451,12 @@ describe("Comercio (Trade.lua): «Solo lo que puedo hacer»", function()
         local HU = a.HU
         Professions(a, { [164] = 230, [165] = 160 })
         local tr = OpenTrade(a)
-        Click(tr.testBtn)
+        HU:TradeTest(true)
         A.same({ "Capa de seda carmesí", "Cofia de mitril", "Bolsa de tejido de lana", "Poción de curación superior" }, Items(tr))
         A.truthy(tr.onlyCraft:IsShown())
         A.falsy(tr.onlyCraft:GetChecked())
-        A.same({ "Solo lo que puedo hacer", "En el tablón, solo lo que puedes hacer con tus profesiones y tus recetas (lo que no se sabe qué es, tampoco)." },
+        A.same({ "Solo lo que puedo hacer", "En el tablón, solo lo que puedes hacer con tus profesiones y tus recetas (lo que no se "
+            .. "sabe qué es, tampoco). En Mis encargos, esconde los que harías tú y no puedes hacer; los que pides tú se ven siempre." },
             Hover(a, tr.onlyCraft))
         tr.onlyCraft:GetScript("OnLeave")(tr.onlyCraft)
         Click(tr.onlyCraft)
@@ -457,10 +475,10 @@ describe("Comercio (Trade.lua): «Solo lo que puedo hacer»", function()
         A.truthy(tr.onlyCraft:IsShown())
         A.same({ "Cofia de mitril", "Bolsa de tejido de lana" }, Items(tr))
         Search(tr, "")
-        -- (en Mis encargos no vale ni se ve)
+        -- (en Mis encargos también se ve y vale: fuera el elixir que me pide Bea, de Alquimia; lo mío, siempre)
         Click(tr.viewBtns.priv)
-        A.falsy(tr.onlyCraft:IsShown())
-        A.equal(4, #Rows(tr))
+        A.truthy(tr.onlyCraft:IsShown())
+        A.same({ "Poción de curación superior", "Cofia de mitril", "Gran espada de mitril" }, Items(tr))
         -- (sin nada que pueda hacer, lo dice)
         Professions(a, {})
         Click(tr.viewBtns.pub)
@@ -481,9 +499,33 @@ describe("Comercio (Trade.lua): «Solo lo que puedo hacer»", function()
         Observe(a)
         Professions(a, { [164] = 230 })
         local tr = OpenTrade(a)
-        Click(tr.testBtn)
+        a.HU:TradeTest(true)
         A.truthy(tr.onlyCraft:GetChecked())
         A.same({ "Cofia de mitril" }, Items(tr))
+        A.same({}, a:Errors())
+    end)
+
+    it("en Mis encargos esconde los que haría yo y no puedo hacer (HU:CanCraft); los que pedí yo se ven siempre", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        -- (Herrería: la cofia que me pide Lyra, sí; el elixir que me pide Bea, de Alquimia, no)
+        Professions(a, { [164] = 230 })
+        local tr = OpenTrade(a)
+        HU:TradeTest(true)
+        Click(tr.viewBtns.priv)
+        A.same({ "Poción de curación superior", "Cofia de mitril", "Gran espada de mitril", "Elixir de agilidad" }, Items(tr))
+        Click(tr.onlyCraft)
+        A.same({ "Poción de curación superior", "Cofia de mitril", "Gran espada de mitril" }, Items(tr),
+            "fuera el elixir; la poción y la espada son mías")
+        -- (sin profesiones, solo lo mío, aunque yo no sepa hacerlo: la espada la hace Pepe)
+        Professions(a, {})
+        Click(tr.viewBtns.priv)
+        A.same({ "Poción de curación superior", "Gran espada de mitril" }, Items(tr))
+        A.equal("No hay solicitudes.", tr.req.empty:GetText())
+        -- (quitada, todo otra vez)
+        Click(tr.onlyCraft)
+        A.equal(4, #Rows(tr))
         A.same({}, a:Errors())
     end)
 end)
@@ -492,88 +534,142 @@ end)
 -- Aspecto
 ---------------------------------------------------------------------------
 describe("Comercio (Trade.lua): aspecto", function()
-    it("«+ Nueva solicitud», como hasta la copia 304: con su texto, teñido de verde y con letra blanca, abajo en el centro; las listas y el chat acaban por encima", function()
+    it("el interruptor (DJ.Switch, DJStyle.lua): dos mitades grandes, con borde y raya dorados; la elegida, rellena de dorado y con la letra oscura; la otra, oscura y con la letra clara", function()
         local a = F.Community()
         Observe(a)
+        local DJ = a.HU.DJ
+        local sw = DJ.Switch(a.env.UIParent, { { "a", "Uno" }, { "b", "Dos" } })
+        A.same({ 340, 34 }, { sw._w, sw._h }, "dos mitades de 170 x 34")
+        A.same({ 1, 0.82, 0, 1 }, sw._bg, "detrás, dorado: el borde y la raya entre las mitades")
+        local x, y = sw.btns.a, sw.btns.b
+        A.same({ sw, "TOPLEFT", 2, -2 }, x._pts.TOPLEFT, "la primera, dentro del borde de 2")
+        A.same({ sw, "TOPLEFT", 171, -2 }, y._pts.TOPLEFT, "la segunda, tras la raya de 2")
+        A.same({ 167, 30 }, { x._w, x._h })
+        A.same({ 16, 16 }, { x.text._fontSize, y.text._fontSize }, "letra de 16")
+        A.same({ "Uno", "Dos" }, { x:GetText(), y:GetText() })
+        for _, b in ipairs({ x, y }) do
+            A.falsy(b.picked)
+            A.same({ 0.11, 0.11, 0.13, 1 }, b.fill._fill, "sin elegir, oscura")
+            A.same({ 0.89, 0.89, 0.90 }, b.text._textColor, "con la letra clara")
+        end
+        x:Pick(true); y:SetSelected(false)
+        A.truthy(x.picked)
+        A.same({ 1, 0.82, 0, 1 }, x.fill._fill, "la elegida, dorada")
+        A.same({ 0.23, 0.16, 0 }, x.text._textColor, "con la letra oscura")
+        A.same({ 0.11, 0.11, 0.13, 1 }, y.fill._fill)
+        y:Label("Otra")
+        A.equal("Otra", y:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("arriba, el interruptor Tablón | Mis encargos en el centro, igual que el de Calendario; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha, sin pisarse (también en inglés)", function()
+        for _, locale in ipairs({ "esES", "enUS" }) do
+            local a = F.Community({ locale = locale })
+            Observe(a)
+            local L, S, T = a.HU.L, a.HU.DJ.SWITCH, a.HU.DJ.T
+            local tr = OpenTrade(a)
+            local cal = a.env.GuildUnionUnionRoster.calendar
+            local sw, search, only = tr.switch, tr.search, tr.onlyCraft
+            -- (fila 1: el interruptor, en el centro y entero dentro de la sección; sus mitades, las vistas de siempre)
+            A.same({ tr, "TOP", 0, -4 }, sw._pts.TOP)
+            A.equal(sw.btns.pub, tr.viewBtns.pub)
+            A.equal(sw.btns.priv, tr.viewBtns.priv)
+            local l, r = Span(tr, sw)
+            A.truthy(l >= 2 and r <= SECTION_W - 2, locale .. ": el interruptor cabe: de " .. l .. " a " .. r)
+            A.same({ cal, "TOP", 0, -4 }, cal.switch._pts.TOP, "el de Calendario, en el mismo sitio")
+            A.same({ sw._w, sw._h }, { cal.switch._w, cal.switch._h }, "y del mismo tamaño")
+            -- (los textos de las mitades caben, también con dos cifras de sin leer: letra de 16)
+            for _, t in ipairs({ { tr.viewBtns.pub, L("Tablón") }, { tr.viewBtns.priv, string.format(L("Mis encargos (%d)"), 99) } }) do
+                A.truthy(TextWidth(t[2], S.size) + 6 <= t[1]._w, locale .. ": «" .. t[2] .. "» cabe en su mitad")
+            end
+            -- (fila 2, debajo: el buscador a la izquierda, 220 x 28, en un recuadro con borde dorado y letra de 12)
+            A.same({ tr, "TOPLEFT", 14, -44 }, search._pts.TOPLEFT)
+            A.same({ 220, 28 }, { search._w, search._h })
+            A.truthy(-4 - sw._h > -44, "debajo del interruptor, sin pisarlo")
+            A.same({ 1, 0.82, 0, 1 }, tr.searchBox._edge, "con borde dorado")
+            A.equal("GameFontHighlight", search._fontObj)
+            -- (y la casilla a la derecha, centrada en la fila: su texto, claro y de 12, a la izquierda de la caja, lisa con
+            -- borde dorado; las texturas de la plantilla, escondidas)
+            A.same({ tr, "TOPRIGHT", -24, -44 - 28 / 2 }, only._pts.RIGHT)
+            A.same({ 1, 0.82, 0, 1 }, only._edge)
+            A.same({ 0, 0 }, { only:GetNormalTexture()._alpha, only:GetPushedTexture()._alpha })
+            A.same({ only, "LEFT", -6, 0 }, only.Text._pts.RIGHT)
+            A.equal("GameFontHighlight", only.Text._fontObj)
+            A.same({ T.text[1], T.text[2], T.text[3] }, only.Text._textColor)
+            local cl = Span(tr, only)
+            local textL = cl - 6 - TextWidth(only.Text:GetText(), 12)
+            local _, sr = Span(tr, search)
+            A.truthy(textL >= sr + 8, locale .. ": la casilla no pisa el buscador: su texto empieza en " .. textL)
+            -- (las dos filas, encima del panel de la sección, donde empiezan las listas)
+            A.truthy(-44 - search._h > tr.new:GetParent()._pts.TOPLEFT[4], "las filas no pisan el panel")
+            A.same({}, a:Errors())
+        end
+    end)
+
+    it("«+ Nueva solicitud», como hasta la copia 304, abajo: en el Tablón, en el centro; en Mis encargos, centrado debajo de la lista, y el chat de arriba abajo a la derecha, sin chocar", function()
+        local a = F.Community()
+        Observe(a)
+        local L = a.HU.L
         local tr = OpenTrade(a)
-        local new = tr.new
+        local new, del, chat = tr.new, tr.delBtn, tr.chat
         A.equal("+ Nueva solicitud", new:GetText())
         A.same({ 200, 24 }, { new._w, new._h })
         for _, k in ipairs({ "Left", "Middle", "Right" }) do A.same({ 0.45, 1, 0.45 }, new[k]._color, "teñido de verde: " .. k) end
         A.equal("GameFontHighlight", new._font, "letra blanca")
         A.is_nil(new:GetScript("OnEnter"), "al pasar el ratón, nada: ya se lee")
-        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM, "abajo, en el centro de la sección")
-        -- (va en el panel de la sección, que llega hasta abajo, para quedar encima de él)
+        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM, "Tablón: abajo, en el centro de la sección")
+        -- (va en el panel de la sección, que llega hasta abajo, para quedar encima de él; el cuerpo de las listas acaba 4
+        -- por encima)
         A.same({ tr, "BOTTOMRIGHT", -2, 2 }, new:GetParent()._pts.BOTTOMRIGHT)
-        -- (lo de encima acaba antes: el cuerpo de las listas, 4 por encima del botón, y el chat de Mis encargos, dentro)
         A.same({ tr, "BOTTOMRIGHT", 0, 8 + new._h + 4 }, tr.body._pts.BOTTOMRIGHT)
-        A.truthy(tr.chat._pts.BOTTOMRIGHT[2] >= 0, "el chat acaba dentro del cuerpo")
-        -- (clic: la ventana de pedir; buscando no sale, como antes)
-        Click(new)
-        A.truthy(a.env.GuildUnionTradeNew:IsShown())
+        -- (Mis encargos: el chat, a la derecha, desde arriba del cuerpo (debajo del buscador) hasta abajo de la sección;
+        -- la lista, a su izquierda, y el botón, centrado debajo de ella)
+        Click(tr.viewBtns.priv)
+        A.same({ tr.body, "TOPRIGHT", -24, 0 }, chat._pts.TOPRIGHT)
+        A.same({ tr, "BOTTOMRIGHT", -24, 8 }, chat._pts.BOTTOMRIGHT)
+        A.same({ chat, "LEFT", -6, 0 }, tr.req.list._pts.RIGHT)
+        local chatL = SECTION_W - 24 - chat._w
+        local listMid = (6 + chatL - 6) / 2
+        A.same({ tr, "BOTTOM", listMid - SECTION_W / 2, 8 }, new._pts.BOTTOM, "centrado debajo de la lista")
+        -- («Eliminar (N)», a su derecha, cabe antes del chat, también en inglés)
+        A.same({ new, "RIGHT", 6, 0 }, del._pts.LEFT)
+        local _, delR = Span(tr, del)
+        A.truthy(delR + 4 <= chatL, "«Eliminar (N)» no choca con el chat: acaba en " .. delR .. "; el chat empieza en " .. chatL)
+        for _, text in ipairs({ string.format(L("Eliminar (%d)"), 9), "Delete (9)" }) do
+            A.truthy(TextWidth(text, 12) + 6 <= del._w, "«" .. text .. "» cabe en su botón")
+        end
+        -- (de vuelta al Tablón, en el centro otra vez; buscando no sale, como antes; clic: la ventana de pedir)
+        Click(tr.viewBtns.pub)
+        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM)
         Search(tr, "mitril")
         A.falsy(new:IsShown())
         Search(tr, "")
         A.truthy(new:IsShown())
+        Click(new)
+        A.truthy(a.env.GuildUnionTradeNew:IsShown())
         local en = F.Community({ locale = "enUS" })
         A.equal("+ New request", OpenTrade(en).new:GetText())
         A.same({}, a:Errors())
         A.same({}, en:Errors())
     end)
 
-    it("arriba, en una línea y sin pisarse: el buscador, Tablón · Mis encargos y «Solo lo que puedo hacer»; abajo, «+ Nueva solicitud», «Eliminar (N)» y el modo prueba, a la derecha del todo (también en inglés)", function()
-        for _, locale in ipairs({ "esES", "enUS" }) do
-            local a = F.Community({ locale = locale })
-            Observe(a)
-            local L = a.HU.L
-            local tr = OpenTrade(a)
-            local search, pub, priv, only = tr.search, tr.viewBtns.pub, tr.viewBtns.priv, tr.onlyCraft
-            -- (cada uno a la derecha del anterior y a su misma altura: en una fila, la del buscador)
-            A.same({ tr, "TOPLEFT", 14, -4 }, search._pts.TOPLEFT)
-            A.same({ search, "RIGHT", 8, 0 }, pub._pts.LEFT)
-            A.same({ pub, "RIGHT", 4, 0 }, priv._pts.LEFT)
-            A.same({ priv, "RIGHT", 6, 0 }, only._pts.LEFT)
-            -- (la fila, encima del panel de la sección: las pestañas, las más altas, centradas con el buscador)
-            local rowBottom = -4 - search._h / 2 - pub._h / 2
-            A.truthy(rowBottom > tr.new:GetParent()._pts.TOPLEFT[4], "la fila no pisa el panel")
-            -- (de izquierda a derecha, sin pisarse: el marco del buscador va de 9 antes a 3 después; la casilla, con su texto,
-            -- que empieza 2 antes de su borde derecho, como en la plantilla del juego, y es de la letra pequeña, de 10)
-            local row = {}
-            local function Add(name, l, r) row[#row + 1] = { name = name, l = l, r = r } end
-            local sl, sr = Span(tr, search)
-            Add("el buscador", sl - 9, sr + 3)
-            Add("Tablón", Span(tr, pub))
-            Add("Mis encargos", Span(tr, priv))
-            local cl, cr = Span(tr, only)
-            Add("la casilla", cl, cr - 2 + TextWidth(only.Text:GetText(), 10))
-            for i = 2, #row do
-                A.truthy(row[i].l >= row[i - 1].r, locale .. ": " .. row[i].name .. " pisa " .. row[i - 1].name)
-            end
-            A.truthy(row[1].l >= 2 and row[#row].r <= SECTION_W - 6,
-                locale .. ": la fila cabe en la sección: de " .. row[1].l .. " a " .. row[#row].r .. " de " .. SECTION_W)
-            -- (el texto de cada pestaña cabe en ella, también con el número de sin leer; la letra de los botones, de 12)
-            for _, t in ipairs({ { pub, L("Tablón") }, { priv, string.format(L("Mis encargos (%d)"), 9) } }) do
-                A.truthy(TextWidth(t[2], 12) + 6 <= t[1]._w, locale .. ": «" .. t[2] .. "» cabe en su pestaña")
-            end
-            -- (abajo: «+ Nueva solicitud» en el centro, «Eliminar (N)» a su derecha y el modo prueba a la derecha del todo)
-            local new, del, test = tr.new, tr.delBtn, tr.testBtn
-            A.same({ tr, "BOTTOMRIGHT", -8, 9 }, test._pts.BOTTOMRIGHT)
-            A.same({ new, "RIGHT", 8, 0 }, del._pts.LEFT)
-            local bottom = {}
-            for _, b in ipairs({ { "«+ Nueva solicitud»", new, "+ " .. L("Nueva solicitud") },
-                { "«Eliminar (N)»", del, string.format(L("Eliminar (%d)"), 12) }, { "el modo prueba", test, L("Modo prueba") } }) do
-                local l, r = Span(tr, b[2])
-                bottom[#bottom + 1] = { name = b[1], l = l, r = r }
-                A.truthy(TextWidth(b[3], 12) + 6 <= b[2]._w, locale .. ": «" .. b[3] .. "» cabe en su botón")
-            end
-            for i = 2, #bottom do
-                A.truthy(bottom[i].l >= bottom[i - 1].r + 4, locale .. ": " .. bottom[i].name .. " pisa " .. bottom[i - 1].name)
-            end
-            A.truthy(bottom[#bottom].r <= SECTION_W - 6, locale .. ": abajo cabe")
-            -- (el modo prueba, a la altura de «+ Nueva solicitud»: centrado con él)
-            A.equal(8 + new._h / 2, 9 + test._h / 2)
-            A.same({}, a:Errors())
+    it("sin botón de modo prueba (Jorge, 24/11): lo de prueba se pone y se quita solo por código, con HU:TradeTest", function()
+        local a = F.Community()
+        local tr = OpenTrade(a)
+        A.is_nil(tr.testBtn)
+        -- (ningún botón de la sección dice «Modo prueba»)
+        local function Inside(f)
+            while f do if f == tr then return true end f = f._parent end
+            return false
         end
+        for _, fr in ipairs(a.w.frames) do
+            A.falsy(Inside(fr) and fr:GetText() == "Modo prueba", "un botón «Modo prueba» en Comercio")
+        end
+        a.HU:TradeTest(true)
+        A.equal(4, #Rows(tr), "el Tablón de prueba")
+        a.HU:TradeTest(false)
+        A.equal(0, #Rows(tr))
+        A.same({}, a:Errors())
     end)
 
     it("nombres: Tablón · Mis encargos y «Buscar receta», también en inglés (Board · My Orders, Search recipe)", function()
@@ -582,7 +678,7 @@ describe("Comercio (Trade.lua): aspecto", function()
         local tr = OpenTrade(a)
         A.same({ "Tablón", "Mis encargos" }, { tr.viewBtns.pub:GetText(), tr.viewBtns.priv:GetText() })
         A.equal("Buscar receta", tr.search.Instructions:GetText())
-        A.equal(200, tr.search._w, "más ancho")
+        A.same({ 220, 28 }, { tr.search._w, tr.search._h }, "más grande")
         A.equal("Solo lo que puedo hacer", tr.onlyCraft.Text:GetText())
         -- (al pedir: «En el tablón: Sí / No»; con No, a quién)
         tr.OpenNew(nil)
@@ -608,13 +704,14 @@ describe("Comercio (Trade.lua): aspecto", function()
         local a = F.Community()
         Observe(a)
         local tr = OpenTrade(a)
-        -- (el cuerpo de las listas: de debajo de la fila de arriba a encima de «+ Nueva solicitud»)
+        -- (el cuerpo de las listas: de debajo de las dos filas de arriba a encima de «+ Nueva solicitud»)
         local BODY = SECTION_H + tr.body._pts.TOPLEFT[4] - tr.body._pts.BOTTOMRIGHT[4]
         A.truthy(tr.req.rows[1]._h >= 22, "filas más altas que las de 18: " .. tostring(tr.req.rows[1]._h))
         A.truthy(tr.req.hdr._h >= 24, "títulos")
         A.truthy(tr.req.list._h <= BODY, "el Tablón cabe: " .. tostring(tr.req.list._h) .. " de " .. BODY)
+        A.equal(9, tr.req.n, "9 filas")
         -- (al buscar: lo publicado encima, quién lo hace debajo, con 6 entre medias)
-        Click(tr.testBtn)
+        a.HU:TradeTest(true)
         Search(tr, "Poción")
         A.equal(1, #Rows(tr))
         local both = tr.req.list._h + 6 + tr.found.list._h

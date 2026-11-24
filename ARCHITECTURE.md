@@ -3172,37 +3172,47 @@ Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el
 
 La sección Comercio de la lista de miembros (UnionRoster.lua crea `cover.trade` y llama a `HU:BuildTrade(host)`):
 pedir objetos fabricados a la unión, en el Tablón (a todos) o a alguien concreto (Mis encargos), y hablar con cada
-persona. Las pestañas se llamaban Público y Privado hasta el 24/11 (Jorge: «Tablón» y «Mis encargos»; en inglés
+persona. Las vistas se llamaban Público y Privado hasta el 24/11 (Jorge: «Tablón» y «Mis encargos»; en inglés
 «Board» y «My Orders»); por dentro siguen siendo `view = "pub"` y `"priv"`.
 **Fase 1: solo la ventana, sin red.** Nada viaja: las solicitudes (`reqs`) y los chats (`chats`) son tablas del
-archivo, solo de esta sesión (se pierden con /reload), y nadie más las ve; el «Modo prueba» la llena de datos. La red
-está prevista con los paquetes con huella: el conjunto `TR` (`Net/Packs.lua`, aún sin escribir).
-Arriba, en una sola fila (Jorge, 24/11), de izquierda a derecha: el buscador, Tablón · Mis encargos (116 de ancho,
-`TAB_W`, para que quepa «Mis encargos (2)»; cambiar borra búsqueda, elegida y marcadas) y «Solo lo que puedo hacer».
-Justo debajo, el panel de la sección (`bg`, desde -31; su borde hace de raya: la dorada de antes ya no está) con las
-listas; abajo, en el centro, «+ Nueva solicitud» (`ui.new`; no sale mientras se busca), a su derecha «Eliminar (N)» y a
-la derecha del todo «Modo prueba». El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua,
-`HU.charSearchOff`) y no Trade.lua, porque el `Sync` de BlizzTab.lua lo volvería a sacar.
-- **La fila de arriba cabe** en el ancho de la sección con la ventana del juego a su tamaño de siempre (617; la cuenta,
-  en comercio_spec): el buscador de 14 a 214 (su marco, de 5 a 217), Tablón de 222 a 338, Mis encargos de 342 a 458 y
-  la casilla desde 464, con su texto hasta unos 599 (en inglés, 581). El modo prueba no cabía sin estrechar el buscador
-  o las pestañas: va abajo. comercio_spec lo vigila con lo que mide cada texto en la letra del juego (Friz Quadrata: el
-  avance de cada letra, sacado de FRIZQT__.TTF, más un 5 %), porque el WoW de mentira no mide textos.
-- **El buscador**, más visible (Jorge, 24/11): 200 de ancho, la ayuda «Buscar receta» en gris claro (`T.muted`; la
-  del juego, gris casi negro, no se veía) y detrás un marco claro (`sbox`: fondo `row` con borde dorado a medias).
-- **«+ Nueva solicitud»**, como hasta la copia 304 (Jorge, 24/11: «como antes y abajo centrado»): el botón rojo de
-  200 x 24 con sus tres piezas teñidas de verde (0,45 · 1 · 0,45) y la letra blanca (`GameFontHighlight`), igual que
-  «+ Nuevo evento» del calendario; al pasar el ratón, nada. Va a 8 del borde de abajo y es hijo del panel para quedar
-  encima de él; el cuerpo de las listas acaba `BOTTOM_H` (36) por encima del borde, 4 por encima del botón, y el chat de
-  Mis encargos, dentro del cuerpo. «Eliminar (N)» (86 de ancho) y «Modo prueba» (96, a su misma altura) no se pisan.
-  Desde la copia 305 había sido un «+» solo arriba a la izquierda (`DJ.Plus`, ya quitado).
+archivo, solo de esta sesión (se pierden con /reload), y nadie más las ve; el modo prueba (`HU:TradeTest`, abajo) la
+llena de datos. La red está prevista con los paquetes con huella: el conjunto `TR` (`Net/Packs.lua`, aún sin escribir).
+**Qué va dónde** (Jorge, 24/11, al ver la 314 —«me parece feo y no se ven bien los botones… muy pequeño, parece
+oculto»—, eligió entre tres dibujos la «opción 3», la misma para Calendario). La sección, con la ventana del juego a su
+tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
+- **Fila 1**, en el centro (`TOP`, 0, -4): el interruptor Tablón | Mis encargos (`ui.switch`, `DJ.Switch` de
+  DJStyle.lua: 340 x 34, de 138 a 478). Sus mitades son `ui.viewBtns.pub` y `.priv` (`:SetSelected`, `:Label`,
+  `:GetText`); «Mis encargos (2)» lleva el número de sin leer. Cambiar borra búsqueda, elegida y marcadas; mientras se
+  busca, ninguna mitad está elegida.
+- **Fila 2** (de -44 a -72): a la izquierda, el buscador «Buscar receta» (14, 220 x 28, `SEARCH_W` y `ROW2_H`) en un
+  recuadro liso con borde dorado de 2 (`ui.searchBox`, `DJ.Box`) y letra de 12; el marco del juego (`Left`, `Middle`,
+  `Right`) queda escondido, la lupa a 8 del borde y el texto y la ayuda (en gris claro, `T.muted`) desde 24. A la
+  derecha, «Solo lo que puedo hacer»: la caja (24, lisa con borde dorado: `DJ.Box` en la propia casilla, con sus
+  texturas de la plantilla escondidas y la marca de siempre) a 24 del borde derecho, en 569-593, y su texto, claro y de
+  12, a su izquierda, desde unos 425 (en inglés, 447); va así, el texto delante, para que la caja quede alineada a la
+  derecha sin medir el texto.
+- **El panel** (`bg`) empieza en -76 y las listas (`ui.body`) en -80 (`BODY_Y`), hasta `BOTTOM_H` (36) por encima del
+  borde de abajo, 4 por encima de «+ Nueva solicitud». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
+  (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más). Hasta la 314 eran 10 y 4: el
+  interruptor y la segunda fila ocupan más.
+- **Abajo**, «+ Nueva solicitud» (`ui.new`; no sale mientras se busca), como hasta la copia 304 (Jorge, 24/11: «como
+  antes y abajo centrado»): el botón rojo de 200 x 24 con sus tres piezas teñidas de verde (0,45 · 1 · 0,45) y la letra
+  blanca (`GameFontHighlight`), igual que «+ Nuevo evento» del calendario; al pasar el ratón, nada. Va a 8 del borde y es
+  hijo del panel para quedar encima de él. En el Tablón, en el centro de la sección; en Mis encargos, en el de la lista
+  (`Layout`: -(24 + `CHAT_W`) / 2 = -112 del centro, en 96-296), para no chocar con el chat; a su derecha, «Eliminar (N)»
+  (80 de ancho, 6 después: 302-382, y el chat empieza en 393). Desde la copia 305 había sido un «+» solo arriba a la
+  izquierda (`DJ.Plus`, ya quitado).
+- comercio_spec vigila que nada se pise y que todo quepa, también en inglés, con lo que mide cada texto en la letra
+  del juego (Friz Quadrata: el avance de cada letra, sacado de FRIZQT__.TTF, más un 5 %), porque el WoW de mentira no
+  mide textos.
 - **Aire en las filas** (Jorge, 24/11: «las filas o el texto parece todo muy apelotonado»): filas de 24 (`ROW_H`, antes
   18), títulos de 24 (`HDR_H`), 4 de margen a cada lado del texto de cada casilla (`CELL_PAD`), rayas alternas algo más
   claras, Aceptar / Cancelar de 20 de alto y el tic y la X de 18. En el chat, 3 de aire entre líneas: su letra es una
   copia de la pequeña con espaciado (`GuildUnionTradeChatFont`), porque el marco de mensajes del juego reparte su letra
-  a cada línea. Con la ventana del juego a su alto de siempre la sección mide 366 y el cuerpo 295 (de -35 a 36 por
-  encima del borde): caben las 10 filas del Tablón (266) y, al buscar, las dos listas de 4 (278) (comercio_spec). La
-  cuenta de antes daba 355: tomaba la lista del juego donde va en la vista de chat y no contaba que lo nuestro sube 57.
+  a cada línea. El alto de la sección, 366: la cuenta de antes daba 355, porque tomaba la lista del juego donde va en la
+  vista de chat y no contaba que lo nuestro sube 57.
+El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua, `HU.charSearchOff`) y no Trade.lua, porque
+el `Sync` de BlizzTab.lua lo volvería a sacar.
 
 ### Una solicitud
 
@@ -3226,7 +3236,7 @@ la derecha del todo «Modo prueba». El «Buscar personaje» de la ventana lo es
   hacerla (`HU:CanCraft`, abajo) y al pasar el ratón dice por qué, en rojo (`WhyTip`, con el porqué en `why`); `Accept`
   lo vuelve a mirar.
 - **Mis encargos**: las que me tocan (`Involved`: mías, las que me piden y las que hago yo), menos las quitadas y las
-  públicas sin aceptar, que no tienen a nadie al otro lado. Comparte el ancho con el chat y va sin Mats para que quepa:
+  públicas sin aceptar, que no tienen a nadie al otro lado. Deja la derecha al chat y va sin Mats para que quepa:
   Con quién (`Other`, con sus líneas sin leer detrás: «(1)» en verde) · Receta / objeto · Cant. · Propina · Estado; en
   las abiertas, un tic (aceptar la que me piden; apagado y gris si no puedo hacerla, con el porqué) y una X (`Cancel`:
   cancelar la mía o rechazar la que me piden).
@@ -3242,7 +3252,7 @@ la derecha del todo «Modo prueba». El «Buscar personaje» de la ventana lo es
 
 Objeto (autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco), Cantidad
 (1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina en oro · plata · cobre (vacías: a
-negociar) y En el tablón Sí · No (de entrada, según la pestaña; con No, «Personaje»; hasta el 24/11, «Pública»).
+negociar) y En el tablón Sí · No (de entrada, según la vista; con No, «Personaje»; hasta el 24/11, «Pública»).
 «Pedir» exige el objeto, que no pase del tope y que la que no va al Tablón tenga a quién («Si no va al tablón, pon a
 quién se la pides.»), y salta al Tablón o a Mis encargos. `ui.OpenNew(nombre)` la abre privada para esa
 persona («Pedir una receta a …»). Con el comercio apagado (`tradeOff`) no se pide: `ui.OpenNew` no la abre y «Pedir»
@@ -3255,9 +3265,9 @@ juego lo conoce, los de mis bolsas, los de las solicitudes y los fabricables (Cr
 ### Buscar
 
 Sugiere objetos como al pedir; compara en texto llano (`Query`: de un enlace, su nombre). Mientras se busca no hay
-pestaña elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos de 4 filas:
+mitad del interruptor elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos de 3 filas:
 - **Publicadas**: las del Tablón que encajan por quién la pide, el objeto o quién la aceptó (`Matches`), con «Solo lo
-  que puedo hacer» si está puesta; si no hay ninguna, se esconde y «Quién lo hace» ocupa todo (10 filas).
+  que puedo hacer» si está puesta; si no hay ninguna, se esconde y «Quién lo hace» ocupa todo (8 filas).
 - **Quién lo hace** (`SearchMembers`): los de mi hermandad con una profesión cuyo nombre encaja, o con la profesión y
   el nivel de un fabricable que encaja (`CraftNeeds`), de más nivel a menos. Es aproximado: el juego da sus dos
   profesiones (`HU:ClubProfessions`), no sus recetas, y en Forever tampoco el nivel de los demás (la comunidad da 1):
@@ -3266,7 +3276,9 @@ pestaña elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos 
 
 ### Chat con cada persona y circulitos
 
-Solo en Mis encargos, a la derecha (`ui.chat`), y solo aquí: no sale en el chat normal. Uno por persona
+Solo en Mis encargos, a la derecha (`ui.chat`, 200 de ancho, `CHAT_W`), y solo aquí: no sale en el chat normal. Va de
+arriba abajo (Jorge, 24/11): desde debajo del buscador (arriba del cuerpo) hasta 8 del borde de abajo de la sección,
+donde estuvo el modo prueba; la lista, a su izquierda, y «+ Nueva solicitud», centrado debajo de ella. Uno por persona
 (`chats[nombre]`, hasta 200 líneas); elegir una solicitud lo cambia al de la otra persona (`OpenChat(Other(r))`); sin
 nadie, la caja está apagada. A un desconectado se le escribe igual (con la red, lo leería al entrar); hoy solo se añade
 aquí. Todas las líneas entran por `ChatLine`; desde fuera, por `HU:TradeChatLine(persona, quién, texto)`, que hoy
@@ -3287,8 +3299,8 @@ cuentan (así se ve en el juego).
   pasar a Mis encargos, dejar de buscar, volver a enseñarse la sección con su `OnShow`…). Aceptar en el Tablón pone su
   chat pero no se ve: sigue sin leer hasta ir a Mis encargos.
 - `HU:TradeUnread()`: el total. Con cada cambio, `HU:Changed("tradeUnread")`; lo escucha UnionRoster.lua, que hace
-  brillar la pestaña de Comercio (`TradeGlow`). La pestaña Mis encargos lleva el número (`PaintUnread`: «Mis encargos
-  (2)») y, en su lista, cada nombre el suyo (`UnreadMark`). `ClearTest` quita las de prueba.
+  brillar la pestaña de Comercio (`TradeGlow`). La mitad Mis encargos del interruptor lleva el número (`PaintUnread`:
+  «Mis encargos (2)») y, en su lista, cada nombre el suyo (`UnreadMark`). `ClearTest` quita las de prueba.
 
 ### ¿Puedo hacerlo? (`HU:CanCraft`, `ReadRecipes`)
 
@@ -3326,9 +3338,13 @@ y tus recetas). `item` es lo que pide la solicitud, un enlace o lo escrito:
 
 ### «Solo lo que puedo hacer» (`ui.onlyCraft`, `tradeOnlyCraft`)
 
-Casilla arriba, a la derecha de Tablón · Mis encargos (Jorge, 24/11; en inglés «Only what I can craft»): con ella, el
-Tablón y las publicadas al buscar solo enseñan lo que se reconoce (`CraftTargets`) y `HU:CanCraft` deja hacer; lo que no
-se sabe qué es, tampoco. Sin nada así, «En el tablón no hay nada que puedas hacer.». En Mis encargos no vale y no se ve.
+Casilla de la fila 2, a la derecha (Jorge, 24/11; en inglés «Only what I can craft»), que se ve y vale en las dos vistas
+y al buscar (`Visible`):
+- En el Tablón y en las publicadas al buscar, solo lo que se reconoce (`CraftTargets`) y `HU:CanCraft` deja hacer; lo
+  que no se sabe qué es, tampoco. Sin nada así, «En el tablón no hay nada que puedas hacer.».
+- En Mis encargos (Jorge, 24/11: también aquí), esconde los que haría yo y no puedo hacer (de otros: me los piden o los
+  acepté) según `CraftCheck`, como `HU:CanCraft`, así que lo que no se reconoce sigue (no se puede comprobar); los que
+  pedí yo (`IsMine`) se ven siempre. La ayuda de la casilla lo dice de las dos.
 Se guarda por personaje (`tradeOnlyCraft`, `OnlyCraft()`); el clic cambia lo guardado y la casilla se pone como diga,
 para que nunca vayan cada una por su lado.
 
@@ -3345,16 +3361,17 @@ para que nunca vayan cada una por su lado.
 
 ### Modo prueba y configuración
 
-«Modo prueba», abajo a la derecha, se enciende y se apaga (encendido, oscuro; `ui.testOn`). `AddTest` quita lo de
-prueba que hubiera y pone 8 solicitudes (4 públicas, 4 privadas: me piden, pido, aceptadas) y tres líneas de chat, con
-personas «-Prueba» (Pepe y Bea conectados, Lyra y Jandra no) y el enlace de verdad si el juego conoce el objeto;
-`ClearTest` lo quita todo, también sus líneas sin leer.
+Sin botón ni comando (Jorge, 24/11: «quitando el test mode»; no quiere orden escrita): `HU:TradeTest(on)` pone lo de
+prueba (`AddTest`) o lo quita (`ClearTest`), solo por código; lo usan las pruebas para tener datos (el de Calendario sí
+sigue con su botón). `AddTest` quita lo de prueba que hubiera y pone 8 solicitudes (4 públicas, 4 privadas: me piden,
+pido, aceptadas) y tres líneas de chat, con personas «-Prueba» (Pepe y Bea conectados, Lyra y Jandra no) y el enlace
+de verdad si el juego conoce el objeto; `ClearTest` lo quita todo, también sus líneas sin leer.
 `tradeOff` y `tipsOff`, en la configuración de la hermandad (`HU:UnionCfg()`, Configuración → Comercio,
 UnionConfig.lua), los cambia el maestro y de momento solo valen en su personaje; sin poner, todo activo. `tradeOff`
-deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, buscador y su marco, «Solo lo
-que puedo hacer», Tablón · Mis encargos, «Modo prueba» y «+ Nueva solicitud»), cierra la ventana de pedir y no deja
-pedir; con él, los chats no se ven (lo que llegue, sin leer). `tipsOff` quita la columna Propina
-y la propina al pedir, y no la guarda. Con `HU:Changed("unionCfg")` se repinta.
+deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, interruptor, buscador y su
+recuadro, «Solo lo que puedo hacer» y «+ Nueva solicitud»), cierra la ventana de pedir y no deja pedir; con él, los
+chats no se ven (lo que llegue, sin leer). `tipsOff` quita la columna Propina y la propina al pedir, y no la guarda. Con
+`HU:Changed("unionCfg")` se repinta.
 
 ## CraftItems.lua
 
@@ -3410,6 +3427,24 @@ que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ
 - `DJ.Window(name, parent, w, h, onClose)`: ventana DIALOG que nace escondida y se arrastra: fondo liso casi negro
   (`T.frame`) con marco de diálogo, franja de título con rayas doradas (`d.titleText`), X (`onClose` o esconderla) y
   `d.content` (panel `content`), con 44 px libres abajo para botones.
+- `DJ.Box(f, bg, border, size)`: un recuadro liso con un borde nítido de `size` px (1 si no se dice): fondo y borde con
+  `WHITE8X8`, sin el borde redondeado de tooltip. Lo usan el buscador y la casilla de Comercio, con el borde dorado.
+
+### El interruptor: `DJ.Switch`
+
+`DJ.Switch(parent, items)`: el interruptor de dos mitades de Comercio (Tablón | Mis encargos) y de Calendario (Eventos |
+Calendario), una sola pieza para que se vean idénticos. Jorge lo eligió el 24/11 entre tres dibujos (la «opción 3»),
+al ver que la fila de la 314 «no se ven bien los botones… muy pequeño, parece oculto».
+- `items`: `{ { clave, texto }, { clave, texto } }`. Da el marco (340 x 34; quien lo usa le pone el sitio) con las
+  mitades en `btns[clave]`: botones de 167 x 30 con su letra de 16 (`DJ.SWITCH.size`; la suya propia, `SetFontString`,
+  para que el juego no se la cambie al pasar el ratón), un velo blanco suave al pasar el ratón y el texto que baja un
+  poco al pulsar. Los clics los pone quien lo usa.
+- El borde y la raya: el marco entero es dorado (el del juego, 1 · 0,82 · 0) y las mitades van 2 px hacia dentro
+  (`edge`) y separadas otros 2: lo dorado que asoma alrededor y entre ellas es el borde y la raya.
+- `:Pick(on)` (y `:SetSelected(on)`, lo mismo, para Comercio): elegida, rellena de dorado con la letra oscura (`onText`,
+  0,23 · 0,16 · 0) y sin la sombra negra, que emborronaba la letra oscura; sin elegir, oscura (`off`, 0,11 · 0,11 ·
+  0,13) con la letra clara (`offText`, 0,89 · 0,89 · 0,90). `b.picked` lo dice. Puede no haber ninguna elegida
+  (Comercio, mientras se busca). `:Label(texto)` es `SetText`.
 
 ### Botones: `DJ.Button` y `DJ.PickRed`
 
@@ -3431,13 +3466,17 @@ que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ
 ### Qué hay en el archivo
 
 La sección Calendario de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
-Arriba a la derecha, «Modo prueba»; debajo, Eventos · Calendario en el centro; abajo, en el centro del panel y en las
-dos vistas, «+ Nuevo evento» (`ui.new`), como hasta la copia 304 (Jorge, 24/11: «como antes y abajo centrado»): el
-botón rojo de 200 x 24 con sus piezas teñidas de verde y la letra blanca, igual que «+ Nueva solicitud» de Comercio. Va
-a 6 del borde de abajo del panel y es hijo de él; las tarjetas, el mes y el panel del día acaban `BOTTOM_H` (34) por
-encima, 4 por encima del botón, y con la ventana del juego a su alto de siempre (la sección, 366) siguen cabiendo las
-dos filas de tarjetas y las 5 filas del día (calendario_spec). Piezas de DJStyle.lua (`HU.DJ`). Solo eventos de la
-unión: el calendario del juego no se toca.
+Arriba, en el centro (`TOP`, 0, -4), el interruptor Eventos | Calendario (`ui.switch`, `DJ.Switch`: el mismo de
+Comercio y en el mismo sitio; Jorge, 24/11, la «opción 3»: «usa ese formato también para eventos»), en lugar de los dos
+botones rojos de antes; sus mitades son `ui.viewBtns.list` y `.month` (`:Pick`). «Modo prueba», que estaba arriba a la
+derecha, sigue ahí: a 8 del borde y a la altura del interruptor (de 505 a 609; el interruptor acaba en 478). El panel de
+la sección empieza 6 por debajo del interruptor (-44; antes, -58, debajo de la segunda fila). Abajo, en el centro del
+panel y en las dos vistas, «+ Nuevo evento» (`ui.new`), como hasta la copia 304 (Jorge, 24/11: «como antes y abajo
+centrado»): el botón rojo de 200 x 24 con sus piezas teñidas de verde y la letra blanca, igual que «+ Nueva solicitud»
+de Comercio. Va a 6 del borde de abajo del panel y es hijo de él; las tarjetas, el mes y el panel del día acaban
+`BOTTOM_H` (34) por encima, 4 por encima del botón. Con la ventana del juego a su alto de siempre (la sección, 366)
+caben las dos filas de tarjetas (208 de 262) y las 5 filas del día (calendario_spec). Piezas de DJStyle.lua (`HU.DJ`).
+Solo eventos de la unión: el calendario del juego no se toca.
 - **Eventos** (`PaintCards`): los próximos (desde hace 3 h, `Upcoming`), por fecha, en tarjetas de 2 en 2 (dos filas a
   la vista): tinte del tipo, imagen, título, tipo · hora · «Nv. N+», día grande con día de la semana y mes, «por» quién
   (yo en azul, los demás en amarillo, con su hermandad a color), «N van» (tic si voy), roles, y «Apuntarme» / «Más
