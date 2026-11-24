@@ -1062,6 +1062,7 @@ end
 local search
 HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
 HU.guildDropdownOff = false -- (UnionRoster.lua: en la vista de chat no se ve el desplegable «Guild»; el buscador va a su sitio)
+HU.sideTabsEnd = false      -- (UnionRoster.lua: la última de sus pestañas de la derecha, Comercio y Calendario: la nuestra, debajo)
 HU.SyncCharSearch = function() end
 -- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
 -- dónde es (antes se abría un susurro con él: Jorge, 10/11). Para susurrar, el clic derecho
@@ -1218,8 +1219,9 @@ local function SyncTab()
     local show = f.GuildInfoTab and f.GuildInfoTab:IsShown()
     -- (debajo de la última pestaña del juego que esté a la vista: la de preferencias de juego de la
     -- hermandad va justo debajo de la de Información, y la nuestra la tapaba. Jorge, 13/11)
+    -- (y si están, debajo de las de Comercio y Calendario, que van debajo de esas: UnionRoster.lua. Jorge, 24/11)
     local prefs = f.GuildPreferredPlaySettingsTab
-    local anchor = (prefs and prefs:IsShown()) and prefs or f.GuildInfoTab
+    local anchor = HU.sideTabsEnd or ((prefs and prefs:IsShown()) and prefs or f.GuildInfoTab)
     if anchor and tab.anchoredTo ~= anchor then
         tab.anchoredTo = anchor
         tab:ClearAllPoints()
@@ -1287,13 +1289,8 @@ local function Setup()
         if f.Chat.MessageFrame then hooksecurefunc(f.Chat.MessageFrame, "Clear", OnClear) end
         if f.Chat.AddMessage then hooksecurefunc(f.Chat, "AddMessage", OnBlizzLine) end
     end
-    -- (abrirla con nuestra pestaña: si se acaba de pulsar el botón del minimapa, o con /gu tecla on)
+    -- (abrirla con nuestra pestaña, con /gu tecla on)
     f:HookScript("OnShow", function() HU.After(0.1, function() if HU:WantsTab() then SyncTab(); if tab and tab:IsShown() then ShowPanel(true) end end end) end)
-    -- (el botón del minimapa no cierra la ventana si ya está abierta: Minimap.lua)
-    local function MinimapClick() if HU.UpdateMinimapClick then HU:UpdateMinimapClick() end end
-    f:HookScript("OnShow", MinimapClick)
-    f:HookScript("OnHide", MinimapClick)
-    MinimapClick()
     SyncTab()
     if f:IsShown() and HU:WantsTab() then HU.After(0.1, function() SyncTab(); if tab and tab:IsShown() then ShowPanel(true) end end) end
     HU:Every(5, "pestana-al-dia", function()
@@ -1314,9 +1311,10 @@ end)
 -- desde nuestro código), toda la ventana quedaba «contaminada» y el juego bloqueaba lo que solo puede
 -- hacer su interfaz: cambiar el rango de un miembro (SetGuildRankOrder) o guardar una nota (SetNote).
 ---------------------------------------------------------------------------
--- ¿Hay que abrir la pestaña GuildUnion al abrirse la ventana? (botón del minimapa hace <1 s, o /gu tecla on)
+-- ¿Hay que abrir la pestaña GuildUnion al abrirse la ventana? (/gu tecla on. El botón del minimapa ya no la pide desde la
+-- 5.4.29: pulsa el de Hermandad del juego, Minimap.lua)
 function HU:WantsTab()
-    return (self.tabWantedT and GetTime() - self.tabWantedT < 1) or (self.db and self.db.keyJ) or false
+    return (self.db and self.db.keyJ) or false
 end
 function HU:OpenReduce()
     local f = Win()

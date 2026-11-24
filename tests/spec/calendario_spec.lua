@@ -92,17 +92,17 @@ end
 
 local function Click(b, ...) return b:GetScript("OnClick")(b, ...) end
 
--- (abrir una sección como el jugador: Calendario, con su entrada de la columna de comunidades; Miembros, con la pestaña
--- de miembros del juego)
+-- (abrir una sección como el jugador: Calendario, con su pestaña de la derecha; Miembros, con la pestaña de miembros del
+-- juego)
 local function Section(a, i)
     if i == 1 then
         local rt = a.env.CommunitiesFrame.RosterTab
         return rt:GetScript("OnClick")(rt)
     end
-    for _, e in ipairs(a.env.GuildUnionUnionRoster.side.entries) do
-        if e.tab == i then
-            e:GetScript("PreClick")(e)
-            return e:GetScript("PostClick")(e)
+    for _, b in ipairs(a.env.GuildUnionUnionRoster.side.tabs) do
+        if b.tab == i then
+            b:GetScript("PreClick")(b)
+            return b:GetScript("PostClick")(b)
         end
     end
 end
@@ -322,7 +322,7 @@ describe("Calendario: la sección", function()
     it("sale en la pestaña Calendario, en la vista Eventos y sin eventos", function()
         local a = Community()
         local ui, cover = Open(a)
-        A.equal("Calendario", cover.side.entries[2].text:GetText(), "su entrada, en la columna de comunidades")
+        A.equal("Calendario", cover.side.tabs[2].tooltip, "su pestaña, a la derecha")
         A.truthy(ui:IsShown())
         A.truthy(ui.viewBtns.list.picked)
         A.falsy(ui.viewBtns.month.picked)

@@ -1,4 +1,4 @@
--- Guild Union - secciones de la lista de miembros del juego (botones redondos): Miembros (todos los de la unión), Comercio y Calendario [+ARCHITECTURE.md]
+-- Guild Union - secciones de la lista de miembros del juego: Miembros (todos los de la unión), Comercio y Calendario (pestañas de la derecha) [+ARCHITECTURE.md]
 local ADDON_NAME, HU = ...
 local L = HU.L
 local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\"
@@ -7,19 +7,17 @@ HU:Saved({ account = { "unionRosterOff", "unionRosterMine" } })
 
 local ROW_H, ROWS = 18, 40
 local TAB_H, HDR_H = 34, 24
-local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus títulos, no la casilla ni el buscador
 -- (la franja de arriba, TAB_H, va justo debajo de la barra del título: lo nuestro sube ROW_UP más, y ahí queda lo del
 -- juego en su sitio (buscador, casillas, cascos, «en línea»): DROP = 0. Antes había ahí una fila de botones redondos, que
--- se quitó al pasar Comercio y Calendario a la columna de comunidades: Jorge, 24/11) [+ARCHITECTURE.md]
+-- se quitó al llevar Comercio y Calendario a otro sitio: hoy, pestañas de la derecha. Jorge, 24/11) [+ARCHITECTURE.md]
 local ROW_UP, DROP = 31, 0
 -- (vista de chat: la piedra de la franja baja INSET_EDGE más y tapa el borde de arriba del fondo del juego; el chat y su
 -- lista empiezan justo debajo, y sus bordes empiezan 7 y 3 por encima de ellos) [+ARCHITECTURE.md]
 local INSET_EDGE = 3
 local CHAT_EDGE, LIST_EDGE = 7, 3
--- (en la columna de comunidades: nuestras entradas, como las del juego (CommunitiesListEntryTemplate, ENTRY_H) pero más
--- bajas, SIDE_ROW_H, y metidas SIDE_INDENT hacia dentro; «Unirse…», de su alto)
-local SIDE_ROW_H, ENTRY_H, SIDE_GAP, SIDE_INDENT = 44, 68, 4, 16
+-- (Comercio y Calendario, pestañas de la derecha como las del juego (RightSideTabTemplate): de su tamaño y a su distancia)
+local SIDE_TAB, SIDE_TAB_GAP = 32, 20
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
 -- (la franja de esa barra, entre la columna y lo nuestro: toda oscura, de arriba abajo, con la barra por encima; mide
@@ -39,12 +37,12 @@ local COLS = {
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
--- Calendario, la nuestra (Media), entera: own = sin recortar el marco que traen los iconos del juego)
+-- Calendario, la nuestra (Media))
 local TABS = {
     { title = "Miembros", icon = "Interface/Icons/achievement_guildperk_everybodysfriend" },
-    -- (side: su nombre en la columna de comunidades, si no es el mismo. Jorge, 24/11: «se llama professions & trade»)
+    -- (side: su nombre en la pestaña de la derecha, si no es el mismo. Jorge, 24/11: «se llama professions & trade»)
     { title = "Comercio", side = "Profesiones y comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
-    { title = "Calendario", calendar = true, icon = MEDIA .. "boton-calendario", own = true },
+    { title = "Calendario", calendar = true, icon = MEDIA .. "boton-calendario" },
 }
 local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
@@ -362,8 +360,18 @@ local function OfflineBox(show)
     b:EnableMouse(show)
 end
 
+-- (marcada, la pestaña de la derecha de la sección abierta. En Comercio y Calendario, la de miembros del juego no: el
+-- juego la vuelve a marcar cada vez que pone al día sus pestañas, y se le quita otra vez (Build). Marcar no es mover ni
+-- esconder: vale también en combate) [+ARCHITECTURE.md]
+local function CheckTabs()
+    local f = Win()
+    for _, b in ipairs(cover and cover.side and cover.side.tabs or {}) do b:SetChecked(mode == "roster" and b.tab == tab) end
+    if mode == "roster" and f and type(f.RosterTab) == "table" then f.RosterTab:SetChecked(tab <= 1) end
+end
+
 local function ShowTab(i)
     tab = i
+    CheckTabs()
     if RealList() then
         -- (Miembros con «Solo mi hermandad»: la lista del juego; lo nuestro, fuera. La casilla sigue, para volver)
         cover:Hide()
@@ -371,8 +379,6 @@ local function ShowTab(i)
         return
     end
     cover.tabs.selectedTab = i
-    -- (la entrada de la sección, en la columna de comunidades, marcada como la elegida)
-    for _, e in ipairs(cover.side and cover.side.entries or {}) do e.sel:SetShown(mode == "roster" and e.tab == i) end
     local members = i == 1
     cover.hdr:SetShown(members); cover.scroll:SetShown(members); cover.status:SetShown(members)
     for _, row in ipairs(cover.rows) do if not members then row:Hide() end end
@@ -806,111 +812,66 @@ local function Build(f)
     cover.tabs = tabs
     tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
 
-    -- Comercio y Calendario, en la columna de comunidades: filas finas, con su icono pequeño y su nombre, debajo de la
-    -- hermandad y encima de «Unirse o crear comunidad» (Jorge, 24/11: opción C de cuatro que vio dibujadas; luego irán
-    -- Wanted y LFG). Botones seguros que pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve
-    -- esa vista, PostClick la abre), hijos de la columna para verse con ella. La lista del juego no se toca (si el addon
-    -- la tocara, su ficha bloquearía notas y rangos): su «Unirse…» queda transparente y debajo de las nuestras va una
-    -- igual que la pulsa (PlaceSide) [+ARCHITECTURE.md]
-    local cl = f.CommunitiesList
-    local side = { entries = {}, fromSide = false }
-    local function Secure(h)
-        local b = CreateFrame("Button", nil, cl, "SecureActionButtonTemplate")
-        b:SetHeight(h)
-        local sb = type(cl.ScrollBox) == "table" and cl.ScrollBox or cl
-        b:SetFrameLevel(sb:GetFrameLevel() + 10)
-        b:RegisterForClicks("AnyUp", "AnyDown")
-        b:SetAttribute("type", "click")
-        return b
-    end
-    -- (cada una, como una entrada del juego pero más baja: sus tiras de bluemenu-main (fondo, elegida y al pasar el ratón),
-    -- a la escala de su alto; el icono redondo con el aro dorado de las comunidades, y el nombre con su letra. Verdes,
-    -- como la hermandad (Jorge, 24/11: «que se vea más verde»): su tira verde de «elegida» siempre, floja, y fuerte en la
-    -- elegida; el nombre, en el verde del suyo) [+ARCHITECTURE.md]
-    local BAR_H = math.floor(SIDE_ROW_H * 80 / ENTRY_H + 0.5)
-    local green = _G.GREEN_FONT_COLOR
-    local function Row(text, icon, own)
-        local b = Secure(SIDE_ROW_H)
-        local function Bar(layer, sub, top, bottom)
-            local t = b:CreateTexture(nil, layer, nil, sub)
-            t:SetTexture("Interface\\Common\\bluemenu-main")
-            t:SetTexCoord(0.00390625, 0.87890625, top, bottom)
-            t:SetHeight(BAR_H); t:SetPoint("LEFT"); t:SetPoint("RIGHT")
-            return t
-        end
-        Bar("BACKGROUND", 0, 0.75195313, 0.83007813)
-        Bar("BACKGROUND", 1, 0.59179688, 0.66992188):SetAlpha(0.55)
-        b.sel = Bar("BACKGROUND", 2, 0.59179688, 0.66992188)
-        b.sel:Hide()
-        local hl = Bar("HIGHLIGHT", 0, 0.75195313, 0.83007813)
-        hl:SetBlendMode("ADD"); hl:SetAlpha(0.8)
-        local ic = b:CreateTexture(nil, "ARTWORK")
-        ic:SetTexture(icon)
-        -- (los iconos del juego traen un marco oscuro: se recorta; el nuestro va entero)
-        if not own then ic:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
-        ic:SetSize(26, 26); ic:SetPoint("LEFT", 10, 0)
-        local mask = b:CreateMaskTexture()
-        mask:SetTexture(CIRCLE_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(ic)
-        ic:AddMaskTexture(mask)
-        local ring = b:CreateTexture(nil, "OVERLAY")
-        ring:SetAtlas("communities-ring-gold"); ring:SetSize(33, 33); ring:SetPoint("CENTER", ic, "CENTER")
-        b.icon = ic
-        -- (en dos líneas si no cabe en una: «Professions & Trade»)
-        local fs = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-        fs:SetPoint("LEFT", ic, "RIGHT", 10, 0); fs:SetPoint("RIGHT", -12, 0)
-        fs:SetHeight(SIDE_ROW_H - 6)
-        fs:SetJustifyH("LEFT"); fs:SetJustifyV("MIDDLE"); fs:SetWordWrap(true)
-        if fs.SetMaxLines then fs:SetMaxLines(2) end
-        fs:SetText(text)
-        if green then fs:SetTextColor(green:GetRGB()) end
-        b.text = fs
-        return b
-    end
+    -- Comercio y Calendario, pestañas de la derecha como las del juego (Jorge, 24/11: «intentamos con botones
+    -- laterales»; antes fueron una fila de botones redondos arriba y luego entradas de la columna de comunidades): debajo
+    -- de la última del juego y encima de la de GuildUnion (BlizzTab.lua); luego irán Wanted y LFG. Botones seguros que
+    -- pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve esa vista, PostClick la abre), con
+    -- el dibujo de las del juego (RightSideTabTemplate: el marco del libro de hechizos, el icono y sus dos brillos)
+    -- [+ARCHITECTURE.md]
+    local side = { tabs = {}, fromSide = false }
     for i, t in ipairs(TABS) do
         if t.trade or t.calendar then
-            local b = Row(L(t.side or t.title), t.icon, t.own)
-            b.tab = i
+            local b = CreateFrame("CheckButton", t.trade and "GuildUnionTradeTab" or "GuildUnionCalendarTab", f, "SecureActionButtonTemplate")
+            b:SetSize(SIDE_TAB, SIDE_TAB)
+            b:SetFrameLevel(510)
+            local rim = b:CreateTexture(nil, "BORDER")
+            rim:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+            rim:SetSize(SIDE_TAB * 2, SIDE_TAB * 2); rim:SetPoint("TOPLEFT", -3, 11)
+            local ic = b:CreateTexture(nil, "ARTWORK")
+            ic:SetTexture(t.icon)
+            ic:SetSize(SIDE_TAB - 2, SIDE_TAB - 2); ic:SetPoint("CENTER")
+            ic:SetTexCoord(0.03125, 0.96875, 0.03125, 0.96875)
+            b.icon = ic
+            local glow = b:CreateTexture(nil, "HIGHLIGHT")
+            glow:SetTexture("Interface\\Buttons\\ButtonHilight-Square"); glow:SetBlendMode("ADD"); glow:SetAllPoints()
+            local picked = b:CreateTexture(nil, "OVERLAY")
+            picked:SetTexture("Interface\\Buttons\\CheckButtonHilight"); picked:SetBlendMode("ADD"); picked:SetAllPoints()
+            b:SetCheckedTexture(picked)
+            b.tooltip = L(t.side or t.title)
+            b:SetScript("OnEnter", function(s)
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetText(s.tooltip)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            b:RegisterForClicks("AnyUp", "AnyDown")
+            b:SetAttribute("type", "click")
             b:SetAttribute("clickbutton", f.RosterTab)
+            b.tab = i
             b:SetScript("PreClick", function() wantTab, side.fromSide = i, true end)
-            -- (ya en la vista de miembros, la pestaña del juego no cambia nada: la sección se abre aquí)
+            -- (ya en la vista de miembros, la pestaña del juego no cambia nada: la sección se abre aquí. Si no se llegó a
+            -- esa vista (se soltó fuera), nada queda apuntado y las marcas vuelven a ser las de antes)
             b:SetScript("PostClick", function()
                 side.fromSide = false
-                if mode ~= "roster" then return end
+                if mode ~= "roster" then wantTab = nil; CheckTabs(); return end
                 wantTab, tab = nil, i
-                PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
                 if SyncNow then SyncNow() end
             end)
-            side.entries[#side.entries + 1] = b
+            b:Hide()
+            side.tabs[#side.tabs + 1] = b
         end
     end
-    -- («Unirse o crear comunidad», como la del juego (CommunitiesListEntryTemplate: sus tiras de bluemenu-main, el «+» y el
-    -- nombre en verde): pulsa la suya, que queda transparente)
-    local join = Secure(ENTRY_H)
-    local function Bar(layer, top, bottom)
-        local t = join:CreateTexture(nil, layer)
-        t:SetTexture("Interface\\Common\\bluemenu-main")
-        t:SetTexCoord(0.00390625, 0.87890625, top, bottom)
-        t:SetHeight(80); t:SetPoint("LEFT"); t:SetPoint("RIGHT")
-        return t
-    end
-    Bar("BACKGROUND", 0.75195313, 0.83007813)
-    local jhl = Bar("HIGHLIGHT", 0.75195313, 0.83007813)
-    jhl:SetBlendMode("ADD"); jhl:SetAlpha(0.8)
-    local plus = join:CreateTexture(nil, "ARTWORK")
-    plus:SetAtlas("communities-icon-addgroupplus")
-    plus:SetSize(30, 30); plus:SetPoint("TOPLEFT", 17, -18)
-    join.text = join:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    join.text:SetPoint("LEFT", plus, "RIGHT", 13, 0); join.text:SetPoint("RIGHT", -24, 0)
-    join.text:SetJustifyH("LEFT")
-    join.text:SetText(type(_G.COMMUNITIES_JOIN_COMMUNITY) == "string" and _G.COMMUNITIES_JOIN_COMMUNITY or L("Unirse o crear una comunidad"))
-    if green then join.text:SetTextColor(green:GetRGB()) end
-    side.join = join
-    side.join:Hide()
-    -- (en Comercio y Calendario, un clic en la entrada de la hermandad vuelve al chat (Jorge, 24/11): un botón seguro
-    -- invisible encima de ella que pulsa la pestaña de chat del juego, con su brillo al pasar el ratón; en las demás vistas
-    -- no está y el clic es de la entrada. El botón derecho pasa a ella: su menú sigue) [+ARCHITECTURE.md]
-    local home = Secure(ENTRY_H)
+    -- (la de GuildUnion, debajo de la última: BlizzTab.lua)
+    HU.sideTabsEnd = side.tabs[#side.tabs] or false
+    -- (en Comercio y Calendario, un clic en la entrada de la hermandad de la columna de comunidades vuelve al chat (Jorge,
+    -- 24/11): un botón seguro invisible encima de ella que pulsa la pestaña de chat del juego, con su brillo al pasar el
+    -- ratón; en las demás vistas no está y el clic es de la entrada. El botón derecho pasa a ella: su menú sigue. La lista
+    -- del juego no se toca: si el addon la tocara, su ficha bloquearía notas y rangos) [+ARCHITECTURE.md]
+    local cl = f.CommunitiesList
+    local home = CreateFrame("Button", nil, cl, "SecureActionButtonTemplate")
+    home:SetFrameLevel((type(cl.ScrollBox) == "table" and cl.ScrollBox or cl):GetFrameLevel() + 10)
+    home:RegisterForClicks("AnyUp", "AnyDown")
+    home:SetAttribute("type", "click")
     home:SetAttribute("clickbutton", f.ChatTab)
     home:EnableMouse(true)
     if home.SetPassThroughButtons then home:SetPassThroughButtons("RightButton") end
@@ -1151,61 +1112,45 @@ local function Build(f)
     -- [+ARCHITECTURE.md]
     local clBar = type(cl.ScrollBar) == "table" and cl.ScrollBar or nil
     local clBarStrata, clBarLevel = clBar and clBar:GetFrameStrata(), clBar and clBar:GetFrameLevel()
-    -- (Comercio y Calendario, en el sitio de «Unirse…» del juego, y la nuestra igual debajo; si no es la última de la
-    -- lista o no se ve, debajo de la última entrada. La lista recicla sus marcos: el que se dejó transparente y ya no es
-    -- «Unirse…» vuelve a verse. Fuera de combate: son botones seguros) [+ARCHITECTURE.md]
-    local hiddenJoin
-    local function PlaceSide()
-        if not side.entries[1] or GameLocked() then return end
+    -- (el botón de vuelta al chat, encima de la entrada de la hermandad: la lista recicla sus marcos y los recoloca al
+    -- moverla. Fuera de combate: es un botón seguro)
+    local function PlaceHome()
+        if GameLocked() then return end
         local sb = type(cl.ScrollBox) == "table" and cl.ScrollBox or nil
-        local joinFrame, lastFrame, lastBottom, guildFrame
+        local guildFrame
         if sb and sb.ForEachFrame then
             sb:ForEachFrame(function(fr, data)
-                if type(data) == "table" and data.setJoinCommunity then joinFrame = fr end
                 local ci = type(data) == "table" and data.clubInfo
                 if type(ci) == "table" and ci.clubType == Enum.ClubType.Guild then guildFrame = fr end
-                local bottom = fr:GetBottom()
-                if type(bottom) == "number" and (not lastBottom or bottom < lastBottom) then lastFrame, lastBottom = fr, bottom end
             end)
         end
-        local atJoin = joinFrame ~= nil and joinFrame == lastFrame
         side.home:ClearAllPoints()
         if guildFrame then side.home:SetAllPoints(guildFrame) end
         side.guildFrame = guildFrame
-        if hiddenJoin and not (atJoin and hiddenJoin == joinFrame) then
-            hiddenJoin:SetAlpha(1); hiddenJoin:EnableMouse(true); hiddenJoin = nil
-        end
-        local first = side.entries[1]
-        first:ClearAllPoints()
-        if atJoin then
-            joinFrame:SetAlpha(0); joinFrame:EnableMouse(false); hiddenJoin = joinFrame
-            -- (debajo de la entrada de encima, la hermandad, y metidas hacia dentro: son suyas)
-            first:SetPoint("TOPLEFT", joinFrame, "TOPLEFT", SIDE_INDENT, -SIDE_GAP)
-            first:SetPoint("TOPRIGHT", joinFrame, "TOPRIGHT", 0, -SIDE_GAP)
-        elseif lastFrame then
-            first:SetPoint("TOPLEFT", lastFrame, "BOTTOMLEFT", SIDE_INDENT, -SIDE_GAP)
-            first:SetPoint("TOPRIGHT", lastFrame, "BOTTOMRIGHT", 0, -SIDE_GAP)
-        else
-            -- (sin marcos de la lista a la vista: donde iría su primera entrada, tras los 40 de arriba)
-            first:SetPoint("TOPLEFT", cl, "TOPLEFT", 3 + SIDE_INDENT, -40); first:SetPoint("TOPRIGHT", cl, "TOPRIGHT", -2, -40)
-        end
-        local above = first
-        for k = 2, #side.entries do
-            local e = side.entries[k]
-            e:ClearAllPoints()
-            e:SetPoint("TOPLEFT", above, "BOTTOMLEFT"); e:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT")
-            above = e
-        end
-        side.join:ClearAllPoints()
-        side.join:SetPoint("TOPLEFT", above, "BOTTOMLEFT", -SIDE_INDENT, -SIDE_GAP)
-        side.join:SetPoint("TOPRIGHT", above, "BOTTOMRIGHT", 0, -SIDE_GAP)
-        side.join:SetAttribute("clickbutton", atJoin and joinFrame or nil)
-        side.join:SetShown(atJoin)
     end
     -- (al cambiar la lista del juego, y al enseñarse la columna, otra vez en su sitio)
-    if cl.Update then hooksecurefunc(cl, "Update", function() HU.After(0, PlaceSide) end) end
-    cl:HookScript("OnShow", function() HU.After(0, PlaceSide) end)
-    -- (la pestaña de miembros del juego, pulsada en la vista de miembros —no desde nuestras entradas—: a Miembros)
+    if cl.Update then hooksecurefunc(cl, "Update", function() HU.After(0, PlaceHome) end) end
+    cl:HookScript("OnShow", function() HU.After(0, PlaceHome) end)
+    -- (las pestañas, debajo de la última del juego a la vista —la de preferencias de juego, si está; si no, la de
+    -- Información— y solo con la hermandad elegida, como esa. Fuera de combate: son botones seguros) [+ARCHITECTURE.md]
+    local function PlaceTabs()
+        if GameLocked() then return end
+        local info, prefs = f.GuildInfoTab, f.GuildPreferredPlaySettingsTab
+        local show = type(info) == "table" and info:IsShown() and true or false
+        local above = (type(prefs) == "table" and prefs:IsShown()) and prefs or info
+        for _, b in ipairs(side.tabs) do
+            if show and b.above ~= above then
+                b.above = above
+                b:ClearAllPoints()
+                b:SetPoint("TOPLEFT", above, "BOTTOMLEFT", 0, -SIDE_TAB_GAP)
+            end
+            b:SetShown(show)
+            above = b
+        end
+    end
+    -- (el juego pone al día sus pestañas al cambiar de vista o de comunidad: las nuestras, detrás)
+    if f.UpdateCommunitiesTabs then hooksecurefunc(f, "UpdateCommunitiesTabs", function() PlaceTabs(); CheckTabs() end) end
+    -- (la pestaña de miembros del juego, pulsada en la vista de miembros —no desde nuestras pestañas—: a Miembros)
     if type(f.RosterTab) == "table" then
         f.RosterTab:HookScript("OnClick", function()
             if cover.side.fromSide or mode ~= "roster" or tab == 1 then return end
@@ -1315,9 +1260,10 @@ local function Build(f)
         TopRow()
         GuildDropdown()
         ListBar(m ~= nil)
-        PlaceSide()
+        PlaceHome()
+        PlaceTabs()
         if not GameLocked() then side.home:SetShown(m == "roster" and tab >= 2 and side.guildFrame ~= nil) end
-        for _, e in ipairs(cover.side.entries) do e.sel:SetShown(m == "roster" and e.tab == tab) end
+        CheckTabs()
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
         if InCombatLockdown() then secureLater = true end

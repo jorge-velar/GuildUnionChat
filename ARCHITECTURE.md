@@ -2517,28 +2517,20 @@ al marcarla se marca a la persona)
 
 ### Qué hay en el archivo
 
-Una fila de botones redondos sobre la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
-`Blizzard_Communities`): **Chat · Miembros · Comercio · Calendario**, con imagen en vez de texto (24/11, Jorge: el
-nombre sale al pasar el ratón; `Iconize`): Chat y Miembros, las de los iconos del juego a la derecha de la ventana
-(`UI_Chat`, `achievement_guildperk_everybodysfriend`); Comercio, el martillo de herrería; Calendario, una imagen nuestra
-(`Media/boton-calendario.tga`: ningún icono del juego convenció a Jorge). Miembros es la lista de toda la unión; Comercio y
-Calendario son marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`. El buscador de personajes solo
-sale en Chat y Miembros (`HU.charSearchOff`).
+Las secciones de la vista de miembros de la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
+`Blizzard_Communities`): **Miembros**, la lista de toda la unión; **Comercio** y **Calendario**, marcos hijos de `cover`
+que llenan `HU:BuildTrade` y `HU:BuildCalendar`, y que se abren con dos pestañas de la derecha como las del juego (ver
+«Comercio y Calendario, pestañas de la derecha»). En la vista de chat, solo la franja de arriba. El buscador de
+personajes solo sale en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3 = las otras) y
+`mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no enseñaba los bancos
+de las otras hermandades y las peticiones no le llegaban a nadie; está en el historial de Git.
 
-**Los botones redondos** (24/11; Jorge eligió entre varias vistas previas el «sin aro»: ni el aro dorado del minimapa
-ni uno plateado). Cada uno es un botón sin plantilla de `ICON_SIZE` (30) separados `ICON_GAP` (10), con cinco capas:
-- el icono, recortado en círculo con la máscara de los retratos del juego (`TempPortraitAlphaMask`); a los iconos del
-  juego se les quita antes el marco oscuro que traen (`SetTexCoord` 0,08-0,92), a la imagen nuestra no (`own`);
-- un círculo negro 1 px mayor detrás (`boton-circulo`, teñido): el borde fino;
-- detrás de todo, la sombra (`boton-sombra`, teñida de negro, 2 px hacia abajo) o, si es el elegido, el brillo blanco
-  (`boton-brillo`); `PickRound` cambia una por otra;
-- al pasar el ratón, el mismo círculo en blanco sumado al 25 % (capa `HIGHLIGHT`): el icono, más claro.
-Las cuatro imágenes de `Media/boton-*.tga` las dibuja `Tools/botones_redondos.py` (64x64, sin nada que instalar). El
-halo y la sombra están medidos para `ICON_SIZE` y sobresalen `GLOW_PAD` (12) y `SHADOW_PAD` (8): si cambia el tamaño,
-se cambia también en el script y se vuelven a dibujar. Ojo al probar: una imagen nueva del addon el juego solo la
-encuentra al abrirse (con /reload no basta; sin cerrar el juego, sale un cuadrado verde). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3
-= las otras) y `mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no
-enseñaba los bancos de las otras hermandades y las peticiones no le llegaban a nadie; está en el historial de Git.
+**Cómo se llegó aquí** (24/11, todo con Jorge mirando capturas): hasta la 304, una fila de botones redondos arriba (Chat
+· Miembros · Comercio · Calendario: icono recortado en círculo, borde fino, sombra o brillo blanco; las imágenes
+`Media/boton-*.tga` las dibuja `Tools/botones_redondos.py`, y una imagen nueva del addon el juego solo la encuentra al
+abrirse: con /reload sale un cuadrado verde). De la 305 a la 309, Comercio y Calendario fueron entradas de la columna
+de comunidades, encima de «Unirse o crear comunidad», en cuatro formas que no acabaron de gustar. En la 310, pestañas de
+la derecha. De lo redondo queda la imagen del calendario (`boton-calendario`: ningún icono del juego convenció a Jorge).
 
 **La lista del juego no se toca.** Lo nuestro (`cover`) es hijo de la ventana, no de su lista, y va encima: 26 px
 más arriba (tapa sus títulos, no la casilla «Mostrar desconectados» ni el buscador) y 22 px más a la derecha
@@ -2600,8 +2592,8 @@ su ficha, como el buscador de personajes (`HU.UnionRosterPick`). Clic derecho: s
 
 `Sync` mira la vista con `IsVisible` (el `IsShown` de la casilla sigue verdadero con su lista escondida): «roster»
 si se ve la casilla de desconectados; «chat» si se ven el chat y su lista (la ventana pequeña, sin lista, no
-cuenta). Al entrar en la de chat se empieza en Chat; en la de miembros, en Miembros o en la sección pulsada en la
-columna de comunidades (`wantTab`). Corre con `OnShow`/`OnHide` de la casilla, la lista y el chat, al abrir la ventana
+cuenta). Al entrar en la de chat se empieza en Chat; en la de miembros, en Miembros o en la sección de la pestaña
+pulsada (`wantTab`). Corre con `OnShow`/`OnHide` de la casilla, la lista y el chat, al abrir la ventana
 y, en el acto, tras `SetDisplayMode`.
 `Layout`: en la de miembros, `cover` tapa la lista del juego desde justo debajo de la barra del título; en la de chat
 es solo la franja de arriba (los clics pasan al chat) y el chat y su lista se atan debajo (`ChatAnchors`); el juego
@@ -2615,8 +2607,8 @@ colocan al salir del combate (`PLAYER_REGEN_ENABLED` → `Sync`). `cover` sale s
 ### Arriba: la franja, y lo del juego en su sitio
 
 Hasta la 304 había arriba una fila de botones redondos (Chat · Miembros · Comercio · Calendario). En la 305 (Jorge,
-24/11) Comercio y Calendario pasaron a la columna de comunidades y Chat y Miembros volvieron a ser las pestañas de la
-derecha del juego, así que la fila se quitó. Queda la franja (`TAB_H`, justo debajo de la barra del título): lo nuestro
+24/11) Comercio y Calendario se fueron a otro sitio (hoy, pestañas de la derecha) y Chat y Miembros volvieron a ser las
+pestañas de la derecha del juego, así que la fila se quitó. Queda la franja (`TAB_H`, justo debajo de la barra del título): lo nuestro
 sube `TOP + ROW_UP` sobre la lista del juego y ahí está lo del juego en su sitio (`DROP` = 0, `TopRow`): el buscador
 (nuestro, atado al desplegable «Guild»), los cascos del chat de voz y, en Miembros, «Mostrar desconectados» y «Solo mi
 hermandad», las dos a la derecha (la casilla del juego, delante de la nuestra según lo que mida su texto; sube a la
@@ -2651,35 +2643,37 @@ queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porqu
   (BlizzTab.lua) baja: en `ChatAnchors` se ata al chat con los mismos 15 y 1 que le da el juego, y queda a la altura de
   la de su lista. La de la lista de la derecha, como está. Solo se cambia la esquina de arriba de cada barra.
 
-### Comercio y Calendario, en la columna de comunidades
+### Comercio y Calendario, pestañas de la derecha
 
-Como entradas del juego pero más bajas (`SIDE_ROW_H`, 44: sus tiras de `bluemenu-main` a esa escala, el icono redondo
-con el aro dorado de las comunidades y el nombre con su letra; la elegida, con su tira de «elegida»), debajo de la
-hermandad, metidas `SIDE_INDENT` (16) hacia dentro y encima de «Unirse o crear comunidad» (Jorge, 24/11; luego irán
-Wanted y LFG). Antes: en la 305, cajas del tamaño de las del juego («no me acaba de gustar»); de cuatro formas
-dibujadas (pestañas abajo, botones redondos arriba, una lista en esta columna e iconos a la derecha) eligió la lista;
-en la 306, filas finas («más grande, que se vea que es de la guild»); en la 307, filas con una línea desde el escudo de
-la hermandad y en verde («MUY feo»); y de tres esbozos eligió estas cajas pequeñas. Después, «que se vea más verde»:
-llevan siempre, floja, la tira verde de «elegida» de la hermandad (fuerte en la elegida) y el nombre en su verde. La de
-Comercio se llama «Profesiones y comercio» (`side` en `TABS`; en inglés «Professions & Trade», en dos líneas si no
-cabe).
-- En Comercio y Calendario, un clic en la entrada de la hermandad vuelve al chat (Jorge, 24/11): un botón seguro
-  invisible (`side.home`) encima de ella, que pulsa la pestaña de chat del juego, con su brillo al pasar el ratón; el
-  botón derecho pasa a la entrada (`SetPassThroughButtons`) y su menú sigue. En las demás vistas no está. `PlaceSide`
-  lo pone encima de la entrada de la hermandad (`clubType` de su club) y `Sync` lo enseña, fuera de combate. Son botones
-seguros (`SecureActionButtonTemplate`, `type=click`) que pulsan la pestaña de miembros del juego: cambiar de vista
-desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas. `PreClick` apunta la sección
-(`wantTab`); si ya se ve la vista de miembros, la pestaña no cambia nada y la abre su `PostClick`. Son hijos de la
-columna, así que se ven con ella, y la entrada de la sección abierta sale marcada (`sel`).
-- La lista del juego no se toca (si el addon la tocara, sus marcos y su ficha quedarían «tocados»): `PlaceSide` busca
-  entre sus marcos el de «Unirse…» (`setJoinCommunity`), lo deja transparente y sin clics, pone las nuestras en su
-  sitio (4 más abajo, `SIDE_GAP`) y debajo una «Unirse…» como la del juego, a todo lo ancho, en verde, que pulsa la suya (`side.join`,
-`clickbutton`). Si «Unirse…» no es la
-  última entrada o no se ve, las nuestras van debajo de la última. La lista recicla sus marcos: el que se dejó
-  transparente y ya no es «Unirse…» vuelve a verse. Corre al actualizarse la lista (`Update`), al enseñarse la
-  columna y en `Sync`, fuera de combate (son botones seguros). Con muchas comunidades la lista crece o se desplaza y
-  las nuestras pueden salirse de la columna: no se ha hecho nada para eso.
-- La pestaña de miembros del juego, pulsada ya en esa vista (no desde nuestras entradas, `side.fromSide`), vuelve a
+Dos pestañas como las del juego (Chat, Miembros, Información…), debajo de la última suya a la vista (la de preferencias
+de juego, si está; si no, la de Información) y encima de la de GuildUnion (BlizzTab.lua, `HU.sideTabsEnd`), separadas
+`SIDE_TAB_GAP` (20) como las suyas (Jorge, 24/11: «intentamos con botones laterales»; luego irán Wanted y LFG). Solo
+con la hermandad elegida, como la de Información (`PlaceTabs`). El nombre sale al pasar el ratón: «Profesiones y
+comercio» (`side` en `TABS`; en inglés «Professions & Trade») y «Calendario». Iconos: el martillo de herrería y nuestra
+imagen del calendario.
+- **El dibujo**, el de `RightSideTabTemplate` a mano: el marco del libro de hechizos (`SpellBook-SkillLineTab`, 64x64
+  desde -3, 11), el icono a 30 con su recorte, el brillo al pasar el ratón (`ButtonHilight-Square`) y el de marcada
+  (`CheckButtonHilight`). La plantilla del juego no sirve: su clic cambia de vista desde el código del addon.
+- **Son botones seguros** (`CheckButton` con `SecureActionButtonTemplate`, `type=click`) que pulsan la pestaña de
+  miembros del juego: cambiar de vista desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas.
+  `PreClick` apunta la sección (`wantTab`); si ya se ve la vista de miembros, la pestaña del juego no cambia nada y la
+  abre su `PostClick`. Si no se llega a esa vista (pulsada y soltada fuera), `PostClick` borra lo apuntado: si no, la
+  próxima vez que se pasara a Miembros saldría esa sección.
+- **Las marcas** (`CheckTabs`): la de la sección abierta, marcada; en Comercio y Calendario, la de miembros del juego
+  no. El juego la vuelve a marcar cada vez que pone al día sus pestañas (`UpdateCommunitiesTabs`, al cambiar de vista o
+  de comunidad): detrás se le quita otra vez. Marcar no es mover ni esconder: vale también en combate.
+- **En combate** no se colocan ni se enseñan (son botones seguros: `GameLocked`, al salir del combate). Por eso van
+  atadas a la pestaña del juego y la de GuildUnion a ellas, y no al revés: lo que lleva atado un botón seguro tampoco se
+  puede mover en combate, y la de GuildUnion se coloca en cualquier momento (`SyncTab`). La del juego solo la mueve el
+  juego.
+- **Cabida**: la ventana mide 426 y cada pestaña ocupa 52 (32 más 20) desde 36: caben 7. Hoy, con Información,
+  preferencias, las dos nuestras y la de GuildUnion, son 7; con Wanted y LFG habrá que juntarlas o buscar otro sitio.
+- En Comercio y Calendario, un clic en la entrada de la hermandad de la columna de comunidades vuelve al chat (Jorge,
+  24/11): un botón seguro invisible (`side.home`) encima de ella, que pulsa la pestaña de chat del juego, con su brillo al
+  pasar el ratón; el botón derecho pasa a la entrada (`SetPassThroughButtons`) y su menú sigue. En las demás vistas no
+  está. `PlaceHome` lo pone encima de la entrada de la hermandad (`clubType` de su club) al actualizarse la lista
+  (`Update`), al enseñarse la columna y en `Sync`, y `Sync` lo enseña, fuera de combate. La lista del juego no se toca.
+- La pestaña de miembros del juego, pulsada ya en esa vista (no desde nuestras pestañas, `side.fromSide`), vuelve a
   Miembros. Cambiar de sección no pide /who (24/11: al volver de Comercio a Miembros, el juego lo bloqueó dentro de ese
   clic); lo piden los títulos, las filas, la rueda y la barra (`WhoTick`).
 - Si `Blizzard_Communities` se carga en combate, todo esto se monta al salir de él (`Setup`, `setupLater`): los
