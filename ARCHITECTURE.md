@@ -2628,7 +2628,8 @@ queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porqu
 
 - **En Comercio la piedra llega hasta su panel** (`TRADE_ROCK`, 78: Jorge, 24/11, «más grande lo gris claro de arriba»):
   los botones Tablón · Mis encargos y la fila del buscador quedan enteros sobre lo gris; en las demás vistas, `TAB_H +
-  HDR_H`.
+  HDR_H`. El fondo oscuro (`cover.dark`) empieza donde acaba lo gris (`Layout`): van en la misma capa y el oscuro,
+  creado después, lo tapaba; en la 318 empezaba siempre en 58 y en Comercio seguía la franja oscura.
 - **La piedra gris** (Jorge, 24/11: «el gris claro hasta el chat y las listas»): en Miembros, Comercio y Calendario es
   la de lo nuestro (`cover.rock`, `TAB_H + HDR_H`), detrás de la franja y de los títulos. En la vista de chat esa no se
   ve (en la capa `HIGH` taparía los cascos y el «N/M en línea» del juego) y va la de abajo (`cover.band`): en el fondo

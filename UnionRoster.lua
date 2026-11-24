@@ -333,7 +333,13 @@ local function Layout()
     -- (en Comercio, hasta su panel: sus dos filas de arriba, botones y buscador, quedan enteras sobre lo gris (Jorge,
     -- 24/11: «más grande lo gris claro de arriba»). Su panel empieza 78 por debajo de lo nuestro: 2 de la sección y 76
     -- de su BODY_Y + 4, Trade.lua)
-    cover.rock:SetHeight((tab == 2) and TRADE_ROCK or (TAB_H + HDR_H))
+    local rockH = (tab == 2) and TRADE_ROCK or (TAB_H + HDR_H)
+    cover.rock:SetHeight(rockH)
+    -- (el fondo oscuro, desde donde acaba lo gris: van en la misma capa y el oscuro, creado después, lo tapaba; en la 318
+    -- Comercio seguía con la franja oscura encima de su panel. Jorge, 24/11: «esto sigue por debajo, revísalo bien»)
+    cover.dark:ClearAllPoints()
+    cover.dark:SetPoint("TOPLEFT", cover, "TOPLEFT", 0, -rockH)
+    cover.dark:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 0)
     cover.dark:SetShown(tab ~= 0)
     if cover.band then cover.band:SetShown(chatMode) end
     BoxTops(f, not chatMode)
