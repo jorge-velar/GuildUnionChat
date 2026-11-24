@@ -18,6 +18,11 @@ local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus tít
 -- casilla de desconectados, y esos bajan DROP a donde estaba la fila; lo de debajo no se mueve) [+ARCHITECTURE.md]
 local ROW_UP, DROP = 31, 34
 local INSET_EDGE = 3   -- (vista de chat: la piedra de la fila tapa el borde de arriba del fondo del juego) [+ARCHITECTURE.md]
+-- (en la vista de chat la piedra llega justo al borde del chat y de su lista, que empiezan 7 y 3 por encima de ellos: el
+-- chat baja 4 para que casen) [+ARCHITECTURE.md]
+local CHAT_EDGE, LIST_EDGE = 7, 3
+-- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
+local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
@@ -730,7 +735,7 @@ local function Build(f)
         band:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
         band:SetHorizTile(true); band:SetVertTile(true)
         band:SetPoint("TOPLEFT", cover, "TOPLEFT"); band:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
-        band:SetHeight(TAB_H + 2 + ROW_UP)
+        band:SetHeight(TAB_H + 2 + ROW_UP - LIST_EDGE)
         band:Hide()
         cover.band = band
     end
@@ -1018,7 +1023,11 @@ local function Build(f)
         if GameLocked() then return end
         placing = true
         ml:SetPoint("TOPLEFT", cover, "BOTTOMRIGHT", -161, -2 - ROW_UP)
-        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2 - ROW_UP)
+        f.Chat:SetPoint("TOPLEFT", cover, "BOTTOMLEFT", 6, -2 - ROW_UP - (CHAT_EDGE - LIST_EDGE))
+        -- (la barra del chat, arriba del todo como la de su lista (Jorge, 24/11): la franja del mensaje fijado,
+        -- BlizzTab.lua, baja los mensajes y la barra iba con ellos. Los mismos 15 y 1 que le da el juego)
+        local chatBar = type(f.Chat.ScrollBar) == "table" and f.Chat.ScrollBar or nil
+        if chatBar then chatBar:SetPoint("TOPLEFT", f.Chat, "TOPRIGHT", 15, 1) end
         placing = false
     end
     -- Arriba lo nuestro, debajo lo del juego (Jorge, 24/11): el desplegable «Guild» (con nuestro buscador, atado a él)
@@ -1059,6 +1068,16 @@ local function Build(f)
         dd:EnableMouse(not off)
     end
     if f.SelectStream then hooksecurefunc(f, "SelectStream", function() GuildDropdown() end) end
+    -- (la barra de la columna de comunidades, arriba del todo en nuestras vistas (Jorge, 24/11); en las demás, donde la
+    -- pone el juego. Solo se cambia su esquina de arriba: la de abajo sigue la suya) [+ARCHITECTURE.md]
+    local cl = type(f.CommunitiesList) == "table" and f.CommunitiesList or nil
+    local clBar = cl and type(cl.ScrollBar) == "table" and cl.ScrollBar or nil
+    local clBarUp = false
+    local function ListBar(up)
+        if not clBar or up == clBarUp then return end
+        clBarUp = up
+        clBar:SetPoint("TOPLEFT", cl, "TOPRIGHT", 6, up and LIST_BAR_Y or LIST_BAR_Y_GAME)
+    end
     -- (el juego vuelve a colocar la lista de la derecha a su aire —al actualizarla—: si está en la vista de
     -- chat con nuestra fila, se vuelve a poner debajo de la fila un instante después)
     hooksecurefunc(ml, "SetPoint", function()
@@ -1152,6 +1171,7 @@ local function Build(f)
         if m == "chat" then ChatAnchors() end
         TopRow()
         GuildDropdown()
+        ListBar(m ~= nil)
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
         if InCombatLockdown() then secureLater = true end

@@ -857,32 +857,52 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("en la vista de chat, sin el desplegable «Guild» y con la piedra de la fila hasta el chat y su lista", function()
+    it("en la vista de chat, sin «Guild» y con la piedra hasta el chat y su lista; las barras de la izquierda y del chat, arriba", function()
         local a = F.Community()
-        local dd, inset
+        local dd, inset, listBar, chatBar
         local stream = { streamId = 1, streamType = 1 }   -- (el canal de la hermandad: Enum.ClubStreamType.Guild)
+        local function Track(fr) fr.SetPoint = function(self, ...) self._pt = { ... } end end
         local f = GuildWindow(a, true, function(w)
             dd = a.env.CreateFrame("Frame", nil, w); w.StreamDropdown = dd
             dd.SetAlpha = function(self, v) self._alpha = v end
             dd.EnableMouse = function(self, v) self._mouse = v end
             inset = a.env.CreateFrame("Frame", nil, w); w.Inset = inset
+            -- (la piedra de abajo: dónde se pide y cuánto mide)
+            inset.CreateTexture = function(self)
+                local t = a.env.CreateFrame("Frame", nil, self)
+                t.SetPoint = function(s, ...) s._pts = s._pts or {}; s._pts[#s._pts + 1] = { ... } end
+                t.SetHeight = function(s, h) s._h = h end
+                return t
+            end
+            -- (las barras con flechas: la de la columna de comunidades y la del chat)
+            listBar = a.env.CreateFrame("Frame", nil, w.CommunitiesList); w.CommunitiesList.ScrollBar = listBar; Track(listBar)
+            chatBar = a.env.CreateFrame("Frame", nil, w.Chat); w.Chat.ScrollBar = chatBar; Track(chatBar)
+            Track(w.Chat)
             w.GetSelectedClubId = function() return 7 end
             w.GetSelectedStreamForClub = function() return stream end
             w.SelectStream = function() end
         end)
         local cover = a.env.GuildUnionUnionRoster
         cover.rock.SetHeight = function(self, h) self._h = h end
-        -- (la piedra de abajo va en el fondo del juego, debajo de lo suyo; en la vista de miembros, ni ella ni el desplegable)
-        A.equal(inset, cover.band:GetParent())
-        A.falsy(cover.band:IsShown())
+        -- (en la vista de miembros: la barra de las comunidades, arriba del todo; ni la piedra de abajo ni el desplegable)
+        local band = cover.band
+        A.equal(inset, band:GetParent(), "la piedra de abajo, en el fondo del juego: debajo de lo suyo")
+        A.same({ "TOPLEFT", cover, "TOPLEFT" }, band._pts[1], "desde la esquina de la fila, como su piedra")
+        A.equal(34 + 2 + 31 - 3, band._h, "hasta el borde del chat y de su lista")
+        A.falsy(band:IsShown())
         A.equal(nil, dd._alpha, "el desplegable, sin tocar")
+        A.same({ "TOPLEFT", f.CommunitiesList, "TOPRIGHT", 6, -3 }, listBar._pt, "la barra de las comunidades, arriba del todo")
+        -- (a la vista de chat)
         f.MemberList.ShowOfflineButton.visible = false
         f.Chat.visible = true
         f:GetScript("OnShow")(f)
         a.w:Advance(0.1)
-        A.truthy(cover.band:IsShown(), "la piedra baja hasta el chat")
+        A.truthy(band:IsShown(), "la piedra baja hasta el chat")
         A.equal(34 + 3, cover.rock._h, "la de la fila tapa el borde de arriba del fondo del juego")
         A.same({ 0, false }, { dd._alpha, dd._mouse }, "sin «Guild»: transparente y sin clics")
+        A.same({ "TOPLEFT", cover, "BOTTOMLEFT", 6, -2 - 31 - 4 }, f.Chat._pt, "el chat baja 4: su borde casa con el de la lista")
+        A.same({ "TOPLEFT", f.Chat, "TOPRIGHT", 15, 1 }, chatBar._pt, "la barra del chat, arriba aunque haya mensaje fijado")
+        A.same({ "TOPLEFT", f.CommunitiesList, "TOPRIGHT", 6, -3 }, listBar._pt)
         -- (en el canal de oficiales vuelve, para poder cambiar; de vuelta en el de la hermandad, fuera otra vez)
         stream = { streamId = 2, streamType = 2 }
         f:SelectStream(7, 2)
@@ -895,17 +915,16 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         f.MemberList.ShowOfflineButton.visible = true
         f.MemberList.ShowOfflineButton:GetScript("OnShow")()
         a.w:Advance(0.1)
-        A.falsy(cover.band:IsShown())
+        A.falsy(band:IsShown())
         A.equal(34 + 31 + 24 + 2, cover.rock._h)
         A.same({ 1, true }, { dd._alpha, dd._mouse })
-        -- (lo nuestro se esconde: la piedra de abajo, también)
+        -- (en otra vista del juego, sin lo nuestro: la piedra de abajo se va y la barra de las comunidades vuelve a su sitio)
         f.MemberList.ShowOfflineButton.visible = false
-        f.Chat.visible = true
-        f:GetScript("OnShow")(f)
+        f.MemberList.ShowOfflineButton:GetScript("OnHide")()
         a.w:Advance(0.1)
-        A.truthy(cover.band:IsShown())
-        cover:Hide()
-        A.falsy(cover.band:IsShown())
+        A.falsy(cover:IsShown())
+        A.falsy(band:IsShown())
+        A.same({ "TOPLEFT", f.CommunitiesList, "TOPRIGHT", 6, -45 }, listBar._pt)
         A.same({}, a:Errors())
     end)
 

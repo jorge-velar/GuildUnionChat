@@ -2633,11 +2633,20 @@ cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los 
 - **La vista de chat, como la de miembros** (Jorge, 24/11): sin el desplegable «Guild» y con la piedra gris de la fila
   hasta el chat y su lista. La piedra de abajo (`cover.band`) va en el fondo de la ventana del juego (`f.Inset`, capa
   `BACKGROUND` 1, encima de su mármol oscuro): así quedan por encima los cascos y el «N/M en línea» del juego, que en la
-  capa `HIGH` de lo nuestro quedarían tapados. Empieza en la esquina de la fila, como `cover.rock`, para que las dos
-  piedras casen sin costura, y llega a la altura del chat y de su lista (`TAB_H + 2 + ROW_UP`, la cuenta de
-  `ChatAnchors`). El borde de arriba de ese fondo se vería como una raya justo debajo de la fila: `cover.rock` baja
-  `INSET_EDGE` (3) más y lo tapa. Se ve solo en la vista de chat (`Layout`) y se va con lo nuestro (`OnHide` de
-  `cover`). El desplegable no se esconde (lo lleva el juego, `SetShown` por vista): queda transparente y sin clics
+  capa `HIGH` de lo nuestro quedarían tapados. Empieza en la misma esquina que `cover.rock`, para que las dos
+  piedras casen sin costura, y llega justo al borde del chat y de su lista, no más (en la 301 bajaba hasta el chat
+  mismo y se veía piedra dentro de su borde y en los huecos de las flechas: «te has pasado un poco»). Los bordes del
+  juego empiezan 7 por encima del chat y 3 por encima de su lista (`CHAT_EDGE`, `LIST_EDGE`): en `ChatAnchors` el chat
+  baja 4 para que los dos casen, y la piedra mide `TAB_H + 2 + ROW_UP - LIST_EDGE`. El borde de arriba de ese fondo
+  se vería como una raya justo debajo de la fila: `cover.rock` baja `INSET_EDGE` (3) más y lo tapa. Se ve solo en la
+  vista de chat (`Layout`) y se va con lo nuestro (`OnHide` de `cover`).
+- **Las barras con flechas** (Jorge, 24/11: «la 1 la subes hasta arriba, la 2 la subes y la 3 la mantienes»): la de la
+  columna de comunidades (`CommunitiesList.ScrollBar`) el juego la pone 45 por debajo de la columna y, al lado de la
+  piedra, su flecha de arriba se veía suelta en todas las pestañas: en nuestras vistas su esquina de arriba sube a 3
+  (`ListBar` en `Sync`, `LIST_BAR_Y`); en las demás, vuelve a la del juego. La del chat iba atada a los mensajes, que la
+  franja del mensaje fijado (BlizzTab.lua) baja: en `ChatAnchors` se ata al chat con los mismos 15 y 1 que le da el
+  juego, y queda a la altura de la de su lista. La de la lista de la derecha, como está. Solo se cambia la esquina de
+  arriba de cada barra (la de abajo sigue la del juego). El desplegable no se esconde (lo lleva el juego, `SetShown` por vista): queda transparente y sin clics
   (`GuildDropdown`, en `Sync` y tras `SelectStream`), y solo en el canal de la hermandad: en el de oficiales o en una
   comunidad se ve, para poder cambiar de canal (si no, quien lo tuviera en oficiales no podría volver).
 - Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
