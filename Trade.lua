@@ -4,7 +4,15 @@
 local _, HU = ...
 local L = HU.L
 
-local ROW_H, ROWS = 18, 10
+-- (las recetas de cada profesión, leídas al abrir su ventana, y la casilla «Solo lo que puedo hacer»)
+HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft" } })
+
+-- (filas y títulos de 24, con 4 de margen a cada lado del texto: Jorge, 24/11, «muy apelotonado». Caben en la sección
+-- con la ventana del juego a su alto de siempre: comercio_spec)
+local ROW_H, ROWS = 24, 10
+local HDR_H, CELL_PAD = 24, 4
+local TAB_W = 120           -- Tablón · Mis encargos (con el número de sin leer: «Mis encargos (2)»)
+local PLUS = 26             -- el «+» de pedir (DJ.Plus)
 local SEARCH_ROWS = 4       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
 local MAX_OPEN = 5          -- solicitudes abiertas por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
@@ -27,7 +35,7 @@ local function Tab(parent, text, w)
     return b
 end
 
--- Columnas: en Público, con materiales; en Privado (más estrecha, con el chat al lado), sin ellos
+-- Columnas: en el Tablón, con materiales; en Mis encargos (más estrecha, con el chat al lado), sin ellos
 local COLS = {
     pub = { { "who", "Quién", 100 }, { "item", "Receta / objeto", 170 }, { "qty", "Cant.", 40 }, { "mats", "Mats", 44 }, { "tip", "Propina", 66 }, { "state", "Estado", 0 },
         { "act", "Acción", ACT_W + 6 } },
@@ -38,14 +46,16 @@ local COLS = {
 -- (en la sesión: fase 1, sin red)
 local reqs = {}             -- { id, who, item, mats, tip, state = "open"|"taken"|"done"|"gone", taker, pub, to, t, test }
 local chats = {}            -- [persona] = { líneas }: uno por persona
+local unread = {}           -- [persona] = sus líneas sin leer (llegadas con su chat fuera de la pantalla)
 local chatKey
-local view = "pub"
+local view = "pub"          -- "pub": el Tablón; "priv": Mis encargos
 local sortKey, sortDesc     -- nil: lo más nuevo arriba; si no, por esa columna (clic en su título), si la vista la tiene
-local PUB_KEEP = 600        -- una aceptada sigue 10 min en el tablón de Público
+local PUB_KEEP = 600        -- una aceptada sigue 10 min en el Tablón
 local selected
-local picks = {}            -- Privado: las elegidas con Ctrl / Mayús (para eliminar varias)
+local picks = {}            -- Mis encargos: las elegidas con Ctrl / Mayús (para eliminar varias)
 local lastPick              -- la última elegida (para Mayús)
 local ui
+local Paint
 
 local function Me() return HU:Me() or "?" end
 local function IsMine(r) return r.who == Me() end
@@ -101,7 +111,40 @@ end
 local function Involved(r) return IsMine(r) or r.to == Me() or r.taker == Me() end
 
 ---------------------------------------------------------------------------
--- Chat (derecha, solo en Privado): el de la persona del comercio que eliges. Solo se ve aquí
+-- Sin leer: las líneas de otro que llegan con su chat fuera de la pantalla [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (¿se ve ahora el chat con esa persona? la sección a la vista, en Mis encargos sin buscar y con su chat puesto)
+local function ChatOnScreen(key)
+    return ui ~= nil and key ~= nil and key == chatKey and view == "priv" and ui:IsVisible() and not Searching()
+        and not HU:UnionCfg().tradeOff
+end
+-- Cuántas líneas hay sin leer, entre todos los chats (UnionRoster.lua hace brillar la pestaña de Comercio)
+function HU:TradeUnread()
+    local n = 0
+    for _, c in pairs(unread) do n = n + c end
+    return n
+end
+-- (la pestaña Mis encargos, con el número: «Mis encargos (2)»)
+local function PaintUnread()
+    local b = ui and ui.viewBtns and ui.viewBtns.priv
+    if not b then return end
+    local n = HU:TradeUnread()
+    b:Label(n > 0 and string.format(L("Mis encargos (%d)"), n) or L("Mis encargos"))
+end
+local function MarkRead(key)
+    if not (key and unread[key]) then return end
+    unread[key] = nil
+    PaintUnread()
+    HU:Changed("tradeUnread")
+end
+-- (detrás del nombre en Mis encargos: cuántas suyas hay sin leer)
+local function UnreadMark(key)
+    local n = key and unread[key]
+    return n and (" |cff40ff40(" .. n .. ")|r") or ""
+end
+
+---------------------------------------------------------------------------
+-- Chat (derecha, solo en Mis encargos): el de la persona del comercio que eliges. Solo se ve aquí
 ---------------------------------------------------------------------------
 local function ChatLine(key, who, text)
     chats[key] = chats[key] or {}
@@ -110,7 +153,15 @@ local function ChatLine(key, who, text)
     l[#l + 1] = line
     if #l > 200 then table.remove(l, 1) end
     if key == chatKey and ui then ui.msgs:AddMessage(line) end
+    -- (de otro y con su chat fuera de la pantalla: sin leer; nunca más de las que guarda el chat)
+    if who ~= Me() and not ChatOnScreen(key) then
+        unread[key] = math.min(#l, (unread[key] or 0) + 1)
+        PaintUnread()
+        HU:Changed("tradeUnread")
+    end
 end
+-- Una línea en el chat con `key`: hoy, las mías y las del modo prueba; con la red, también las que lleguen
+function HU:TradeChatLine(key, who, text) ChatLine(key, who, text) end
 
 local function OpenChat(key)
     chatKey = key
@@ -122,6 +173,7 @@ local function OpenChat(key)
     end
     ui.chatTitle:SetText(key and (OTHERS .. HU:Short(key) .. "|r " .. Dot(key)) or ("|cff808080" .. L("Elige un comercio para hablar") .. "|r"))
     for _, line in ipairs(key and chats[key] or {}) do ui.msgs:AddMessage(line) end
+    if ChatOnScreen(key) then MarkRead(key) end
 end
 
 ---------------------------------------------------------------------------
@@ -226,6 +278,150 @@ local function SearchMembers(q)
 end
 
 ---------------------------------------------------------------------------
+-- ¿Puedo hacerlo? Mis profesiones (el juego las da siempre) y mis recetas (solo con la ventana de la profesión abierta:
+-- se guardan al abrirla) [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (el nombre de cada profesión de CraftItems.lua, para decir cuál te falta)
+local PROF_NAMES = { [129] = "Primeros auxilios", [164] = "Herrería", [165] = "Peletería", [171] = "Alquimia",
+    [185] = "Cocina", [186] = "Minería", [197] = "Sastrería", [202] = "Ingeniería", [333] = "Encantamiento" }
+
+-- (los fabricables por su número: [objeto] o ["s" .. hechizo] = { { id, spell, skill, lv }, ... }, uno por profesión
+-- que lo hace y en orden de profesión; se monta la primera vez que hace falta)
+local craftIndex
+local function CraftIndex()
+    if craftIndex then return craftIndex end
+    craftIndex = {}
+    for _, src in ipairs({ { HU.CRAFT_ITEMS, false }, { HU.CRAFT_SPELLS, true } }) do
+        for skill, list in pairs(type(src[1]) == "table" and src[1] or {}) do
+            for i = 1, #list - 1, 2 do
+                local k = src[2] and ("s" .. list[i]) or list[i]
+                craftIndex[k] = craftIndex[k] or {}
+                table.insert(craftIndex[k], { id = list[i], spell = src[2], skill = skill, lv = list[i + 1] })
+            end
+        end
+    end
+    for _, e in pairs(craftIndex) do table.sort(e, function(a, b) return a.skill < b.skill end) end
+    return craftIndex
+end
+
+-- (lo que pide una solicitud, entre los fabricables: su lista de CraftIndex, o nil si no se reconoce. Un enlace de
+-- objeto o de encantamiento, por su número; lo escrito a mano, por el nombre exacto que da el juego)
+local function CraftTargets(item)
+    if type(item) ~= "string" or HU.Secret(item) then return nil end
+    local idx = CraftIndex()
+    local id = item:match("|Hitem:(%d+)")
+    if id then return idx[tonumber(id)] end
+    id = item:match("|Hspell:(%d+)") or item:match("|Henchant:(%d+)")
+    if id then return idx["s" .. id] end
+    local name = Plain(item):lower():gsub("^%s*%[", ""):gsub("%]%s*$", "")
+    for k, c in pairs(craft) do if c.key == name then return idx[k] end end
+    return nil
+end
+
+-- (mis profesiones: [número] = nivel; false si el juego no las da: entonces no se puede comprobar)
+local function Pack(...) return { n = select("#", ...), ... } end
+local function MyProfessions()
+    if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then return false end
+    local res = Pack(pcall(GetProfessions))
+    if not res[1] then return false end
+    local out = {}
+    for i = 2, res.n do
+        if type(res[i]) == "number" then
+            -- (nombre, icono, nivel, máximo, hechizos, desplazamiento, número de profesión…)
+            local ok, _, _, rank, _, _, _, skill = pcall(GetProfessionInfo, res[i])
+            if ok and type(skill) == "number" and not HU.Secret(skill) then
+                out[skill] = (type(rank) == "number" and not HU.Secret(rank)) and rank or 0
+            end
+        end
+    end
+    return out
+end
+
+-- Si puedo hacer lo que pide `item` (un enlace o lo escrito): ok y, si no, el porqué. Lo que no se reconoce, o sin poder
+-- leer mis profesiones, sí: no se puede comprobar. `profs`: las de MyProfessions [+ARCHITECTURE.md]
+local function CraftCheck(item, profs)
+    local targets = CraftTargets(item)
+    if not (targets and profs) then return true end
+    local saved = (HU.db and HU.db.tradeRecipes) or {}
+    local why
+    for _, t in ipairs(targets) do
+        local rank = profs[t.skill]
+        if rank then
+            local rec = saved[t.skill]
+            local known = type(rec) == "table" and rec[t.spell and "spells" or "items"]
+            if type(known) == "table" and known[t.id] then return true end
+            if rank < t.lv then why = why or string.format(L("Te falta nivel (%d)"), t.lv)
+            elseif type(rec) == "table" and rec.full then why = why or L("No tienes la receta")
+            else return true end
+        end
+    end
+    return false, why or string.format(L("Te falta %s"), L(PROF_NAMES[targets[1].skill] or "?"))
+end
+function HU:CanCraft(item) return CraftCheck(item, MyProfessions()) end
+
+-- Recetas: al abrir la ventana de una profesión mía, las aprendidas (su número, que es el del hechizo, y el objeto que
+-- crean) se guardan por personaje en `tradeRecipes[profesión]`. Con un filtro puesto en esa ventana la lista no viene
+-- entera: se suman a las de antes y no cuenta como leída entera (`full`) [+ARCHITECTURE.md]
+local RECIPE_FILTERS = { "GetOnlyShowMakeableRecipes", "GetOnlyShowSkillUpRecipes", "GetOnlyShowFirstCraftRecipes",
+    "AreAnyInventorySlotsFiltered", "AnyRecipeCategoriesFiltered" }
+-- (una función de C_TradeSkillUI, si el juego la tiene; nil si no o si falla)
+local function TS(fn, ...)
+    local f = C_TradeSkillUI and C_TradeSkillUI[fn]
+    if type(f) ~= "function" then return nil end
+    local ok, v = pcall(f, ...)
+    if ok and not HU.Secret(v) then return v end
+    return nil
+end
+local function Unfiltered()
+    for _, fn in ipairs(RECIPE_FILTERS) do if TS(fn) then return false end end
+    local text = TS("GetRecipeItemNameFilter")
+    return TS("GetShowLearned") ~= false and not (type(text) == "string" and text ~= "")
+end
+local readQueued
+local function ReadRecipes()
+    readQueued = nil
+    local db = HU.db
+    if not db or TS("IsTradeSkillReady") == false or TS("IsDataSourceChanging") then return end
+    -- (la de otro (enlazada o de la hermandad) o la de un PNJ no es la mía)
+    if TS("IsTradeSkillLinked") or TS("IsTradeSkillGuild") or TS("IsTradeSkillGuildMember") or TS("IsNPCCrafting") then return end
+    local info = TS("GetChildProfessionInfo")
+    if type(info) ~= "table" or not info.professionID or info.professionID == 0 then info = TS("GetBaseProfessionInfo") end
+    local skill = type(info) == "table" and (info.parentProfessionID or info.professionID)
+    if type(skill) ~= "number" or skill == 0 then return end
+    local ids, full = TS("GetAllRecipeIDs"), true
+    if type(ids) ~= "table" then ids, full = TS("GetFilteredRecipeIDs"), Unfiltered() end
+    if type(ids) ~= "table" then return end
+    local items, spells = {}, {}
+    for _, id in ipairs(ids) do
+        local r = TS("GetRecipeInfo", id)
+        if type(r) == "table" and r.learned == true then
+            spells[id] = true
+            local s = TS("GetRecipeSchematic", id, false)
+            if type(s) == "table" and type(s.outputItemID) == "number" then items[s.outputItemID] = true end
+        end
+    end
+    -- (ninguna aprendida: la ventana aún no las ha dado; no se pisa lo guardado)
+    if next(spells) == nil then return end
+    db.tradeRecipes = db.tradeRecipes or {}
+    local old = db.tradeRecipes[skill]
+    if not full and type(old) == "table" then
+        for k in pairs(old.items or {}) do items[k] = true end
+        for k in pairs(old.spells or {}) do spells[k] = true end
+        full = old.full
+    end
+    db.tradeRecipes[skill] = { t = time(), full = full or nil, items = items, spells = spells }
+    if ui and ui:IsShown() then Paint() end
+end
+-- (la ventana avisa varias veces seguidas al abrirse y con cada cambio: se lee una vez, un momento después)
+local function QueueRead()
+    if readQueued then return end
+    readQueued = true
+    HU.After(0.3, ReadRecipes)
+end
+HU:On("TRADE_SKILL_SHOW", QueueRead)
+HU:On("TRADE_SKILL_LIST_UPDATE", QueueRead)
+
+---------------------------------------------------------------------------
 -- Solicitudes
 ---------------------------------------------------------------------------
 local function StateText(r)
@@ -241,10 +437,16 @@ local function Matches(r, q)
     return false
 end
 
-local function Visible()
+-- (¿está puesta «Solo lo que puedo hacer»? vale en el Tablón y en las publicadas al buscar)
+local function OnlyCraft() return HU.db ~= nil and HU.db.tradeOnlyCraft == true end
+
+-- (profs: las de MyProfessions, si ya están leídas)
+local function Visible(profs)
     local out = {}
     local q = Searching() and Query()
     local priv = view == "priv" and not q
+    local only = not priv and OnlyCraft()
+    if only and profs == nil then profs = MyProfessions() end
     for i = #reqs, 1, -1 do
         local r = reqs[i]
         local ok
@@ -252,19 +454,21 @@ local function Visible()
             ok = r.pub == true and (r.state == "open" or (r.state == "taken" and time() - (r.takenAt or 0) < PUB_KEEP))
                 and Matches(r, q)
         elseif view == "pub" then
-            -- (Público: las públicas abiertas y, 10 min más, las aceptadas, con quién la aceptó)
+            -- (Tablón: las públicas abiertas y, 10 min más, las aceptadas, con quién la aceptó)
             ok = r.pub == true and (r.state == "open" or (r.state == "taken" and time() - (r.takenAt or 0) < PUB_KEEP))
         else
-            -- (Privado: las que me tocan: las mías, las que me piden a mí y las que hago yo)
-            -- (una pública sin aceptar no tiene a nadie al otro lado: solo sale en Público)
+            -- (Mis encargos: las que me tocan: las mías, las que me piden a mí y las que hago yo)
+            -- (una pública sin aceptar no tiene a nadie al otro lado: solo sale en el Tablón)
             ok = Involved(r) and not r.closed and not (r.pub and r.state == "open")
         end
+        -- (con la casilla: solo lo que se reconoce y puedo hacer)
+        if ok and only then ok = CraftTargets(r.item) ~= nil and (CraftCheck(r.item, profs)) end
         if ok and r.state ~= "gone" then out[#out + 1] = r end
     end
     if sortKey then
         local STATE = { open = 1, taken = 2, done = 3 }
         local function V(r)
-            -- (Quién: lo que enseña la columna; en Privado, la otra persona)
+            -- (Quién: lo que enseña la columna; en Mis encargos, la otra persona)
             if sortKey == "who" then return (priv and Other(r) or r.who or ""):lower() end
             if sortKey == "item" then return Plain(r.item):lower() end
             if sortKey == "mats" then return r.mats and 1 or 0 end
@@ -293,11 +497,10 @@ local function OpenCount()
     return n
 end
 
-local Paint
-
--- Aceptar una de otro: la haces tú (sigue en Público con tu nombre, y aparece en tu Privado con su chat)
+-- Aceptar una de otro: la haces tú (sigue en el Tablón con tu nombre, y aparece en tus encargos con su chat). Solo si
+-- puedes hacerla (HU:CanCraft): el botón ya sale apagado
 local function Accept(r)
-    if IsMine(r) or r.state ~= "open" then return end
+    if IsMine(r) or r.state ~= "open" or not HU:CanCraft(r.item) then return end
     r.state, r.taker, r.takenAt = "taken", Me(), time()
     OpenChat(r.who)
     Paint()
@@ -310,7 +513,7 @@ end
 
 -- (una solicitud por su id)
 local function FindReq(id) for _, r in ipairs(reqs) do if r.id == id then return r end end end
--- (eliminar de mi Privado: la mía sin aceptar se cancela; las demás solo se quitan de mi lista)
+-- (eliminar de Mis encargos: la mía sin aceptar se cancela; las demás solo se quitan de mi lista)
 local function RemoveReq(r)
     if IsMine(r) and r.state == "open" then r.state = "gone" else r.closed = true end
 end
@@ -320,7 +523,7 @@ local function MarkDone(r)
     if CanMarkDone(r) then r.state = "done"; Paint() end
 end
 
--- Clic derecho en una fila: la otra persona (susurrar, invitar al grupo); en Privado, marcarla como hecha (si la
+-- Clic derecho en una fila: la otra persona (susurrar, invitar al grupo); en Mis encargos, marcarla como hecha (si la
 -- hago yo y está aceptada) y eliminarla; en la búsqueda, pedirle una receta; y Cancelar (cierra el menú)
 local function RowMenu(owner, r)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
@@ -379,7 +582,7 @@ local function Columns(lst, cols, width)
             h:SetText(col[2] ~= "" and (L(col[2]) .. arrow) or "")
             for _, row in ipairs(lst.rows) do
                 local c = row.cells[i]
-                c:Show(); c:ClearAllPoints(); c:SetPoint("LEFT", row, "LEFT", x + 3, 0); c:SetWidth(w - 4)
+                c:Show(); c:ClearAllPoints(); c:SetPoint("LEFT", row, "LEFT", x + CELL_PAD, 0); c:SetWidth(w - 2 * CELL_PAD)
             end
             x = x + w
         else
@@ -394,10 +597,10 @@ local function Titled(lst, text)
     lst.hdr:ClearAllPoints()
     lst.hdr:SetPoint("TOPLEFT", lst.list, "TOPLEFT", 0, text and -14 or 0); lst.hdr:SetPoint("RIGHT", lst.list, "RIGHT", 0, 0)
     lst.scroll:SetHeight(lst.n * ROW_H)
-    lst.list:SetHeight((text and 14 or 0) + 24 + lst.n * ROW_H)
+    lst.list:SetHeight((text and 14 or 0) + HDR_H + 2 + lst.n * ROW_H)
 end
 
--- (las columnas de la lista de solicitudes: las de Privado o, en Público y al buscar, las de Público; sin
+-- (las columnas de la lista de solicitudes: las de Mis encargos o, en el Tablón y al buscar, las del Tablón; sin
 -- propinas, sin la suya)
 local function ReqCols()
     local cols = (view == "priv" and not Searching()) and COLS.priv or COLS.pub
@@ -407,20 +610,20 @@ local function ReqCols()
     return out
 end
 
--- En Privado, con el chat a la derecha; en Público, a todo lo ancho. Al buscar: arriba las publicadas que
--- encajan y abajo quién lo hace [+ARCHITECTURE.md]
-local function Layout(cols)
+-- En Mis encargos, con el chat a la derecha; en el Tablón, a todo lo ancho. Al buscar: arriba las publicadas que
+-- encajan y abajo quién lo hace [+ARCHITECTURE.md]. `list`: las solicitudes que se ven (Visible)
+local function Layout(cols, list)
     local searching = Searching()
     local priv = view == "priv" and not searching
     local req, found = ui.req, ui.found
-    -- (en Privado, el chat siempre a la derecha)
+    -- (en Mis encargos, el chat siempre a la derecha)
     local withChat = priv
     ui.chat:SetShown(withChat)
     req.list:ClearAllPoints()
     req.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0)
     if withChat then req.list:SetPoint("RIGHT", ui.chat, "LEFT", -6, 0)
     else req.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0) end
-    local noPub = searching and #Visible() == 0
+    local noPub = searching and #list == 0
     req.list:SetShown(not noPub)
     req.n = searching and SEARCH_ROWS or ROWS
     Titled(req, searching and L("Publicadas") or nil)
@@ -464,15 +667,24 @@ function Paint()
     for _, w in ipairs(ui.onlyOn) do w:SetShown(not off) end
     if off then ui.newDlg:Hide(); return end
     BuildOnline()
-    for k, b in pairs(ui.viewBtns) do b:SetSelected(k == view and not Searching()) end
-    -- (se ordena por una columna de la vista: si esta no la tiene (Mats y Acción solo están en Público; sin propinas,
+    local searching = Searching()
+    -- (el chat que queda en pantalla, leído; antes de pintar las filas, que llevan lo de cada uno)
+    if ChatOnScreen(chatKey) then MarkRead(chatKey) end
+    PaintUnread()
+    for k, b in pairs(ui.viewBtns) do b:SetSelected(k == view and not searching) end
+    -- (se ordena por una columna de la vista: si esta no la tiene (Mats y Acción solo están en el Tablón; sin propinas,
     -- tampoco la suya), vuelve a lo más nuevo arriba)
     local cols = ReqCols()
     local sorted = false
     for _, col in ipairs(cols) do if col[1] == sortKey then sorted = true end end
     if not sorted then sortKey, sortDesc = nil, nil end
-    Layout(cols)
-    local searching = Searching()
+    local profs = MyProfessions()
+    ui.lastList = Visible(profs)
+    Layout(cols, ui.lastList)
+    -- («Solo lo que puedo hacer»: en el Tablón y al buscar, que es donde vale)
+    local only = OnlyCraft()
+    ui.onlyCraft:SetChecked(only)
+    ui.onlyCraft:SetShown(view == "pub" or searching)
     if searching then
         ui.found.empty:SetText(L("Nadie de tu hermandad lo hace (profesión u objeto fabricable). Otras hermandades, con la red."))
         PaintRows(ui.found, SearchMembers(Query()), function(row, e)
@@ -483,8 +695,8 @@ function Paint()
             c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof); c[4]:SetText(tostring(e.rank))
         end)
     end
-    ui.req.empty:SetText(searching and L("Ninguna solicitud publicada encaja.") or L("No hay solicitudes."))
-    ui.lastList = Visible()
+    ui.req.empty:SetText(searching and L("Ninguna solicitud publicada encaja.")
+        or (view == "pub" and only and L("En el tablón no hay nada que puedas hacer.")) or L("No hay solicitudes."))
     local nPicks = 0
     for _ in pairs(picks) do nPicks = nPicks + 1 end
     ui.delBtn:SetShown(view == "priv" and not searching and nPicks > 0)
@@ -510,14 +722,23 @@ function Paint()
             elseif mine then
                 row.cancel:Show()
             elseif r.state == "open" then
+                -- (apagado si no puedo hacerla: el porqué, al pasar el ratón)
+                local can, why = CraftCheck(r.item, profs)
+                row.accept:SetEnabled(can); row.accept.why = why
                 row.accept:Show()
             end
         else
+            -- (la otra persona, con cuántas suyas hay sin leer)
             local other = Other(r)
-            v.who = (mine and MINE or OTHERS) .. HU:Short(other) .. "|r " .. Dot(other)
-            -- (solo en las abiertas: el tic para aceptarla —si me la piden a mí— y la X para cancelarla —mía—
-            -- o rechazarla; las aceptadas, sin nada)
-            row.yes:SetShown(r.state == "open" and not mine)
+            v.who = (mine and MINE or OTHERS) .. HU:Short(other) .. "|r " .. Dot(other) .. UnreadMark(other)
+            -- (solo en las abiertas: el tic para aceptarla —si me la piden a mí y puedo hacerla— y la X para
+            -- cancelarla —mía— o rechazarla; las aceptadas, sin nada)
+            local ask = r.state == "open" and not mine
+            row.yes:SetShown(ask)
+            if ask then
+                local can, why = CraftCheck(r.item, profs)
+                row.yes:SetEnabled(can); row.yes.why = why
+            end
             row.no:SetShown(r.state == "open")
         end
         for i, col in ipairs(cols) do row.cells[i]:SetText(v[col[1]] or "") end
@@ -682,7 +903,7 @@ local function BuildNewDialog(host)
         d.tipParts[#d.tipParts + 1] = box; d.tipParts[#d.tipParts + 1] = tex
     end
 
-    Label(L("Pública:"), 12, -170)
+    Label(L("En el tablón:"), 12, -170)
     d.pubYes = Check(L("Sí"), 96, -165)
     d.pubNo = Check(L("No"), 170, -165)
     d.toLabel = Label(L("Personaje:"), 12, -198)
@@ -712,7 +933,7 @@ local function BuildNewDialog(host)
         if OpenCount() >= MAX_OPEN then return HU:Print(string.format(L("Ya tienes %d solicitudes abiertas: cierra alguna antes."), MAX_OPEN)) end
         local pub = d.pubYes:GetChecked() and true or false
         local to = HU.Trim(d.to:GetText() or "")
-        if not pub and to == "" then return HU:Print(L("Una solicitud privada necesita a quién se la pides.")) end
+        if not pub and to == "" then return HU:Print(L("Si no va al tablón, pon a quién se la pides.")) end
         -- (la propina, en cobre; las tres cajas vacías: a negociar)
         local tip, any = 0, false
         for i, box in ipairs(d.coins) do
@@ -744,8 +965,12 @@ end
 local function ClearTest()
     for k = #reqs, 1, -1 do if reqs[k].test then table.remove(reqs, k) end end
     for key in pairs(chats) do if key:find("%-Prueba$") then chats[key] = nil end end
+    -- (y sus líneas sin leer)
+    local had = false
+    for key in pairs(unread) do if key:find("%-Prueba$") then unread[key] = nil; had = true end end
     if chatKey and chatKey:find("%-Prueba$") then OpenChat(nil) end
     selected, picks = nil, {}
+    if had then PaintUnread(); HU:Changed("tradeUnread") end
 end
 
 local function AddTest()
@@ -778,13 +1003,22 @@ end
 ---------------------------------------------------------------------------
 -- Montar la sección (UnionRoster.lua la pone en la pestaña Trade)
 ---------------------------------------------------------------------------
+-- (Aceptar o el tic, apagados: por qué no puedo hacerla, en rojo; Paint deja el porqué en `why`)
+local function WhyTip(s)
+    if not s.why then return end
+    GameTooltip:SetOwner(s, "ANCHOR_TOP")
+    GameTooltip:SetText(s.why, 1, 0.35, 0.35)
+    GameTooltip:Show()
+end
+
 function HU:BuildTrade(host)
     ui = host
-    -- Arriba, el buscador y el modo prueba; debajo, el «+» de pedir (a la izquierda) y Público · Privado (en el centro)
+    -- Arriba, el buscador, «Solo lo que puedo hacer» y el modo prueba; debajo, el «+» de pedir (a la izquierda) y
+    -- Tablón · Mis encargos (en el centro)
     ui.viewBtns = {}
     local prev
-    for _, t in ipairs({ { "pub", L("Público") }, { "priv", L("Privado") } }) do
-        local b = Tab(host, t[2], 100)
+    for _, t in ipairs({ { "pub", L("Tablón") }, { "priv", L("Mis encargos") } }) do
+        local b = Tab(host, t[2], TAB_W)
         if prev then b:SetPoint("LEFT", prev, "RIGHT", 4, 0) else b:SetPoint("TOPRIGHT", host, "TOP", -2, -30) end
         b:SetScript("OnClick", function()
             view, selected, picks = t[1], nil, {}
@@ -795,16 +1029,43 @@ function HU:BuildTrade(host)
         ui.viewBtns[t[1]] = b
         prev = b
     end
+    -- (el buscador, más visible: más ancho, con la ayuda en gris claro y un marco claro de borde dorado detrás)
     local search = CreateFrame("EditBox", "GuildUnionTradeSearch", host, "SearchBoxTemplate")
-    search:SetSize(150, 20)
+    search:SetSize(200, 22)
     search:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -4)
-    if search.Instructions then search.Instructions:SetText(L("Buscar")) end
+    if search.Instructions then
+        search.Instructions:SetText(L("Buscar receta")); DJ.C(search.Instructions, DJ.T.muted)
+    end
+    local sbox = CreateFrame("Frame", nil, host, "BackdropTemplate")
+    sbox:SetPoint("TOPLEFT", search, "TOPLEFT", -9, 3); sbox:SetPoint("BOTTOMRIGHT", search, "BOTTOMRIGHT", 3, -3)
+    DJ.Panel(sbox, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
+    sbox:SetFrameLevel(search:GetFrameLevel())
+    search:SetFrameLevel(sbox:GetFrameLevel() + 2)
     search:HookScript("OnTextChanged", function()
         if not ui.found then return end
         FauxScrollFrame_SetOffset(ui.req.scroll, 0); FauxScrollFrame_SetOffset(ui.found.scroll, 0)
         Paint()
     end)
     ui.search = search
+    -- «Solo lo que puedo hacer»: en el Tablón (y en las publicadas al buscar), solo lo que HU:CanCraft deja; se
+    -- recuerda por personaje
+    local only = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
+    only:SetSize(22, 22); only:SetPoint("LEFT", search, "RIGHT", 14, 0)
+    if only.Text then only.Text:SetFontObject("GameFontHighlightSmall"); only.Text:SetText(L("Solo lo que puedo hacer")) end
+    only:SetScript("OnClick", function(s)
+        HU.db.tradeOnlyCraft = (not OnlyCraft()) or nil
+        s:SetChecked(OnlyCraft())
+        FauxScrollFrame_SetOffset(ui.req.scroll, 0)
+        Paint()
+    end)
+    only:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText(L("Solo lo que puedo hacer"))
+        GameTooltip:AddLine(L("En el tablón, solo lo que puedes hacer con tus profesiones y tus recetas (lo que no se sabe qué es, tampoco)."), 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    only:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ui.onlyCraft = only
     local test = Flat(host, L("Modo prueba"), 100, 22)
     test:SetPoint("TOPRIGHT", host, "TOPRIGHT", -26, -3)
     -- (el modo prueba se enciende y se apaga: apagado, se quita lo de prueba)
@@ -835,7 +1096,7 @@ function HU:BuildTrade(host)
     ui.offMsg:SetText(L("El maestro de la hermandad ha desactivado el comercio (pestaña GuildUnion, Configuración → Comercio)."))
     HU:Listen("CHANGED", function(what) if what == "unionCfg" and ui:IsShown() then Paint() end end)
 
-    -- Derecha (solo en Privado): el chat de la persona del comercio que eliges
+    -- Derecha (solo en Mis encargos): el chat de la persona del comercio que eliges
     local chat = CreateFrame("Frame", nil, body, "BackdropTemplate")
     chat:SetPoint("TOPRIGHT", -24, 0); chat:SetPoint("BOTTOMRIGHT", -24, 10); chat:SetWidth(CHAT_W)
     DJ.Panel(chat, DJ.T.panel, DJ.T.border, 12, 3)
@@ -851,7 +1112,10 @@ function HU:BuildTrade(host)
     ui.chatTitle:SetPoint("RIGHT", done, "LEFT", -6, 0)
     local msgs = CreateFrame("ScrollingMessageFrame", nil, chat)
     msgs:SetPoint("TOPLEFT", 6, -24); msgs:SetPoint("BOTTOMRIGHT", -6, 28)
-    msgs:SetFontObject(GameFontHighlightSmall); msgs:SetJustifyH("LEFT")
+    -- (la letra pequeña de siempre con 3 de aire entre líneas: el marco de mensajes la reparte a cada línea)
+    local font = CreateFont("GuildUnionTradeChatFont")
+    font:CopyFontObject(GameFontHighlightSmall); font:SetSpacing(3)
+    msgs:SetFontObject(font); msgs:SetJustifyH("LEFT")
     msgs:SetFading(false); msgs:SetMaxLines(200)
     msgs:EnableMouseWheel(true)
     msgs:SetScript("OnMouseWheel", function(s, d) if d > 0 then s:ScrollUp() else s:ScrollDown() end end)
@@ -876,14 +1140,14 @@ function HU:BuildTrade(host)
         lst.title = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         lst.title:SetPoint("TOPLEFT", list, "TOPLEFT", 4, 0); lst.title:Hide()
         local hdr = CreateFrame("Frame", nil, list)
-        hdr:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0); hdr:SetPoint("RIGHT", list, "RIGHT", 0, 0); hdr:SetHeight(22)
+        hdr:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0); hdr:SetPoint("RIGHT", list, "RIGHT", 0, 0); hdr:SetHeight(HDR_H)
         local hline = hdr:CreateTexture(nil, "ARTWORK")
         hline:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35); hline:SetHeight(1)
         hline:SetPoint("BOTTOMLEFT"); hline:SetPoint("BOTTOMRIGHT")
         lst.hdr = hdr
         for i = 1, 7 do
             local b = CreateFrame("Button", nil, hdr)
-            b:SetHeight(22)
+            b:SetHeight(HDR_H)
             b:SetNormalFontObject("GameFontNormalSmall")
             local hl = b:CreateTexture(nil, "HIGHLIGHT")
             hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.06)
@@ -914,7 +1178,7 @@ function HU:BuildTrade(host)
             row.pickTex:SetAllPoints(); row.pickTex:SetColorTexture(0.25, 0.55, 1, 0.28); row.pickTex:Hide()
             if i % 2 == 0 then
                 local stripe = row:CreateTexture(nil, "BACKGROUND")
-                stripe:SetAllPoints(); stripe:SetColorTexture(1, 1, 1, 0.04)
+                stripe:SetAllPoints(); stripe:SetColorTexture(1, 1, 1, 0.05)
             end
             row.cells = {}
             for c = 1, 7 do
@@ -938,34 +1202,42 @@ function HU:BuildTrade(host)
             end)
             itemBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.itemBtn = itemBtn
-            -- (Público, última columna: Aceptar / Cancelar, o el nombre de quien la aceptó)
-            local accept = Flat(row, L("Aceptar"), ACT_W, 16)
+            -- (Tablón, última columna: Aceptar / Cancelar, o el nombre de quien la aceptó. Aceptar, apagado si no
+            -- puedo hacerla, con el porqué al pasar el ratón)
+            local accept = Flat(row, L("Aceptar"), ACT_W, 20)
             accept:SetPoint("RIGHT", row, "RIGHT", -2, 0)
             accept:SetScript("OnClick", function() if row.entry then Accept(row.entry) end end)
+            accept:SetMotionScriptsWhileDisabled(true)
+            accept:SetScript("OnEnter", WhyTip); accept:SetScript("OnLeave", function() GameTooltip:Hide() end)
             local actText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             actText:SetPoint("RIGHT", row, "RIGHT", -2, 0); actText:SetWidth(ACT_W); actText:SetJustifyH("CENTER")
-            local cancel = Flat(row, L("Cancelar"), ACT_W, 16)
+            local cancel = Flat(row, L("Cancelar"), ACT_W, 20)
             cancel:SetPoint("RIGHT", row, "RIGHT", -2, 0)
             cancel:SetScript("OnClick", function() if row.entry then Cancel(row.entry) end end)
             row.accept, row.cancel, row.actText = accept, cancel, actText
-            -- (Privado, en las abiertas: el tic acepta la que me piden a mí; la X cancela la mía o rechaza la que me piden)
+            -- (Mis encargos, en las abiertas: el tic acepta la que me piden a mí —apagado y gris si no puedo hacerla, con
+            -- el porqué—; la X cancela la mía o rechaza la que me piden)
             local no = CreateFrame("Button", nil, row)
-            no:SetSize(16, 16); no:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            no:SetSize(18, 18); no:SetPoint("RIGHT", row, "RIGHT", -4, 0)
             no:SetNormalTexture(CROSS); no:SetHighlightTexture(CROSS, "ADD")
             no:SetScript("OnClick", function() if row.entry then Cancel(row.entry) end end)
             local yes = CreateFrame("Button", nil, row)
-            yes:SetSize(16, 16); yes:SetPoint("RIGHT", no, "LEFT", -4, 0)
-            yes:SetNormalTexture(TICK); yes:SetHighlightTexture(TICK, "ADD")
+            yes:SetSize(18, 18); yes:SetPoint("RIGHT", no, "LEFT", -4, 0)
+            yes:SetNormalTexture(TICK); yes:SetHighlightTexture(TICK, "ADD"); yes:SetDisabledTexture(TICK)
+            local grey = yes:GetDisabledTexture()
+            if grey then grey:SetDesaturated(true); grey:SetAlpha(0.35) end
             yes:SetScript("OnClick", function() if row.entry then Accept(row.entry) end end)
+            yes:SetMotionScriptsWhileDisabled(true)
+            yes:SetScript("OnEnter", WhyTip); yes:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.yes, row.no = yes, no
-            -- (clic: elegirla; en Privado, además, el chat pasa a ser el de esa persona. En la búsqueda, clic
+            -- (clic: elegirla; en Mis encargos, además, el chat pasa a ser el de esa persona. En la búsqueda, clic
             -- derecho: pedirle una receta)
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnClick", function(s, button)
                 local r = s.entry
                 if r and button == "RightButton" then return RowMenu(s, r) end
                 if not (r and r.id) then return end
-                -- (en Privado: Ctrl suma o quita; Mayús elige desde la última hasta esta; clic solo, solo esa)
+                -- (en Mis encargos: Ctrl suma o quita; Mayús elige desde la última hasta esta; clic solo, solo esa)
                 if view == "priv" and not Searching() then
                     if IsControlKeyDown() then
                         -- (la elegida con un clic solo también cuenta: si no, quedaba fuera de las marcadas)
@@ -1004,13 +1276,11 @@ function HU:BuildTrade(host)
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
 
-    -- Debajo del buscador: «+», nueva solicitud (su nombre, al pasar el ratón)
+    -- Debajo del buscador: «+», nueva solicitud (su nombre, al pasar el ratón). El verde claro de DJ.Plus, como el del
+    -- calendario
     local newDlg = BuildNewDialog(host)
-    local new = Flat(host, "+", 24, 24)
+    local new = DJ.Plus(host, PLUS)
     new:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -30)
-    -- (destacado como el «+» del calendario: las piezas del botón teñidas de verde y la letra blanca)
-    for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
-    new:SetNormalFontObject("GameFontHighlight")
     new:SetScript("OnEnter", function(s)
         GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L("Nueva solicitud")); GameTooltip:Show()
     end)
@@ -1031,7 +1301,7 @@ function HU:BuildTrade(host)
     new:SetScript("OnClick", function() ui.OpenNew(nil) end)
     ui.new, ui.newDlg = new, newDlg
     -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso)
-    ui.onlyOn = { body, search, test, rule, new, ui.viewBtns.pub, ui.viewBtns.priv }
+    ui.onlyOn = { body, search, sbox, only, test, rule, new, ui.viewBtns.pub, ui.viewBtns.priv }
     local del = Flat(body, "", 110, 22)
     del:SetPoint("LEFT", new, "RIGHT", 8, 0)
     del:SetScript("OnClick", function()

@@ -813,11 +813,11 @@ local function Build(f)
     tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
 
     -- Comercio y Calendario, pestañas de la derecha como las del juego (Jorge, 24/11: «intentamos con botones
-    -- laterales»; antes fueron una fila de botones redondos arriba y luego entradas de la columna de comunidades): debajo
-    -- de la última del juego y encima de la de GuildUnion (BlizzTab.lua); luego irán Wanted y LFG. Botones seguros que
-    -- pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve esa vista, PostClick la abre), con
-    -- el dibujo de las del juego (RightSideTabTemplate: el marco del libro de hechizos, el icono y sus dos brillos)
-    -- [+ARCHITECTURE.md]
+    -- laterales»; antes fueron una fila de botones redondos arriba y luego entradas de la columna de comunidades): justo
+    -- debajo de la de miembros del juego («justo después de raid») y las demás del juego, debajo; luego irán Wanted y LFG.
+    -- Botones seguros que pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve esa vista,
+    -- PostClick la abre), con el dibujo de las del juego (RightSideTabTemplate: el marco del libro de hechizos, el icono y
+    -- sus dos brillos) [+ARCHITECTURE.md]
     local side = { tabs = {}, fromSide = false }
     for i, t in ipairs(TABS) do
         if t.trade or t.calendar then
@@ -857,12 +857,27 @@ local function Build(f)
                 wantTab, tab = nil, i
                 if SyncNow then SyncNow() end
             end)
+            if t.trade then
+                -- (con mensajes sin leer en Comercio, la pestaña brilla, despacio, y lleva el aviso de las comunidades del
+                -- juego (Jorge, 24/11); al leerlos se apaga: HU:TradeUnread, Trade.lua) [+ARCHITECTURE.md]
+                local unread = b:CreateTexture(nil, "OVERLAY", nil, 1)
+                unread:SetTexture("Interface\\Buttons\\ButtonHilight-Square"); unread:SetBlendMode("ADD"); unread:SetAllPoints()
+                local pulse = unread:CreateAnimationGroup()
+                pulse:SetLooping("BOUNCE")
+                local fade = pulse:CreateAnimation("Alpha")
+                fade:SetFromAlpha(0.15); fade:SetToAlpha(0.9); fade:SetDuration(0.8)
+                local badge = b:CreateTexture(nil, "OVERLAY", nil, 2)
+                badge:SetAtlas("communities-icon-notification"); badge:SetSize(16, 16); badge:SetPoint("TOPRIGHT", 3, 3)
+                unread:Hide(); badge:Hide()
+                b.unread, b.badge, b.pulse = unread, badge, pulse
+                side.trade = b
+            end
             b:Hide()
             side.tabs[#side.tabs + 1] = b
+            -- (con el panel de GuildUnion abierto, sin su marca: BlizzTab.lua)
+            HU.sideTabs[#HU.sideTabs + 1] = b
         end
     end
-    -- (la de GuildUnion, debajo de la última: BlizzTab.lua)
-    HU.sideTabsEnd = side.tabs[#side.tabs] or false
     -- (en Comercio y Calendario, un clic en la entrada de la hermandad de la columna de comunidades vuelve al chat (Jorge,
     -- 24/11): un botón seguro invisible encima de ella que pulsa la pestaña de chat del juego, con su brillo al pasar el
     -- ratón; en las demás vistas no está y el clic es de la entrada. El botón derecho pasa a ella: su menú sigue. La lista
@@ -1131,13 +1146,13 @@ local function Build(f)
     -- (al cambiar la lista del juego, y al enseñarse la columna, otra vez en su sitio)
     if cl.Update then hooksecurefunc(cl, "Update", function() HU.After(0, PlaceHome) end) end
     cl:HookScript("OnShow", function() HU.After(0, PlaceHome) end)
-    -- (las pestañas, debajo de la última del juego a la vista —la de preferencias de juego, si está; si no, la de
-    -- Información— y solo con la hermandad elegida, como esa. Fuera de combate: son botones seguros) [+ARCHITECTURE.md]
+    -- (las pestañas, justo debajo de la de miembros del juego, que el juego nunca mueve, y solo con la hermandad elegida,
+    -- como su pestaña de Información. Fuera de combate: son botones seguros) [+ARCHITECTURE.md]
     local function PlaceTabs()
         if GameLocked() then return end
-        local info, prefs = f.GuildInfoTab, f.GuildPreferredPlaySettingsTab
+        local info = f.GuildInfoTab
         local show = type(info) == "table" and info:IsShown() and true or false
-        local above = (type(prefs) == "table" and prefs:IsShown()) and prefs or info
+        local above = f.RosterTab
         for _, b in ipairs(side.tabs) do
             if show and b.above ~= above then
                 b.above = above
@@ -1148,8 +1163,32 @@ local function Build(f)
             above = b
         end
     end
+    -- (las del juego que iban debajo de la de miembros —Beneficios, si está; si no, Información; las demás van atadas a
+    -- ella—, debajo de las nuestras. El juego vuelve a atar Información a Miembros cada vez que pone al día sus pestañas:
+    -- se vuelve a bajar. No son botones seguros ni llevan nada seguro atado: también en combate) [+ARCHITECTURE.md]
+    local function MoveGameTabs()
+        local last = side.tabs[#side.tabs]
+        if not (last and last:IsShown()) then return end
+        local benefits = f.GuildBenefitsTab
+        local first = (type(benefits) == "table" and benefits:IsShown()) and benefits or f.GuildInfoTab
+        if type(first) ~= "table" then return end
+        first:ClearAllPoints()
+        first:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -SIDE_TAB_GAP)
+    end
     -- (el juego pone al día sus pestañas al cambiar de vista o de comunidad: las nuestras, detrás)
-    if f.UpdateCommunitiesTabs then hooksecurefunc(f, "UpdateCommunitiesTabs", function() PlaceTabs(); CheckTabs() end) end
+    if f.UpdateCommunitiesTabs then
+        hooksecurefunc(f, "UpdateCommunitiesTabs", function() PlaceTabs(); MoveGameTabs(); CheckTabs() end)
+    end
+    -- (el brillo de Comercio, con mensajes sin leer)
+    local function TradeGlow()
+        local b = side.trade
+        if not b then return end
+        local on = HU:TradeUnread() > 0
+        b.unread:SetShown(on); b.badge:SetShown(on)
+        if on and not b.pulse:IsPlaying() then b.pulse:Play() elseif not on then b.pulse:Stop() end
+    end
+    HU:Listen("CHANGED", function(what) if what == "tradeUnread" then TradeGlow() end end)
+    TradeGlow()
     -- (la pestaña de miembros del juego, pulsada en la vista de miembros —no desde nuestras pestañas—: a Miembros)
     if type(f.RosterTab) == "table" then
         f.RosterTab:HookScript("OnClick", function()
@@ -1262,6 +1301,7 @@ local function Build(f)
         ListBar(m ~= nil)
         PlaceHome()
         PlaceTabs()
+        MoveGameTabs()
         if not GameLocked() then side.home:SetShown(m == "roster" and tab >= 2 and side.guildFrame ~= nil) end
         CheckTabs()
         UpdateCounts()

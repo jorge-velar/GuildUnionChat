@@ -1099,7 +1099,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.equal("Buscar personaje", box.Instructions:GetText())
     end)
 
-    it("Comercio y Calendario, pestañas de la derecha: debajo de la última del juego y encima de la de GuildUnion; desde ellas, la hermandad vuelve al chat", function()
+    it("Comercio y Calendario, pestañas de la derecha: justo debajo de la de miembros, con las del juego debajo; desde ellas, la hermandad vuelve al chat", function()
         local a = F.Community()
         -- (lo que trae la plantilla de las pestañas del juego: su icono. La de GuildUnion, BlizzTab.lua, la usa)
         local create = a.env.CreateFrame
@@ -1111,14 +1111,18 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
             return fr
         end
         local club, info, prefs
-        local f = GuildWindow(a, false, function(w)
-            -- (las pestañas del juego: Información y la de preferencias de juego, a la vista; al ponerlas al día, la de
-            -- miembros sale marcada en su vista, como en el juego)
+        local f = GuildWindow(a, true, function(w)
+            -- (las pestañas del juego: Información y la de preferencias de juego, a la vista. Al ponerlas al día, el juego
+            -- marca la de miembros en su vista y, sin Beneficios, ata Información a la de miembros)
             info = create("CheckButton", nil, w); w.GuildInfoTab = info
             prefs = create("CheckButton", nil, w); w.GuildPreferredPlaySettingsTab = prefs
-            w.UpdateCommunitiesTabs = function(self) self.RosterTab:SetChecked(true) end
+            info.SetPoint = function(self, ...) self._pt = { ... } end
+            w.UpdateCommunitiesTabs = function(self)
+                self.RosterTab:SetChecked(true)
+                self.GuildInfoTab:SetPoint("TOPLEFT", self.RosterTab, "BOTTOMLEFT", 0, -20)
+            end
             -- (lo que no hay en esta prueba: así la de GuildUnion se monta entera)
-            w.GuildBenefitsTab, w.StreamDropdown, w.InviteButton = false, false, false
+            w.GuildBenefitsTab, w.StreamDropdown, w.InviteButton, w.Chat.MessageFrame = false, false, false, false
             -- (la lista del juego, con la hermandad)
             local cl = w.CommunitiesList
             club = create("Button", nil, cl)
@@ -1131,16 +1135,42 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         for _, b in ipairs({ trade, cal, f.RosterTab }) do b.SetChecked = function(self, v) self._checked = v end end
         f:GetScript("OnShow")(f)
         a.w:Advance(0.1)
-        A.same({ "TOPLEFT", prefs, "BOTTOMLEFT", 0, -20 }, trade._pt, "debajo de la última del juego")
+        A.same({ "TOPLEFT", f.RosterTab, "BOTTOMLEFT", 0, -20 }, trade._pt, "justo debajo de la de miembros")
         A.same({ "TOPLEFT", trade, "BOTTOMLEFT", 0, -20 }, cal._pt)
         A.truthy(trade:IsShown() and cal:IsShown())
-        A.equal(cal, a.HU.sideTabsEnd)
-        A.equal(cal, a.env.GuildUnionReduceTab.anchoredTo, "la de GuildUnion, debajo de las nuestras")
-        -- (sin la de preferencias, debajo de Información; sin la hermandad elegida —sin Información—, no salen)
-        prefs:Hide()
-        f:GetScript("OnShow")(f)
-        a.w:Advance(0.1)
-        A.same({ "TOPLEFT", info, "BOTTOMLEFT", 0, -20 }, trade._pt, "debajo de Información")
+        A.same({ "TOPLEFT", cal, "BOTTOMLEFT", 0, -20 }, info._pt, "Información, debajo de las nuestras")
+        -- (el juego la vuelve a atar a la de miembros al poner al día sus pestañas: se vuelve a bajar)
+        f:UpdateCommunitiesTabs()
+        A.same({ "TOPLEFT", cal, "BOTTOMLEFT", 0, -20 }, info._pt)
+        A.equal(prefs, a.env.GuildUnionReduceTab.anchoredTo, "la de GuildUnion, debajo de la última del juego")
+        -- (con Beneficios a la vista, baja esa: Información va atada a ella)
+        local benefits = create("CheckButton", nil, f)
+        benefits.SetPoint = function(self, ...) self._pt = { ... } end
+        f.GuildBenefitsTab = benefits
+        f:UpdateCommunitiesTabs()
+        A.same({ "TOPLEFT", cal, "BOTTOMLEFT", 0, -20 }, benefits._pt, "Beneficios, debajo de las nuestras")
+        f.GuildBenefitsTab = false
+        -- (con el panel de GuildUnion abierto, solo su pestaña se ve marcada: las demás, sin su brillo de marcada)
+        local looks = {}
+        for _, b in ipairs({ f.ChatTab, f.RosterTab, info, prefs, trade, cal }) do
+            local look = { SetAlpha = function(self, v) self.alpha = v end }
+            looks[#looks + 1] = look
+            b.GetCheckedTexture = function() return look end
+        end
+        local gu = a.env.GuildUnionReduceTab
+        gu:GetScript("OnClick")(gu)
+        for i, look in ipairs(looks) do A.equal(0, look.alpha, "marca " .. i .. ", apagada") end
+        gu:GetScript("OnClick")(gu)
+        for i, look in ipairs(looks) do A.equal(1, look.alpha, "marca " .. i .. ", de vuelta") end
+        -- (Comercio con mensajes sin leer: su pestaña brilla; leídos, se apaga)
+        local unread = 2
+        a.HU.TradeUnread = function() return unread end
+        a.HU:Changed("tradeUnread")
+        A.truthy(trade.unread:IsShown() and trade.badge:IsShown(), "brilla")
+        unread = 0
+        a.HU:Changed("tradeUnread")
+        A.falsy(trade.unread:IsShown() or trade.badge:IsShown())
+        -- (sin la hermandad elegida —sin Información—, no salen)
         info:Hide()
         f:GetScript("OnShow")(f)
         a.w:Advance(0.1)

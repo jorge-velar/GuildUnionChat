@@ -376,16 +376,33 @@ local function AttachBlizz()
     if main then main:Hide() end
 end
 
+-- (con el panel abierto encima de la ventana del juego, solo nuestra pestaña se ve marcada (Jorge, 24/11: «el otro que
+-- tenía pulsado se queda también en amarillo»): las demás —las del juego y las de Comercio y Calendario— siguen marcadas
+-- por dentro, como las deja el juego, pero sin su brillo de marcada; al cerrarlo, vuelve) [+ARCHITECTURE.md]
+local GAME_TABS = { "ChatTab", "RosterTab", "GuildBenefitsTab", "GuildInfoTab", "GuildPreferredPlaySettingsTab" }
+local function OtherChecks(show)
+    local f = Win()
+    local list = {}
+    for _, key in ipairs(GAME_TABS) do if f and type(f[key]) == "table" then list[#list + 1] = f[key] end end
+    for _, b in ipairs(HU.sideTabs) do list[#list + 1] = b end
+    for _, b in ipairs(list) do
+        local t = b:GetCheckedTexture()
+        if type(t) == "table" then t:SetAlpha(show and 1 or 0) end
+    end
+end
+
 local function ShowPanel(on)
     if not panel then return end
     -- (lo que cierra la pestaña de Blizzard no cierra la ventana propia)
     if not on and panel.where == "own" then
         if tab then tab:SetChecked(false) end
+        OtherChecks(true)
         return
     end
     if on then AttachBlizz() end
     panel:SetShown(on)
     if tab then tab:SetChecked(on) end
+    OtherChecks(not on)
     if HU.SyncCharSearch then HU.SyncCharSearch() end
     if on then RefreshStatus(); RefreshOfficers(); WhoTick() end
 end
@@ -1062,7 +1079,7 @@ end
 local search
 HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
 HU.guildDropdownOff = false -- (UnionRoster.lua: en la vista de chat no se ve el desplegable «Guild»; el buscador va a su sitio)
-HU.sideTabsEnd = false      -- (UnionRoster.lua: la última de sus pestañas de la derecha, Comercio y Calendario: la nuestra, debajo)
+HU.sideTabs = {}            -- (UnionRoster.lua: Comercio y Calendario, pestañas de la derecha: con nuestro panel abierto, sin su marca)
 HU.SyncCharSearch = function() end
 -- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
 -- dónde es (antes se abría un susurro con él: Jorge, 10/11). Para susurrar, el clic derecho
@@ -1219,9 +1236,9 @@ local function SyncTab()
     local show = f.GuildInfoTab and f.GuildInfoTab:IsShown()
     -- (debajo de la última pestaña del juego que esté a la vista: la de preferencias de juego de la
     -- hermandad va justo debajo de la de Información, y la nuestra la tapaba. Jorge, 13/11)
-    -- (y si están, debajo de las de Comercio y Calendario, que van debajo de esas: UnionRoster.lua. Jorge, 24/11)
+    -- (las de Comercio y Calendario van más arriba, debajo de la de miembros: UnionRoster.lua)
     local prefs = f.GuildPreferredPlaySettingsTab
-    local anchor = HU.sideTabsEnd or ((prefs and prefs:IsShown()) and prefs or f.GuildInfoTab)
+    local anchor = (prefs and prefs:IsShown()) and prefs or f.GuildInfoTab
     if anchor and tab.anchoredTo ~= anchor then
         tab.anchoredTo = anchor
         tab:ClearAllPoints()
@@ -1362,6 +1379,7 @@ function HU:OpenMainWindow()
     panel:SetToplevel(false)
     panel.where = "own"
     if tab then tab:SetChecked(false) end
+    OtherChecks(true)
     main:Show()
     panel:Show()
     -- (el panel siempre encima del fondo de la ventana; se pone después de enseñarla)

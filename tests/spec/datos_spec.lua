@@ -103,7 +103,9 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         "guildColors", "customEmotes", "lists", "rankCache", "offline", "offlineT", "peers", "chatTabsMade",
         "rosterCache", "remoteRanks", "quickCfg", "managers", "officerRanks", "myOfficerRanks", "laneLock", "laneMig", "wmRows",
         -- (nuevo: la configuración de la unión, de cada personaje)
-        "unionCfg" }
+        "unionCfg",
+        -- (nuevo: Comercio, las recetas leídas de cada profesión y la casilla «Solo lo que puedo hacer»)
+        "tradeRecipes", "tradeOnlyCraft" }
     local OLD_DEFAULTS = { showTag = true, chatMark = "dot", chatGuildColor = false, ownPaint = true, autoGuard = false,
         bans = {}, grace = 120, debug = false, showChannel = false, audit = {}, history = {}, log = {}, profiles = {},
         offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {} }

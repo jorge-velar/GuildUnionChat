@@ -1604,11 +1604,9 @@ function HU:BuildCalendar(host)
 
     -- Debajo, a la izquierda: «+», nuevo evento (quien puede crearlos, HU:CanMakeEvents, o con el modo prueba); en
     -- Calendario, para el día elegido
-    local new = DJButton(host, "+", 24, 24)
+    -- (el verde claro de DJ.Plus, como el de Comercio; apagado, gris)
+    local new = DJ.Plus(host, 26)
     new:SetPoint("TOPLEFT", host, "TOPLEFT", 14, -30)
-    -- (destacado: las piezas del botón teñidas de verde y la letra blanca)
-    for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
-    new:SetNormalFontObject("GameFontHighlight")
     new:SetScript("OnClick", function()
         local t
         if view == "month" and pickedDay then

@@ -79,6 +79,37 @@ function DJ.Button(parent, text, w, h)
     return b
 end
 
+-- El «+» de crear de Comercio y Calendario: un cuadrado verde claro con borde claro y el «+» blanco grande, que se vea
+-- sobre los fondos oscuros; apagado, gris [+ARCHITECTURE.md]
+DJ.PLUS = { bg = { 0.16, 0.60, 0.20, 1 }, edge = { 0.70, 1.00, 0.70, 1 }, text = { 1, 1, 1 },
+    offBg = { 0.20, 0.21, 0.22, 1 }, offEdge = { 0.42, 0.43, 0.45, 1 }, offText = { 0.55, 0.55, 0.58 } }
+function DJ.Plus(parent, size)
+    local P = DJ.PLUS
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    b:SetSize(size, size)
+    DJ.Panel(b, P.bg, P.edge, 10, 2)
+    local text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    text:SetPoint("CENTER", 0, 1)
+    DJ.Big(text, math.floor(size * 0.8))
+    b:SetFontString(text)
+    b:SetText("+")
+    b:SetPushedTextOffset(1, -1)
+    -- (al pasar el ratón, más claro)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetPoint("TOPLEFT", 3, -3); hl:SetPoint("BOTTOMRIGHT", -3, 3)
+    hl:SetColorTexture(1, 1, 1, 0.22)
+    local function Look(on)
+        local bg, edge, c = on and P.bg or P.offBg, on and P.edge or P.offEdge, on and P.text or P.offText
+        b:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
+        b:SetBackdropBorderColor(edge[1], edge[2], edge[3], edge[4])
+        text:SetTextColor(c[1], c[2], c[3])
+    end
+    b:SetScript("OnEnable", function() Look(true) end)
+    b:SetScript("OnDisable", function() Look(false) end)
+    Look(true)
+    return b
+end
+
 -- (un icono redondo, como los retratos, con el aro del minimapa)
 function DJ.RoundIcon(parent, size)
     local t = parent:CreateTexture(nil, "ARTWORK")
