@@ -1353,8 +1353,8 @@ function HU:BuildCalendar(host)
     local now = date("*t")
     month, year = now.month, now.year
 
-    -- Arriba, en el centro, el interruptor Eventos | Calendario, el mismo que en Comercio (Jorge, 24/11: la «opción 3»),
-    -- y a su derecha el modo prueba; abajo, en el centro, «+ Nuevo evento» (ver más abajo) [+ARCHITECTURE.md]
+    -- Arriba, en el centro, los botones rojos Eventos · Calendario, como los de Comercio (DJ.Switch; Jorge, 24/11), y a su
+    -- derecha el modo prueba; abajo, en el centro, «+ Nuevo evento» (ver más abajo) [+ARCHITECTURE.md]
     local sw = DJ.Switch(host, { { "list", L("Eventos") }, { "month", L("Calendario") } })
     sw:SetPoint("TOP", host, "TOP", 0, -4)
     ui.switch = sw

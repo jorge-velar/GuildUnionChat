@@ -79,58 +79,21 @@ function DJ.Button(parent, text, w, h)
     return b
 end
 
--- (un recuadro liso con un borde fino y nítido, de `size` px: el del buscador y la casilla de Comercio)
-function DJ.Box(f, bg, border, size)
-    size = size or 1
-    f:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = size,
-        insets = { left = size, right = size, top = size, bottom = size } })
-    f:SetBackdropColor(bg[1], bg[2], bg[3], bg[4] or 1)
-    f:SetBackdropBorderColor(border[1], border[2], border[3], border[4] or 1)
-end
-
--- El interruptor de dos mitades de Comercio y Calendario (Jorge, 24/11: la «opción 3» de tres dibujos): grande, con
--- borde dorado y una raya dorada entre las mitades; la elegida, rellena de dorado y con la letra oscura
--- [+ARCHITECTURE.md]
-DJ.SWITCH = { w = 170, h = 34, size = 16, edge = 2, gold = { 1.00, 0.82, 0.00 }, onText = { 0.23, 0.16, 0.00 },
-    off = { 0.11, 0.11, 0.13 }, offText = { 0.89, 0.89, 0.90 } }
--- (items: { { clave, texto }, { clave, texto } }; da el marco, con sus mitades en `btns[clave]`, que se eligen con
--- :Pick(on) o :SetSelected(on) y cambian de texto con :Label(texto). Quien lo usa le pone el sitio y los clics)
+-- Las dos pestañas de arriba de Comercio y Calendario: dos botones rojos del juego, juntos y centrados en su fila; el
+-- elegido, negro (DJ.PickRed). Jorge, 24/11: probó un interruptor dorado («no pega ni con cola»; «los botones eran
+-- bonitos») y se quedaron estos botones en el sitio del interruptor [+ARCHITECTURE.md]
+DJ.SWITCH = { w = 150, h = 28, gap = 6 }
+-- (items: { { clave, texto }, ... }; da el marco, con sus botones en `btns[clave]`, que se eligen con :Pick(on) o
+-- :SetSelected(on) y cambian de texto con :Label(texto). Quien lo usa le pone el sitio y los clics)
 function DJ.Switch(parent, items)
     local S = DJ.SWITCH
-    local sw = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    sw:SetSize(2 * S.w, S.h)
-    -- (detrás, todo dorado: lo que dejan las mitades alrededor y entre ellas es el borde y la raya)
-    sw:SetBackdrop({ bgFile = WHITE })
-    sw:SetBackdropColor(S.gold[1], S.gold[2], S.gold[3], 1)
+    local sw = CreateFrame("Frame", nil, parent)
+    sw:SetSize(#items * S.w + (#items - 1) * S.gap, S.h)
     sw.btns = {}
-    local e = S.edge
     for i, it in ipairs(items) do
-        local b = CreateFrame("Button", nil, sw)
-        b:SetSize(S.w - e - e / 2, S.h - 2 * e)
-        b:SetPoint("TOPLEFT", sw, "TOPLEFT", (i - 1) * S.w + (i == 1 and e or e / 2), -e)
-        b.fill = b:CreateTexture(nil, "BACKGROUND")
-        b.fill:SetAllPoints()
-        -- (su propia letra, de 16: el botón no tiene letras por estado que se la cambien)
-        local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        fs:SetPoint("CENTER")
-        DJ.Big(fs, S.size)
-        b:SetFontString(fs)
-        b.text = fs
-        b:SetText(it[2])
-        b:SetPushedTextOffset(1, -1)
-        local hl = b:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.10)
-        function b:Pick(on)
-            self.picked = on and true or false
-            local bg, c = self.picked and S.gold or S.off, self.picked and S.onText or S.offText
-            self.fill:SetColorTexture(bg[1], bg[2], bg[3], 1)
-            fs:SetTextColor(c[1], c[2], c[3])
-            -- (la sombra negra de la letra, solo sobre lo oscuro: sobre el dorado emborronaba la letra oscura)
-            fs:SetShadowColor(0, 0, 0, self.picked and 0 or 1)
-        end
+        local b = DJ.Button(sw, it[2], S.w, S.h)
+        b:SetPoint("TOPLEFT", sw, "TOPLEFT", (i - 1) * (S.w + S.gap), 0)
         b.SetSelected = b.Pick
-        function b:Label(t) self:SetText(t) end
-        b:Pick(false)
         sw.btns[it[1]] = b
     end
     return sw

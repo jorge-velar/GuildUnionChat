@@ -3178,19 +3178,18 @@ persona. Las vistas se llamaban Público y Privado hasta el 24/11 (Jorge: «Tabl
 archivo, solo de esta sesión (se pierden con /reload), y nadie más las ve; el modo prueba (`HU:TradeTest`, abajo) la
 llena de datos. La red está prevista con los paquetes con huella: el conjunto `TR` (`Net/Packs.lua`, aún sin escribir).
 **Qué va dónde** (Jorge, 24/11, al ver la 314 —«me parece feo y no se ven bien los botones… muy pequeño, parece
-oculto»—, eligió entre tres dibujos la «opción 3», la misma para Calendario). La sección, con la ventana del juego a su
-tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
-- **Fila 1**, en el centro (`TOP`, 0, -4): el interruptor Tablón | Mis encargos (`ui.switch`, `DJ.Switch` de
-  DJStyle.lua: 340 x 34, de 138 a 478). Sus mitades son `ui.viewBtns.pub` y `.priv` (`:SetSelected`, `:Label`,
+oculto»—, eligió entre tres dibujos la «opción 3», la misma para Calendario: un interruptor dorado grande en su fila y,
+debajo, el buscador y la casilla. En el juego, en la 315, «no pega ni con cola, los botones eran bonitos»: en la 316
+quedan ese sitio y esas dos filas, con los botones, el buscador y la casilla de antes). La sección, con la ventana del
+juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
+- **Fila 1**, en el centro (`TOP`, 0, -4): los botones rojos Tablón · Mis encargos (`ui.switch`, `DJ.Switch` de
+  DJStyle.lua: dos de 150 x 28 con 6 entre ellos). Son `ui.viewBtns.pub` y `.priv` (`:SetSelected`, `:Label`,
   `:GetText`); «Mis encargos (2)» lleva el número de sin leer. Cambiar borra búsqueda, elegida y marcadas; mientras se
-  busca, ninguna mitad está elegida.
-- **Fila 2** (de -44 a -72): a la izquierda, el buscador «Buscar receta» (14, 220 x 28, `SEARCH_W` y `ROW2_H`) en un
-  recuadro liso con borde dorado de 2 (`ui.searchBox`, `DJ.Box`) y letra de 12; el marco del juego (`Left`, `Middle`,
-  `Right`) queda escondido, la lupa a 8 del borde y el texto y la ayuda (en gris claro, `T.muted`) desde 24. A la
-  derecha, «Solo lo que puedo hacer»: la caja (24, lisa con borde dorado: `DJ.Box` en la propia casilla, con sus
-  texturas de la plantilla escondidas y la marca de siempre) a 24 del borde derecho, en 569-593, y su texto, claro y de
-  12, a su izquierda, desde unos 425 (en inglés, 447); va así, el texto delante, para que la caja quede alineada a la
-  derecha sin medir el texto.
+  busca, ninguno está elegido.
+- **Fila 2** (de -44 a -72, `ROW2_Y`, `ROW2_H`): a la izquierda, el buscador del juego, como hasta la 314: «Buscar
+  receta» (23, 200 x 22, `SEARCH_W`, centrado en la fila) con su ayuda en gris claro (`T.muted`) y detrás un marco oscuro
+  de borde dorado (`ui.searchBox`, `DJ.Panel`). A la derecha, la casilla del juego «Solo lo que puedo hacer» (22) con
+  su texto detrás, que acaba a 14 del borde derecho (se mide el texto, `GetStringWidth`; sin medida, 130).
 - **El panel** (`bg`) empieza en -76 y las listas (`ui.body`) en -80 (`BODY_Y`), hasta `BOTTOM_H` (36) por encima del
   borde de abajo, 4 por encima de «+ Nueva solicitud». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
   (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más). Hasta la 314 eran 10 y 4: el
@@ -3427,24 +3426,17 @@ que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ
 - `DJ.Window(name, parent, w, h, onClose)`: ventana DIALOG que nace escondida y se arrastra: fondo liso casi negro
   (`T.frame`) con marco de diálogo, franja de título con rayas doradas (`d.titleText`), X (`onClose` o esconderla) y
   `d.content` (panel `content`), con 44 px libres abajo para botones.
-- `DJ.Box(f, bg, border, size)`: un recuadro liso con un borde nítido de `size` px (1 si no se dice): fondo y borde con
-  `WHITE8X8`, sin el borde redondeado de tooltip. Lo usan el buscador y la casilla de Comercio, con el borde dorado.
 
-### El interruptor: `DJ.Switch`
+### Las pestañas de arriba: `DJ.Switch`
 
-`DJ.Switch(parent, items)`: el interruptor de dos mitades de Comercio (Tablón | Mis encargos) y de Calendario (Eventos |
-Calendario), una sola pieza para que se vean idénticos. Jorge lo eligió el 24/11 entre tres dibujos (la «opción 3»),
-al ver que la fila de la 314 «no se ven bien los botones… muy pequeño, parece oculto».
-- `items`: `{ { clave, texto }, { clave, texto } }`. Da el marco (340 x 34; quien lo usa le pone el sitio) con las
-  mitades en `btns[clave]`: botones de 167 x 30 con su letra de 16 (`DJ.SWITCH.size`; la suya propia, `SetFontString`,
-  para que el juego no se la cambie al pasar el ratón), un velo blanco suave al pasar el ratón y el texto que baja un
-  poco al pulsar. Los clics los pone quien lo usa.
-- El borde y la raya: el marco entero es dorado (el del juego, 1 · 0,82 · 0) y las mitades van 2 px hacia dentro
-  (`edge`) y separadas otros 2: lo dorado que asoma alrededor y entre ellas es el borde y la raya.
-- `:Pick(on)` (y `:SetSelected(on)`, lo mismo, para Comercio): elegida, rellena de dorado con la letra oscura (`onText`,
-  0,23 · 0,16 · 0) y sin la sombra negra, que emborronaba la letra oscura; sin elegir, oscura (`off`, 0,11 · 0,11 ·
-  0,13) con la letra clara (`offText`, 0,89 · 0,89 · 0,90). `b.picked` lo dice. Puede no haber ninguna elegida
-  (Comercio, mientras se busca). `:Label(texto)` es `SetText`.
+`DJ.Switch(parent, items)`: los dos botones de arriba de Comercio (Tablón · Mis encargos) y de Calendario (Eventos ·
+Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos del juego de 150 x 28 (`DJ.SWITCH`), con
+6 entre ellos, en un marco que quien lo usa coloca (los dos, arriba en el centro). Elegido, negro (`DJ.PickRed`).
+- `items`: `{ { clave, texto }, ... }`; los botones, en `btns[clave]`, con `:Pick(on)` o `:SetSelected(on)` (lo mismo),
+  `:Label(texto)` y `b.picked`. Los clics los pone quien lo usa.
+- Historia (Jorge, 24/11): en la 315 fue un interruptor dorado de dos mitades (la «opción 3» de tres dibujos) y, para
+  el buscador y la casilla, recuadros lisos de borde dorado (`DJ.Box`); en el juego, «no pega ni con cola, los botones
+  eran bonitos». Se quitaron los dos y quedaron los botones de antes en el sitio del interruptor.
 
 ### Botones: `DJ.Button` y `DJ.PickRed`
 
@@ -3466,11 +3458,11 @@ al ver que la fila de la 314 «no se ven bien los botones… muy pequeño, parec
 ### Qué hay en el archivo
 
 La sección Calendario de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
-Arriba, en el centro (`TOP`, 0, -4), el interruptor Eventos | Calendario (`ui.switch`, `DJ.Switch`: el mismo de
-Comercio y en el mismo sitio; Jorge, 24/11, la «opción 3»: «usa ese formato también para eventos»), en lugar de los dos
-botones rojos de antes; sus mitades son `ui.viewBtns.list` y `.month` (`:Pick`). «Modo prueba», que estaba arriba a la
-derecha, sigue ahí: a 8 del borde y a la altura del interruptor (de 505 a 609; el interruptor acaba en 478). El panel de
-la sección empieza 6 por debajo del interruptor (-44; antes, -58, debajo de la segunda fila). Abajo, en el centro del
+Arriba, en el centro (`TOP`, 0, -4), los botones rojos Eventos · Calendario (`ui.switch`, `DJ.Switch`: los mismos de
+Comercio y en el mismo sitio; Jorge, 24/11: «usa ese formato también para eventos»); son `ui.viewBtns.list` y `.month`
+(`:Pick`). «Modo prueba» sigue arriba a la derecha: a 8 del borde y a la altura de los botones (de 505 a 609; los botones
+acaban en 461). El panel de
+la sección empieza 6 por debajo de los botones (-38; antes, -58, debajo de la segunda fila). Abajo, en el centro del
 panel y en las dos vistas, «+ Nuevo evento» (`ui.new`), como hasta la copia 304 (Jorge, 24/11: «como antes y abajo
 centrado»): el botón rojo de 200 x 24 con sus piezas teñidas de verde y la letra blanca, igual que «+ Nueva solicitud»
 de Comercio. Va a 6 del borde de abajo del panel y es hijo de él; las tarjetas, el mes y el panel del día acaban

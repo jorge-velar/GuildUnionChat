@@ -12,12 +12,12 @@ HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft" } })
 -- con la ventana del juego a su alto de siempre: comercio_spec)
 local ROW_H, ROWS = 24, 9
 local HDR_H, CELL_PAD = 24, 4
--- (arriba, dos filas: el interruptor Tablón | Mis encargos (DJ.Switch) y, en ROW2_Y, el buscador y la casilla; las
+-- (arriba, dos filas: los botones Tablón · Mis encargos (DJ.Switch) y, en ROW2_Y, el buscador y la casilla; las
 -- listas van de BODY_Y a BOTTOM_H por encima del borde de abajo, donde va «+ Nueva solicitud» (24 de alto, a 8 del
 -- borde), para que no tape nada) [+ARCHITECTURE.md]
 local ROW2_Y, ROW2_H = -44, 28
 local BODY_Y, BOTTOM_H = -80, 36
-local SEARCH_W = 220
+local SEARCH_W = 200
 local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
 local MAX_OPEN = 5          -- solicitudes abiertas por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
@@ -1052,8 +1052,9 @@ end
 
 function HU:BuildTrade(host)
     ui = host
-    -- Arriba, el interruptor Tablón | Mis encargos, en el centro; debajo, el buscador a la izquierda y «Solo lo que puedo
-    -- hacer» a la derecha; abajo, «+ Nueva solicitud» (Jorge, 24/11: la «opción 3») [+ARCHITECTURE.md]
+    -- Arriba, los botones rojos Tablón · Mis encargos, juntos en el centro; debajo, el buscador a la izquierda y «Solo lo
+    -- que puedo hacer» a la derecha; abajo, «+ Nueva solicitud» (Jorge, 24/11: el sitio de la «opción 3», con los botones
+    -- y el buscador y la casilla de antes) [+ARCHITECTURE.md]
     local sw = DJ.Switch(host, { { "pub", L("Tablón") }, { "priv", L("Mis encargos") } })
     sw:SetPoint("TOP", host, "TOP", 0, -4)
     ui.switch = sw
@@ -1066,27 +1067,17 @@ function HU:BuildTrade(host)
             Paint()
         end)
     end
-    -- (el buscador: un recuadro liso con borde dorado, el suyo del juego escondido, y letra de 12 que se vea)
-    local gold = DJ.SWITCH.gold
+    -- (el buscador, como antes: el del juego, con su ayuda en gris claro y un marco oscuro de borde dorado detrás; centrado
+    -- en la fila)
     local search = CreateFrame("EditBox", "GuildUnionTradeSearch", host, "SearchBoxTemplate")
-    search:SetSize(SEARCH_W, ROW2_H)
-    search:SetPoint("TOPLEFT", host, "TOPLEFT", 14, ROW2_Y)
-    search:SetFontObject("GameFontHighlight")
-    search:SetTextInsets(24, 22, 0, 0)
-    for _, k in ipairs({ "Left", "Middle", "Right" }) do
-        local t = search[k]
-        if type(t) == "table" then t:SetAlpha(0) end
-    end
-    if type(search.searchIcon) == "table" then search.searchIcon:ClearAllPoints(); search.searchIcon:SetPoint("LEFT", 8, -1) end
+    search:SetSize(SEARCH_W, 22)
+    search:SetPoint("TOPLEFT", host, "TOPLEFT", 23, ROW2_Y - (ROW2_H - 22) / 2)
     if search.Instructions then
-        local hint = search.Instructions
-        hint:SetFontObject("GameFontNormal")
-        hint:ClearAllPoints(); hint:SetPoint("TOPLEFT", 24, 0); hint:SetPoint("BOTTOMRIGHT", -22, 0)
-        hint:SetText(L("Buscar receta")); DJ.C(hint, DJ.T.muted)
+        search.Instructions:SetText(L("Buscar receta")); DJ.C(search.Instructions, DJ.T.muted)
     end
     local sbox = CreateFrame("Frame", nil, host, "BackdropTemplate")
-    sbox:SetAllPoints(search)
-    DJ.Box(sbox, DJ.T.row, gold, DJ.SWITCH.edge)
+    sbox:SetPoint("TOPLEFT", search, "TOPLEFT", -9, 3); sbox:SetPoint("BOTTOMRIGHT", search, "BOTTOMRIGHT", 3, -3)
+    DJ.Panel(sbox, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
     sbox:SetFrameLevel(search:GetFrameLevel())
     search:SetFrameLevel(sbox:GetFrameLevel() + 2)
     ui.searchBox = sbox
@@ -1096,21 +1087,15 @@ function HU:BuildTrade(host)
         Paint()
     end)
     ui.search = search
-    -- «Solo lo que puedo hacer», a la derecha de la misma fila: el texto, claro, y a su derecha la caja, lisa con borde
-    -- dorado (las de la plantilla, escondidas: queda la marca). En el Tablón (y al buscar), solo lo que HU:CanCraft
-    -- deja; en Mis encargos, fuera lo que haría yo y no puedo hacer. Se recuerda por personaje
-    local only = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate, BackdropTemplate")
-    only:SetSize(24, 24); only:SetPoint("RIGHT", host, "TOPRIGHT", -24, ROW2_Y - ROW2_H / 2)
-    DJ.Box(only, DJ.T.row, gold, DJ.SWITCH.edge)
-    for _, get in ipairs({ "GetNormalTexture", "GetPushedTexture" }) do
-        local t = only[get](only)
-        if type(t) == "table" then t:SetAlpha(0) end
-    end
-    if only.Text then
-        only.Text:SetFontObject("GameFontHighlight"); DJ.C(only.Text, DJ.T.text)
-        only.Text:ClearAllPoints(); only.Text:SetPoint("RIGHT", only, "LEFT", -6, 0)
-        only.Text:SetText(L("Solo lo que puedo hacer"))
-    end
+    -- «Solo lo que puedo hacer», a la derecha de la misma fila: la casilla del juego, como antes, con su texto detrás, que
+    -- acaba en el borde. En el Tablón (y al buscar), solo lo que HU:CanCraft deja; en Mis encargos, fuera lo que haría yo
+    -- y no puedo hacer. Se recuerda por personaje
+    local only = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
+    only:SetSize(22, 22)
+    if only.Text then only.Text:SetFontObject("GameFontHighlightSmall"); only.Text:SetText(L("Solo lo que puedo hacer")) end
+    local tw = only.Text and only.Text:GetStringWidth()
+    tw = (type(tw) == "number" and tw > 0 and not HU.Secret(tw)) and tw or 130
+    only:SetPoint("LEFT", host, "TOPRIGHT", -(14 + 22 + 2 + tw), ROW2_Y - ROW2_H / 2)
     only:SetScript("OnClick", function(s)
         HU.db.tradeOnlyCraft = (not OnlyCraft()) or nil
         s:SetChecked(OnlyCraft())
