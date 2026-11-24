@@ -95,3 +95,4 @@ colas `b…` (datos grandes), que salen por `HU20B`.
 | `WM` | `WM~etiq~conj~n~h1,…,hn`: cómo es ahora un paquete con huella (la huella de cada trozo); lo anuncia el enlace dueño | Net/Packs.lua | blow | 300 s | etiq. 1, arranque, datos remotos | la última |
 | `WP` | `WP~deEtiq~etiq~conj~turno~3,7\|m`: pedir trozos o el anuncio (GUILD: al porteador; susurro: al equipo dueño) | Net/Packs.lua | blow | 60 s | etiq. 1, arranque | petición |
 | `WT` | `WT~etiq~conj~trozo~parte~partes~datos`: un trozo de un paquete, en partes de líneas enteras | Net/Packs.lua | blow | 120 s | etiq. 1, arranque | datos |
+| `WU` | `WU~etiq~conj~clave~hora~datos`: una propuesta, mi línea de un conjunto (por GUILD; datos vacíos: la borro) | Net/Packs.lua | blow | 300 s | etiq. 1 | datos |
