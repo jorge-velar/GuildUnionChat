@@ -31,6 +31,8 @@ local NEW = {
     -- (Miembros de la unión, UnionMembers.lua)
     MP = { open = true, combat = "req" },
     ML = { tagField = 1, remoteData = true, open = true, queue = "bmid", ttl = 120, combat = "data" },
+    -- (sus desconectados: solo por susurro, sin remoteData)
+    MO = { tagField = 1, open = true, queue = "bmid", ttl = 120, combat = "data" },
     -- (pedir cambio de rango a otra hermandad, Ranks.lua; como GK)
     GP = { queue = "chat", ttl = 600 },
 }

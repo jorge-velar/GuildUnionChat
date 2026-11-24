@@ -323,6 +323,11 @@ function wow.New(opts)
         return m.name, m.rank or "Miembro", m.rankIndex or 4, m.level or 60, m.class or "Guerrero", m.zone or "",
             m.note or "", m.officerNote or "", m.online ~= false, 0, m.classFile or "WARRIOR"
     end
+    -- (cuánto lleva desconectado: años, meses, días y horas; m.lastOnline = { a, m, d, h }, o nada)
+    api.GetGuildRosterLastOnline = function(i)
+        local m = w.guild and w.guild.members and w.guild.members[i]
+        if m and m.lastOnline then return unpack(m.lastOnline) end
+    end
     -- (pedir la lista de la hermandad: el servidor contesta un momento después con GUILD_ROSTER_UPDATE;
     -- varias peticiones seguidas, una sola respuesta)
     local rosterAsked = false

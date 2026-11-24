@@ -1,7 +1,8 @@
 -- Guild Union - Miembros de la unión: todos los conectados de otra hermandad, solo para verlos [+ARCHITECTURE.md]
---   MP~miEtiq~suEtiq             pide la lista (por GUILD, a quien se encarga de esa hermandad; por
---                                susurro, a alguien de esa hermandad)
+--   MP~miEtiq~suEtiq[~o]         pide la lista (por GUILD, a quien se encarga de esa hermandad; por
+--                                susurro, a alguien de esa hermandad). Con «o», también los desconectados
 --   ML~etiq~id~parte~partes~datos  un trozo de la lista («nombre,clase,nivel,rango,zona[,a]», como RB)
+--   MO~etiq~id~parte~partes~datos  un trozo de los desconectados («nombre,clase,nivel,rango,horas»)
 local _, HU = ...
 local L = HU.L
 
@@ -16,6 +17,8 @@ local ANSWER_GAP = 60   -- a cada uno, como mucho una lista por minuto
 local ANSWER_MAX = 3    -- y como mucho tantas listas por minuto en total
 local RESHARE_GAP = 30  -- la copia que ya tengo, a mi hermandad como mucho cada tanto
 local CHUNK = 190       -- bytes de datos por trozo (el mensaje entero no pasa de 255)
+local OFF_MAX = 300     -- desconectados que se mandan como mucho (los que se conectaron hace menos)
+local OFF_WAIT = 15     -- llegada la de conectados, los desconectados empiezan antes de esto (si no, no los tiene)
 
 HU.unionMembers = {}    -- [etiqueta] = estado de su lista (ver State)
 HU.unionAnswered = {}   -- [nombre en minúsculas] = true: ya me ha contestado una vez (tiene Miembros)
@@ -30,6 +33,15 @@ local function State(tag)
         HU.unionMembers[tag] = st
     end
     return st
+end
+
+-- Los desconectados de esa hermandad, aparte (MO): members/t/id: la última lista entera; cur: la que
+-- está llegando; askT/from: cuándo y a quién se la pedí; doneT: cuándo llegó la de conectados que la
+-- acompañaba; failed: quien contestó no los tiene (una versión de antes)
+local function Off(st)
+    local o = st.off
+    if not o then o = {}; st.off = o end
+    return o
 end
 
 local function Known(self, tag)
@@ -89,6 +101,61 @@ local function Decode(self, tag, parts, n)
     return out
 end
 
+-- Los desconectados de mi hermandad, una línea cada uno («nombre,clase,nivel,rango,horas», las horas en
+-- base 36 y vacías si el juego no lo dice), primero los que se conectaron hace menos; como mucho OFF_MAX
+function HU:OfflineEntries()
+    local now, list = GetTime(), {}
+    for _, e in ipairs(self.rosterList or {}) do
+        if e.online == false and e.name then
+            local secs = e.offSecs and (e.offSecs + math.max(0, now - (e.offAt or now))) or nil
+            list[#list + 1] = { e = e, secs = secs }
+        end
+    end
+    table.sort(list, function(a, b)
+        if (a.secs ~= nil) ~= (b.secs ~= nil) then return a.secs ~= nil end
+        return (a.secs or 0) < (b.secs or 0)
+    end)
+    local out = {}
+    for i = 1, math.min(#list, OFF_MAX) do
+        local e, secs = list[i].e, list[i].secs
+        out[i] = table.concat({ (self:Short(e.name):gsub("[~,;|]", "")), HU.CLASS_INDEX[e.class or ""] or 0,
+            e.level or 0, e.rankIndex or "", secs and HU.B36(math.floor(secs / 3600)) or "" }, ",")
+    end
+    return out
+end
+
+-- Líneas en trozos de como mucho max bytes, separadas por «;»
+function HU.PackLines(lines, max)
+    max = max or CHUNK
+    local chunks, cur, size = {}, {}, 0
+    for _, line in ipairs(lines) do
+        if size + #line + 1 > max and #cur > 0 then
+            chunks[#chunks + 1] = table.concat(cur, ";")
+            cur, size = {}, 0
+        end
+        cur[#cur + 1] = line
+        size = size + #line + 1
+    end
+    if #cur > 0 then chunks[#chunks + 1] = table.concat(cur, ";") end
+    if #chunks == 0 then chunks[1] = "" end
+    return chunks
+end
+
+local function DecodeOff(self, tag, parts, n)
+    local out = {}
+    for i = 1, n do
+        for en in (parts[i] or ""):gmatch("[^;]+") do
+            local name, cls, lvl, rank, hours = en:match("^([^,]*),(%d*),(%d*),(%d*),(%w*)$")
+            if HU.SafeName(name) then
+                out[#out + 1] = { name = self:FullName(name), class = HU.CLASSES[tonumber(cls) or 0],
+                    level = tonumber(lvl) or 0, rankIndex = tonumber(rank), online = false, tag = tag,
+                    offHours = hours ~= "" and tonumber(hours, 36) or nil }
+            end
+        end
+    end
+    return out
+end
+
 ---------------------------------------------------------------------------
 -- Pedirla
 ---------------------------------------------------------------------------
@@ -125,7 +192,7 @@ local function Candidates(self, tag)
 end
 
 local function GiveUp(self, st)
-    st.fetch, st.failed = nil, GetTime()
+    st.fetch, st.failed, st.wantOff = nil, GetTime(), nil
     self:Changed("unionMembers")
 end
 
@@ -144,7 +211,12 @@ local function Fetch(self, tag)
     if not target then return GiveUp(self, st) end
     fx.tried[target:lower()] = true
     fx.tries, fx.t, fx.target = fx.tries + 1, now, target:lower()
-    self:Whisper(target, "MP~" .. self.myTag .. "~" .. tag, true)
+    -- (con los desconectados: se esperan de este mismo)
+    if st.wantOff then
+        local o = Off(st)
+        o.askT, o.from, o.doneT = now, target:lower(), nil
+    end
+    self:Whisper(target, "MP~" .. self.myTag .. "~" .. tag .. (st.wantOff and "~o" or ""), true)
     self:Changed("unionMembers")
 end
 
@@ -160,31 +232,58 @@ local function Reshare(self, tag)
 end
 
 -- ¿Está en camino? (pedida a alguien, llegando, o pedida a mi hermandad y aún esperando)
-local function Busy(st, now)
+local function Busy(st, now, off)
+    local o = off and st.off
     return st.fetch ~= nil or (st.cur ~= nil and now - st.cur.t < WAIT)
         or (st.guildAskT ~= nil and now - st.guildAskT < GUILD_WAIT and (st.t or 0) < st.guildAskT)
+        or (o and ((o.cur ~= nil and now - o.cur.t < WAIT) or o.doneT ~= nil)) or false
+end
+
+-- ¿Hay que pedir los desconectados? (no, si están llegando, si los tengo de hace menos de fresh o si
+-- quien contestó no los tiene). Llegada la de conectados, si en OFF_WAIT no empiezan, no los tiene
+local function NeedOff(st, now, fresh)
+    if st.failed and now - st.failed < FRESH then return false end
+    local o = Off(st)
+    if o.cur and now - o.cur.t < WAIT then return false end
+    if o.members and now - o.t < fresh then return false end
+    if o.failed and now - o.failed < FRESH then return false end
+    if o.doneT then
+        if now - o.doneT < OFF_WAIT then return false end
+        o.doneT, o.failed = nil, now
+        HU:Changed("unionMembers")
+        return false
+    end
+    return true
 end
 
 -- La ventana la está enseñando: se pide si no la tengo reciente (las esperas van aquí dentro).
 -- Sin etiqueta (todas): de una en una y cada una como mucho cada ALL_FRESH, para no pedir las 19
--- hermandades a la vez
-function HU:WantUnionMembers(tag)
+-- hermandades a la vez. off: también los desconectados (se piden siempre a alguien de esa hermandad:
+-- solo los quiere quien mira, no toda mi hermandad)
+function HU:WantUnionMembers(tag, off)
     if tag == nil then
         local now = GetTime()
         for _, t in ipairs(self:OtherTags()) do
             local st = self.unionMembers[t]
-            if st and Busy(st, now) then return self:WantUnionMembers(t) end
+            if st and Busy(st, now, off) then return self:WantUnionMembers(t, off) end
         end
         for _, t in ipairs(self:OtherTags()) do
             local st = self.unionMembers[t]
-            if not st or not ((st.members and now - st.t < ALL_FRESH) or (st.failed and now - st.failed < FRESH)) then
-                return self:WantUnionMembers(t)
+            if not st or not ((st.members and now - st.t < ALL_FRESH) or (st.failed and now - st.failed < FRESH))
+                or (off and Known(self, t) and NeedOff(st, now, ALL_FRESH)) then
+                return self:WantUnionMembers(t, off)
             end
         end
         return
     end
     if not self.myTag or not Known(self, tag) then return end
     local st, now = State(tag), GetTime()
+    if off and NeedOff(st, now, FRESH) then
+        if st.fetch then return Fetch(self, tag) end
+        if st.cur and now - st.cur.t < WAIT then return end
+        st.wantOff = true
+        return Fetch(self, tag)
+    end
     if st.members and now - st.t < FRESH then return end
     if st.cur and now - st.cur.t < WAIT then return end
     if st.fetch then return Fetch(self, tag) end
@@ -205,10 +304,12 @@ end
 -- Contestar
 ---------------------------------------------------------------------------
 local answered, sentT = {}, {}
-local function SendList(self, target)
+-- off: también los desconectados (MO, detrás de la de conectados). Pedirla con y sin ellos cuenta aparte
+-- en el tope de cada uno (quien la tenía sin ellos y marca la casilla no espera un minuto)
+local function SendList(self, target, off)
     local now = GetTime()
     for i = #sentT, 1, -1 do if now - sentT[i] > 60 then table.remove(sentT, i) end end
-    local k = target:lower()
+    local k = target:lower() .. (off and "+o" or "")
     if answered[k] and now - answered[k] < ANSWER_GAP then return false end
     if #sentT >= ANSWER_MAX or self:MainQueueSize() > 30 then return false end
     answered[k] = now
@@ -218,6 +319,12 @@ local function SendList(self, target)
     self:MarkPinged(target)
     for i, c in ipairs(chunks) do
         self:Send(table.concat({ "ML", self.myTag, id, i, #chunks, c }, "~"), "WHISPER", target)
+    end
+    if off then
+        local offChunks = HU.PackLines(self:OfflineEntries(), CHUNK)
+        for i, c in ipairs(offChunks) do
+            self:Send(table.concat({ "MO", self.myTag, id, i, #offChunks, c }, "~"), "WHISPER", target)
+        end
     end
     return true
 end
@@ -236,7 +343,7 @@ HU.comm.MP = function(self, sender, f, dist)
     end
     if dist ~= "WHISPER" or want ~= self.myTag or not Known(self, from) then return end
     if not (self:InAnyGuild(sender) or self:Vouched(sender)) then return end
-    SendList(self, sender)
+    SendList(self, sender, f[3] == "o")
 end
 
 ---------------------------------------------------------------------------
@@ -253,6 +360,12 @@ local function Store(self, st, tag, id, i, n, data)
     if cur.got >= cur.n then
         st.members, st.t, st.id, st.parts, st.n = Decode(self, tag, cur.parts, cur.n), GetTime(), id, cur.parts, cur.n
         st.cur, st.fetch, st.failed = nil, nil, nil
+        -- (pedida con los desconectados: si no empiezan a llegar en OFF_WAIT, no los tiene)
+        if st.wantOff then
+            local o = Off(st)
+            if not o.cur then o.doneT = GetTime() end
+            st.wantOff = nil
+        end
     end
     self:Changed("unionMembers")
 end
@@ -275,6 +388,30 @@ HU.comm.ML = function(self, sender, f, dist, raw)
         return
     end
     Store(self, st, tag, id, i, n, f[5] or "")
+end
+
+-- Los desconectados: solo por susurro, de a quien se los pedí y hace poco (no se reparten por GUILD:
+-- solo los quiere quien mira)
+HU:RegisterMessage("MO", { tagField = 1, open = true, queue = "bmid", ttl = 120, combat = "data" })
+HU.comm.MO = function(self, sender, f, dist)
+    local tag, id, i, n = f[1], f[2], tonumber(f[3]), tonumber(f[4])
+    if dist ~= "WHISPER" or not Known(self, tag) or not id or id == "" then return end
+    if not (i and n and i >= 1 and i <= n and n <= 200) then return end
+    local st = State(tag)
+    local o, now = Off(st), GetTime()
+    if not (o.from == sender:lower() and o.askT and now - o.askT < 120) then return end
+    if o.id == id then return end -- (esa ya la tengo entera)
+    local cur = o.cur
+    if not cur or cur.id ~= id then cur = { id = id, n = n, parts = {}, got = 0 }; o.cur = cur end
+    cur.t, o.doneT = now, nil
+    if cur.n ~= n or cur.parts[i] then return end
+    cur.parts[i] = f[5] or ""
+    cur.got = cur.got + 1
+    if cur.got >= cur.n then
+        o.members, o.t, o.id = DecodeOff(self, tag, cur.parts, cur.n), now, id
+        o.cur, o.failed = nil, nil
+    end
+    self:Changed("unionMembers")
 end
 
 ---------------------------------------------------------------------------
@@ -400,18 +537,31 @@ end)
 ---------------------------------------------------------------------------
 -- Para la ventana
 ---------------------------------------------------------------------------
--- Las filas: de una hermandad o de todas, por hermandad, rango y nombre
-function HU:UnionMemberEntries(tag)
+-- Las filas: de una hermandad o de todas, por hermandad, rango y nombre. off: también los desconectados
+-- que hayan llegado (offSecs: cuánto llevan desconectados, contando desde que llegó la lista)
+function HU:UnionMemberEntries(tag, off)
     local out, now = {}, GetTime()
     for _, t in ipairs(tag and { tag } or self:OtherTags()) do
         local st = self.unionMembers[t]
         if st and st.members and now - st.t > KEEP then st.members, st.t, st.id, st.parts = nil, nil, nil, nil end
         if st and st.who and now - st.who.t > KEEP then st.who = nil end
+        if st and st.off and st.off.members and now - st.off.t > KEEP then st.off.members, st.off.t, st.off.id = nil, nil, nil end
         -- (la de Miembros, si la hay, que trae los rangos; si no, la del /who)
         local list = st and (st.members or (st.cur and Decode(self, t, st.cur.parts, st.cur.n)) or (st.who and st.who.members))
+        local seen = {}
         for _, m in ipairs(list or {}) do
+            seen[m.name:lower()] = true
             out[#out + 1] = { name = m.name, tag = t, class = m.class, level = m.level, zone = m.zone, afk = m.afk,
                 ri = m.rankIndex or 99, rank = m.rankIndex and self:RankName(t, m.rankIndex) or "", online = true }
+        end
+        local o = off and st and st.off
+        -- (quien se ha conectado después de llegar la lista sale una vez, conectado)
+        for _, m in ipairs(o and o.members or {}) do
+            if not seen[m.name:lower()] then
+                out[#out + 1] = { name = m.name, tag = t, class = m.class, level = m.level, ri = m.rankIndex or 99,
+                    rank = m.rankIndex and self:RankName(t, m.rankIndex) or "", online = false,
+                    offSecs = m.offHours and (m.offHours * 3600 + math.floor(now - o.t)) or nil }
+            end
         end
     end
     table.sort(out, function(a, b)
@@ -424,8 +574,8 @@ end
 
 -- «Unión» en la lista de miembros del juego (UnionRoster.lua): los conectados de mi hermandad (de la
 -- lista del juego, con su rango) y los de las otras, todos juntos; primero la mía, luego por hermandad,
--- rango y nombre
-function HU:UnionRosterEntries()
+-- rango y nombre. off: también los desconectados de las otras (los de la mía los pone UnionRoster.lua)
+function HU:UnionRosterEntries(off)
     local out = {}
     for _, e in ipairs(self.rosterList or {}) do
         if e.online and e.name then
@@ -433,7 +583,7 @@ function HU:UnionRosterEntries()
                 afk = e.afk, ri = e.rankIndex or 99, rank = e.rank or "", online = true, own = true }
         end
     end
-    for _, e in ipairs(self:UnionMemberEntries(nil)) do out[#out + 1] = e end
+    for _, e in ipairs(self:UnionMemberEntries(nil, off)) do out[#out + 1] = e end
     table.sort(out, function(a, b)
         if (a.own or false) ~= (b.own or false) then return a.own == true end
         if a.tag ~= b.tag then return tostring(a.tag) < tostring(b.tag) end
@@ -443,8 +593,18 @@ function HU:UnionRosterEntries()
     return out
 end
 
+-- Cómo van los desconectados de esa hermandad (detrás de cómo va la lista)
+local function OffStatus(st)
+    local o = st.off
+    if not o then return "" end
+    if o.cur then return string.format(L(", desconectados %d/%d"), o.cur.got, o.cur.n) end
+    if o.members then return string.format(L(", %d desconectados"), #o.members) end
+    if o.failed then return L(", sin desconectados (versión de antes)") end
+    return ""
+end
+
 -- Cómo va la lista de esa hermandad, en pocas palabras
-function HU:UnionMembersStatus(tag)
+local function OnlineStatus(self, tag)
     local st = self.unionMembers[tag]
     if not st then return "" end
     local now = GetTime()
@@ -460,6 +620,14 @@ function HU:UnionMembersStatus(tag)
     if st.failed then return L("no contesta: un clic en la lista lo busca con /who") end
     if st.fetch or st.guildAskT then return L("pidiendo…") end
     return ""
+end
+
+-- (off: y la de sus desconectados)
+function HU:UnionMembersStatus(tag, off)
+    local s = OnlineStatus(self, tag)
+    local st = off and self.unionMembers[tag]
+    if st and s ~= "" then s = s .. OffStatus(st) end
+    return s
 end
 
 -- (quien se encarga y nadie mira: sigue preguntando a otro si el primero no contesta)

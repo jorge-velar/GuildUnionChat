@@ -101,9 +101,10 @@ local function Less(a, b)
 end
 
 -- Todos: los conectados de la unión y, con la casilla del juego marcada, los desconectados de mi hermandad
+-- y los de las otras que hayan llegado (MO, UnionMembers.lua)
 local function Entries()
     if notesDirty then ReadNotes() end
-    local list = HU:UnionRosterEntries()
+    local list = HU:UnionRosterEntries(ShowOffline())
     if ShowOffline() then
         for _, e in ipairs(HU.rosterList) do
             if not e.online and e.name then
@@ -151,7 +152,8 @@ end
 -- Las filas que caben: las demás, con la barra
 local function Paint()
     if not (cover and cover:IsShown() and tab == 1) then return end
-    HU:WantUnionMembers(nil)
+    local wantOff = ShowOffline()
+    HU:WantUnionMembers(nil, wantOff)
     local list = Entries()
     shown = list
     local sf = cover.scroll
@@ -210,7 +212,7 @@ local function Paint()
     -- (abajo: cuántos y cómo va la lista de cada hermandad)
     local parts = { string.format(L("%d conectados"), online) }
     for _, t in ipairs(HU:OtherTags()) do
-        local s = HU:UnionMembersStatus(t)
+        local s = HU:UnionMembersStatus(t, wantOff)
         if s ~= "" then parts[#parts + 1] = "|cff" .. HU:GuildColorHex(t) .. t .. "|r " .. s end
     end
     cover.status:SetText(table.concat(parts, "  ·  "))

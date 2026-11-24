@@ -153,6 +153,13 @@ Net/Relay.lua y en los apartados de las copias 117 a 120, al final.
   decenas de mensajes por hermandad y el juego deja uno por segundo. En cada hermandad la pide una
   sola persona (quien se encarga de esa hermandad, `HU:ResponsibleFor`) y la reparte por GUILD.
   Contesta alguien de la otra hermandad, solo a quien es de la comunidad (lleva la zona de cada uno).
+  - **Sus desconectados** (`MO`), solo en «Unión» con la casilla de desconectados del juego marcada:
+    se piden con `MP~miEtiq~suEtiq~o`, siempre por susurro a alguien de esa hermandad (solo los quiere
+    quien mira) y no se reparten por GUILD. Llegan detrás de la de conectados: como mucho 300, los que
+    se conectaron hace menos primero, con las horas que llevan desconectados. Una versión de antes no
+    lee la `o` y contesta solo con `ML`; si a los 15 s de llegar esa no han empezado los `MO`, la línea de
+    estado dice que esa hermandad no los tiene y no se vuelven a pedir en un minuto. No van en `ML`
+    porque las versiones de antes los enseñarían como conectados.
 
 ## Los registros
 

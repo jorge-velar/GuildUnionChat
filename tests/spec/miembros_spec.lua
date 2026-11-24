@@ -28,11 +28,11 @@ local function SentML(net, tag, i0)
     return n, byTarget, ids
 end
 
--- La ventana abierta: cada 2 s pide lo que haga falta (como la pestaña)
-local function Look(net, p, tag, cond, max)
+-- La ventana abierta: cada 2 s pide lo que haga falta (como la pestaña); off: con los desconectados
+local function Look(net, p, tag, cond, max, off)
     local t = 0
     while t < (max or 120) do
-        p.HU:WantUnionMembers(tag)
+        p.HU:WantUnionMembers(tag, off)
         if cond() then return t end
         net:Advance(2)
         t = t + 2
@@ -41,6 +41,7 @@ local function Look(net, p, tag, cond, max)
 end
 
 -- UNO: Ana (oficial) y Alba; DOS: Bea (oficial) y tres miembros, con zona y nivel; Beto, desconectado
+-- desde hace 2 días
 local function Union(opts)
     opts = opts or {}
     local net = red.New()
@@ -57,6 +58,7 @@ local function Union(opts)
         p[n].member.zone = "Zona " .. i
         p[n].member.level = 20 + i
     end
+    p.beto.member.level, p.beto.member.lastOnline = 15, { 0, 0, 2, 0 }
     for _, n in ipairs({ "ana", "alba", "bea", "blas", "bruno", "berta" }) do net:Login(p[n]) end
     net:Advance(opts.secs or 90)
     return net, p
@@ -259,6 +261,126 @@ describe("Miembros de la unión: trozos", function()
         A.equal(1, #HU:UnionMemberEntries("DOS"))
         a.w:Advance(601)
         A.same({}, HU:UnionMemberEntries("DOS"))
+    end)
+end)
+
+describe("Miembros de la unión: los desconectados (MO)", function()
+    -- (la de antes de los desconectados: Miembros sin MO)
+    local SIN_MO = "0b48b803bbc6d470b7c7cf8fc0d980de75288801"
+
+    local function OffOf(p, tag)
+        local out = {}
+        for _, e in ipairs(p.HU:UnionMemberEntries(tag, true)) do if not e.online then out[#out + 1] = e end end
+        return out
+    end
+    local function SentMO(net, i0)
+        local out = {}
+        for i = i0 or 1, #net.log do
+            local m = net.log[i]
+            if m.text:match("^MO~") then out[#out + 1] = m end
+        end
+        return out
+    end
+
+    it("con la casilla marcada llegan también los desconectados de la otra, con su rango y cuánto llevan", function()
+        local net, p = Union()
+        local i0 = #net.log + 1
+        A.truthy(Look(net, p.alba, "DOS", function() return #OffOf(p.alba, "DOS") == 1 end, 120, true), "no han llegado")
+        local beto = OffOf(p.alba, "DOS")[1]
+        A.matches("^Beto", beto.name)
+        A.equal("DOS", beto.tag)
+        A.equal(15, beto.level)
+        A.equal(4, beto.ri)
+        A.truthy(beto.offSecs >= 48 * 3600 and beto.offSecs < 49 * 3600, "2 días: " .. tostring(beto.offSecs))
+        -- (los conectados, también; y sin la casilla, los desconectados no salen)
+        A.equal(5, #p.alba.HU:UnionMemberEntries("DOS", true))
+        A.equal(4, #p.alba.HU:UnionMemberEntries("DOS"))
+        A.matches("1 desconectados", p.alba.HU:UnionMembersStatus("DOS", true))
+        A.falsy(p.alba.HU:UnionMembersStatus("DOS"):find("desconectados", 1, true))
+        -- (solo por susurro, y solo a quien los pidió)
+        local mo = SentMO(net, i0)
+        A.truthy(#mo >= 1)
+        for _, m in ipairs(mo) do
+            A.equal("WHISPER", m.dist)
+            A.equal("alba-reino", m.target:lower())
+        end
+        A.same({}, net:Errors(), "errores")
+    end)
+
+    it("sin la casilla no se piden ni se mandan", function()
+        local net, p = Union()
+        local i0 = #net.log + 1
+        A.truthy(Look(net, p.alba, "DOS", function() return #p.alba.HU:UnionMemberEntries("DOS") == 4 end, 120))
+        net:Advance(30)
+        A.same({}, SentMO(net, i0))
+        A.same({}, OffOf(p.alba, "DOS"))
+    end)
+
+    it("ya con la de conectados, marcar la casilla los trae enseguida (los topes de con y sin, aparte)", function()
+        local net, p = Union()
+        A.truthy(Look(net, p.alba, "DOS", function() return #p.alba.HU:UnionMemberEntries("DOS") == 4 end, 120))
+        A.truthy(Look(net, p.alba, "DOS", function() return #OffOf(p.alba, "DOS") == 1 end, 30, true), "no han llegado")
+        A.same({}, net:Errors(), "errores")
+    end)
+
+    it("«todas» con la casilla: los de cada hermandad", function()
+        local net, p = Union()
+        A.truthy(Look(net, p.alba, nil, function() return #OffOf(p.alba) == 1 end, 120, true), "no han llegado")
+        A.same({}, net:Errors(), "errores")
+    end)
+
+    it("la otra hermandad con Miembros sin desconectados: llegan los conectados y dice que no los tiene", function()
+        local net, p = Union({ dosRef = SIN_MO })
+        local function Said() return p.alba.HU:UnionMembersStatus("DOS", true):find("sin desconectados", 1, true) ~= nil end
+        A.truthy(Look(net, p.alba, "DOS", Said, 120, true), "estado: " .. p.alba.HU:UnionMembersStatus("DOS", true))
+        A.equal(4, #p.alba.HU:UnionMemberEntries("DOS", true))
+        -- (y no se vuelven a pedir sin parar: como mucho una vez por minuto)
+        local i0 = #net.log + 1
+        Look(net, p.alba, "DOS", function() return false end, 60, true)
+        local asks = 0
+        for i = i0, #net.log do if net.log[i].text:match("^MP~UNO~DOS~o") then asks = asks + 1 end end
+        A.truthy(asks <= 2, "MP con o: " .. asks)
+        A.same({}, net:Errors(), "errores")
+    end)
+
+    it("unos MO que no he pedido, o de otro, no se guardan", function()
+        local a = F.Community()
+        local HU = a.HU
+        a.w:Receive("HU20B", "MO~DOS~id1~1~1~Beto,1,60,4,1c", "WHISPER", "Bea-Reino")
+        A.same({}, HU:UnionMemberEntries("DOS", true))
+        a.w:Receive("HU20B", "MO~DOS~id1~1~1~Beto,1,60,4,1c", "GUILD", "Compi-Reino")
+        A.same({}, HU:UnionMemberEntries("DOS", true))
+        A.same({}, a:Errors())
+    end)
+
+    it("en trozos: 300 como mucho, los de hace menos primero, y cada mensaje cabe", function()
+        local a = F.Community()
+        local HU = a.HU
+        local now = a.env.GetTime()
+        HU.rosterList = {}
+        for i = 1, 400 do
+            HU.rosterList[i] = { name = "Personaje" .. i .. "-Reino", online = false, level = 60, rankIndex = 9,
+                class = "WARRIOR", offSecs = (401 - i) * 3600 * 24, offAt = now }
+        end
+        HU.rosterList[401] = { name = "Sinfecha-Reino", online = false, level = 1 }
+        HU.rosterList[402] = { name = "Conectado-Reino", online = true, level = 60 }
+        local lines = HU:OfflineEntries()
+        A.equal(300, #lines)
+        A.matches("^Personaje400%-Reino,", lines[1], "el de hace menos, el primero")
+        A.matches(",o$", lines[1], "24 h, en base 36")
+        local chunks = HU.PackLines(lines)
+        for i, c in ipairs(chunks) do
+            local msg = table.concat({ "MO", "WLP3", "zzzzzz", i, #chunks, c }, "~")
+            A.truthy(#msg <= 255, "trozo " .. i .. ": " .. #msg)
+        end
+        A.truthy(#chunks <= 200)
+        A.same({ "" }, HU.PackLines({}))
+        -- (sin fecha, al final; y si caben, también salen)
+        HU.rosterList = { HU.rosterList[401], HU.rosterList[1] }
+        lines = HU:OfflineEntries()
+        A.equal(2, #lines)
+        A.matches("^Sinfecha%-Reino,", lines[2])
+        A.matches(",$", lines[2], "sin horas")
     end)
 end)
 
@@ -513,6 +635,35 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({ "Jefa/UNO", "Tester/UNO", "Compi/UNO", "Blas/DOS" }, names)
         A.truthy(list[1].own)
         A.falsy(list[4].own)
+    end)
+
+    it("con la casilla de desconectados del juego, también los de las otras hermandades, en gris y con cuánto llevan", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "IsGuildForwarder", true)
+        a.w:Receive("HU20B", "ML~DOS~id1~1~1~Blas,1,60,4,Ventormenta", "GUILD", "Compi-Reino")
+        -- (los desconectados de DOS, ya llegados: Beto, hace 2 días)
+        HU.unionMembers.DOS.off = { t = a.env.GetTime(), id = "id1", members = {
+            { name = "Beto-Reino", class = "MAGE", level = 15, rankIndex = 4, online = false, tag = "DOS", offHours = 48 } } }
+        local f = GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        local function Row(name)
+            for _, r in ipairs(cover.rows) do
+                if r:IsShown() and (r.cells.name:GetText() or ""):find(name, 1, true) then return r end
+            end
+        end
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        A.falsy(Row("Beto"), "sin la casilla, no sale")
+        f.MemberList.ShowOfflineButton.GetChecked = function() return true end
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local beto = Row("Beto")
+        A.truthy(beto, "con la casilla, sale")
+        A.matches("hace 2 d", beto.cells.zone:GetText())
+        A.matches("DOS", beto.cells.guild:GetText())
+        A.matches("^|cff808080", beto.cells.name:GetText(), "en gris")
+        A.truthy(Row("Blas"), "los conectados, también")
+        A.matches("1 desconectados", cover.status:GetText())
+        A.same({}, a:Errors())
     end)
 
     it("Miembros sale de entrada y tapa la lista del juego: por rango y nivel, con hermandad y nota", function()
