@@ -2648,7 +2648,8 @@ Rehacerla (`Entries`: crear una fila por persona y ordenar miles) cada 2 s con 4
 eran 16 ms y 2,4 MB de basura cada vez. Ahora `Paint` la guarda en `shown` y solo llama a `Entries` con `listDirty`
 (llegó `GUILD_ROSTER_UPDATE` o `CHANGED` «unionMembers») o si cambia su huella (`ListSig`): `HU.rosterVersion`
 (alguien de mi hermandad entra o sale), «Mostrar desconectados», el orden elegido, y de cada hermandad la hora de su
-lista de Miembros, lo que va llegando, su /who y su lista RB; más un trozo de reloj (`LIST_EVERY`, 30 s) por lo que
+lista de Miembros, lo que va llegando, su /who, su lista RB y los trozos de su lista completa (paquete MB, con
+`HU:PackProgress`); más un trozo de reloj (`LIST_EVERY`, 30 s) por lo que
 caduca con el tiempo. Cada 2 s quedan solo las filas que se ven (0,3 ms). Al rehacerla tampoco se pasa el nombre a
 minúsculas en cada comparación: cada fila lleva el suyo (`k`), también en `HU:UnionRosterEntries` y
 `HU:UnionMemberEntries` (11 ms en vez de 16 con 4 × 600).

@@ -199,7 +199,7 @@ local function Entries()
             for _, m in ipairs(HU:PackedMembers(tag)) do
                 local k = m.name:lower()
                 if not byKey[k] then
-                    local e = { name = m.name, tag = tag, class = m.class, level = m.level, ri = m.rankIndex,
+                    local e = { name = m.name, k = k, tag = tag, class = m.class, level = m.level, ri = m.rankIndex,
                         rank = (m.rankIndex and HU:RankName(tag, m.rankIndex)) or "", online = false, unknown = not known }
                     list[#list + 1] = e
                     byKey[k] = e
@@ -228,8 +228,10 @@ local function ListSig()
         math.floor(GetTime() / LIST_EVERY) }
     for _, t in ipairs(HU:OtherTags()) do
         local st, rr = HU.unionMembers[t], HU.remoteRoster and HU.remoteRoster[t]
+        -- (y lo que va llegando de su lista completa, el paquete MB)
+        local got, total = HU:PackProgress(t, "MB")
         parts[#parts + 1] = table.concat({ t, tostring(st and st.t), tostring(st and st.cur and st.cur.got),
-            tostring(st and st.who and st.who.t), tostring(rr) }, ":")
+            tostring(st and st.who and st.who.t), tostring(rr), tostring(got), tostring(total) }, ":")
     end
     return table.concat(parts, "|")
 end
