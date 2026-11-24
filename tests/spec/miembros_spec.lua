@@ -3,6 +3,7 @@
 local red = require("lib.red")
 local F = require("lib.fixtures")
 local A = assert_
+local unpack = table.unpack or unpack
 
 -- Los nombres (cortos) de una lista de filas
 local function Names(list)
