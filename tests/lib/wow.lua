@@ -457,7 +457,8 @@ function wow.New(opts)
     api.SOUNDKIT = setmetatable({}, { __index = function() return 0 end })
     api.SendChatMessage = function(msg, kind, lang, target) w.said[#w.said + 1] = { msg = msg, kind = kind, target = target } end
     api.Enum = { SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, ChannelThrottle = 8,
-        GeneralError = 9, AddOnMessageLockdown = 11, TargetOffline = 12 } }
+        GeneralError = 9, AddOnMessageLockdown = 11, TargetOffline = 12 },
+        ClubStreamType = { General = 0, Guild = 1, Officer = 2, Other = 3 } }
 
     local function SendAddon(prefix, text, dist, target, logged)
         if w.failSend then

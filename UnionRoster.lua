@@ -17,6 +17,7 @@ local TOP = 26   -- cuánto sube por encima de la lista del juego: tapa sus tít
 -- (arriba lo nuestro y debajo lo del juego, Jorge 24/11: la fila sube ROW_UP al sitio del desplegable «Guild» o de la
 -- casilla de desconectados, y esos bajan DROP a donde estaba la fila; lo de debajo no se mueve) [+ARCHITECTURE.md]
 local ROW_UP, DROP = 31, 34
+local INSET_EDGE = 3   -- (vista de chat: la piedra de la fila tapa el borde de arriba del fondo del juego) [+ARCHITECTURE.md]
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
@@ -306,8 +307,9 @@ local function Layout()
     end
     -- (con «Chat», los clics pasan al chat del juego salvo en los botones)
     cover:EnableMouse(tab ~= 0)
-    cover.rock:SetHeight(tab == 0 and TAB_H or TAB_H + ROW_UP + HDR_H + 2)
+    cover.rock:SetHeight(tab == 0 and TAB_H + INSET_EDGE or TAB_H + ROW_UP + HDR_H + 2)
     cover.dark:SetShown(tab ~= 0)
+    if cover.band then cover.band:SetShown(chatMode) end
 end
 
 -- (el botón redondo elegido, con el brillo blanco alrededor; los demás, con su sombra)
@@ -692,7 +694,10 @@ local function Build(f)
     -- Encima de la lista del juego y de sus títulos (sin tocarla: hija de la ventana, no de su lista).
     -- La casilla de desconectados y el buscador quedan a la vista, encima
     cover = CreateFrame("Frame", "GuildUnionUnionRoster", f, "BackdropTemplate")
-    cover:HookScript("OnHide", function() HU.charSearchOff = false; HU.SyncCharSearch() end)
+    cover:HookScript("OnHide", function()
+        HU.charSearchOff = false; HU.SyncCharSearch()
+        if cover.band then cover.band:Hide() end
+    end)
     cover:SetPoint("TOPLEFT", ml, "TOPLEFT", -3, TOP)
     -- (hasta 22 más a la derecha: tapa también la barra de la lista del juego, que se veía al lado de la nuestra)
     cover:SetPoint("BOTTOMRIGHT", ml, "BOTTOMRIGHT", 22, 0)
@@ -717,6 +722,18 @@ local function Build(f)
     rock:SetPoint("TOPLEFT", cover, "TOPLEFT"); rock:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
     rock:SetHeight(TAB_H + ROW_UP + HDR_H + 2)
     cover.rock = rock
+    -- (en la vista de chat, la misma piedra hasta el chat y su lista (Jorge, 24/11): en el fondo del juego, debajo de
+    -- lo suyo, y desde la esquina de la fila, para que casen sin costura) [+ARCHITECTURE.md]
+    local inset = type(f.Inset) == "table" and f.Inset or nil
+    if inset then
+        local band = inset:CreateTexture(nil, "BACKGROUND", nil, 1)
+        band:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT")
+        band:SetHorizTile(true); band:SetVertTile(true)
+        band:SetPoint("TOPLEFT", cover, "TOPLEFT"); band:SetPoint("TOPRIGHT", cover, "TOPRIGHT")
+        band:SetHeight(TAB_H + 2 + ROW_UP)
+        band:Hide()
+        cover.band = band
+    end
     tabs.Tabs = {}
     -- (los botones de arriba: el icono en un círculo con un borde negro fino; detrás, la sombra o, si está elegido,
     -- el brillo (PickRound); al pasar el ratón, más claro y con su nombre) [+ARCHITECTURE.md]
@@ -1027,6 +1044,21 @@ local function Build(f)
     for _, w in ipairs({ dd, headset }) do
         if w then hooksecurefunc(w, "SetPoint", function() if not placingTop and mode then TopRow() end end) end
     end
+    -- (el desplegable «Guild», fuera en la vista de chat (Jorge, 24/11): transparente y sin clics, que esconderlo es cosa
+    -- del juego. Solo en el canal de la hermandad: en el de oficiales o en una comunidad sigue, para poder cambiar)
+    -- [+ARCHITECTURE.md]
+    local ddOff = false
+    local function GuildDropdown()
+        if not dd then return end
+        local clubId = f.GetSelectedClubId and f:GetSelectedClubId()
+        local stream = clubId and f.GetSelectedStreamForClub and f:GetSelectedStreamForClub(clubId)
+        local off = mode == "chat" and type(stream) == "table" and stream.streamType == Enum.ClubStreamType.Guild
+        if off == ddOff then return end
+        ddOff = off
+        dd:SetAlpha(off and 0 or 1)
+        dd:EnableMouse(not off)
+    end
+    if f.SelectStream then hooksecurefunc(f, "SelectStream", function() GuildDropdown() end) end
     -- (el juego vuelve a colocar la lista de la derecha a su aire —al actualizarla—: si está en la vista de
     -- chat con nuestra fila, se vuelve a poner debajo de la fila un instante después)
     hooksecurefunc(ml, "SetPoint", function()
@@ -1119,6 +1151,7 @@ local function Build(f)
         if cover:IsShown() then ShowTab(tab) end
         if m == "chat" then ChatAnchors() end
         TopRow()
+        GuildDropdown()
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
         if InCombatLockdown() then secureLater = true end

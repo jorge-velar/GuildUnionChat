@@ -2630,6 +2630,16 @@ cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los 
   `ROW_UP` más abajo de la fila, y en la vista de chat el chat y su lista también (`ChatAnchors`). El juego recoloca el
   desplegable y los cascos al agrandar la ventana: un enganche a su `SetPoint` los vuelve a bajar. Solo fuera de
   combate: la casilla lleva colgados nuestros botones seguros.
+- **La vista de chat, como la de miembros** (Jorge, 24/11): sin el desplegable «Guild» y con la piedra gris de la fila
+  hasta el chat y su lista. La piedra de abajo (`cover.band`) va en el fondo de la ventana del juego (`f.Inset`, capa
+  `BACKGROUND` 1, encima de su mármol oscuro): así quedan por encima los cascos y el «N/M en línea» del juego, que en la
+  capa `HIGH` de lo nuestro quedarían tapados. Empieza en la esquina de la fila, como `cover.rock`, para que las dos
+  piedras casen sin costura, y llega a la altura del chat y de su lista (`TAB_H + 2 + ROW_UP`, la cuenta de
+  `ChatAnchors`). El borde de arriba de ese fondo se vería como una raya justo debajo de la fila: `cover.rock` baja
+  `INSET_EDGE` (3) más y lo tapa. Se ve solo en la vista de chat (`Layout`) y se va con lo nuestro (`OnHide` de
+  `cover`). El desplegable no se esconde (lo lleva el juego, `SetShown` por vista): queda transparente y sin clics
+  (`GuildDropdown`, en `Sync` y tras `SelectStream`), y solo en el canal de la hermandad: en el de oficiales o en una
+  comunidad se ve, para poder cambiar de canal (si no, quien lo tuviera en oficiales no podría volver).
 - Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
   y 25 más; en la de chat, de la columna de comunidades al borde de la ventana) y de ahí `x0`, el principio de la
   fila. Con esa misma cuenta van los nuestros (atados a la fila) y los seguros (atados a la lista del juego o a la

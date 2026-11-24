@@ -857,6 +857,58 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("en la vista de chat, sin el desplegable «Guild» y con la piedra de la fila hasta el chat y su lista", function()
+        local a = F.Community()
+        local dd, inset
+        local stream = { streamId = 1, streamType = 1 }   -- (el canal de la hermandad: Enum.ClubStreamType.Guild)
+        local f = GuildWindow(a, true, function(w)
+            dd = a.env.CreateFrame("Frame", nil, w); w.StreamDropdown = dd
+            dd.SetAlpha = function(self, v) self._alpha = v end
+            dd.EnableMouse = function(self, v) self._mouse = v end
+            inset = a.env.CreateFrame("Frame", nil, w); w.Inset = inset
+            w.GetSelectedClubId = function() return 7 end
+            w.GetSelectedStreamForClub = function() return stream end
+            w.SelectStream = function() end
+        end)
+        local cover = a.env.GuildUnionUnionRoster
+        cover.rock.SetHeight = function(self, h) self._h = h end
+        -- (la piedra de abajo va en el fondo del juego, debajo de lo suyo; en la vista de miembros, ni ella ni el desplegable)
+        A.equal(inset, cover.band:GetParent())
+        A.falsy(cover.band:IsShown())
+        A.equal(nil, dd._alpha, "el desplegable, sin tocar")
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.truthy(cover.band:IsShown(), "la piedra baja hasta el chat")
+        A.equal(34 + 3, cover.rock._h, "la de la fila tapa el borde de arriba del fondo del juego")
+        A.same({ 0, false }, { dd._alpha, dd._mouse }, "sin «Guild»: transparente y sin clics")
+        -- (en el canal de oficiales vuelve, para poder cambiar; de vuelta en el de la hermandad, fuera otra vez)
+        stream = { streamId = 2, streamType = 2 }
+        f:SelectStream(7, 2)
+        A.same({ 1, true }, { dd._alpha, dd._mouse }, "oficiales")
+        stream = { streamId = 1, streamType = 1 }
+        f:SelectStream(7, 1)
+        A.same({ 0, false }, { dd._alpha, dd._mouse })
+        -- (de vuelta a la vista de miembros: como siempre)
+        f.Chat.visible = false
+        f.MemberList.ShowOfflineButton.visible = true
+        f.MemberList.ShowOfflineButton:GetScript("OnShow")()
+        a.w:Advance(0.1)
+        A.falsy(cover.band:IsShown())
+        A.equal(34 + 31 + 24 + 2, cover.rock._h)
+        A.same({ 1, true }, { dd._alpha, dd._mouse })
+        -- (lo nuestro se esconde: la piedra de abajo, también)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.truthy(cover.band:IsShown())
+        cover:Hide()
+        A.falsy(cover.band:IsShown())
+        A.same({}, a:Errors())
+    end)
+
     it("los cuatro botones de arriba, redondos, con imagen y centrados: Chat (el seguro), Miembros, Comercio y Calendario", function()
         local a = F.Community()
         local f = GuildWindow(a)
