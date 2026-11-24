@@ -247,19 +247,17 @@ local function Paint()
             -- (la etiqueta de la hermandad, corta; el nombre entero, en la barra de abajo y en el menú)
             c.guild:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
             c.note:SetText(e.note or "")
-            -- (profesiones: icono y nivel; los nombres, en la ficha)
+            -- (profesiones: solo el icono (Jorge, 24/11: «esta pestaña sin niveles»: de los demás, Forever no los da); los
+            -- nombres y el nivel, en la ficha)
             for j = 1, 2 do
-                local slot, p = c.prof[j], e.prof and e.prof[j]
+                local icon, p = c.prof[j], e.prof and e.prof[j]
                 if p then
-                    slot.icon:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-                    slot.icon:SetDesaturated(dim)
-                    slot.icon:Show()
-                    slot.text:SetText(p.rank and tostring(p.rank) or "")
+                    icon:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                    icon:SetDesaturated(dim)
+                    icon:Show()
                 else
-                    slot.icon:Hide()
-                    slot.text:SetText("")
+                    icon:Hide()
                 end
-                slot.text:SetAlpha(dim and 0.5 or 1)
             end
             for _, k in ipairs({ "level", "zone", "rank", "note" }) do c[k]:SetAlpha(dim and 0.5 or 1) end
             row:Show()
@@ -965,17 +963,14 @@ local function Build(f)
                 tex:SetPoint("LEFT", starts[k] + (col.w - 16) / 2, 0)
                 c.class = tex
             elseif col.key == "prof" then
-                -- (dos huecos, icono y nivel de cada profesión)
+                -- (dos huecos, el icono de cada profesión, centrados en la columna)
                 c.prof = {}
                 for j = 1, 2 do
                     local icon = row:CreateTexture(nil, "ARTWORK")
                     icon:SetSize(14, 14)
-                    icon:SetPoint("LEFT", starts[k] + 4 + (j - 1) * 38, 0)
+                    icon:SetPoint("LEFT", starts[k] + (col.w - 36) / 2 + (j - 1) * 22, 0)
                     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-                    local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                    fs:SetPoint("LEFT", icon, "RIGHT", 2, 0)
-                    fs:SetWidth(22); fs:SetJustifyH("LEFT"); fs:SetWordWrap(false)
-                    c.prof[j] = { icon = icon, text = fs }
+                    c.prof[j] = icon
                 end
             else
                 local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

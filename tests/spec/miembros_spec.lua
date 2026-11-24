@@ -1002,7 +1002,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("la columna de profesiones: icono y nivel de las de mi hermandad, que las da el juego por su comunidad", function()
+    it("la columna de profesiones: solo el icono de las de mi hermandad, que las da el juego por su comunidad", function()
         local a = F.Community()
         a.env.C_Club = {
             GetGuildClubId = function() return 9 end,
@@ -1022,15 +1022,14 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         local byName = {}
         for _, r in ipairs(cover.rows) do if r.entry then byName[r.entry.name:match("^([^-]+)")] = r end end
         local p = byName.Compi.cells.prof
-        A.same({ "300", "275" }, { p[1].text:GetText(), p[2].text:GetText() })
-        A.same({ true, true }, { p[1].icon:IsShown(), p[2].icon:IsShown() })
+        A.same({ true, true }, { p[1]:IsShown(), p[2]:IsShown() }, "sus dos iconos (sin nivel: Jorge, 24/11)")
         -- (sin profesiones, los huecos vacíos)
         local q = byName.Jefa.cells.prof
-        A.same({ "", false }, { q[1].text:GetText(), q[1].icon:IsShown() })
+        A.same({ false, false }, { q[1]:IsShown(), q[2]:IsShown() })
         A.same({}, a:Errors())
     end)
 
-    it("profesiones con la comunidad de Forever, que da siempre nivel 1: las mías, de mi personaje; las de los demás, sin número", function()
+    it("profesiones con la comunidad de Forever, que da siempre nivel 1: en la ficha, las mías con el nivel de mi personaje; las de los demás, sin número", function()
         local a = F.Community()
         -- (lo que dio el juego de Jorge, 24/11: su personaje, Herboristería 195 y Minería 111; la comunidad, 1 y 1)
         a.env.C_Club = {
@@ -1056,10 +1055,20 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
         local byName = {}
         for _, r in ipairs(cover.rows) do if r.entry then byName[r.entry.name:match("^([^-]+)")] = r end end
-        local p = byName.Tester.cells.prof
-        A.same({ "195", "111" }, { p[1].text:GetText(), p[2].text:GetText() }, "las mías, de mi personaje")
-        local q = byName.Compi.cells.prof
-        A.same({ "", true }, { q[1].text:GetText(), q[1].icon:IsShown() }, "la de otro: su icono, sin número")
+        local function Levels(name)
+            local row = byName[name]
+            row:GetScript("OnClick")(row, "LeftButton")
+            local card = a.env.GuildUnionMemberCard
+            local lv = {}
+            for k = 1, 2 do
+                local fs = card.recipes.levels[k]
+                lv[k] = fs:IsShown() and fs:GetText() or "(sin)"
+            end
+            row:GetScript("OnClick")(row, "LeftButton")
+            return lv
+        end
+        A.same({ "195", "111" }, Levels("Tester"), "las mías, de mi personaje")
+        A.same({ "", "(sin)" }, Levels("Compi"), "la de otro, sin número")
         A.same({}, a:Errors())
     end)
 

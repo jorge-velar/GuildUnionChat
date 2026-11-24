@@ -2693,8 +2693,10 @@ calendario.
 
 ### La columna de profesiones
 
-Las dos profesiones de cada uno de mi hermandad, con su icono y su nivel (Jorge, 24/11: «que se vea bien»). Las da el
-juego por la comunidad de la hermandad (`C_Club.GetMemberInfo`, `profession1ID`…), y de las otras hermandades no llegan.
+Las dos profesiones de cada uno de mi hermandad, solo con su icono, centrados en la columna (Jorge, 24/11: «que se vea
+bien»; en la 305-312 llevaban también el nivel y, al ver que de los demás no sale, pidió «esta pestaña sin niveles»: el
+nivel, en la ficha y en «Quién lo hace»). Las da el juego por la comunidad de la hermandad (`C_Club.GetMemberInfo`,
+`profession1ID`…), y de las otras hermandades no llegan.
 Se leen todas de una vez (`ReadProfs`) al cambiar la lista del juego, como mucho cada `PROF_EVERY` (30) segundos: son
 cientos de miembros y `Paint` corre cada 2 segundos. Los nombres de las profesiones, en la ficha.
 - **El nivel, en Forever**: la comunidad da siempre 1 (Jorge, 24/11: su personaje daba Herboristería 195 y Minería 111;
