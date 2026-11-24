@@ -2653,19 +2653,20 @@ queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porqu
 
 ### Comercio y Calendario, en la columna de comunidades
 
-En filas que cuelgan de la hermandad, pegadas debajo de su entrada y encima de «Unirse o crear comunidad» (Jorge, 24/11;
-luego irán Wanted y LFG): `SIDE_ROW_H` (34) de alto, metidas hacia dentro, con una línea que baja del escudo de la
-hermandad (`SIDE_INDENT`, `side.branch`) y una rama a cada icono (redondo, 24, con el aro dorado de las comunidades), y
-el nombre en el verde del nombre de la hermandad; la elegida, con un tinte verde. En la 305 eran cajas grandes como las
-del juego y no le acabó de gustar: de cuatro formas dibujadas (pestañas abajo, botones redondos arriba, esta lista y
-iconos a la derecha) eligió esta; en la 306 eran filas finas y pidió «más grande, que se vea que es de la guild». Son botones
+Como entradas del juego pero más bajas (`SIDE_ROW_H`, 44: sus tiras de `bluemenu-main` a esa escala, el icono redondo
+con el aro dorado de las comunidades y el nombre con su letra; la elegida, con su tira de «elegida»), debajo de la
+hermandad, metidas `SIDE_INDENT` (16) hacia dentro y encima de «Unirse o crear comunidad» (Jorge, 24/11; luego irán
+Wanted y LFG). Antes: en la 305, cajas del tamaño de las del juego («no me acaba de gustar»); de cuatro formas
+dibujadas (pestañas abajo, botones redondos arriba, una lista en esta columna e iconos a la derecha) eligió la lista;
+en la 306, filas finas («más grande, que se vea que es de la guild»); en la 307, filas con una línea desde el escudo de
+la hermandad y en verde («MUY feo»); y de tres esbozos eligió estas cajas pequeñas. Son botones
 seguros (`SecureActionButtonTemplate`, `type=click`) que pulsan la pestaña de miembros del juego: cambiar de vista
 desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas. `PreClick` apunta la sección
 (`wantTab`); si ya se ve la vista de miembros, la pestaña no cambia nada y la abre su `PostClick`. Son hijos de la
 columna, así que se ven con ella, y la entrada de la sección abierta sale marcada (`sel`).
 - La lista del juego no se toca (si el addon la tocara, sus marcos y su ficha quedarían «tocados»): `PlaceSide` busca
   entre sus marcos el de «Unirse…» (`setJoinCommunity`), lo deja transparente y sin clics, pone las nuestras en su
-  sitio y debajo (4 más abajo, `SIDE_GAP`) una «Unirse…» como la del juego, en verde, que pulsa la suya (`side.join`,
+  sitio (4 más abajo, `SIDE_GAP`) y debajo una «Unirse…» como la del juego, a todo lo ancho, en verde, que pulsa la suya (`side.join`,
 `clickbutton`). Si «Unirse…» no es la
   última entrada o no se ve, las nuestras van debajo de la última. La lista recicla sus marcos: el que se dejó
   transparente y ya no es «Unirse…» vuelve a verse. Corre al actualizarse la lista (`Update`), al enseñarse la
