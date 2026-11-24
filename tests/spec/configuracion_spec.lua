@@ -92,13 +92,13 @@ local function Config(a)
     local c = { box = box, tab = {} }
     for _, b in ipairs(Kids(a, box, "Button")) do c.tab[b:GetText()] = b end
     local p = Kids(a, box, "Frame")
-    c.trade, c.black, c.bank, c.calendar, c.guild = p[1], p[2], p[3], p[4], p[5]
+    c.trade, c.black, c.calendar, c.guild = p[1], p[2], p[3], p[4]
     c.testCb = Kids(a, box, "CheckButton")[1]
     c.who = Kids(a, box, "FontString")[2]
     -- (lo que solo toca el maestro)
     c.controls = {}
     local function Add(list) for _, w in ipairs(list) do c.controls[#c.controls + 1] = w end end
-    Add(Kids(a, c.bank, "Button")); Add(Kids(a, c.trade, "CheckButton"))
+    Add(Kids(a, c.trade, "CheckButton"))
     Add(Kids(a, c.calendar, "Button")); Add(Kids(a, c.calendar, "EditBox"))
     c.pick = Kids(a, c.guild, "Button")[2]
     Add({ c.pick })
@@ -109,17 +109,18 @@ local RED, WHITE, GRAY = "|cffff4444", "|cffffffff", "|cff808080"
 
 ---------------------------------------------------------------------------
 describe("Configuración de la hermandad (UnionConfig.lua): pestañas y quién la cambia", function()
-    it("cinco pestañas en dos filas; cada una enseña su página y solo esa (de entrada, Comercio)", function()
+    it("cuatro pestañas en dos filas; cada una enseña su página y solo esa (de entrada, Comercio)", function()
         local a = F.Community()
         local c = Config(a)
-        -- (tres arriba y dos debajo)
-        local where = { { "Comercio", 8, -32 }, { "Lista negra", 95, -32 }, { "Banco", 182, -32 },
-            { "Calendario", 8, -56 }, { "Hermandad", 95, -56 } }
+        -- (tres arriba y una debajo)
+        local where = { { "Comercio", 8, -32 }, { "Lista negra", 95, -32 }, { "Calendario", 182, -32 },
+            { "Hermandad", 8, -56 } }
+        A.is_nil(c.tab["Banco"], "sin Banco")
         for _, w in ipairs(where) do
             local p = c.tab[w[1]]._points[1]
             A.same({ "TOPLEFT", w[2], w[3] }, { p[1], p[2], p[3] }, w[1])
         end
-        local pages = { Comercio = c.trade, ["Lista negra"] = c.black, Banco = c.bank, Calendario = c.calendar, Hermandad = c.guild }
+        local pages = { Comercio = c.trade, ["Lista negra"] = c.black, Calendario = c.calendar, Hermandad = c.guild }
         local function Only(name)
             for n, page in pairs(pages) do
                 A.equal(n == name, page:IsShown(), "página " .. n)
@@ -138,7 +139,7 @@ describe("Configuración de la hermandad (UnionConfig.lua): pestañas y quién l
         local a = F.Community()
         local HU = a.HU
         local c = Config(a)
-        A.equal(14, #c.controls)
+        A.equal(9, #c.controls)
         A.equal("Solo el maestro la cambia", c.who:GetText())
         for i, w in ipairs(c.controls) do A.falsy(w:IsEnabled(), "control " .. i) end
         local trade = Kids(a, c.trade, "CheckButton")[1]
@@ -173,7 +174,7 @@ describe("Configuración de la hermandad (UnionConfig.lua): pestañas y quién l
 end)
 
 ---------------------------------------------------------------------------
-describe("Configuración: Comercio y Banco", function()
+describe("Configuración: Comercio", function()
     it("Comercio: quitar «activo» o «propinas» apunta tradeOff o tipsOff; volver a ponerlas lo borra", function()
         local a = F.Community({ guild = GuildAs(0) })
         local HU = a.HU
@@ -199,38 +200,6 @@ describe("Configuración: Comercio y Banco", function()
         A.same({}, a:Errors())
     end)
 
-    it("Banco: quién lo ve (oficiales o todos) y quién puede pedir (todos, oficiales o nadie); el elegido, oscuro", function()
-        local a = F.Community({ guild = GuildAs(0) })
-        local HU = a.HU
-        local c = Config(a)
-        Click(c.tab["Banco"])
-        local b = Kids(a, c.bank, "Button")
-        local labels = {}
-        for i, x in ipairs(b) do labels[i] = x:GetText() end
-        A.same({ "Oficiales", "Todos", "Todos", "Oficiales", "Nadie" }, labels)
-        local function Picked()
-            local out = {}
-            for i, x in ipairs(b) do out[i] = x.picked and true or false end
-            return out
-        end
-        -- (de entrada: lo ven los oficiales y pueden pedir todos)
-        A.same({ true, false, true, false, false }, Picked())
-        Click(b[2])
-        A.equal("all", HU.db.unionCfg.bankView)
-        A.same({ false, true, true, false, false }, Picked())
-        Click(b[5])
-        A.equal("none", HU.db.unionCfg.bankRequest)
-        A.same({ false, true, false, false, true }, Picked())
-        Click(b[4])
-        A.equal("officers", HU.db.unionCfg.bankRequest)
-        Click(b[1])
-        A.equal("officers", HU.db.unionCfg.bankView)
-        A.same({ true, false, false, true, false }, Picked())
-        -- (la nota de debajo: cómo se saca y quién rechaza, como hace el Banco)
-        A.equal("Lo pedido se saca en el banco de hermandad del juego (al abrirlo sale lo pendiente) y se envía por correo. "
-            .. "Rechazar una solicitud, solo el maestro de la hermandad del banco.", Kids(a, c.bank, "FontString")[3]:GetText())
-        A.same({}, a:Errors())
-    end)
 end)
 
 ---------------------------------------------------------------------------

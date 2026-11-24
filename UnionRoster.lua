@@ -23,7 +23,6 @@ local TABS = {
     { title = "Miembros" },
     { title = "Comercio", trade = true },
     { title = "Calendario", calendar = true },
-    { title = "Banco", bank = true },
 }
 local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
@@ -235,28 +234,29 @@ local function Layout()
     if not (cover and ml) then return end
     local tb = cover.tabs
     local chatMode = mode == "chat" and f.Chat ~= nil
-    -- (los 5 botones caben siempre: más estrechos si no hay sitio)
+    -- (los botones caben siempre: más estrechos si no hay sitio)
     local w = cover:GetWidth()
     local bw = BTN_W
-    if type(w) == "number" and w > 0 then bw = math.min(BTN_W, math.floor((w - 16 - 6 * #TABS) / (#TABS + 1))) end
-    tb.chatBtn:SetWidth(bw)
+    if type(w) == "number" and w > 0 then bw = math.min(BTN_W, math.floor((w - 16 - 6 * (#TABS - 1)) / #TABS)) end
     for _, b in ipairs(tb.Tabs) do b:SetWidth(bw) end
     if tb.chatSecure and not InCombatLockdown() then tb.chatSecure:SetWidth(bw) end
-    tb.chatBtn:SetShown(chatMode)
-    -- (en la vista de chat, Members…Bank son los botones seguros que pasan a la vista de miembros: los
-    -- nuestros, fuera. Se colocan fuera de combate, que es cuando el juego deja mover un botón seguro)
-    for _, b in ipairs(tb.Tabs) do b:SetShown(not chatMode) end
+    -- El primer sitio cambia: en Miembros, «Chat» (el botón seguro, debajo); en Comercio y Calendario, «Miembros»
+    -- (el nuestro, encima de él); en la vista de chat, «Miembros» (el seguro). Así sobra un botón [+ARCHITECTURE.md]
+    for i, b in ipairs(tb.Tabs) do
+        b:SetShown(not chatMode and (i > 1 or tab ~= 1))
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", tb, "LEFT", 8 + (i - 1) * (bw + 6), 0)
+    end
+    -- (en la vista de chat, los botones seguros que pasan a la vista de miembros con esa sección. Se colocan fuera
+    -- de combate, que es cuando el juego deja mover un botón seguro)
     if chatMode and tb.chatModeBtns and not InCombatLockdown() then
         for i, b in ipairs(tb.chatModeBtns) do
             b:SetWidth(bw)
             b:ClearAllPoints()
             -- (con la fila, no con el chat, que baja)
-            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + 8 + i * (bw + 6), -34 - TAB_H / 2)
+            b:SetPoint("LEFT", f.CommunitiesList, "TOPRIGHT", 23 + 8 + (i - 1) * (bw + 6), -34 - TAB_H / 2)
         end
     end
-    tb.Tabs[1]:ClearAllPoints()
-    -- (en la vista de miembros, el sitio de «Chat» lo ocupa el botón seguro: ver Build)
-    tb.Tabs[1]:SetPoint("LEFT", tb, "LEFT", 8 + bw + 6, 0)
     cover:ClearAllPoints()
     if chatMode then
         -- (el chat empieza 17 más arriba que su lista de la derecha; y 6 más arriba aún, para tapar el
@@ -294,19 +294,13 @@ local function ShowTab(i)
     end
     -- (el botón elegido, negro con borde dorado y letra blanca; los demás, rojos: DJStyle.lua)
     cover.tabs.selectedTab = i
-    local all = { [0] = cover.tabs.chatBtn }
-    for k, b in ipairs(cover.tabs.Tabs) do all[k] = b end
-    for k = 0, #cover.tabs.Tabs do
-        local b = all[k]
-        HU.DJ.PickRed(b, k == i)
-    end
+    for k, b in ipairs(cover.tabs.Tabs) do HU.DJ.PickRed(b, k == i) end
     local members = i == 1
     cover.hdr:SetShown(members); cover.scroll:SetShown(members); cover.status:SetShown(members)
     for _, row in ipairs(cover.rows) do if not members then row:Hide() end end
     -- (Comercio: su sección, Trade.lua)
     cover.trade:SetShown(i > 0 and TABS[i].trade == true)
     cover.calendar:SetShown(i > 0 and TABS[i].calendar == true)
-    cover.bank:SetShown(i > 0 and TABS[i].bank == true)
     -- (el «Buscar personaje» de arriba, solo en Chat y Miembros)
     HU.charSearchOff = i >= 2
     HU.SyncCharSearch()
@@ -692,14 +686,6 @@ local function Build(f)
     rock:SetHeight(TAB_H + HDR_H + 2)
     cover.rock = rock
     tabs.Tabs = {}
-    -- («Chat», solo en la vista de chat: deja ver el chat del juego)
-    local chatBtn = CreateFrame("Button", "GuildUnionRosterSectionChat", tabs, "UIPanelButtonTemplate")
-    chatBtn:SetSize(BTN_W, BTN_H)
-    chatBtn:SetText(L("Chat"))
-    chatBtn:SetPoint("LEFT", tabs, "LEFT", 8, 0)
-    chatBtn:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(0) end)
-    chatBtn:Hide()
-    tabs.chatBtn = chatBtn
     -- Abajo, como en la vista del chat: Peticiones de oficiales · Registro · Invitar miembro, a la izquierda de
     -- «Ajustes de hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo
     -- pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
@@ -759,7 +745,7 @@ local function Build(f)
         end)
     end
     Unpress(chatSecure)
-    -- (Members…Bank en la vista de chat: botones seguros que pulsan el icono de miembros del juego; antes,
+    -- (Miembros, Comercio y Calendario en la vista de chat: botones seguros que pulsan el icono de miembros del juego; antes,
     -- PreClick apunta qué sección abrir al llegar. Hijos del chat del juego: solo se ven en esa vista)
     if f.Chat then
         tabs.chatModeBtns = {}
@@ -786,6 +772,8 @@ local function Build(f)
         b:SetScript("OnClick", function() PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); ShowTab(i); WhoTick() end)
         tabs.Tabs[i] = b
     end
+    -- («Miembros» va en el sitio del «Chat» seguro y, cuando se ve, encima de él: Layout)
+    tabs.Tabs[1]:SetFrameLevel(cover:GetFrameLevel() + 10)
     tabs.numTabs = #TABS
     cover.tabs = tabs
     -- (los botones, por encima de todo lo nuestro: que nada los tape)
@@ -836,13 +824,6 @@ local function Build(f)
     cover.calendar:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.calendar:Hide()
     HU:BuildCalendar(cover.calendar)
-    -- (la sección Banco, UnionBank.lua: igual)
-    cover.bank = CreateFrame("Frame", nil, cover)
-    cover.bank:SetPoint("TOPLEFT", tabs, "BOTTOMLEFT", 0, -2)
-    cover.bank:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)
-    cover.bank:SetFrameLevel(cover:GetFrameLevel() + 5)
-    cover.bank:Hide()
-    HU:BuildBank(cover.bank)
 
     cover.status = cover:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     cover.status:SetPoint("BOTTOMLEFT", 8, 6)
@@ -1094,4 +1075,4 @@ HU:OnStart(function()
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_Communities") then Setup() end
 end)
 
-HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Ranks", "Roster", "Social", "Trade", "UnionBank", "UnionCalendar", "UnionMembers" })
+HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })

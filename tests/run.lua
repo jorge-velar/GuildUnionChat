@@ -38,7 +38,6 @@ local SPECS = {
     "spec/miembros_spec",
     "spec/configuracion_spec",
     "spec/calendario_spec",
-    "spec/banco_spec",
     "spec/ordenes_spec",
     "spec/zonas_spec",
     "spec/protocolo_spec",

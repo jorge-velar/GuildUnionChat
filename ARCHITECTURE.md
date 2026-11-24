@@ -2518,11 +2518,13 @@ al marcarla se marca a la persona)
 ### Qué hay en el archivo
 
 Una fila de botones rojos del juego sobre la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
-`Blizzard_Communities`): **Chat · Miembros · Comercio · Calendario · Banco**. Miembros es la lista de toda la
-unión; Comercio, Calendario y Banco son marcos hijos de `cover` que llenan `HU:BuildTrade`, `HU:BuildCalendar` y
-`HU:BuildBank`. El botón elegido va negro con letra blanca (`HU.DJ.PickRed`); el buscador de personajes solo sale
-en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-4 = las otras) y `mode`
-(«roster», «chat» o nil).
+`Blizzard_Communities`): **Chat/Miembros · Comercio · Calendario**. Miembros es la lista de toda la unión;
+Comercio y Calendario son marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`. El primer botón
+cambia (24/11, para que haya menos): en Miembros dice «Chat»; en Comercio, en Calendario y en la vista de chat,
+«Miembros» (ver «La fila en las dos vistas»). El botón elegido va negro con letra blanca (`HU.DJ.PickRed`); el
+buscador de personajes solo sale en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3
+= las otras) y `mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no
+enseñaba los bancos de las otras hermandades y las peticiones no le llegaban a nadie; está en el historial de Git.
 
 **La lista del juego no se toca.** Lo nuestro (`cover`) es hijo de la ventana, no de su lista, y va encima: 26 px
 más arriba (tapa sus títulos, no la casilla «Mostrar desconectados» ni el buscador) y 22 px más a la derecha
@@ -2601,8 +2603,12 @@ vistas (`HU.db.unionRosterOff` no se usa: `Sync` lo borra).
 
 Cambiar de vista desde el addon dejaría la ventana «tocada» y el juego bloquearía rangos y notas: los botones que
 cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los pulsa el juego.
-- «Chat» en la vista de miembros (`GuildUnionRosterChatSecure`) pulsa `ChatTab`; Miembros…Banco en la de chat
-  (`GuildUnionChatSection1`…`4`) pulsan `RosterTab`; su `PreClick` apunta la sección (`wantTab`).
+- «Chat» en la vista de miembros (`GuildUnionRosterChatSecure`) pulsa `ChatTab`; Miembros, Comercio y Calendario en
+  la de chat (`GuildUnionChatSection1`…`3`) pulsan `RosterTab`; su `PreClick` apunta la sección (`wantTab`).
+- El primer sitio de la fila: en la vista de miembros está siempre el «Chat» seguro; en Comercio y Calendario, el
+  «Miembros» nuestro (`Tabs[1]`, nivel de marco más alto) se pone encima y recibe el clic; en Miembros se esconde y
+  queda el «Chat». Así no hay que enseñar ni esconder el seguro al cambiar de sección (en combate no se podría). En la
+  vista de chat no hay «Chat»: ya se está en él; el primero es el «Miembros» seguro.
 - En combate no se puede enseñar, esconder ni mover un botón seguro: cuelgan de algo que solo se ve en su vista
   (la casilla de desconectados; los de sección, el chat) y se colocan fuera de combate (`secureLater`). Tampoco se
   pueden crear: si `Blizzard_Communities` se carga en combate, la fila se monta al salir de él (`Setup`, `setupLater`).
@@ -3191,9 +3197,9 @@ de Wowhead Classic y traía objetos de Season of Discovery que Forever no tiene:
 
 ## DJStyle.lua
 
-`HU.DJ`, el estilo compartido de Comercio, Calendario, Banco y Configuración. Sale del addon Dungeon Journal de
+`HU.DJ`, el estilo compartido de Comercio, Calendario y Configuración. Sale del addon Dungeon Journal de
 Forever, con los fondos de WhisperMessenger; de los dos se estudió el código, sin copiar su arte. Va en el .toc antes
-de Trade, UnionCalendar, UnionBank y UnionConfig, que leen `HU.DJ` al cargarse. Colores (`DJ.T`): fondos lisos casi
+de Trade, UnionCalendar y UnionConfig, que leen `HU.DJ` al cargarse. Colores (`DJ.T`): fondos lisos casi
 negros y grises muy oscuros (`frame`, `content`, `panel`, `header`, `row`), borde gris piedra (`border`), lo elegido
 en azul pizarra (`rowSel`), la letra (`text`) y la apagada (`muted`), y el dorado del juego para títulos, rayas y lo
 que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ.TIP_BORDER` y `DJ.ROW_HL`.
@@ -3316,89 +3322,24 @@ colocados, el resto en el banquillo y las tres marcas de invitación; además, u
 banda (nivel 60). `ClearTest` quita sus eventos, marcas, clases y niveles, y cierra la ficha solo si era de un
 evento de prueba.
 
-## UnionBank.lua
-
-### Qué hay en el archivo
-
-La sección Banco de la lista de miembros (UnionRoster.lua la monta en `cover.bank` con `HU:BuildBank`). Arriba,
-centradas, Bancos de hermandad · Banco propio · Solicitudes («(N)» si hay pendientes); en la segunda fila, el buscador
-por nombre de objeto, el filtro de la pestaña, una ayuda y, a la derecha, «Modo prueba».
-Lo ven (`CanSee`) los oficiales (`HU:CanPin`), todos si el maestro puso `bankView = "all"` (en `HU:UnionCfg()`), o
-quien encienda el modo prueba (su botón queda fuera del panel); si no, solo un aviso de cómo abrirlo. Piden
-(`CanRequest`) según `bankRequest`: «all» (por defecto) todos; «officers», oficiales o el modo prueba; «none», nadie.
-Quien no puede pedir ve en la ayuda por qué: «Pedir está cerrado por el maestro.» («none») o «Solo los oficiales
-pueden pedir.» («officers»).
-
-### Fase 1: solo la ventana, sin red
-
-Bancos (`banks[etiqueta] = { {id, cantidad, pestaña}, ... }`), solicitudes (`reqs`) y registro (`log`) son tablas
-locales de la sesión: no viajan y se pierden con /reload. Los bancos de hermandad solo se llenan con el modo prueba (ni
-el de mi hermandad se lee aún del juego); lo único guardado es la foto de mi banco (`HU.db.myBankSnap`, de cada
-personaje). La red irá con los paquetes con huella (Net/Packs.lua, aún sin escribir), conjunto `BK` (un trozo por
-pestaña).
-
-### Bancos de hermandad y Banco propio
-
-Rejilla de huecos como la de un banco (`PaintGrid`: 13 columnas, las filas que quepan hasta 6, con barra): icono, borde
-del color de la calidad (verde o mejor), cantidad y, si no se ha elegido una sola hermandad, su etiqueta. Al pasar el
-ratón, la ficha, la cantidad y «etiqueta · pestaña N» (`WhereText`); Mayús+clic, el enlace al chat. Clic en un objeto
-de un banco de hermandad, con `CanRequest`: «Pedir al banco» (`BuildAsk`: cantidad hasta lo que hay y nota de 100
-letras); «Pedir» vuelve a mirar el permiso (sin él, se cierra) y crea la solicitud (`state = "open"`) y su línea de
-registro. Buscando sin nada que encaje, la rejilla dice «Nada coincide con la búsqueda.».
-- Filtro de hermandades: un botón («Todas las hermandades», una o dos etiquetas a color, o «N hermandades») con un menú
-  de casillas: «Todas» (quita el filtro) y una por banco (`filterTags`; vacío = todas).
-- Banco propio: el botón «Todo» abre las casillas Banco y Bolsas (`ownSet`; vacío = todo, primero el banco). Las bolsas
-  (0..`NUM_BAG_SLOTS`) se leen al momento. El banco del personaje solo se puede leer con el banco del juego abierto
-  (`bankOpen`, de `BANKFRAME_OPENED` a `BANKFRAME_CLOSED`): `SnapBank` hace la foto `HU.db.myBankSnap = { items, t }`
-  al abrirlo y con cada `PLAYERBANKSLOTS_CHANGED` o `BAG_UPDATE` mientras sigue abierto, también si está vacío; al
-  cerrarlo, su hora pasa a ser la del cierre. `MyBank` enseña siempre la foto, con «Visto por última vez» solo con el
-  banco cerrado. Sin foto, «Tu banco: ábrelo una vez en el juego (en un banquero) para verlo aquí.»; con una vacía,
-  que no hay nada («No hay nada en tu banco ni en tus bolsas.» o el que toque).
-- `BankIDs`: en Forever, `Enum.BagIndex.Characterbanktab` (-2) y sus pestañas `CharacterBankTab_1`…`9` (6-14); ahí el
-  -1 es el llavero. En otros clientes con `Enum.BagIndex`, `Bank` y `BankBag_N`; sin él, -1 y las que van tras las
-  bolsas y la de componentes, que corre la numeración.
-
-### Solicitudes, registro y sacar
-
-Lista con barra (`PaintReqs`), por la hora, la más nueva arriba (a la misma hora, la última pedida): objeto · quién
-pide · banco y pestaña · estado (Pendiente, «Sacado por X» en verde, Rechazada en rojo); al pasar el ratón, su
-historia con fechas y la nota. No hay «Aprobar»: «Rechazar» solo lo ve el maestro de la hermandad del banco
-(`HU:IsUnionGM()`, UnionConfig.lua; en las de prueba, de cualquier banco).
-«Ver registro» (verde, abajo a la izquierda; `reqLog`) cambia la lista por el registro (`PaintLog`): una línea por cosa
-(pide, saca, rechaza), por días («Hoy», «Ayer», fecha) con la hora, la más nueva abajo, enlaces que se pueden pinchar
-y nombres a color (`Who`: su clase si se sabe; si no, un color fijo sacado del nombre). «Volver a solicitudes», o
-cambiar de pestaña, vuelve a la lista.
-Se saca en el banco de hermandad del juego: con `GUILDBANKFRAME_OPENED`, si puedo ver el banco (`CanSee`) y hay algo
-pendiente para mi hermandad (`Pending`, y las de prueba), sale junto a su ventana «Lo pedido a tu hermandad»
-(`ShowWithdraw`: 8 a la vista y barra) con «Sacar» (con permiso y si sigue pendiente), que marca sacado por mí, con la
-hora, y lo apunta en el registro. No mueve el objeto: se saca a mano y se manda por correo (lo recuerda en el chat).
-Se cierra con `GUILDBANKFRAME_CLOSED` o, al repintarla (`PaintWithdraw`), si ya no puedo ver el banco; un cambio de
-la configuración la repinta aunque la sección Banco no esté a la vista.
-
-### Modo prueba
-
-`AddTest`: un banco por hermandad (la mía, las de la unión y «OTRA» si no llegan a tres) con objetos de vanilla en 3
-pestañas, tres solicitudes (dos pendientes y una sacada) y sus líneas de registro; en Solicitudes, «Probar: abrir el
-banco de hermandad» abre la ventanita de sacar sin ir al banco. `ClearTest` quita todo lo de prueba y el filtro.
-
 ## UnionConfig.lua
 
 ### Qué hay en el archivo
 
 La configuración de la hermandad, en la mitad derecha de la pestaña GuildUnion (BlizzTab.lua llama a
 `HU:BuildUnionConfig`; Oficiales y Miembros siguen allí, escondidos en `stash`). Título «Configuración» con «Puedes
-cambiarla» o «Solo el maestro la cambia» al lado. Cinco pestañas en dos filas (3 + 2, de 84, con la letra normal del
-botón: la pequeña cambiaba de tamaño al pasar el ratón): Comercio, Lista negra, Banco, Calendario y Hermandad; se abre
-en Comercio. La cambia el maestro (`HU:IsUnionGM()`: `HU:IsMaster()`, el maestro de la hermandad o quien tiene el
+cambiarla» o «Solo el maestro la cambia» al lado. Cuatro pestañas en dos filas (3 + 1, de 84, con la letra normal del
+botón: la pequeña cambiaba de tamaño al pasar el ratón): Comercio, Lista negra, Calendario y Hermandad; se abre en
+Comercio. La cambia el maestro (`HU:IsUnionGM()`: `HU:IsMaster()`, el maestro de la hermandad o quien tiene el
 rango 0, o la casilla «Probar como maestro (solo en este PC)», `testGM`, para probar la ventana); los controles del
-maestro (`controls`) se apagan para los demás, que la ven igual. El Banco usa el mismo `HU:IsUnionGM()`.
+maestro (`controls`) se apagan para los demás, que la ven igual.
 
 ### Fase 1: solo en este PC
 
 Se guarda en `HU.db.unionCfg`, de cada personaje (`HU:Saved` char: cada hermandad tiene la suya), y no viaja: lo que
 cambia el maestro solo vale en su personaje (un permiso que da no le llega a nadie). Todos la leen con
-`HU:UnionCfg()`, que la crea vacía si falta. Cada cambio avisa con `HU:Changed("unionCfg")` y Calendario, Banco y
-Comercio se repintan. La red irá con los paquetes con huella (Net/Packs.lua, aún sin escribir), conjunto `CO`, que
+`HU:UnionCfg()`, que la crea vacía si falta. Cada cambio avisa con `HU:Changed("unionCfg")` y Calendario y Comercio
+se repintan. La red irá con los paquetes con huella (Net/Packs.lua, aún sin escribir), conjunto `CO`, que
 solo publicará el maestro.
 
 ### Las pestañas
@@ -3412,9 +3353,6 @@ solo publicará el maestro.
   Nombre + «Quitar» (`HU:Unban`), motivo + «Añadir» (`HU:SetBan`, que pide motivo) y «Comprobar ahora»
   (`HU:BlacklistCheck(true)`) solo los ven los oficiales (`HU:CanPin`), no solo el maestro; en la ventana de
   `/gu listanegra`, igual.
-- **Banco** (lo lee UnionBank.lua): quién lo ve (`bankView`: «officers» por defecto o «all») y quién puede pedir
-  (`bankRequest`: «all» por defecto, «officers» o «none»). Debajo, una nota: lo pedido se saca en el banco de hermandad
-  del juego (al abrirlo sale lo pendiente) y se envía por correo; rechazar, solo el maestro de la hermandad del banco.
 - **Calendario**: quién crea eventos (`calMake`: «gm», «officers» por defecto o «all») y «Permiso por un tiempo»:
   nombre (con sugerencias, `HU:NameSuggest`), horas (24 por defecto, de 1 a 999) y «Dar» → `calAllow[clave] = { name,
   untilT, by }`. Debajo, quién lo tiene y hasta cuándo, el que caduca primero arriba (lista con barra: las filas

@@ -102,8 +102,8 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         "infoBackup", "noteChanSeen", "joinedChans", "extraChans", "chatTab", "chanLane", "netGuilds", "proposals",
         "guildColors", "customEmotes", "lists", "rankCache", "offline", "offlineT", "peers", "chatTabsMade",
         "rosterCache", "remoteRanks", "quickCfg", "managers", "officerRanks", "myOfficerRanks", "laneLock", "laneMig", "wmRows",
-        -- (nuevos: la configuración de la unión y lo último visto del banco propio, de cada personaje)
-        "unionCfg", "myBankSnap" }
+        -- (nuevo: la configuración de la unión, de cada personaje)
+        "unionCfg" }
     local OLD_DEFAULTS = { showTag = true, chatMark = "dot", chatGuildColor = false, ownPaint = true, autoGuard = false,
         bans = {}, grace = 120, debug = false, showChannel = false, audit = {}, history = {}, log = {}, profiles = {},
         offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {} }

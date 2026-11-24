@@ -1,7 +1,7 @@
 -- Guild Union - Configuración de la hermandad (mitad derecha de la pestaña GuildUnion) [+ARCHITECTURE.md]
--- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio, Banco y Calendario.
--- Pestañas: Comercio (activo, propinas), Lista negra (la de la comunidad), Banco (quién lo ve y quién puede pedir),
--- Calendario (quién crea eventos y permisos por un tiempo) y Hermandad (el color).
+-- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio y Calendario.
+-- Pestañas: Comercio (activo, propinas), Lista negra (la de la comunidad), Calendario (quién crea eventos y permisos
+-- por un tiempo) y Hermandad (el color).
 -- Lo cambia el maestro de la hermandad (la lista negra, también los oficiales); los demás lo ven sin poder tocarlo.
 local _, HU = ...
 local L = HU.L
@@ -47,7 +47,7 @@ function HU:BuildUnionConfig(panel)
     -- Pestañas
     local pages, tabs = {}, {}
     local current = "trade"
-    local TABS = { { "trade", L("Comercio") }, { "black", L("Lista negra") }, { "bank", L("Banco") }, { "calendar", L("Calendario") },
+    local TABS = { { "trade", L("Comercio") }, { "black", L("Lista negra") }, { "calendar", L("Calendario") },
         { "guild", L("Hermandad") } }
     for i, t in ipairs(TABS) do
         local b = DJ.Button(box, t[2], 84, 22)
@@ -124,18 +124,6 @@ function HU:BuildUnionConfig(panel)
         sw:SetBackdropColor(r, g, b, 1)
         swText:SetText(tostring(HU.myTag or "?"))
     end
-
-    -- Banco: quién lo ve y quién puede pedir
-    local pb = pages.bank
-    Head(pb, L("Quién puede ver el banco"), -4)
-    refresh[#refresh + 1] = Choice(pb, -24, { { "officers", L("Oficiales"), 90 }, { "all", L("Todos"), 90 } },
-        function() return Cfg().bankView or "officers" end, function(v) Cfg().bankView = v end)
-    Head(pb, L("Quién puede pedir sacar algo"), -58)
-    refresh[#refresh + 1] = Choice(pb, -78, { { "all", L("Todos"), 80 }, { "officers", L("Oficiales"), 80 }, { "none", L("Nadie"), 80 } },
-        function() return Cfg().bankRequest or "all" end, function(v) Cfg().bankRequest = v end)
-    local bNote = DJ.C(pb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
-    bNote:SetPoint("TOPLEFT", 4, -110); bNote:SetWidth(250); bNote:SetJustifyH("LEFT")
-    bNote:SetText(L("Lo pedido se saca en el banco de hermandad del juego (al abrirlo sale lo pendiente) y se envía por correo. Rechazar una solicitud, solo el maestro de la hermandad del banco."))
 
     -- Comercio: activo y propinas
     local pt = pages.trade

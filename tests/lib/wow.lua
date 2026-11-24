@@ -84,6 +84,9 @@ local function FrameMethods(w)
     function M:Hide() SetShownState(self, false) end
     function M:SetShown(v) SetShownState(self, v and true or false) end
     function M:IsShown() return self._shown end
+    -- (el nivel de marco se recuerda: qué queda encima de qué)
+    function M:SetFrameLevel(v) self._level = v end
+    function M:GetFrameLevel() return self._level or 1 end
     function M:GetName() return self._name end
     function M:GetParent() return self._parent end
     function M:GetObjectType() return self._kind end
