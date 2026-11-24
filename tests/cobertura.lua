@@ -26,7 +26,7 @@ local MARGEN = LUA51 and 1.0 or 2.0
 -- Archivos solo de interfaz (el WoW de mentira no pinta nada): fuera de la regla de lo nuevo
 local SOLO_INTERFAZ = {
     ["BlizzTab.lua"] = true, ["WMPanel.lua"] = true, ["ListWindow.lua"] = true,
-    ["UIWindows.lua"] = true, ["Wizard.lua"] = true,
+    ["UIWindows.lua"] = true, ["Wizard.lua"] = true, ["UnionRoster.lua"] = true,
 }
 local MINIMOS = here .. "/cobertura-minima.txt"
 

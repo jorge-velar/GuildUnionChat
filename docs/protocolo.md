@@ -58,6 +58,8 @@ colas `b…` (datos grandes), que salen por `HU20B`.
 | `LX` | `LX~carril~gen~hora~ETIQ~contacto`: un compañero me pasa el aviso de carril de otra hermandad | Net/Relay.lua | normal |  |  |  |
 | `MA` | `MA~id~nombre,nombre`: respuesta de la guardia, los que sí son de mi hermandad | Guard.lua | normal |  |  |  |
 | `MG` | `MG~t~autor~etiqAutor~nombres`: lista de gestores (la firma el maestro de la principal) | Community.lua | normal |  |  |  |
+| `ML` | `ML~etiq~id~parte~partes~datos`: un trozo de la lista de todos los conectados de una hermandad, solo para verla (Miembros de la unión) | UnionMembers.lua | bmid | 120 s | etiq. 1, abierta, datos remotos | datos |
+| `MP` | `MP~miEtiq~suEtiq`: pide esa lista (por GUILD, a quien se encarga de esa hermandad; por susurro, a alguien de ella; se contesta con `ML`) | UnionMembers.lua | normal |  | abierta | petición |
 | `MQ` | `MQ~id~nombre,nombre`: la guardia pregunta a una hermandad si son suyos | Guard.lua | mid |  |  |  |
 | `MU` | `MU~nombre~segundos~autor~etiq~t`: silenciar (0 = para siempre, -1 = quitar el silencio) | Social.lua | chat | nunca |  |  |
 | `MZ` | varios silencios juntos (las entradas de `MU`, separadas por `;`) | Social.lua | chat | nunca |  |  |

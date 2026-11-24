@@ -41,7 +41,7 @@ read_globals = {
     "CreateColor", "CreateFont", "CreateFrame", "DEFAULT_CHAT_FRAME", "ERR_ALREADY_INVITED_TO_GUILD_S",
     "ERR_ALREADY_IN_GUILD_S", "ERR_CHAT_PLAYER_NOT_FOUND_S", "ERR_GUILD_INVITE_S",
     "ERR_GUILD_PLAYER_NOT_FOUND_S", "Enum", "FCF_OpenNewWindow", "FauxScrollFrame_GetOffset",
-    "FauxScrollFrame_OnVerticalScroll", "FauxScrollFrame_Update", "FlashClientIcon",
+    "FauxScrollFrame_OnVerticalScroll", "FauxScrollFrame_SetOffset", "FauxScrollFrame_Update", "GetWhoInfo", "GetNumWhoResults", "GetFramesRegisteredForEvent", "FlashClientIcon",
     "GameFontHighlightSmall", "GameFontNormal", "GameFontNormalSmall", "GameTooltip", "GameTooltip_Hide",
     "GetActiveTalentGroup", "GetAddOnMemoryUsage", "GetAddOnMetadata", "GetBuildInfo",
     "GetChannelDisplayInfo", "GetChannelName", "GetChannelRosterInfo", "GetChatWindowInfo",

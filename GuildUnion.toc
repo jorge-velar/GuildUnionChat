@@ -45,6 +45,7 @@ ChatTabs.lua
 Guard.lua
 GuardKeeper.lua
 Social.lua
+UnionMembers.lua
 History.lua
 Channels.lua
 Community.lua
@@ -59,6 +60,7 @@ UI.lua
 UIWindows.lua
 Minimap.lua
 BlizzTab.lua
+UnionRoster.lua
 ListWindow.lua
 Blacklist.lua
 InviteLog.lua

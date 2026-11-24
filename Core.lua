@@ -65,6 +65,8 @@ _G.GuildUnionInternal = HU
 -- Eventos
 ---------------------------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
+-- (el del addon: lo que silencia las ventanas del juego no lo toca a él, UnionMembers.lua)
+HU.eventFrame = eventFrame
 local handlers = {}
 
 function HU:On(event, fn)
@@ -390,6 +392,7 @@ HU.MAYBE_NIL = {
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
     offCfg = true, chatServerUpT = true, -- (cuándo volvió el servidor de chat: Channel.lua)
     hlHeard = true, -- (cuántas respuestas de «mientras no estabas» han llegado: Social.lua)
+    chanMembersSeen = true, -- (la lista del canal, la primera vez que se lee: Guard.lua)
     -- la configuración de la comunidad
     joinedText = true, noteCfgText = true,
     -- enlace, ayudantes y listas

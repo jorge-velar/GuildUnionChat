@@ -144,6 +144,16 @@ El canal de la comunidad tiene además **carriles** (salas numeradas, `LN`, `LO`
 deja de llevar texto, la comunidad se puede mudar a otro. Sus reglas están en las notas de
 Net/Relay.lua y en los apartados de las copias 117 a 120, al final.
 
+### Las dos listas de las otras hermandades
+
+- **La pequeña** (`RB`/`RC`, siempre): su maestro, sus oficiales, su enlace y sus ayudantes conectados.
+  Es la que usa la confianza (de quién se aceptan sus datos) y la guardia.
+- **La de todos los conectados** («Miembros» en la pestaña, UnionMembers.lua: `MP`/`ML`): solo para
+  verla, **no cuenta para nada de la confianza**. No se manda sola; se pide al mirarla, porque son
+  decenas de mensajes por hermandad y el juego deja uno por segundo. En cada hermandad la pide una
+  sola persona (quien se encarga de esa hermandad, `HU:ResponsibleFor`) y la reparte por GUILD.
+  Contesta alguien de la otra hermandad, solo a quien es de la comunidad (lleva la zona de cada uno).
+
 ## Los registros
 
 Cómo se declara cada cosa nueva (la lista corta está en CLAUDE.md).
@@ -2076,6 +2086,55 @@ Comandos (de una o varias líneas: echar, ascender, degradar) que tienes que esc
 chat: van a la ventana de órdenes (Orders.lua). Antes el addon los escribía en la caja del chat
 al abrirla tú, y eso en Forever contamina esos comandos y el juego los bloquea hasta /reload.
 
+## UnionMembers.lua
+
+### Qué hay en el archivo
+
+Miembros de la unión: todos los conectados de otra hermandad, solo para verlos en la pestaña
+(«Miembros», BlizzTab.lua). Desde la 5.4.11 a las otras hermandades solo va la lista pequeña; esta
+es aparte, no toca `RB`/`RC` ni la confianza, y las versiones de antes no la conocen (no contestan).
+
+- **Pedirla** (`HU:WantUnionMembers`, que la pestaña llama cada 2 s mientras se ve): con una copia
+  de menos de 1 min, nada. Si me toca a mí (`HU:ResponsibleFor`) o mi hermandad no tiene enlace, la
+  pido yo por susurro (`MP`); si no, la pido a mi hermandad por GUILD y la pide quien se encarga. Si
+  a los 40 s no ha llegado (quizá nuestro enlace tiene una versión de antes), la pido yo.
+- **A quién**: a alguien de esa hermandad: su enlace, sus ayudantes, sus mejores contactos y los de
+  la lista pequeña que tengo. Primero quien ya me ha contestado alguna vez (`HU.unionAnswered`), luego
+  aquellos de los que no sé la versión y al final los contactos con la versión sabida: el número de
+  versión no dice si alguien tiene Miembros (una copia de prueba puede llevar el mismo que la
+  publicada). Si no empieza a contestar en 10 s, a otro; tras 8, «no contesta». (Visto el 22/11: con
+  la versión ordenando y solo 3 intentos, el maestro de WLP3, el único con Miembros, nunca se
+  preguntaba.)
+- **Contestar** (`HU.comm.MP`): solo por mi propia hermandad y a quien es de la comunidad (está en
+  alguna lista o avalado); a cada uno una lista por minuto y como mucho 3 por minuto en total, y nada
+  con la cola llena. La lista son todos mis conectados (`HU:OnlineEntries`, sin el filtro de la fase
+  de lanzamiento), en trozos que se entienden solos (`HU.PackMembers`: los códigos de zona van en el
+  mismo trozo).
+- **Recibir** (`HU.comm.ML`): por susurro, solo de a quien se la pedí; quien la pide la pasa a su
+  hermandad por GUILD, donde vale solo de quien reparte por ella (`remoteData`). Mientras llega se
+  enseña lo que hay; la anterior se sigue enseñando hasta que la nueva está entera; a los 10 min
+  deja de enseñarse.
+- **Todas las hermandades** a la vez (`HU:WantUnionMembers(nil)`): de una en una, y cada una como
+  mucho cada 5 min, para no pedir las 19 a la vez.
+
+### Con /who
+
+Para una hermandad en la que nadie tiene Miembros (o nadie conectado). El juego solo deja hacer /who
+desde un clic (probado en Forever el 23/11: desde un temporizador no hace nada), así que se
+aprovechan los de la pestaña: abrirla, «Miembros», elegir hermandad, mover la lista o hacer clic en
+ella llaman a `HU:UnionWhoTick`, que busca una hermandad sin lista (ni de Miembros ni un /who de menos
+de 1 min), como mucho un /who cada 5 s. Mientras se espera la respuesta, las ventanas del juego que
+escuchan `WHO_LIST_UPDATE` (`GetFramesRegisteredForEvent`, salvo `HU.eventFrame`) dejan de
+escucharlo: así la de búsqueda no se abre. Vuelven a escuchar en el fotograma siguiente a la
+respuesta, o a los 15 s si no llega; un /who escrito a mano las abre como siempre. El botón «Buscar
+con /who» fuerza una búsqueda.
+
+`/who g-"Nombre de la hermandad"` (`HU:WhoUnionMembers`) y, cuando el juego avisa
+(`WHO_LIST_UPDATE`), se guardan los de esa hermandad (el nombre tiene que coincidir entero: el /who
+también trae nombres parecidos). Solo desde un clic: el juego no deja a un addon hacer /who por su
+cuenta. Solo se toma la respuesta al /who que he pedido, si llega en 15 s. No trae rangos; si llega la
+lista de Miembros, se enseña esa. Si el juego no los da todos, el estado dice «N de M».
+
 ## History.lua
 
 ### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)
@@ -2416,6 +2475,24 @@ Blizzard no se filtra (tocar sus datos bloquea sus botones).
 (desconectado y la lista no enseña desconectados: no se marca la casilla desde el addon —eso
 contaminaría la lista y bloquearía sus botones—; se hace brillar para que la marques tú, y
 al marcarla se marca a la persona)
+
+## UnionRoster.lua
+
+### Qué hay en el archivo
+
+«Unión» en la lista de miembros del juego (la pestaña de miembros de la ventana de hermandad): un
+interruptor «Mi hermandad | Unión» a la izquierda del buscador de personajes y, con «Unión», una
+lista nuestra con todos los conectados (los de mi hermandad, de la lista del juego, y los de las
+otras, de Miembros o del /who: `HU:UnionRosterEntries`), con nombre, nivel, zona, rango y hermandad.
+
+**La lista del juego no se toca.** La nuestra es hija de la ventana (no de su lista) y va encima,
+tapándola; con «Mi hermandad» se esconde y la del juego queda tal cual. Si se metieran filas en la
+lista del juego, su ventana quedaría «contaminada» y el juego bloquearía lo que solo puede hacer su
+interfaz: ascender, degradar, expulsar o guardar notas (lo mismo que se vio con la ventana entera:
+BlizzTab.lua). Clic: susurrar; clic derecho: el menú de GuildUnion (`HU.PlayerMenu`), no el del
+juego. Los clics en ella valen para el /who (`HU:UnionWhoTick`). Solo sale en la vista de miembros
+(la casilla de desconectados se ve: `IsVisible`, como el buscador). Lo elegido no se guarda: al
+entrar, «Mi hermandad».
 
 ## ChatTabs.lua · Chattynator
 

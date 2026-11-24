@@ -60,11 +60,16 @@ function HU:SharedWithOthers(e, extra)
     return not extra or self:RankRole(self.myTag, e.rankIndex) ~= nil or extra[self:Short(e.name):lower()] == true
 end
 
-local function RosterEntries(self)
+-- everyone: todos los conectados, sin el filtro de la fase de lanzamiento (la lista de «Miembros de
+-- la unión», UnionMembers.lua, que solo es para verla). Tiene su propia copia guardada
+local reCacheAll = {}
+local function RosterEntries(self, everyone)
     -- (se guarda hasta que cambia la lista: antes se rehacía para cada aviso y cada presentación)
     local v = self.rosterVersion or 0
-    local extra, extraKey = SharedExtra(self)
-    if reCache.v == v and reCache.src == self.rosterList and reCache.ek == extraKey then return reCache.list, reCache.sig, reCache.full end
+    local extra, extraKey
+    if not everyone then extra, extraKey = SharedExtra(self) end
+    local cache = everyone and reCacheAll or reCache
+    if cache.v == v and cache.src == self.rosterList and cache.ek == extraKey then return cache.list, cache.sig, cache.full end
     local list, sig, full = {}, {}, {}
     local myTag = self.myTag
     for _, e in ipairs(self.rosterList) do
@@ -89,10 +94,13 @@ local function RosterEntries(self)
             sig[c.short] = c.sig
         end
     end
-    reCache = { v = v, src = self.rosterList, ek = extraKey, list = list, sig = sig, full = full }
+    local made = { v = v, src = self.rosterList, ek = extraKey, list = list, sig = sig, full = full }
+    if everyone then reCacheAll = made else reCache = made end
     return list, sig, full
 end
 RosterEntriesFn = RosterEntries
+-- Todos los conectados de mi hermandad, una línea cada uno («nombre,clase,nivel,rango,zona[,a]»)
+function HU:OnlineEntries() return (RosterEntries(self, true)) end
 -- (rehacer las líneas de la lista en un fotograma aparte; lo usa Presence antes de mandar los cambios)
 function HU:WarmRosterEntries() RosterEntries(self) end
 HU.RosterSigNow = function() local _, sig = RosterEntries(HU) return sig end
@@ -665,6 +673,7 @@ local function ParseRosterEntry(self, en, tag, dict)
         tag = tag,
     }
 end
+HU.ZoneDict, HU.ParseRosterEntry = ZoneDict, ParseRosterEntry
 
 -- Lo que ya ha llegado de una lista entera que viene en varios trozos: solo para el panel, que va [+ARCHITECTURE.md]
 HU.partialRoster = {}

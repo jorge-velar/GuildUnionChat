@@ -113,6 +113,7 @@ function wow.New(opts)
         now = opts.now or 1000,     -- GetTime() (la red, tests/lib/red.lua, arranca a todos con su reloj)
         epoch = 1800000000,         -- time() = epoch + now
         timers = {}, frames = {}, chat = {}, sent = {}, said = {},
+        who = {}, whoSent = {}, -- (/who: lo que devuelve, w.who = { {fullName, fullGuildName, level, filename, area} }, y lo buscado)
         channels = {},              -- [número] = nombre de los canales en los que estoy
         net = nil,                  -- la red (tests/lib/red.lua): decide si un susurro llega o el canal deja entrar
         player = opts.player or "Tester",
@@ -223,7 +224,17 @@ function wow.New(opts)
         NewTicker = function(d, fn, n) return AddTimer(d, fn, d, n) end,
     }
 
-    api.CreateFrame = function(kind, name, parent) return NewFrame(w, kind, name, parent) end
+    api.CreateFrame = function(kind, name, parent, template)
+        local f = NewFrame(w, kind, name, parent)
+        -- (las piezas que traen las plantillas del juego y que el addon toca: el fondo de InsetFrameTemplate)
+        if type(template) == "string" and template:find("InsetFrameTemplate", 1, true) then f.Bg = NewFrame(w, "Texture", nil, f) end
+        return f
+    end
+    -- (las listas con barra de la interfaz del juego: solo recuerdan por dónde van)
+    api.FauxScrollFrame_Update = function() end
+    api.FauxScrollFrame_GetOffset = function(f) return f and f._offset or 0 end
+    api.FauxScrollFrame_SetOffset = function(f, n) if f then f._offset = n end end
+    api.FauxScrollFrame_OnVerticalScroll = function(_, _, _, fn) if fn then fn() end end
     api.CreateFont = function(name) return NewFrame(w, "Font", name) end
     api.UIParent = NewFrame(w, "Frame", "UIParent")
     api.DEFAULT_CHAT_FRAME = NewFrame(w, "ScrollingMessageFrame", "ChatFrame1")
@@ -364,6 +375,19 @@ function wow.New(opts)
         local m = list and list[j]
         if m then return m.name, m.owner, m.moderator, m.guid end
     end
+    -- (los marcos que escuchan un evento, como el del juego)
+    api.GetFramesRegisteredForEvent = function(ev)
+        local out = {}
+        for _, f in ipairs(w.frames) do if f._events[ev] then out[#out + 1] = f end end
+        return unpack(out)
+    end
+    -- (/who: se apunta lo buscado y la respuesta la pone la prueba en w.who, con w:Fire("WHO_LIST_UPDATE"))
+    api.C_FriendList = {
+        SendWho = function(filter) w.whoSent[#w.whoSent + 1] = filter end,
+        SetWhoToUi = function() end,
+        GetNumWhoResults = function() return #w.who, w.whoTotal or #w.who end,
+        GetWhoInfo = function(i) return w.who[i] end,
+    }
     api.GetFramerate = function() return 60 end
     api.GetNetStats = function() return 0, 0, 50, 50 end
     api.IsShiftKeyDown = function() return false end

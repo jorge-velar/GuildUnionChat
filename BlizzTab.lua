@@ -176,6 +176,10 @@ local function PlayerMenu(owner, e)
     end)
 end
 
+-- (también los usa «Unión» en la lista de miembros, UnionRoster.lua)
+function HU.WhisperTo(name) return Whisper(name) end
+function HU.PlayerMenu(owner, e) return PlayerMenu(owner, e) end
+
 -- Clic derecho en la lista de miembros de Blizzard: las opciones de oficial de GuildUnion, al final
 local function AddToGuildMemberMenu(_, root, ctx)
     local name = ctx and ctx.name
@@ -217,7 +221,8 @@ local function Button(parent, text, w, anchor, x)
 end
 
 -- Lista de oficiales de las otras hermandades (la lista pequeña que va por dentro)
-local ROW_H, ROWS = 18, 18
+-- (ROWS: las filas que se crean; se enseñan solo las que caben en la altura de la lista)
+local ROW_H, ROWS = 18, 30
 local function OfficerEntries(withOwn)
     local out = {}
     -- (los de mi hermandad, de la lista del juego: maestro y oficiales conectados)
@@ -254,22 +259,50 @@ local function OfficerEntries(withOwn)
     return out
 end
 
+-- La columna derecha enseña «Oficiales» (lo que ya llega solo) o «Miembros» (todos los conectados de
+-- las otras hermandades, que se piden al mirarlos: UnionMembers.lua). memberTag: la hermandad elegida
+-- (nil = todas)
+local view, memberTag = "officers", nil
 local function RefreshOfficers()
     if not (panel and panel:IsShown()) then return end
-    local list = OfficerEntries(true)
+    local list
+    if view == "members" then
+        HU:WantUnionMembers(memberTag)
+        list = HU:UnionMemberEntries(memberTag)
+        local parts = {}
+        for _, t in ipairs(memberTag and { memberTag } or HU:OtherTags()) do
+            local s = HU:UnionMembersStatus(t)
+            if s ~= "" then parts[#parts + 1] = "|cff" .. HU:GuildColorHex(t) .. t .. "|r " .. s end
+        end
+        panel.memStatus:SetText(table.concat(parts, "  ·  "))
+        panel.memPick:SetText(memberTag or L("Todas"))
+        -- (el /who es de una hermandad: con «Todas» no sale)
+        panel.whoBtn:SetShown(memberTag ~= nil)
+    else
+        list = OfficerEntries(true)
+    end
+    panel.offEmpty:SetText(view == "members" and L("Pidiendo la lista a las otras hermandades…") or L("Todavía no ha llegado ninguno."))
     local sf = panel.offScroll
-    FauxScrollFrame_Update(sf, #list, ROWS, ROW_H)
+    -- (solo las filas que caben: antes siempre 18, y con la ventana más baja las últimas se salían por
+    -- debajo, encima de lo que hubiera. Noe, 23/11)
+    local visible = ROWS
+    local h = sf:GetHeight()
+    if type(h) == "number" and h > 0 then visible = math.max(1, math.min(ROWS, math.floor(h / ROW_H))) end
+    FauxScrollFrame_Update(sf, #list, visible, ROW_H)
     local off = FauxScrollFrame_GetOffset(sf)
     for i = 1, ROWS do
-        local row, e = panel.offRows[i], list[off + i]
+        local row, e = panel.offRows[i], i <= visible and list[off + i] or nil
         if e then
             local c = e.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[e.class]
             local hex = c and string.format("%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255) or "ffffff"
             row.name:SetText("|cff" .. hex .. HU:Nice(e.name) .. "|r")
-            -- (corona para el maestro, espadas rojas para el admin y normales para el oficial)
+            -- (corona para el maestro, espadas rojas para el admin y normales para el oficial; los
+            -- miembros, sin nada)
             if e.ri == 0 then
                 row.icon:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon"); row.icon:SetTexCoord(0, 1, 0, 1)
                 row.icon:SetVertexColor(1, 1, 1)
+            elseif not HU:RankRole(e.tag, e.ri) then
+                row.icon:SetTexture(nil)
             else
                 row.icon:SetTexture("Interface\\CharacterFrame\\UI-StateIcon"); row.icon:SetTexCoord(34 / 64, 62 / 64, 2 / 64, 30 / 64)
                 if HU:IsAdminRank(e.tag, e.ri) then row.icon:SetVertexColor(unpack(HU.ADMIN_COLOR)) else row.icon:SetVertexColor(1, 1, 1) end
@@ -287,6 +320,12 @@ local function RefreshOfficers()
         end
     end
     panel.offEmpty:SetShown(#list == 0)
+end
+
+-- Un clic del jugador en la pestaña: el único momento en que el juego deja hacer /who. Si alguna
+-- hermandad de las que se miran no tiene lista, se busca con /who sin abrir la ventana del juego
+local function WhoTick()
+    if view == "members" and panel and panel:IsShown() and HU:UnionWhoTick(memberTag) then RefreshOfficers() end
 end
 
 local function RefreshStatus()
@@ -346,7 +385,7 @@ local function ShowPanel(on)
     panel:SetShown(on)
     if tab then tab:SetChecked(on) end
     if HU.SyncCharSearch then HU.SyncCharSearch() end
-    if on then RefreshStatus(); RefreshOfficers() end
+    if on then RefreshStatus(); RefreshOfficers(); WhoTick() end
 end
 
 local function BuildPanel()
@@ -504,19 +543,76 @@ local function BuildPanel()
     panel.createBtn:SetPoint("RIGHT", panel.manageBtn, "LEFT", -6, 0)
     panel.createBtn:SetScript("OnClick", function() HU:OpenWizard() end)
 
-    -- Columna derecha: oficiales de las otras hermandades
-    local h5 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    -- Columna derecha: «Oficiales conectados» (los de todas las hermandades) o «Miembros» (todos los
+    -- conectados de las otras, que se piden al mirarlos)
     -- (debajo de la línea de estado, que ocupa todo el ancho: antes se pisaban)
-    h5:SetPoint("TOPLEFT", panel, "TOP", 10, -70)
-    h5:SetText(L("Oficiales conectados"))
+    local bOff = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    bOff:SetSize(150, 20); bOff:SetText(L("Oficiales conectados"))
+    bOff:SetPoint("TOPLEFT", panel, "TOP", 10, -66)
+    local bMem = Button(panel, L("Miembros"), 100, bOff, 4)
+    bMem:SetHeight(20)
+    panel.offBtn, panel.memBtn = bOff, bMem
+    -- (la hermandad que se mira, con un menú; y cómo va su lista)
+    panel.memPick = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    panel.memPick:SetSize(90, 20)
+    panel.memPick:SetPoint("TOPLEFT", bOff, "BOTTOMLEFT", 0, -4)
+    -- (con /who, para una hermandad en la que nadie tiene Miembros: solo con un clic, como pide el juego)
+    panel.whoBtn = Button(panel, L("Buscar con /who"), 120, panel.memPick, 4)
+    panel.whoBtn:SetHeight(20)
+    panel.whoBtn:SetScript("OnClick", function()
+        if memberTag then HU:WhoUnionMembers(memberTag); RefreshOfficers() end
+    end)
+    panel.whoBtn:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_TOP")
+        GameTooltip:AddLine(L("Buscar con /who"))
+        GameTooltip:AddLine(L("Los conectados de esa hermandad según el juego, aunque nadie de ella tenga esta versión. Sin rangos; se abre la ventana de búsqueda del juego."), 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    panel.whoBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    panel.memStatus = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    panel.memStatus:SetPoint("LEFT", panel.whoBtn, "RIGHT", 6, 0)
+    panel.memStatus:SetPoint("RIGHT", panel, "RIGHT", -14, 0)
+    panel.memStatus:SetJustifyH("LEFT"); panel.memStatus:SetWordWrap(false)
     -- (copia 97: la casilla de emoticonos va abajo, en Ajustes)
     -- (cabecera de columnas, como la lista de miembros de Blizzard)
     -- (anchos que caben en media ventana: antes «Hermandad» se salía por la derecha)
     local COL_NAME, COL_RANK = 118, 78
     local hdr = CreateFrame("Frame", nil, panel)
     hdr:SetHeight(16)
-    hdr:SetPoint("TOPLEFT", h5, "BOTTOMLEFT", 0, -6)
     hdr:SetPoint("RIGHT", panel, "RIGHT", -30, 0)
+    local function SetView(v)
+        view = v
+        if v == "members" then bMem:LockHighlight(); bOff:UnlockHighlight() else bOff:LockHighlight(); bMem:UnlockHighlight() end
+        panel.memPick:SetShown(v == "members"); panel.memStatus:SetShown(v == "members")
+        panel.whoBtn:SetShown(v == "members" and memberTag ~= nil)
+        hdr:ClearAllPoints()
+        hdr:SetPoint("TOPLEFT", v == "members" and panel.memPick or bOff, "BOTTOMLEFT", 0, -6)
+        hdr:SetPoint("RIGHT", panel, "RIGHT", -30, 0)
+        if panel.offScroll then FauxScrollFrame_SetOffset(panel.offScroll, 0); RefreshOfficers() end
+    end
+    bOff:SetScript("OnClick", function() SetView("officers") end)
+    bMem:SetScript("OnClick", function() SetView("members"); WhoTick() end)
+    local function PickTag(t)
+        memberTag = t
+        if panel.offScroll then FauxScrollFrame_SetOffset(panel.offScroll, 0) end
+        RefreshOfficers()
+        WhoTick()
+    end
+    panel.memPick:SetScript("OnClick", function(s)
+        local tags = HU:OtherTags()
+        if not (MenuUtil and MenuUtil.CreateContextMenu) then
+            -- (sin el menú del juego: cada clic, la siguiente)
+            local i = 0
+            for j, t in ipairs(tags) do if t == memberTag then i = j end end
+            return PickTag(tags[i + 1])
+        end
+        MenuUtil.CreateContextMenu(s, function(_, root)
+            root:CreateButton(L("Todas"), function() PickTag(nil) end)
+            for _, t in ipairs(tags) do
+                root:CreateButton("|cff" .. HU:GuildColorHex(t) .. t .. "|r  " .. HU:GuildName(t), function() PickTag(t) end)
+            end
+        end)
+    end)
     local hbg = hdr:CreateTexture(nil, "BACKGROUND")
     hbg:SetAllPoints(); hbg:SetColorTexture(1, 1, 1, 0.06)
     local function Col(text, x)
@@ -527,7 +623,9 @@ local function BuildPanel()
     local sf = CreateFrame("ScrollFrame", "GuildUnionReduceOffScroll", panel, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, -2)
     sf:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -30, 12)
-    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, RefreshOfficers) end)
+    sf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, RefreshOfficers); WhoTick() end)
+    -- (la ventana cambia de alto, o la lista empieza más abajo en «Miembros»: caben otras filas)
+    sf:SetScript("OnSizeChanged", function() RefreshOfficers() end)
     panel.offScroll = sf
     panel.offRows = {}
     for i = 1, ROWS do
@@ -557,6 +655,7 @@ local function BuildPanel()
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row:SetScript("OnClick", function(s, button)
             if not s.entry then return end
+            WhoTick()
             if button == "RightButton" then PlayerMenu(s, s.entry) else Whisper(s.entry.name) end
         end)
         row:SetScript("OnEnter", function(s)
@@ -564,7 +663,13 @@ local function BuildPanel()
             GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
             GameTooltip:SetText(HU:Nice(s.entry.name))
             GameTooltip:AddLine(HU:GuildName(s.entry.tag) .. " · " .. s.entry.rank, 1, 1, 1)
-            GameTooltip:AddLine(s.entry.online and L("Conectado") or L("Desconectado"), 0.6, 0.6, 0.6)
+            local e = s.entry
+            if e.level and e.level > 0 then
+                local cls = e.class and LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[e.class] or e.class or ""
+                GameTooltip:AddLine(L("Nivel ") .. e.level .. " " .. cls, 1, 1, 1)
+            end
+            if e.zone and e.zone ~= "" then GameTooltip:AddLine(e.zone, 1, 1, 1) end
+            GameTooltip:AddLine((e.online and L("Conectado") or L("Desconectado")) .. (e.afk and (" · " .. L("Ausente")) or ""), 0.6, 0.6, 0.6)
             GameTooltip:AddLine(L("Clic: susurrar · Clic derecho: más"), 0, 1, 0)
             GameTooltip:Show()
         end)
@@ -580,7 +685,17 @@ local function BuildPanel()
         RefreshStatus(); RefreshOfficers()
     end)
     panel:RegisterEvent("GUILD_ROSTER_UPDATE")
+    -- (un clic en cualquier parte de la pestaña también vale para el /who)
+    panel:HookScript("OnMouseDown", function() WhoTick() end)
     panel:SetScript("OnEvent", function() RefreshOfficers() end)
+    -- (viendo «Miembros»: lo que llega se pinta al momento, y cada 2 s se mira si toca pedir otra vez)
+    HU:Listen("CHANGED", function(what) if what == "unionMembers" and view == "members" then RefreshOfficers() end end)
+    local acc = 0
+    panel:SetScript("OnUpdate", function(_, dt)
+        acc = acc + dt
+        if acc > 2 then acc = 0; if view == "members" then RefreshOfficers() end end
+    end)
+    SetView("officers")
 end
 
 ---------------------------------------------------------------------------
@@ -1316,4 +1431,4 @@ HU:OnStart(function()
     end
 end)
 
-HU:Module("BlizzTab", { "Blacklist", "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "Wizard" })
+HU:Module("BlizzTab", { "Blacklist", "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "UnionMembers", "Wizard" })
