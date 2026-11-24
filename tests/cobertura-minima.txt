@@ -12,7 +12,7 @@ ChatTabs.lua 45.0 39
 Combat.lua 58.5 100
 Comm.lua 59.5 34
 Community.lua 7.2 371
-Config.lua 70.2 101
+Config.lua 70.0 102
 Core.lua 82.8 89
 DJStyle.lua 98.5 1
 Domain/Trust.lua 75.3 60
@@ -49,10 +49,9 @@ TestLog.lua 33.3 60
 Trade.lua 87.3 91
 UI.lua 87.5 3
 UIWindows.lua 95.0 3
-UnionBank.lua 98.6 7
 UnionCalendar.lua 98.5 17
 UnionConfig.lua 100.0 0
 UnionMembers.lua 93.4 18
-UnionRoster.lua 85.1 111
+UnionRoster.lua 84.7 111
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144
