@@ -956,6 +956,38 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("a la derecha, sin las pestañas Chat y Miembros del juego mientras se ve lo nuestro (ya están en la fila); en las demás vistas, vuelven", function()
+        local a = F.Community()
+        local chatTab, rosterTab
+        local function Tab(w)
+            local t = a.env.CreateFrame("CheckButton", nil, w)
+            t.SetAlpha = function(self, v) self._alpha = v end
+            t.EnableMouse = function(self, v) self._mouse = v end
+            t.SetPoint = function(self, ...) self._pt = { ... } end
+            return t
+        end
+        local f = GuildWindow(a, true, function(w)
+            chatTab = Tab(w); w.ChatTab = chatTab
+            rosterTab = Tab(w); w.RosterTab = rosterTab
+        end)
+        -- (en la vista de miembros, con lo nuestro: fuera las dos, y las demás suben al sitio de Chat)
+        A.same({ 0, false, 0, false }, { chatTab._alpha, chatTab._mouse, rosterTab._alpha, rosterTab._mouse })
+        A.same({ "BOTTOMLEFT", chatTab, "TOPLEFT", 0, 20 }, rosterTab._pt)
+        -- (en la de chat, igual)
+        f.MemberList.ShowOfflineButton.visible = false
+        f.Chat.visible = true
+        f:GetScript("OnShow")(f)
+        a.w:Advance(0.1)
+        A.same({ 0, 0 }, { chatTab._alpha, rosterTab._alpha })
+        -- (en otra vista del juego, sin lo nuestro: vuelven, que son el camino de vuelta)
+        f.Chat.visible = false
+        f.Chat:GetScript("OnHide")()
+        a.w:Advance(0.1)
+        A.same({ 1, true, 1, true }, { chatTab._alpha, chatTab._mouse, rosterTab._alpha, rosterTab._mouse })
+        A.same({ "TOPLEFT", chatTab, "BOTTOMLEFT", 0, -20 }, rosterTab._pt, "en su sitio del juego")
+        A.same({}, a:Errors())
+    end)
+
     it("los cuatro botones de arriba, redondos, con imagen y centrados: Chat (el seguro), Miembros, Comercio y Calendario", function()
         local a = F.Community()
         local f = GuildWindow(a)

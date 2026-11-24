@@ -1099,6 +1099,24 @@ local function Build(f)
     local cl = type(f.CommunitiesList) == "table" and f.CommunitiesList or nil
     local clBar = cl and type(cl.ScrollBar) == "table" and cl.ScrollBar or nil
     local clBarStrata, clBarLevel = clBar and clBar:GetFrameStrata(), clBar and clBar:GetFrameLevel()
+    -- (a la derecha, sin las pestañas del juego que ya están en nuestra fila (Jorge, 24/11): Chat y Miembros, transparentes
+    -- y sin clics mientras se ve lo nuestro (nuestros botones seguros las siguen pulsando), y las demás suben a su sitio. En
+    -- las otras vistas del juego (Información…) vuelven: son el camino de vuelta) [+ARCHITECTURE.md]
+    local chatTab = type(f.ChatTab) == "table" and f.ChatTab or nil
+    local rosterTab = type(f.RosterTab) == "table" and f.RosterTab or nil
+    local sideOff = false
+    local function SideTabs(off)
+        if not (chatTab and rosterTab) or off == sideOff then return end
+        sideOff = off
+        for _, t in ipairs({ chatTab, rosterTab }) do
+            t:SetAlpha(off and 0 or 1)
+            t:EnableMouse(not off)
+        end
+        -- (la de Miembros, justo encima de la de Chat: la siguiente, que va 20 por debajo de ella, queda en su sitio)
+        rosterTab:ClearAllPoints()
+        if off then rosterTab:SetPoint("BOTTOMLEFT", chatTab, "TOPLEFT", 0, 20)
+        else rosterTab:SetPoint("TOPLEFT", chatTab, "BOTTOMLEFT", 0, -20) end
+    end
     local clBarUp = false
     local function ListBar(up)
         if not clBar or up == clBarUp then return end
@@ -1201,6 +1219,7 @@ local function Build(f)
         TopRow()
         GuildDropdown()
         ListBar(m ~= nil)
+        SideTabs(m ~= nil)
         UpdateCounts()
         -- (los botones seguros tampoco se colocan en combate (Layout): al salir, otra vez)
         if InCombatLockdown() then secureLater = true end

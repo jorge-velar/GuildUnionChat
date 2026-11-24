@@ -2656,6 +2656,12 @@ cambian de vista son seguros (`SecureActionButtonTemplate`, `type=click`) y los 
   chat iba atada a los mensajes, que la franja del mensaje fijado (BlizzTab.lua) baja: en `ChatAnchors` se ata al
   chat con los mismos 15 y 1 que le da el juego, y queda a la altura de la de su lista. La de la lista de la derecha,
   como está. Solo se cambia la esquina de arriba de cada barra (la de abajo sigue la del juego).
+- **Pestañas de la derecha sin repetidos** (Jorge, 24/11, opción B de tres que vio dibujadas): Chat y Miembros del juego
+  (`f.ChatTab`, `f.RosterTab`) ya están en nuestra fila, así que mientras se ve lo nuestro quedan transparentes y sin
+  clics (`SideTabs` en `Sync`); nuestros botones seguros las siguen pulsando (`Click` no mira si se ven). La de
+  Miembros se pone justo encima de la de Chat: la siguiente (Ventajas o Información), que va 20 por debajo de ella,
+  sube al sitio de Chat, y detrás las demás y la nuestra. En las otras vistas del juego (Información, Preferencias)
+  vuelven a su sitio: son el camino de vuelta, que allí no está nuestra fila.
 - Centrados (24/11): `Layout` calcula el ancho de lo nuestro en esa vista (en la de miembros, el de la lista del juego
   y 25 más; en la de chat, de la columna de comunidades al borde de la ventana) y de ahí `x0`, el principio de la
   fila. Con esa misma cuenta van los nuestros (atados a la fila) y los seguros (atados a la lista del juego o a la
