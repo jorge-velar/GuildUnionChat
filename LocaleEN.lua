@@ -902,7 +902,7 @@ E["Pedir una receta"] = "Request a recipe"
 E["Receta / objeto"] = "Recipe / item"
 E["Yo"] = "Me"
 
-E["Objeto (escribe su nombre o Mayús+clic):"] = "Item (type its name or Shift+click):"
+E["Objeto o encantamiento (o Mayús+clic):"] = "Item or enchant (or Shift+click):"
 E["Materiales:"] = "Materials:"
 E["Vendedor"] = "Seller"
 E["Propina:"] = "Tip:"

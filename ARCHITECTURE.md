@@ -3163,6 +3163,12 @@ para aprender la receta. La clave es el número de profesión del juego, el de `
 197 Sastrería, 202 Ingeniería y 333 Encantamiento. 1.373 objetos, sacados una vez de Wowhead Classic (hechizos de cada
 profesión, campo «creates»). Solo números: el nombre y el enlace los da el juego, en el idioma de cada uno.
 
+`HU.CRAFT_SPELLS[333]`: los **encantamientos** de vanilla (132), que son hechizos que se lanzan sobre el objeto de
+otro y no crean objeto (los que sí, como varas, varitas y aceites, están en `CRAFT_ITEMS`). Sacados de la misma
+página de Wowhead: hechizos de Encantamiento sin «creates», que empiezan por «Enchant », con número menor de 100.000
+(sin los de Season of Discovery). Las recetas propias de Forever (p. ej. «Arcane Salvager») no están: Wowhead no las
+tiene; habría que leerlas del juego cuando un encantador abre su profesión.
+
 ### Los nombres: `LoadCraftNames` (en Trade.lua)
 
 - Pide cada objeto al juego (`C_Item.GetItemInfo`) y guarda lo que llega en `craft[id] = { key, link, skill, lv }`
@@ -3174,6 +3180,10 @@ profesión, campo «creates»). Solo números: el nombre y el enlace los da el j
   vuelven a pedir en dos vueltas más. Luego el temporizador se para y no se repite en la sesión.
 - Se llama al final de `HU:BuildTrade` (al cargar la ventana de hermandad del juego) y en cada `OnShow` de Comercio;
   `craftLoader` impide que arranque dos veces.
+- Los encantamientos (`LoadCraftSpells`), de una vez y antes que los objetos: `C_Spell.GetSpellName` y
+  `C_Spell.GetSpellLink` los dan al momento. Van en `craft["s" .. hechizo]` con su profesión y nivel, así que salen
+  en las sugerencias, en «Quién lo hace» (`CraftNeeds`) y en las solicitudes como un enlace más (su ficha al pasar
+  el ratón y al pinchar, como la de un objeto).
 
 ## DJStyle.lua
 

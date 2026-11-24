@@ -132,10 +132,27 @@ end
 -- Fabricables (CraftItems.lua): el juego da su nombre y enlace en tu idioma; se piden poco a poco (30 cada
 -- medio segundo) desde que se monta la sección (al cargar la ventana de hermandad del juego), y los que tarda se
 -- reintentan dos vueltas más [+ARCHITECTURE.md]
-local craft = {}            -- [objeto] = { key = nombre en minúsculas, link, skill, lv }
+local craft = {}            -- [objeto] (o ["s" .. hechizo]) = { key = nombre en minúsculas, link, skill, lv }
 local craftLoader
+-- (los encantamientos son hechizos, no objetos: el juego da su nombre y su enlace al momento, sin pedirlos)
+local function LoadCraftSpells()
+    local S = C_Spell
+    if type(HU.CRAFT_SPELLS) ~= "table" or not (S and S.GetSpellName and S.GetSpellLink) then return end
+    for skill, list in pairs(HU.CRAFT_SPELLS) do
+        for i = 1, #list - 1, 2 do
+            local id = list[i]
+            local okN, name = pcall(S.GetSpellName, id)
+            local okL, link = pcall(S.GetSpellLink, id)
+            if okN and okL and type(name) == "string" and type(link) == "string" and not HU.Secret(name)
+                and not HU.Secret(link) then
+                craft["s" .. id] = { key = name:lower(), link = link, skill = skill, lv = list[i + 1] }
+            end
+        end
+    end
+end
 local function LoadCraftNames()
     if craftLoader or type(HU.CRAFT_ITEMS) ~= "table" then return end
+    LoadCraftSpells()
     local queue, info = {}, {}
     for skill, list in pairs(HU.CRAFT_ITEMS) do
         for i = 1, #list - 1, 2 do
@@ -641,7 +658,7 @@ local function BuildNewDialog(host)
         b:SetScript("OnClick", function() b:SetChecked(true); a:SetChecked(false); if onChange then onChange() end end)
     end
 
-    Label(L("Objeto (escribe su nombre o Mayús+clic):"), 12, -34)
+    Label(L("Objeto o encantamiento (o Mayús+clic):"), 12, -34)
     d.item = HU.NewEditBox(d, 222); d.item:SetPoint("TOPLEFT", 18, -48)
     Label(L("Cantidad:"), 248, -34)
     d.qty = HU.NewEditBox(d, 42); d.qty:SetPoint("TOPLEFT", 254, -48); d.qty:SetNumeric(true); d.qty:SetMaxLetters(3)

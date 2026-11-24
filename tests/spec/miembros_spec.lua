@@ -1285,6 +1285,30 @@ describe("Comercio (Trade.lua)", function()
         A.same({ "Lino", "Lino fino", "Lino grueso" }, { shown[1], shown[2], shown[3] })
         A.same({}, a:Errors())
     end)
+
+    it("los encantamientos (hechizos, no objetos) salen en las sugerencias con su enlace, en el idioma del juego", function()
+        local a = F.Community()
+        local list = a.HU.CRAFT_SPELLS[333]
+        local first = list[1]
+        A.truthy(#list >= 200, "los de vanilla, con su nivel")
+        local link = "|cff71d5ff|Hspell:" .. first .. ":0|h[Encantar brazales: salud inferior]|h|r"
+        a.env.C_Spell = {
+            GetSpellName = function(id) if id == first then return "Encantar brazales: salud inferior" end end,
+            GetSpellLink = function(id) if id == first then return link end end,
+        }
+        local tr = OpenTrade(a)
+        a.w:Advance(1)
+        tr.search:SetText("brazales")
+        tr.search:GetScript("OnTextChanged")(tr.search, true)
+        local box
+        for _, fr in ipairs(a.w.frames) do if fr._parent == tr.search and fr._kind == "Frame" then box = fr end end
+        local shown = {}
+        for _, fr in ipairs(a.w.frames) do
+            if fr._parent == box and fr._kind == "Button" and fr:IsShown() then shown[#shown + 1] = fr.text:GetText() end
+        end
+        A.same({ link }, shown)
+        A.same({}, a:Errors())
+    end)
 end)
 
 describe("El chat de la ventana de hermandad del juego sigue el formato de Ajustes (BlizzTab.lua)", function()
