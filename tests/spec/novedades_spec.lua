@@ -84,6 +84,26 @@ describe("Aviso de fuera del canal (Channel.lua): a /gu informe, no al chat", fu
         A.falsy(ChatSince(a, i0):find("Te falta el canal", 1, true), "y no en el chat")
     end)
 
+    it("el informe dice qué le pasa al canal: los avisos del servidor y cuándo intento entrar o salgo yo (Jorge, 25/11)", function()
+        local a = F.Community()
+        local HU = a.HU
+        a.env.LeaveChannelByName("CanalPrueba")
+        a.w:Advance(30)
+        local whats = {}
+        for _, e in ipairs(HU.chanEvents) do whats[#whats + 1] = e.what end
+        local all = table.concat(whats, " | ")
+        A.truthy(all:find("YOU_LEFT", 1, true), all)
+        A.truthy(all:find("intento entrar", 1, true), all)
+        A.truthy(all:find("YOU_JOINED", 1, true), all)
+        -- (y sale en el informe completo, detrás de «fuera del canal»)
+        local got
+        if HU.UI then HU.UI.ShowCopy = function(_, _, text) got = text end end
+        local i0 = #a.w.chat + 1
+        HU:FullReport()
+        a.w:Advance(5)
+        got = got or ChatSince(a, i0)
+        A.truthy(got:find("  canal: ", 1, true) and got:find("YOU_JOINED", 1, true), "en el informe")
+    end)
 end)
 
 describe("Lo que se perdió durante un bloqueo del chat (Combat.lua y Social.lua)", function()

@@ -447,6 +447,13 @@ local function SessionLines(self, add)
     add("fuera del canal en esta sesión: " .. chanTrack.outs .. " veces · " .. math.floor(chanTrack.outSecs) .. " s en total · ahora: "
         .. (self:IsJoined("main") and "dentro" or "FUERA"))
     if #chanTrack.log > 0 then add("  " .. table.concat(chanTrack.log, " · ")) end
+    -- (y por qué: los avisos del servidor y lo que hago yo con el canal, Channel.lua)
+    local ev = self.chanEvents
+    if #ev > 0 then
+        local parts = {}
+        for i = math.max(1, #ev - 11), #ev do parts[#parts + 1] = Clock(ev[i].t) .. " " .. ev[i].what end
+        add("  canal: " .. table.concat(parts, " · "))
+    end
     local upd = UpdateAddOnMemoryUsage or (C_AddOns and C_AddOns.UpdateAddOnMemoryUsage)
     local get = GetAddOnMemoryUsage or (C_AddOns and C_AddOns.GetAddOnMemoryUsage)
     if upd and get then

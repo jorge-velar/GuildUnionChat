@@ -2825,6 +2825,17 @@ seguidos sacan el aviso del juego «tus addons están dando muchos problemas» (
 - Al cambiar de zona (`PLAYER_ENTERING_WORLD`, `ZONE_CHANGED_NEW_AREA`) se vuelve a mirar a los 2 s,
   para entrar al canal nada más salir de la partida.
 
+## Channel.lua · qué le pasa al canal (para /gu informe)
+
+Jorge, 25/11: su informe decía «fuera del canal 15 veces» en 3 min, dentro y fuera cada 5 s, sin saber por qué; y a
+un jugador de la 5.4.43 le salía «You are doing that too fast». Para medirlo, `HU:ChanEvent(tipo, qué)` apunta en
+`HU.chanEvents` (solo RAM, las 20 últimas, solo el canal de la comunidad) cada aviso del servidor de ese canal
+(`CHAT_MSG_CHANNEL_NOTICE`: YOU_JOINED, YOU_LEFT, NOT_ALLOWED_IN_CHANNEL, WRONG_PASSWORD…) y lo que hace el addon:
+cada intento de entrar (`EnsureJoined`, con «(bloqueado)» si el juego lo bloqueó), salir y volver por canal fantasma
+(`RejoinChannel`, con el motivo) y salir porque cambia el nombre o ya no toca (`ApplyChannels`). El informe completo
+(Report.lua, «== SESIÓN ==») los pone debajo de la línea de dentro/fuera, con su hora: «canal: 23:28:22 intento entrar ·
+23:28:23 YOU_JOINED · …». Es medida, no arreglo: con eso se ve si sale el servidor, un moderador o el propio addon.
+
 ## Channel.lua · memoria de clases
 
 El color del nombre en el chat unido sale de la clase, y la clase se buscaba en cada mensaje: por el
