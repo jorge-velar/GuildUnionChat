@@ -1303,6 +1303,7 @@ E["Antes de echarlos, les pregunto otra vez a los %d y miro el canal: unos %d s.
 E["No he echado a nadie: ahora el juego no deja mandar nada (campo de batalla). Vuelve a probar al salir."] = "Nobody removed: the game now blocks sending (battleground). Try again when you leave."
 E["Tienen el addon (han dado señal ahora), no los echo: "] = "They have the addon (they just gave a sign), not removing: "
 E["No les he podido volver a preguntar, no los echo: "] = "Could not ask them again, not removing: "
+E["Ojo: llevo menos de un día apuntando quién tiene el addon. Para ir seguro, vuelve a mirarlo mañana antes de echar."] = "Careful: I have been tracking who has the addon for less than a day. To be safe, check again tomorrow before removing anyone."
 E["No queda nadie de la lista que puedas echar."] = "Nobody left on the list that you can remove."
 E["Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."] = "%d people: I'll ask in %d batches; press «Yes» on each one."
 

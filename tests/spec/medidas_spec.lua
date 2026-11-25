@@ -222,7 +222,9 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         local line = "Sin addon en <UNO> (mirado a las " .. now .. "): 1 de 6 conectados · no se sabe 4"
         A.equal(line, HU:WithoutAddonLine())
         Has(c.text, "<UNO>: 6 conectados · con addon 1 · sin addon 1 · no se sabe 4\n«Con addon»: quien ha dado alguna señal desde el ")
-        Has(c.text, "(me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días).\n\nSin addon: no han contestado a ninguna de las tres preguntas")
+        Has(c.text, "(me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días).\n"
+            .. "Ojo: llevo menos de un día apuntando quién tiene el addon. Para ir seguro, vuelve a mirarlo mañana antes de echar.\n\n"
+            .. "Sin addon: no han contestado a ninguna de las tres preguntas")
         Has(c.text, ":\n  Abel Reino  ·  Orgrimmar\n\nNo se sabe (vuelve a mirarlo más tarde):\n"
             .. "  Bruno Reino: en Garganta Grito de Guerra: ahí no le deja contestar\n"
             .. "  Carla Reino: se ha desconectado\n"

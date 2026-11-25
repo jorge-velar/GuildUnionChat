@@ -781,6 +781,10 @@ local function AddonCheckText(self, r)
     local since = self:AddonSeenSince()
     if since then
         add(string.format(L("«Con addon»: quien ha dado alguna señal desde el %s (me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días)."), date("%d/%m %H:%M", since)))
+        -- (lo apuntado aún es poco: el primer día, que se sepa)
+        if time() - since < 86400 then
+            add(L("Ojo: llevo menos de un día apuntando quién tiene el addon. Para ir seguro, vuelve a mirarlo mañana antes de echar."))
+        end
     end
     add("")
     add(L("Sin addon: no han contestado a ninguna de las tres preguntas (el addon contesta solo, en cualquier versión desde la 5.4.12):"))
