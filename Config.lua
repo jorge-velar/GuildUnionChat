@@ -572,8 +572,37 @@ function RankInfoSlow(self, k)
     return nil
 end
 
--- El nivel de alguien de la unión, si se sabe: de la lista de mi hermandad o de las listas de las otras. Para el chat,
--- con db.chatLevel (Jorge, 24/11) [+ARCHITECTURE.md]
+-- Los niveles de las listas completas de las otras hermandades (paquete MB, Packs/Members.lua), por nombre: el índice
+-- se rehace solo si cambian esos paquetes, no con cada línea del chat (son miles de miembros) [+ARCHITECTURE.md]
+local mbLevels, mbDirty, mbSig = {}, true, nil
+HU:Listen("CHANGED", function(what) if what == "unionMembers" or what == "config" then mbDirty = true end end)
+-- (lo que forma el índice: de cada hermandad, las huellas de los trozos de su paquete y cuántos están comprobados)
+local function MBSig()
+    local parts = {}
+    for _, tag in ipairs(HU:OtherTags()) do
+        local p = HU:PackGet(tag, "MB")
+        parts[#parts + 1] = tag .. ":" .. tostring((HU:PackProgress(tag, "MB"))) .. ":" .. table.concat(p and p.h or {}, ".")
+    end
+    return table.concat(parts, "|")
+end
+local function MBLevels()
+    if not mbDirty then return mbLevels end
+    mbDirty = false
+    local sig = MBSig()
+    if sig == mbSig then return mbLevels end
+    mbSig, mbLevels = sig, {}
+    for _, tag in ipairs(HU:OtherTags()) do
+        for _, m in ipairs(HU:PackedMembers(tag)) do
+            if m.level > 0 then mbLevels[m.name:lower()] = m.level end
+        end
+    end
+    return mbLevels
+end
+
+local function GoodLevel(v) return type(v) == "number" and not HU.Secret(v) and v > 0 end
+-- El nivel de alguien de la unión, si se sabe: de la lista de mi hermandad, de las ligeras de las otras (RB) o de sus
+-- listas completas (MB). Para el chat, con db.chatLevel (Jorge, 24/11; 25/11: «de todos los pj de la guild»)
+-- [+ARCHITECTURE.md]
 function HU:LevelOf(name)
     local k = self:Key(name)
     if not k then return nil end
@@ -588,7 +617,8 @@ function HU:LevelOf(name)
             if m then lv = m.level; break end
         end
     end
-    return (type(lv) == "number" and not HU.Secret(lv) and lv > 0) and lv or nil
+    if not GoodLevel(lv) then lv = MBLevels()[k] end
+    return GoodLevel(lv) and lv or nil
 end
 
-HU:Module("Config", { "Channel", "Community", "Core", "Guard", "NoteConfig", "Popup", "Ranks", "Roster" })
+HU:Module("Config", { "Channel", "Community", "Core", "Guard", "Net/Packs", "NoteConfig", "Packs/Members", "Popup", "Ranks", "Roster" })

@@ -462,4 +462,56 @@ function HU:ShowRequests()
     reqWin:Show()
 end
 
+---------------------------------------------------------------------------
+-- «Oficiales»: un botón con su desplegable, siempre encima de él, con «Peticiones de oficiales» y «Ver registro» (Jorge,
+-- 25/11: los dos botones «dentro de un mismo botón»). Lo ponen la vista de miembros y la de chat [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (el texto con el número de peticiones que puedo hacer, si hay)
+local function WithCount(text)
+    local n = HU:KickRequestCount()
+    return n > 0 and (text .. " (" .. n .. ")") or text, n
+end
+-- (atado encima del botón, como los desplegables del juego; sin su sistema de menús, el de clic derecho)
+local function OpenAbove(owner, gen)
+    local M, V, U = Menu, MenuVariants, MenuUtil
+    if M and M.GetManager and M.PopulateDescription and V and V.GetDefaultContextMenuMixin and CreateAnchor
+        and U and U.CreateRootMenuDescription then
+        local desc = U.CreateRootMenuDescription(V.GetDefaultContextMenuMixin())
+        M.PopulateDescription(gen, owner, desc)
+        return M.GetManager():OpenMenu(owner, desc, CreateAnchor("BOTTOMLEFT", owner, "TOPLEFT", 0, 2))
+    end
+    if U and U.CreateContextMenu then return U.CreateContextMenu(owner, gen) end
+end
+
+function HU:OfficersButton(parent, name)
+    local b = CreateFrame("Button", name, parent, "UIPanelButtonTemplate")
+    b:SetSize(110, 20)
+    local menu, closedAt, wasOpen
+    -- (con peticiones pendientes, el número y encendido)
+    local function Sync()
+        local text, n = WithCount(L("Oficiales"))
+        b:SetText(text)
+        if n > 0 then b:LockHighlight() else b:UnlockHighlight() end
+    end
+    -- (otro clic lo cierra. El juego cierra el menú con cualquier clic fuera de él, también en este botón, antes o
+    -- después de que el botón se entere: lo cerrado en este mismo clic no se vuelve a abrir) [+ARCHITECTURE.md]
+    b:HookScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" then return end
+        wasOpen = menu ~= nil or (closedAt ~= nil and GetTime() - closedAt < 0.1)
+        if menu then menu:Close(); menu = nil end
+    end)
+    b:SetScript("OnClick", function(s)
+        if wasOpen then wasOpen = nil; return end
+        menu = OpenAbove(s, function(_, root)
+            root:CreateButton((WithCount(L("Peticiones de oficiales"))), function() HU:ShowRequests() end)
+            root:CreateButton(L("Ver registro"), function() HU:ShowInviteLog() end)
+        end)
+        if menu and menu.SetClosedCallback then menu:SetClosedCallback(function() menu, closedAt = nil, GetTime() end) end
+    end)
+    HU:Listen("CHANGED", function(what) if what == "requests" then Sync() end end)
+    b:HookScript("OnShow", Sync)
+    Sync()
+    return b
+end
+
 HU:Module("InviteLog", { "Config", "Core", "ListWindow", "Orders", "Ranks", "Roster", "Social" })

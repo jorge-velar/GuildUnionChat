@@ -1164,6 +1164,10 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
             OpenTradeSkill = function(id) opened[#opened + 1] = id; return true end,
         }
         a.env.C_GuildInfo = { QueryGuildMemberRecipes = function(guid, id) asked[#asked + 1] = guid .. "/" .. id end }
+        -- (Compi ha abierto su herrería con el addon: su línea de oficios trae recetas)
+        local HU = a.HU
+        local l = HU.ProfessionsForTests.list(164)
+        a.w:Receive("HU20B", "WU~UNO~OF~164~" .. HU.StampNow() .. "~250," .. l.hash .. ",E", "GUILD", "Compi-Reino")
         GuildWindow(a)
         local cover = a.env.GuildUnionUnionRoster
         cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
@@ -1174,7 +1178,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
             row:GetScript("OnClick")(row, "LeftButton")
             return a.env.GuildUnionMemberCard.recipes, row
         end
-        local function Press(b) b:GetScript("OnClick")(b) end
+        -- (como el juego: un botón apagado no se pulsa)
+        local function Press(b) if b:IsEnabled() then b:GetScript("OnClick")(b) end end
         -- (las mías: Herboristería, de recoger, sin botón; Minería abre mi ventana de la profesión)
         local rows, row = Card("Tester")
         A.same({ false, true }, { rows.btns[1]:IsShown(), rows.btns[2]:IsShown() })
@@ -1197,6 +1202,68 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         rows = Card("Jefa")
         A.truthy(rows.btns[1]:IsShown())
         A.falsy(rows.btns[1]:IsEnabled())
+        A.same({}, a:Errors())
+    end)
+
+    it("«Ver recetas» de otro, apagado y con su porqué al pasar el ratón: sin su línea de oficios, sin GuildUnion (o no ha llegado); con ella sin recetas, no ha abierto esa ventana; las mías, siempre", function()
+        local a = F.Community()
+        local HU = a.HU
+        local meta = a.w.frameMeta
+        local base = meta.__index
+        meta.__index = function(f, k)
+            if k == "SetEnabled" then return function(self, v) rawset(self, "_off", not v) end end
+            if k == "IsEnabled" then return function(self) return not rawget(self, "_off") end end
+            return base(f, k)
+        end
+        a.env.C_Club = {
+            GetGuildClubId = function() return 9 end,
+            GetClubMembers = function() return { 1, 2 } end,
+            GetMemberInfo = function(_, id)
+                if id == 1 then
+                    return { name = "Tester", isSelf = true, guid = "Player-1-AAA", profession1ID = 164, profession1Name = "Herrería", profession1Rank = 1 }
+                end
+                return { name = "Compi", guid = "Player-1-BBB", profession1ID = 164, profession1Name = "Herrería", profession1Rank = 1 }
+            end,
+        }
+        a.env.C_TradeSkillUI = { GetTradeSkillTexture = function(id) return "icono" .. id end }
+        local asked = {}
+        local need = HU.PackNeed
+        F.Stub(HU, "PackNeed", function(self, tag, id) asked[#asked + 1] = tag .. "|" .. id; return need(self, tag, id) end)
+        GuildWindow(a)
+        local cover = a.env.GuildUnionUnionRoster
+        cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
+        local tip = a.env.GameTooltip
+        -- (el botón de la ficha de esa persona: si se ve, si está encendido y lo que dice al pasar el ratón)
+        local function Recipes(name)
+            local row
+            for _, r in ipairs(cover.rows) do if r.entry and r.entry.name:match("^([^-]+)") == name then row = r end end
+            row:GetScript("OnClick")(row, "LeftButton")
+            local b = a.env.GuildUnionMemberCard.recipes.btns[1]
+            tip:Hide(); tip:SetText("")
+            b:GetScript("OnEnter")(b)
+            local said = tip:IsShown() and tip:GetText() or false
+            b:GetScript("OnLeave")(b)
+            row:GetScript("OnClick")(row, "LeftButton")
+            return { b:IsShown(), b:IsEnabled(), said }
+        end
+        local function Hear(data)
+            a.w:Advance(1.1) -- (cada línea con su hora: la de la misma hora no pisa a la de antes)
+            a.w:Receive("HU20B", "WU~UNO~OF~164~" .. HU.StampNow() .. "~" .. data, "GUILD", "Compi-Reino")
+        end
+        A.same({ true, true, false }, Recipes("Tester"), "las mías, siempre, aunque no haya llegado mi línea")
+        A.same({ true, false, "No tiene GuildUnion (o aún no ha llegado lo suyo)" }, Recipes("Compi"), "sin su línea")
+        A.equal("UNO|OF", asked[#asked], "y se pide lo de mi hermandad que me perdí estando fuera")
+        Hear("250")
+        A.same({ true, false, "Aún no ha abierto su ventana de Herrería" }, Recipes("Compi"), "con su línea, sin recetas")
+        local l = HU.ProfessionsForTests.list(164)
+        Hear("251," .. l.hash .. ",E")
+        A.same({ true, true, false }, Recipes("Compi"), "con recetas: encendido y sin aviso")
+        -- (con las de otra versión del addon también: las ha abierto, aunque yo no pueda leerlas)
+        Hear("252," .. (l.hash == "zzz" and "yyy" or "zzz") .. ",E")
+        A.same({ true, true, false }, Recipes("Compi"))
+        local en = F.Community({ locale = "enUS" }).HU
+        A.equal("They don't have GuildUnion (or their data hasn't arrived yet)", en.L("No tiene GuildUnion (o aún no ha llegado lo suyo)"))
+        A.equal("They haven't opened their Blacksmithing window yet", string.format(en.L("Aún no ha abierto su ventana de %s"), "Blacksmithing"))
         A.same({}, a:Errors())
     end)
 
@@ -1331,14 +1398,15 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         for i, look in ipairs(looks) do A.equal(0, look.alpha, "marca " .. i .. ", apagada") end
         gu:GetScript("OnClick")(gu)
         for i, look in ipairs(looks) do A.equal(1, look.alpha, "marca " .. i .. ", de vuelta") end
-        -- (Comercio con mensajes sin leer: su pestaña lleva el puntito; leídos, se va)
+        -- (Comercio con mensajes sin leer: su pestaña lleva el puntito con cuántos chats los tienen; leídos, se va)
         local unread = 2
-        a.HU.TradeUnread = function() return unread end
+        a.HU.TradeUnreadChats = function() return unread end
         a.HU:Changed("tradeUnread")
-        A.truthy(trade.badge:IsShown(), "el puntito")
+        A.same({ true, true, "2" }, { trade.badge.dot:IsShown(), trade.badge.num:IsShown(), trade.badge.num:GetText() },
+            "el puntito, con el número de chats")
         unread = 0
         a.HU:Changed("tradeUnread")
-        A.falsy(trade.badge:IsShown())
+        A.same({ false, false }, { trade.badge.dot:IsShown(), trade.badge.num:IsShown() })
         -- (sin la hermandad elegida —sin Información—, no salen)
         info:Hide()
         f:GetScript("OnShow")(f)
@@ -1555,6 +1623,159 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         HU:AskGuildKick("Blas-Reino", "DOS")
         A.matches("«Peticiones de oficiales»", Chat(a, n0))
         A.same({}, a:Errors())
+    end)
+
+    -- (el sistema de menús del juego, lo justo: OpenMenu apunta dónde se ata; el menú se cierra con Close (también el
+    -- clic fuera de él, que el juego hace con cualquier clic) y entonces avisa a quien lo abrió)
+    local function Menus(a)
+        local m = { opened = 0 }
+        a.env.MenuVariants = { GetDefaultContextMenuMixin = function() return "contexto" end }
+        a.env.MenuUtil = { CreateRootMenuDescription = function()
+            local root = { items = {} }
+            function root:CreateButton(text, fn) self.items[#self.items + 1] = { text = text, fn = fn } end
+            return root
+        end }
+        a.env.CreateAnchor = function(...) return { ... } end
+        local manager = { OpenMenu = function(_, owner, desc, anchor)
+            m.opened = m.opened + 1
+            local menu = { owner = owner, items = desc.items, anchor = anchor }
+            function menu:SetClosedCallback(fn) self.onClose = fn end
+            function menu:Close() if m.open == self then m.open = nil; if self.onClose then self.onClose(self) end end end
+            m.open = menu
+            return menu
+        end }
+        a.env.Menu = { PopulateDescription = function(gen, owner, desc) gen(owner, desc) end, GetManager = function() return manager end }
+        -- (un clic del jugador en el botón: gameFirst, el juego cierra el menú abierto antes de que el botón se entere)
+        function m.Press(b, gameFirst)
+            if gameFirst and m.open then m.open:Close() end
+            b:GetScript("OnMouseDown")(b, "LeftButton")
+            b:GetScript("OnClick")(b, "LeftButton")
+        end
+        return m
+    end
+
+    it("«Oficiales», en la vista de miembros y en la de chat: un desplegable encima con «Peticiones de oficiales» y «Ver registro»; con peticiones, el número y encendido; otro clic lo cierra", function()
+        local a = F.Community()
+        local HU = a.HU
+        F.Stub(HU, "CanKickGuild", true)
+        local m = Menus(a)
+        local meta = a.w.frameMeta
+        local base = meta.__index
+        meta.__index = function(f, k)
+            if k == "LockHighlight" then return function(self) rawset(self, "_lit", true) end end
+            if k == "UnlockHighlight" then return function(self) rawset(self, "_lit", false) end end
+            return base(f, k)
+        end
+        local create = a.env.CreateFrame
+        a.env.CreateFrame = function(kind, name, parent, template, ...)
+            local fr = create(kind, name, parent, template, ...)
+            if type(template) == "string" and template:find("CommunitiesFrameTabTemplate", 1, true) then fr.Icon = create("Frame", nil, fr) end
+            return fr
+        end
+        -- (las dos vistas: la de miembros, con «Ajustes de hermandad» y el «Invitar miembro» del juego; la de chat, con la
+        -- pestaña de Información, para que se monte la de GuildUnion)
+        GuildWindow(a, true, function(w)
+            w.InviteButton = create("Button", nil, w)
+            w.CommunitiesControlFrame = { GuildControlButton = create("Button", nil, w) }
+            w.GuildInfoTab = create("CheckButton", nil, w)
+            w.GuildPreferredPlaySettingsTab = create("CheckButton", nil, w)
+            w.StreamDropdown, w.GuildBenefitsTab, w.Chat.MessageFrame = false, false, false
+        end)
+        for _, name in ipairs({ "GuildUnionRosterOfficers", "GuildUnionChatOfficers" }) do
+            local b = a.env[name]
+            A.truthy(b, name)
+            A.same({ "Oficiales", false }, { b:GetText(), b._lit }, name .. ": sin peticiones")
+            -- (abre su desplegable, atado encima del botón: siempre en el mismo sitio)
+            m.Press(b)
+            A.truthy(m.open, name .. ": abierto")
+            A.same({ "BOTTOMLEFT", b, "TOPLEFT", 0, 2 }, m.open.anchor)
+            A.same({ "Peticiones de oficiales", "Ver registro" }, { m.open.items[1].text, m.open.items[2].text })
+            -- (otro clic lo cierra, lo cierre antes el juego o el botón; y el siguiente lo vuelve a abrir)
+            m.Press(b, true)
+            A.falsy(m.open, name .. ": cerrado por el juego, no se vuelve a abrir")
+            a.w:Advance(1)
+            m.Press(b)
+            A.truthy(m.open)
+            m.Press(b)
+            A.falsy(m.open, name .. ": cerrado por el botón")
+            A.equal(2, m.opened, name .. ": abierto dos veces")
+            m.opened = 0
+            a.w:Advance(1)
+        end
+        -- (las dos opciones: sus ventanas)
+        local b = a.env.GuildUnionRosterOfficers
+        m.Press(b)
+        m.open.items[1].fn()
+        A.truthy(a.env.GuildUnionRequestsFrame:IsShown(), "Peticiones de oficiales")
+        m.open:Close()
+        a.w:Advance(1)
+        m.Press(b)
+        m.open.items[2].fn()
+        A.truthy(a.env.GuildUnionInviteLogFrame:IsShown(), "Ver registro")
+        m.open:Close()
+        -- (una petición que puedo hacer: los dos, con el número y encendidos; el desplegable, también con él)
+        HU:AddKickRequest({ id = "k1", target = "Compi-Reino", requester = "Bea-Reino", reqTag = "DOS", t = a.env.time() })
+        for _, name in ipairs({ "GuildUnionRosterOfficers", "GuildUnionChatOfficers" }) do
+            A.same({ "Oficiales (1)", true }, { a.env[name]:GetText(), a.env[name]._lit }, name)
+        end
+        a.w:Advance(1)
+        m.Press(b)
+        A.equal("Peticiones de oficiales (1)", m.open.items[1].text)
+        m.open:Close()
+        HU:RemoveKickRequest("k1")
+        A.same({ "Oficiales", false }, { b:GetText(), b._lit }, "contestada: como antes")
+        -- (en inglés, «Officers»)
+        local en = F.Community({ locale = "enUS" })
+        A.equal("Officers", en.HU.L("Oficiales"))
+        A.same({}, a:Errors())
+    end)
+
+    it("Comercio con chats sin leer: el botón de hermandad del menú del juego lleva el puntito con su número, en un marco nuestro (lo suyo no se toca)", function()
+        local a = F.Community()
+        local HU = a.HU
+        local mb = a.env.CreateFrame("Button", "GuildMicroButton")
+        local onClick = function() end
+        mb:SetScript("OnClick", onClick)
+        -- (lo nuestro, colgado del botón: el puntito y el número)
+        local function Badge()
+            local holder = a.env.GuildUnionMicroUnread
+            if not holder then return nil end
+            local out = { holder = holder }
+            for _, fr in ipairs(a.w.frames) do
+                if fr._parent == holder and fr._kind == "Texture" then out.dot = fr end
+                if fr._parent == holder and fr._kind == "FontString" then out.num = fr end
+            end
+            return out
+        end
+        A.falsy(Badge(), "sin nada sin leer, ni se monta")
+        HU:TradeChatLine("Lyra-Prueba", "Lyra-Prueba", "¿Lo tienes?")
+        local b = Badge()
+        A.truthy(b and b.holder._parent == mb, "colgado del botón del juego")
+        A.same({ true, true, "1" }, { b.dot:IsShown(), b.num:IsShown(), b.num:GetText() })
+        HU:TradeChatLine("Lyra-Prueba", "Lyra-Prueba", "¿Hola?")
+        A.equal("1", b.num:GetText(), "dos líneas del mismo chat: uno")
+        HU:TradeChatLine("Pepe-Prueba", "Pepe-Prueba", "Te la hago")
+        A.equal("2", b.num:GetText(), "dos chats")
+        F.Stub(HU, "TradeUnreadChats", 0)
+        HU:Changed("tradeUnread")
+        A.same({ false, false }, { b.dot:IsShown(), b.num:IsShown() }, "leídos, se va")
+        A.equal(onClick, mb:GetScript("OnClick"), "sus scripts, como estaban")
+        local scripts = {}
+        for k in pairs(mb._scripts) do scripts[#scripts + 1] = k end
+        A.same({ "OnClick" }, scripts)
+        A.same({}, a:Errors())
+    end)
+
+    it("el título de la columna de profesiones, «Prof», sin punto (también en inglés)", function()
+        for _, locale in ipairs({ "esES", "enUS" }) do
+            local a = F.Community({ locale = locale })
+            GuildWindow(a)
+            local hdr, titles = a.env.GuildUnionUnionRoster.hdr, {}
+            for _, fr in ipairs(a.w.frames) do if fr._parent == hdr then titles[fr:GetText()] = true end end
+            A.truthy(titles.Prof, locale)
+            A.falsy(titles["Prof."], locale)
+            A.same({}, a:Errors())
+        end
     end)
 end)
 
@@ -1904,6 +2125,59 @@ describe("El chat de la ventana de hermandad del juego sigue el formato de Ajust
         A.truthy(head:find("|cffaaaaaa42|r ", 1, true), "su nivel, en gris")
         A.truthy(HU:FormatLine("main", "DOS", "Bea-Reino", "hola"):find("|cffaaaaaa42|r ", 1, true), "también en el chat del addon")
         A.falsy(HU:FormatLine("main", "DOS", "Nadie-Reino", "hola"):find("|cffaaaaaa", 1, true), "sin nivel sabido, nada")
+        A.same({}, a:Errors())
+    end)
+
+    it("el nivel, de todos los de las otras hermandades: también de sus listas completas (MB), con un índice que solo se rehace si cambian (Jorge, 25/11)", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU.db.chatLevel = true
+        -- (la lista completa de DOS, ya comprobada: un trozo con su huella)
+        local function Pack(hash, lines)
+            HU.db.packs = HU.db.packs or {}
+            HU.db.packs.DOS = { MB = { h = { hash }, ok = { hash }, t = { lines } } }
+            HU.packSets.MB.onChange("DOS")
+        end
+        Pack("h1", { "Bea-Reino,8,37,1", "Blas-Reino,1,12,4", "Nuevo-Reino,1,0,4" })
+        local built, real = 0, HU.PackedMembers
+        HU.PackedMembers = function(...) built = built + 1; return real(...) end
+        A.truthy(HU:FormatLine("main", "DOS", "Blas-Reino", "hola"):find("|cffaaaaaa12|r ", 1, true), "de su lista completa")
+        A.equal(37, HU:LevelOf("Bea-Reino"))
+        A.is_nil(HU:LevelOf("Nuevo-Reino"), "nivel 0: no se sabe")
+        A.equal(1, built, "el índice, una vez")
+        for _ = 1, 50 do HU:LevelOf("Blas-Reino") end
+        A.equal(1, built, "cada línea del chat, solo mira el índice")
+        -- (llega algo de Miembros, no de su lista completa: el índice no se rehace)
+        HU:Changed("unionMembers")
+        A.equal(12, HU:LevelOf("Blas-Reino"))
+        A.equal(1, built)
+        -- (cambia su lista completa: se rehace, una vez)
+        Pack("h2", { "Bea-Reino,8,38,1", "Blas-Reino,1,12,4" })
+        A.equal(38, HU:LevelOf("Bea-Reino"))
+        A.equal(12, HU:LevelOf("Blas-Reino"))
+        A.equal(2, built)
+        -- (la lista ligera, RB, va antes: está más al día; y lo de mi hermandad, de la lista del juego)
+        HU.remoteRoster.DOS = { members = { { name = "Bea-Reino", level = 39 } } }
+        A.equal(39, HU:LevelOf("Bea-Reino"))
+        A.is_nil(HU:LevelOf("Nadie-Reino"))
+        A.same({}, a:Errors())
+    end)
+
+    it("al poner «Nivel» en Ajustes se piden las listas completas de las otras hermandades (de ahí sale el nivel); al quitarlo, no", function()
+        local a = F.Community()
+        local HU = a.HU
+        local asked = {}
+        F.Stub(HU, "PackNeed", function(_, tag, id) asked[#asked + 1] = tag .. "|" .. id end)
+        HU:OpenMainWindow()
+        local cb = a.env.GuildUnionReducePanel.levelCheck
+        cb.GetChecked = function() return true end
+        cb:GetScript("OnClick")(cb)
+        A.truthy(HU.db.chatLevel)
+        A.same({ "DOS|MB" }, asked)
+        cb.GetChecked = function() return false end
+        cb:GetScript("OnClick")(cb)
+        A.is_nil(HU.db.chatLevel)
+        A.same({ "DOS|MB" }, asked)
         A.same({}, a:Errors())
     end)
 end)

@@ -35,8 +35,8 @@ local COLS = {
     { key = "rank", title = "Rango", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_RANK", w = 76 },
     { key = "guild", title = "Hermandad", game = "GUILD", w = 58 },
     -- (las dos profesiones, solo su icono, juntos (Jorge, 24/11: «júntalos y haz esa pestaña más pequeña»): título corto,
-    -- que «Profesiones» no cabe. Solo las de mi hermandad, que son las que da el juego)
-    { key = "prof", title = "Prof.", w = 40 },
+    -- que «Profesiones» no cabe; sin punto (Jorge, 25/11). Solo las de mi hermandad, que son las que da el juego)
+    { key = "prof", title = "Prof", w = 40 },
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
@@ -589,6 +589,15 @@ local function BuildCard(f)
         hl:SetColorTexture(1, 0.82, 0, 0.15)
         b:SetText(L("Ver recetas"))
         b:SetScript("OnClick", function(s) OpenRecipes(s.prof) end)
+        -- (apagado, al pasar el ratón dice por qué: RecipesWhy. El juego no lanza OnEnter en un botón apagado sin esto)
+        b:SetMotionScriptsWhileDisabled(true)
+        b:SetScript("OnEnter", function(s)
+            if not s.why then return end
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(s.why, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
         icon:Hide(); lvl:Hide(); b:Hide()
         rows.btns[k], rows.icons[k], rows.levels[k] = b, icon, lvl
     end
@@ -627,21 +636,31 @@ local function BuildCard(f)
 end
 
 -- (las de la ficha: de mi hermandad, las del juego, con el nivel de su línea de oficios (Packs/Professions.lua) si el
--- juego no lo da; de otra, las de sus líneas de oficios, que se piden a su hermandad al abrirla. Cocina y Primeros
--- auxilios no: las tiene cualquiera; sus líneas solo sirven para «Quién lo hace» (Jorge, 25/11))
+-- juego no lo da y si esa línea está y trae recetas (para «Ver recetas»); de otra, las de sus líneas de oficios. Las
+-- líneas se piden a su hermandad al abrirla (de la mía, lo que me perdí estando fuera). Cocina y Primeros auxilios no:
+-- las tiene cualquiera; sus líneas solo sirven para «Quién lo hace» (Jorge, 25/11))
 local function CardProfessions(e)
     local union, main = HU:UnionProfessionsOf(e.name) or {}, {}
     for _, p in ipairs(union) do if not p.secondary then main[#main + 1] = p end end
-    if not e.own then
-        if e.tag then HU:NeedUnionProfessions(e.tag) end
-        return main
-    end
+    if e.tag then HU:NeedUnionProfessions(e.tag) end
+    if not e.own then return main end
     local own = OwnProfessions(e.name)
     if not own then return main end
     for _, p in ipairs(own) do
-        for _, u in ipairs(union) do if u.id == p.id then p.rank = p.rank or u.rank end end
+        for _, u in ipairs(union) do
+            if u.id == p.id then p.rank, p.line, p.recipes = p.rank or u.rank, true, u.recipes end
+        end
     end
     return own
+end
+-- (por qué no se pueden ver las recetas de otro: sin su línea de oficios de esa profesión, no tiene el addon o aún no ha
+-- llegado; con ella pero sin recetas, no ha abierto esa ventana con el addon. Las mías, siempre. Jorge, 25/11)
+-- [+ARCHITECTURE.md]
+local function RecipesWhy(p)
+    if p.mine then return nil end
+    if not p.line then return L("No tiene GuildUnion (o aún no ha llegado lo suyo)") end
+    if not p.recipes then return string.format(L("Aún no ha abierto su ventana de %s"), tostring(p.name)) end
+    return nil
 end
 
 -- force: siempre abrirla (desde la lista del juego); sin él, otro clic en la misma persona la cierra
@@ -667,13 +686,14 @@ local function ShowCard(e, force)
         rows.btns[k].prof = p
         rows.icons[k]:SetShown(p ~= nil); rows.levels[k]:SetShown(p ~= nil)
         -- («Ver recetas», solo en las que fabrican y de mi hermandad (el juego no da las de otra); apagado si no se puede
-        -- pedir: ni mía ni con GUID)
+        -- pedir (ni mía ni con GUID) o si aún no las tiene (RecipesWhy, que sale al pasar el ratón))
         rows.btns[k]:SetShown(p ~= nil and e.own == true and HasRecipes(p.id))
+        rows.btns[k].why = p and RecipesWhy(p)
         if p then
             rows.icons[k]:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             rows.levels[k]:SetText(p.rank and tostring(p.rank) or "")
             rows.btns[k]:SetText(p.icon and L("Ver recetas") or (p.name .. ": " .. L("Ver recetas")))
-            rows.btns[k]:SetEnabled(p.mine == true or p.guid ~= nil)
+            rows.btns[k]:SetEnabled(p.mine == true or (p.guid ~= nil and rows.btns[k].why == nil))
         end
     end
     v[5]:SetText(#profs == 0 and "—" or "")
@@ -833,6 +853,41 @@ function HU.UnionRosterPick(e)
     return true
 end
 
+-- Sin leer en Comercio: el puntito de aviso del juego con el número de chats que tienen algo sin leer encima, en la
+-- pestaña de Comercio y en el botón de hermandad del menú del juego (Jorge, 25/11) [+ARCHITECTURE.md]
+local function UnreadBadge(owner, size, atlas)
+    local dot = owner:CreateTexture(nil, "OVERLAY", nil, 2)
+    dot:SetAtlas(atlas); dot:SetSize(size, size)
+    local num = owner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    num:SetDrawLayer("OVERLAY", 7)
+    num:SetPoint("CENTER", dot, "CENTER", 0, 0)
+    local badge = { dot = dot, num = num }
+    function badge.Sync()
+        local n = HU:TradeUnreadChats()
+        num:SetText(n > 99 and "99+" or tostring(n))
+        dot:SetShown(n > 0); num:SetShown(n > 0)
+    end
+    badge.Sync()
+    return badge
+end
+-- (en el botón «Hermandad y comunidades» del menú del juego, GuildMicroButton: en un marco nuestro colgado de él, encima
+-- de su aviso y donde lo pone el juego. De lo suyo no se toca nada. Se monta la primera vez que hace falta)
+local microBadge
+local function MicroBadge()
+    if not microBadge then
+        local mb = _G.GuildMicroButton
+        if type(mb) ~= "table" then return end
+        local holder = CreateFrame("Frame", "GuildUnionMicroUnread", mb)
+        holder:SetAllPoints(mb)
+        holder:SetFrameLevel(math.max(mb:GetFrameLevel() + 10, 110))
+        microBadge = UnreadBadge(holder, 21, "UI-HUD-MicroMenu-Communities-Icon-Notification")
+        microBadge.dot:SetPoint("TOP", holder, "TOP", 0, 6)
+    end
+    microBadge.Sync()
+end
+HU:Listen("CHANGED", function(what) if what == "tradeUnread" then MicroBadge() end end)
+HU:OnStart(MicroBadge)
+
 local function Build(f)
     local ml = f and f.MemberList
     local anchor = ml and ml.ShowOfflineButton
@@ -894,10 +949,10 @@ local function Build(f)
         band:Hide()
         cover.band = band
     end
-    -- Abajo, como en la vista del chat: Peticiones de oficiales · Registro · Invitar miembro, a la izquierda de
-    -- «Ajustes de hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo
-    -- pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
-    -- desconectados, como el «Chat» seguro: solo se ven en la vista de miembros [+ARCHITECTURE.md]
+    -- Abajo, como en la vista del chat: Oficiales (Peticiones de oficiales y Ver registro, en su desplegable) · Invitar
+    -- miembro, a la izquierda de «Ajustes de hermandad» (Jorge, 23/11 y 25/11). El juego solo enseña su «Invitar miembro»
+    -- en la vista del chat: aquí lo pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación).
+    -- Cuelgan de la casilla de desconectados, como el «Chat» seguro: solo se ven en la vista de miembros [+ARCHITECTURE.md]
     local gcb = f.CommunitiesControlFrame and f.CommunitiesControlFrame.GuildControlButton
     if f.InviteButton and gcb then
         local inv = CreateFrame("Button", "GuildUnionRosterInvite", anchor, "SecureActionButtonTemplate,UIPanelButtonTemplate")
@@ -908,25 +963,9 @@ local function Build(f)
         inv:RegisterForClicks("AnyUp", "AnyDown")
         inv:SetAttribute("type", "click")
         inv:SetAttribute("clickbutton", f.InviteButton)
-        local log = CreateFrame("Button", nil, anchor, "UIPanelButtonTemplate")
-        log:SetSize(120, 20)
-        log:SetText(L("Ver registro"))
-        log:SetPoint("RIGHT", inv, "LEFT", -4, 0)
-        log:SetFrameStrata("HIGH")
-        log:SetScript("OnClick", function() HU:ShowInviteLog() end)
-        local rq = CreateFrame("Button", nil, anchor, "UIPanelButtonTemplate")
-        rq:SetSize(140, 20)
-        rq:SetPoint("RIGHT", log, "LEFT", -4, 0)
-        rq:SetFrameStrata("HIGH")
-        rq:SetScript("OnClick", function() HU:ShowRequests() end)
-        local function SyncRequests()
-            local n = HU:KickRequestCount()
-            rq:SetText(n > 0 and (L("Peticiones de oficiales") .. " (" .. n .. ")") or L("Peticiones de oficiales"))
-            if n > 0 then rq:LockHighlight() else rq:UnlockHighlight() end
-        end
-        HU:Listen("CHANGED", function(what) if what == "requests" then SyncRequests() end end)
-        rq:HookScript("OnShow", SyncRequests)
-        SyncRequests()
+        local off = HU:OfficersButton(anchor, "GuildUnionRosterOfficers")
+        off:SetPoint("RIGHT", inv, "LEFT", -4, 0)
+        off:SetFrameStrata("HIGH")
     end
     cover.tabs = tabs
     tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
@@ -977,13 +1016,11 @@ local function Build(f)
                 if SyncNow then SyncNow() end
             end)
             if t.trade then
-                -- (con mensajes sin leer en Comercio, la pestaña lleva el puntito de aviso de las comunidades del juego; al
-                -- leerlos se va: HU:TradeUnread, Trade.lua. Solo el puntito: Jorge, 24/11, lo prefirió al brillo)
-                -- [+ARCHITECTURE.md]
-                local badge = b:CreateTexture(nil, "OVERLAY", nil, 2)
-                badge:SetAtlas("communities-icon-notification"); badge:SetSize(16, 16); badge:SetPoint("TOPRIGHT", 3, 3)
-                badge:Hide()
-                b.badge = badge
+                -- (con mensajes sin leer en Comercio, la pestaña lleva el puntito de aviso de las comunidades del juego con
+                -- el número de chats que los tienen; al leerlos se va: HU:TradeUnreadChats, Trade.lua. Jorge, 24/11: el
+                -- puntito, sin brillo; 25/11: «con el número de chats sin leer») [+ARCHITECTURE.md]
+                b.badge = UnreadBadge(b, 16, "communities-icon-notification")
+                b.badge.dot:SetPoint("TOPRIGHT", b, "TOPRIGHT", 3, 3)
                 side.trade = b
             end
             b:Hide()
@@ -1297,9 +1334,9 @@ local function Build(f)
     if f.UpdateCommunitiesTabs then
         hooksecurefunc(f, "UpdateCommunitiesTabs", function() PlaceTabs(); MoveGameTabs(); CheckTabs() end)
     end
-    -- (el puntito de Comercio, con mensajes sin leer)
+    -- (el puntito de Comercio, con mensajes sin leer, y cuántos chats los tienen)
     local function TradeBadge()
-        if side.trade then side.trade.badge:SetShown(HU:TradeUnread() > 0) end
+        if side.trade then side.trade.badge.Sync() end
     end
     HU:Listen("CHANGED", function(what) if what == "tradeUnread" then TradeBadge() end end)
     TradeBadge()

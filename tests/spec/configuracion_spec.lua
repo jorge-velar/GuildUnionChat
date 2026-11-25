@@ -92,7 +92,7 @@ local function Config(a)
     local c = { box = box, tab = {} }
     for _, b in ipairs(Kids(a, box, "Button")) do c.tab[b:GetText()] = b end
     local p = Kids(a, box, "Frame")
-    c.trade, c.black, c.calendar, c.guild = p[1], p[2], p[3], p[4]
+    c.trade, c.calendar, c.guild = p[1], p[2], p[3]
     c.testCb = Kids(a, box, "CheckButton")[1]
     c.who = Kids(a, box, "FontString")[2]
     -- (lo que solo toca el maestro)
@@ -109,20 +109,23 @@ local RED, WHITE, GRAY = "|cffff4444", "|cffffffff", "|cff808080"
 
 ---------------------------------------------------------------------------
 describe("Configuración de la hermandad (UnionConfig.lua): pestañas y quién la cambia", function()
-    it("cuatro pestañas en dos filas; cada una enseña su página y solo esa (de entrada, Comercio)", function()
+    it("tres pestañas en una fila; cada una enseña su página y solo esa (de entrada, Comercio)", function()
         local a = F.Community()
         local c = Config(a)
-        -- (tres arriba y una debajo; la de los eventos se llama como su sección, Eventos: hasta el 25/11, Calendario)
-        local where = { { "Comercio", 8, -32 }, { "Lista negra", 95, -32 }, { "Eventos", 182, -32 },
-            { "Hermandad", 8, -56 } }
+        -- (la de los eventos se llama como su sección, Eventos: hasta el 25/11, Calendario. La lista negra, desde el 25/11,
+        -- en su ventana: «Ver lista negra», en la columna izquierda de la pestaña GuildUnion)
+        local where = { { "Comercio", 8, -32 }, { "Eventos", 95, -32 }, { "Hermandad", 182, -32 } }
         A.is_nil(c.tab["Banco"], "sin Banco")
         A.is_nil(c.tab["Calendario"], "ya no se llama Calendario")
+        A.is_nil(c.tab["Lista negra"], "sin Lista negra")
         for _, w in ipairs(where) do
             local p = c.tab[w[1]]._points[1]
             A.same({ "TOPLEFT", w[2], w[3] }, { p[1], p[2], p[3] }, w[1])
         end
+        -- (las páginas, justo debajo de la única fila: sin el hueco de la segunda)
+        A.same({ "TOPLEFT", 8, -62 }, c.trade._points[1])
         A.truthy(Config(F.Community({ locale = "enUS" })).tab["Events"], "en inglés, Events")
-        local pages = { Comercio = c.trade, ["Lista negra"] = c.black, Eventos = c.calendar, Hermandad = c.guild }
+        local pages = { Comercio = c.trade, Eventos = c.calendar, Hermandad = c.guild }
         local function Only(name)
             for n, page in pairs(pages) do
                 A.equal(n == name, page:IsShown(), "página " .. n)
@@ -405,31 +408,67 @@ describe("Configuración: el color de la hermandad", function()
 end)
 
 ---------------------------------------------------------------------------
-describe("Configuración: la lista negra, en su pestaña", function()
-    -- (la página, con sus piezas)
+describe("Lista negra: su ventana (Blacklist.lua), desde «Ver lista negra» de la pestaña GuildUnion", function()
+    -- (la ventana abierta, con sus piezas)
     local function Black(a)
-        local c = Config(a)
-        Click(c.tab["Lista negra"])
-        local b = { c = c, list = Kids(a, c.black, "Frame")[1] }
-        b.rows = Kids(a, b.list, "Button")
-        b.empty = WithText(a, b.list, "No hay nadie en la lista negra.")
-        local boxes = Kids(a, c.black, "EditBox")
-        b.name, b.why = boxes[1], boxes[2]
-        b.add, b.del, b.check = WithText(a, c.black, "Añadir"), WithText(a, c.black, "Quitar"), WithText(a, c.black, "Comprobar ahora")
-        b.labels = { WithText(a, c.black, "Nombre"), WithText(a, c.black, "Motivo") }
+        Live(a)
+        a.HU:ShowBlacklist()
+        local win = a.env.GuildUnionBlacklistFrame
+        win.Refresh() -- (el OnShow, que el WoW de mentira no lanza)
+        local b = { win = win, rows = win.rows, empty = win.empty, name = win.nameBox, why = Kids(a, win, "EditBox")[2] }
+        b.add, b.del, b.check = WithText(a, win, "Añadir"), WithText(a, win, "Quitar"), WithText(a, win, "Comprobar ahora")
+        b.labels = { WithText(a, win, "Nombre"), WithText(a, win, "Motivo") }
         return b
     end
     local function Names(b)
         local out = {}
-        for _, r in ipairs(b.rows) do if r:IsShown() then out[#out + 1] = r.name:GetText() end end
+        for _, r in ipairs(b.rows) do if r:IsShown() then out[#out + 1] = r.cells[1]:GetText() end end
         return out
     end
 
-    it("en rojo quien está en mi hermandad; quién lo vetó, con su hermandad en su color; vacía, el aviso", function()
+    it("en la pestaña GuildUnion, «Lista negra» en el sitio de «Silenciar» (fuera por ahora): «Ver lista negra» abre y cierra la ventana; quien no es oficial la tiene arriba", function()
+        local a = F.Community()
+        local HU = a.HU
+        -- (el WoW de mentira, recordando a qué marco se pasa cada cosa y dónde se coloca)
+        local meta = a.w.frameMeta
+        local base = meta.__index
+        meta.__index = function(f, k)
+            if k == "SetParent" then return function(self, p) rawset(self, "_movedTo", p) end end
+            if k == "SetPoint" then return function(self, ...) rawset(self, "_pt", { ... }) end end
+            return base(f, k)
+        end
+        HU:OpenMainWindow()
+        local panel = a.env.GuildUnionReducePanel
+        -- («Silenciar»: su título y su botón, guardados en un marco escondido; silenciar sigue con /gu y los menús)
+        local mute = {}
+        for _, fr in ipairs(a.w.frames) do
+            if fr._parent == panel and fr:GetText() == "Silenciar" then mute[#mute + 1] = fr end
+        end
+        A.equal(2, #mute, "su título y su botón")
+        for _, fr in ipairs(mute) do A.truthy(fr._movedTo and fr._movedTo._shown == false, "guardado, sin verse") end
+        -- («Lista negra», debajo de los buscadores de los oficiales, con su botón)
+        A.equal("Lista negra", panel.blackHead:GetText())
+        A.equal("Ver lista negra", panel.blackBtn:GetText())
+        A.same({ "TOPLEFT", panel.blackAfter, "BOTTOMLEFT", -6, -12 }, panel.blackHead._pt)
+        panel.blackBtn:GetScript("OnClick")(panel.blackBtn)
+        local win = a.env.GuildUnionBlacklistFrame
+        A.truthy(win and win:IsShown(), "la ventana de la lista negra")
+        A.truthy(win:GetScript("OnDragStart") and win:GetScript("OnDragStop"), "que se mueve arrastrándola")
+        panel.blackBtn:GetScript("OnClick")(panel.blackBtn)
+        A.falsy(win:IsShown(), "otro clic la cierra")
+        -- (quien no es oficial no tiene los buscadores: la lista negra, arriba, donde empiezan)
+        F.Stub(HU, "CanPin", false)
+        panel:GetScript("OnShow")(panel)
+        A.same({ "TOPLEFT", panel.status, "BOTTOMLEFT", 0, -16 }, panel.blackHead._pt)
+        A.equal("View Black List", F.Community({ locale = "enUS" }).HU.L("Ver lista negra"), "en inglés")
+        A.same({}, a:Errors())
+    end)
+
+    it("en rojo quien está en mi hermandad; quién lo vetó, con su hermandad en su color, y el motivo; vacía, el aviso", function()
         local a = F.Community()
         local HU = a.HU
         local b = Black(a)
-        A.equal(14, #b.rows)
+        A.equal(12, #b.rows)
         A.truthy(b.empty:IsShown())
         A.same({}, Names(b))
         HU.db.bans = {
@@ -437,43 +476,42 @@ describe("Configuración: la lista negra, en su pestaña", function()
             ["malo-reino"] = { name = "Malo-Reino", on = true, by = "Bea-Reino", tag = "DOS", why = "estafa", t = 2 },
             ["viejo-reino"] = { name = "Viejo-Reino", on = false, by = "Jefa-Reino", tag = "UNO", t = 3 },
         }
-        Reopen(b.c)
+        b.win.Refresh()
         A.falsy(b.empty:IsShown())
         A.same({ RED .. "Compi-Reino|r", WHITE .. "Malo-Reino|r" }, Names(b), "por orden; el readmitido no sale")
-        A.equal("Jefa-Reino |cff" .. HU:GuildColorHex("UNO") .. "<UNO>|r", b.rows[1].by:GetText())
-        A.equal("Bea-Reino |cff" .. HU:GuildColorHex("DOS") .. "<DOS>|r", b.rows[2].by:GetText())
-        -- (un veto que llega de otro oficial sale enseguida, con la pestaña abierta)
+        A.equal("Jefa-Reino |cff" .. HU:GuildColorHex("UNO") .. "<UNO>|r", b.rows[1].cells[2]:GetText())
+        A.equal("Bea-Reino |cff" .. HU:GuildColorHex("DOS") .. "<DOS>|r", b.rows[2].cells[2]:GetText())
+        A.equal("estafa", b.rows[2].cells[3]:GetText())
+        -- (un veto que llega de otro oficial sale con la ventana abierta: se repinta cada 2 s)
         a.w:Receive("HU20", "BN~Nuevo-Reino~1~Jefa-Reino~UNO~" .. a.env.time() .. "~spam", "GUILD", "Jefa-Reino")
+        a.w:Advance(2.1)
         A.same({ RED .. "Compi-Reino|r", WHITE .. "Malo-Reino|r", WHITE .. "Nuevo-Reino|r" }, Names(b))
         A.same({}, a:Errors())
     end)
 
-    it("con muchos vetados, la lista baja con la barra (sin alto todavía, 8 filas; con alto, las que quepan)", function()
+    it("con más de los que caben, la lista baja con la barra", function()
         local a = F.Community()
         local HU = a.HU
         HU.db.bans = {}
-        for i = 1, 10 do
+        for i = 1, 15 do
             local n = string.format("Vetado%02d-Reino", i)
             HU.db.bans[n:lower()] = { name = n, on = true, by = "Jefa-Reino", tag = "UNO", why = "x", t = i }
         end
         local b = Black(a)
         local names = Names(b)
-        A.equal(8, #names)
+        A.equal(12, #names)
         A.equal(WHITE .. "Vetado01-Reino|r", names[1])
-        local scroll = a.env.GuildUnionCfgBlackScroll
-        a.env.FauxScrollFrame_SetOffset(scroll, 2)
-        scroll:GetScript("OnVerticalScroll")(scroll, 2 * 16)
+        local scroll = b.win.scroll
+        a.env.FauxScrollFrame_SetOffset(scroll, 3)
+        scroll:GetScript("OnVerticalScroll")(scroll, 3 * 18)
         names = Names(b)
-        A.equal(WHITE .. "Vetado03-Reino|r", names[1])
-        A.equal(WHITE .. "Vetado10-Reino|r", names[8])
-        scroll.GetHeight = function() return 20 * 16 end
-        a.env.FauxScrollFrame_SetOffset(scroll, 0)
-        Reopen(b.c)
-        A.equal(10, #Names(b))
+        A.equal(12, #names)
+        A.equal(WHITE .. "Vetado04-Reino|r", names[1])
+        A.equal(WHITE .. "Vetado15-Reino|r", names[12])
         A.same({}, a:Errors())
     end)
 
-    it("al pasar el ratón, quién lo vetó y el motivo; al pulsar, el nombre queda abajo para quitarlo", function()
+    it("al pasar el ratón, el motivo entero; al pulsar, el nombre queda abajo para quitarlo", function()
         local a = F.Community()
         local HU = a.HU
         HU.db.bans = {
@@ -485,16 +523,16 @@ describe("Configuración: la lista negra, en su pestaña", function()
         tip.AddLine = function(_, text) lines[#lines + 1] = text end
         tip:Hide()
         local row = b.rows[1]
-        A.equal(WHITE .. "Malo-Reino|r", row.name:GetText())
+        A.equal(WHITE .. "Malo-Reino|r", row.cells[1]:GetText())
         row:GetScript("OnEnter")(row)
-        A.same({ "Malo-Reino", "Lo vetó: Bea-Reino", "estafa" }, lines)
+        A.same({ "Malo-Reino", "estafa" }, lines)
         A.truthy(tip:IsShown())
         row:GetScript("OnLeave")(row)
         A.falsy(tip:IsShown())
         lines = {}
         b.rows[2]:GetScript("OnEnter")(b.rows[2])
-        A.same({ "Solo-Reino" }, lines)
-        A.equal("", b.rows[2].by:GetText())
+        A.same({}, lines, "sin motivo, nada")
+        A.same({ "", "" }, { b.rows[2].cells[2]:GetText(), b.rows[2].cells[3]:GetText() })
         A.equal("", b.name:GetText())
         A.truthy(Click(row))
         A.equal("Malo-Reino", b.name:GetText())
@@ -588,8 +626,6 @@ describe("Configuración: la lista negra, en su pestaña", function()
         A.same({ WHITE .. "Malo-Reino|r" }, Names(b))
         for _, w in ipairs({ b.name, b.why, b.add, b.del, b.check, b.labels[1], b.labels[2] }) do A.falsy(w:IsShown()) end
         A.falsy(Click(b.add))
-        Click(b.rows[1])
-        A.equal("", b.name:GetText(), "pulsar una fila no deja nada abajo")
         A.falsy(Click(b.check), "«Comprobar ahora» no se ve")
         A.same({}, a:Errors())
     end)

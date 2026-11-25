@@ -196,6 +196,8 @@ function HU:Unban(name)
     if self.db.blackSaid then self.db.blackSaid[k] = nil end
 end
 
+-- (la abren «Ver lista negra», en la pestaña GuildUnion (BlizzTab.lua), y /gu listanegra; hasta el 25/11 la lista iba
+-- también en Configuración, UnionConfig.lua)
 function HU:ShowBlacklist()
     if not self.myTag then return self:Print(L("Sin configurar.")) end
     if not win then Build() end

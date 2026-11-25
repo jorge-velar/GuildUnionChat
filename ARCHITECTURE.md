@@ -573,6 +573,23 @@ Rango de alguien a partir de las listas que tenemos
 (cada línea del chat lo pide para el icono, y con una lista de otra hermandad sin índice se
 recorrían sus 1.000 miembros uno a uno: una sola línea llegaba a 3 ms. Se recuerda 5 s)
 
+### El nivel en el chat: `HU:LevelOf` y el índice de las listas completas
+
+Con «Nivel» en Ajustes (`db.chatLevel`, BlizzTab.lua) cada línea del chat lleva delante el nivel de quien escribe
+(`HU:LevelText`, Channel.lua). `HU:LevelOf(nombre)` lo busca en este orden: la lista de mi hermandad (`HU.roster`), las
+ligeras de las otras (`HU.remoteRoster`, las RB: maestro, oficiales, enlace y ayudantes, las más al día) y, desde el
+25/11, sus listas completas (paquete `MB`, `HU:PackedMembers`, Packs/Members.lua; Jorge: «ahora que tenemos listas, el
+botón de show lvl debería ser de todos los pj de la guild»). Un nivel 0 o secreto no vale: se mira lo siguiente.
+- **El índice** (`mbLevels`: nombre en minúsculas → nivel) solo se rehace si cambian las listas completas. Se marca con
+  cada `CHANGED` «unionMembers» (lo avisa `onChange` de `MB`, pero también lo que llega de Miembros) o «config» (cambian
+  las hermandades), y al mirarlo se compara su huella (`MBSig`: de cada otra hermandad, las huellas de los trozos de su
+  paquete y cuántos están comprobados, `HU:PackGet` y `HU:PackProgress`). Sin cambios, cada línea del chat es una
+  consulta en una tabla, no un recorrido por miles de miembros.
+- **Las listas completas** llegan como siempre: al mirar Miembros con «Mostrar desconectados», o cuando las pide otro de
+  mi hermandad (el porteador las reparte por GUILD; se guardan entre sesiones, `HU.db.packs`). Al poner «Nivel» se piden
+  las que falten (`HU:PackNeed(etiqueta, "MB")`, que no repite lo completo ni lo ya pedido). `LevelOf` no pide nada a la
+  red.
+
 ## Channel.lua
 
 ### Orden de los canales: `HU:FixChannelOrder` (ReduceClean-36)
@@ -2509,7 +2526,9 @@ cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profes
   `needs`, el nivel que pide cada profesión). Saber una receta es mirar un bit (`Known`: una letra). `knows`, true si sabe
   alguna; quien seguro que no (su lista leída entera, sin ese bit) no sale; sin saberse (otra huella o sin la lista
   leída), sale si tiene el nivel. Primero quien la sabe, luego por nivel.
-- **`HU:UnionProfessionsOf(nombre)`** → `{ id, name, icon, rank, secondary }`, primero las principales (Cocina y
+- **`HU:UnionProfessionsOf(nombre)`** → `{ id, name, icon, rank, secondary, recipes }` (`recipes`, desde el 25/11: su
+  línea trae recetas, de la lista que sea, es decir, ha abierto esa ventana con el addon; lo usa «Ver recetas» de la
+  ficha, UnionRoster.lua. No es `bits`, que con otra huella queda vacío aunque las haya abierto), primero las principales (Cocina y
   Primeros auxilios detrás, con `secondary`); nil si no hay. Cocina y Primeros auxilios van en `OF` como las demás (lo
   que da `GetProfessions`: en Forever, prof1, prof2, primeros auxilios, pesca y cocina) y cuentan para «Quién lo hace»,
   pero la ficha (`CardProfessions`, UnionRoster.lua) no las enseña: las tiene cualquiera (Jorge, 25/11, copia 330: «que
@@ -2936,7 +2955,8 @@ misma persona la cierra), para todas las hermandades. La del juego no se abre de
 juego bloquearía sus botones (expulsar, rango, notas). Con su aspecto y sus textos: hermandad, zona, rango, última
 conexión, profesiones (de mi hermandad, las de `C_Club.GetMemberInfo`, con «Ver recetas», ver abajo, y el nivel de su
 línea de oficios si el juego no lo da; de otra hermandad, las de su línea de oficios, `OF`, Packs/Professions.lua, sin
-«Ver recetas», que el juego solo da en mi hermandad; abrirla pide su `OF` y, si llega con la ficha abierta, se repinta),
+«Ver recetas», que el juego solo da en mi hermandad; abrirla pide el `OF` de su hermandad —de la mía, desde el 25/11, lo
+que me perdí estando fuera— y, si llega con la ficha abierta, se repinta),
 nota y nota de oficial (si puedo verla; con «GU:», «(configuración de GuildUnion)»); abajo, Echar (como el clic
 derecho: activo con los de mi hermandad que mi rango puede echar, `HU:CanKickMember`, y con los de otra si soy
 oficial) e Invitar al grupo. Las notas solo se leen: hasta la 308, un clic en ellas ponía «Solo mi hermandad» y
@@ -2953,6 +2973,14 @@ que fabrican (`HasRecipes`: las de CraftItems.lua; Herboristería o Desuello, si
   servidor las da. No funcionaba porque, sin el GUID de la comunidad, no se pedía nada: ahora, si la comunidad no lo da,
   sale de la lista del juego (`RosterGuid`, el 17.º dato de `GetGuildRosterInfo`); sin ninguno de los dos, apagado.
 - Sin probar en Forever: que el servidor dé las recetas de otro.
+- **Apagado y con su porqué** (Jorge, 25/11: «cuando no esté aún actualizado el view recipes de alguien porque no lo ha
+  abierto… cuando no tenga addon que lo diga también»): las de otro solo se encienden si su línea de oficios de esa
+  profesión trae recetas (`recipes` de `HU:UnionProfessionsOf`, Packs/Professions.lua; `CardProfessions` la junta con
+  las del juego en `line` y `recipes`). Si no, apagado y, al pasar el ratón (`SetMotionScriptsWhileDisabled`: sin eso el
+  juego no lanza `OnEnter` en un botón apagado), `RecipesWhy`: sin su línea, «No tiene GuildUnion (o aún no ha llegado lo
+  suyo)»; con ella pero sin recetas, «Aún no ha abierto su ventana de <profesión>» (con el addon: las recetas solo van si
+  leyó la lista entera de esa ventana). Con recetas de otra versión del addon cuenta igual: las ha abierto. Las mías,
+  siempre encendidas.
 
 ### Varios a la vez y clic derecho
 
@@ -3061,9 +3089,17 @@ el nombre de calendario a "eventos"»). Iconos: el martillo de herrería y nuest
   (`HU.sideTabs`), siguen marcadas por dentro como las deja el juego, pero sin su brillo de marcada (`OtherChecks`: alfa
   0 de su `CheckedTexture`); al cerrarlo o pasar el panel a la ventana propia, vuelve.
 - **Sin leer en Comercio** (Jorge, 24/11): la pestaña de Comercio lleva el puntito de aviso de las comunidades del juego
-  (`communities-icon-notification`) mientras `HU:TradeUnread()` (Trade.lua) dé más de 0; se mira con cada `CHANGED`
-  «tradeUnread» (`TradeBadge`). En la 311 además brillaba despacio; al verlo, Jorge quiso solo el puntito. Las líneas
-  del modo prueba cuentan como sin leer: con él puesto, el puntito sale hasta abrir esas conversaciones.
+  (`communities-icon-notification`) con encima el número de chats que tienen algo sin leer (`HU:TradeUnreadChats()`,
+  Trade.lua; desde el 25/11: «con el número de chats sin leer»); se mira con cada `CHANGED` «tradeUnread» (`TradeBadge`).
+  En la 311 además brillaba despacio; al verlo, Jorge quiso solo el puntito. Las líneas del modo prueba cuentan como sin
+  leer: con él puesto, el puntito sale hasta abrir esas conversaciones.
+  - **Y en el menú del juego** (Jorge, 25/11: «también en la pestaña de guild del panel de personaje, talentos etc»): el
+    botón «Hermandad y comunidades» (`GuildMicroButton`) lleva lo mismo, el puntito del menú
+    (`UI-HUD-MicroMenu-Communities-Icon-Notification`, donde pone el suyo el juego, `TOP` y 6 arriba) y el número. Va en
+    un marco nuestro (`GuildUnionMicroUnread`) colgado de ese botón y por encima de su aviso (nivel 110 como mínimo: el
+    del juego, `NotificationOverlay`, va en el 100); de lo suyo no se toca nada, ni sus scripts. Se monta la primera vez
+    que hace falta (`MicroBadge`, al entrar y con cada «tradeUnread»), sin esperar a que se abra la ventana de hermandad.
+  - El puntito y el número son lo mismo en los dos sitios (`UnreadBadge`): el número encima (subcapa 7), hasta «99+».
 - **Cabida**: la ventana mide 426 y cada pestaña ocupa 52 (32 más 20) desde 36: caben 7. Hoy, con Información,
   preferencias, las dos nuestras y la de GuildUnion, son 7; con Wanted y LFG habrá que juntarlas o buscar otro sitio.
 - En Comercio y Calendario, un clic en la entrada de la hermandad de la columna de comunidades vuelve al chat (Jorge,
@@ -3080,7 +3116,7 @@ el nombre de calendario a "eventos"»). Iconos: el martillo de herrería y nuest
 ### La columna de profesiones
 
 Las dos profesiones de cada uno de mi hermandad, solo con su icono, juntos (2 px) y centrados en una columna estrecha de
-40 con el título corto «Prof.» (Jorge, 24/11: «que se vea bien»; en la 305-312 llevaban también el nivel y, al ver que de
+40 con el título corto «Prof», sin punto desde el 25/11 (Jorge, 24/11: «que se vea bien»; en la 305-312 llevaban también el nivel y, al ver que de
 los demás no sale, pidió «esta pestaña sin niveles» y luego «júntalos y haz esa pestaña más pequeña»: el nivel, en la
 ficha y en «Quién lo hace»). Las da el juego por la comunidad de la hermandad (`C_Club.GetMemberInfo`,
 `profession1ID`…), y la columna solo las tiene de mi hermandad (las de las otras, con su nivel, en la ficha y en «Quién
@@ -3093,18 +3129,33 @@ cientos de miembros y `Paint` corre cada 2 segundos. Los nombres de las profesio
   las de los demás con nivel 1 o menos quedan sin nivel (`nil`): el icono, sin número. El de los demás con el addon lo
   manda cada uno por la red (`OF`, Packs/Professions.lua) y sale en la ficha y en «Quién lo hace».
 
-### Botones de abajo: Peticiones de oficiales · Ver registro · Invitar miembro
+### Botones de abajo: Oficiales · Invitar miembro
 
 En la vista de miembros, a la izquierda de «Ajustes de hermandad» del juego y colgados de la casilla de
-desconectados; en la de chat, los dos primeros los pone BlizzTab.lua, colgados del «Invitar miembro» del juego.
+desconectados (`GuildUnionRosterOfficers`); en la de chat, «Oficiales» lo pone BlizzTab.lua, colgado del «Invitar
+miembro» del juego (`GuildUnionChatOfficers`).
 - «Invitar miembro»: botón seguro que pulsa el del juego (`f.InviteButton`, que solo sale en la vista de chat);
   si lo pulsara el addon, el juego bloquearía la invitación.
-- «Ver registro» (`HU:ShowInviteLog`, InviteLog.lua): Invitaciones y Salidas; el juego solo guarda las últimas
-  entradas y aquí se van guardando (`HU.db.inviteLog`, `HU.db.leaveLog`, por hermandad, hasta 2.000).
-- «Peticiones de oficiales» (`HU:ShowRequests`): otra hermandad pide echar (GK) o cambiar el rango (GP) a alguien
-  de la mía; sin ventana emergente, se guarda (`HU.db.kickRequests`, 24 h) y el botón lleva el número
-  (`HU:KickRequestCount`: las que puedo hacer). Aceptar abre las órdenes y, al mandarlas, contesta (`AnswerKick`,
-  `AnswerRank`) y apunta la salida (`HU:LogRequestedKick`).
+- **«Oficiales»** (`HU:OfficersButton`, InviteLog.lua; en inglés «Officers»). Hasta el 25/11 eran dos botones, «Peticiones
+  de oficiales» y «Ver registro»; Jorge: «pasan a estar dentro de un mismo botón». Abre un desplegable con las dos:
+  - «Ver registro» (`HU:ShowInviteLog`): Invitaciones y Salidas; el juego solo guarda las últimas entradas y aquí se van
+    guardando (`HU.db.inviteLog`, `HU.db.leaveLog`, por hermandad, hasta 2.000).
+  - «Peticiones de oficiales» (`HU:ShowRequests`): otra hermandad pide echar (GK) o cambiar el rango (GP) a alguien de la
+    mía; sin ventana emergente, se guarda (`HU.db.kickRequests`, 24 h). Aceptar abre las órdenes y, al mandarlas,
+    contesta (`AnswerKick`, `AnswerRank`) y apunta la salida (`HU:LogRequestedKick`).
+  - Con peticiones que puedo hacer (`HU:KickRequestCount`), el botón lleva el número, «Oficiales (2)», y se queda
+    encendido (`LockHighlight`), como antes el de peticiones; la opción del desplegable, también con el número. Se pone
+    al día con `CHANGED` «requests» y al enseñarse.
+  - **El desplegable sale siempre encima del botón**, como los del juego (los botones están abajo del todo de la ventana):
+    `Menu.GetManager():OpenMenu(botón, menú, CreateAnchor("BOTTOMLEFT", botón, "TOPLEFT", 0, 2))`, con el estilo del de
+    clic derecho, como `FilterMenu` de Trade.lua; sin esas funciones, el de clic derecho.
+  - **Otro clic en el botón lo cierra.** El juego cierra el menú con cualquier clic fuera de él, también en el botón
+    (`GLOBAL_MOUSE_DOWN`, Blizzard_Menu), y puede hacerlo antes o después de que el botón se entere. Así que al pulsar
+    (`OnMouseDown`, enganchado: la plantilla del botón usa el suyo) se mira si estaba abierto o si el juego lo acaba de
+    cerrar en este mismo clic (`SetClosedCallback` apunta cuándo, `closedAt`; menos de 0,1 s); si es así, se cierra y al
+    soltar (`OnClick`) no se vuelve a abrir. No se usa `HandlesGlobalMouseEvent` (lo que hacen los desplegables del
+    juego): el juego lo llama sobre lo que hay bajo el ratón en cada clic y, siendo nuestro, lo que hiciera el juego
+    detrás en ese clic (soltar el foco del teclado, cerrar sus menús viejos) iría «contaminado».
 
 ### Contador de conectados de la unión
 
@@ -3129,8 +3180,28 @@ y, si el cambio de vista viene de un botón seguro, dentro de su clic, y el jueg
 En el panel de GuildUnion (pestaña GuildUnion o ventana propia), la mitad derecha la monta UnionConfig.lua:
 `panel.config = HU:BuildUnionConfig(panel)`. Lo de antes («Oficiales conectados» / «Miembros», elegir hermandad,
 «Buscar con /who», la lista) pasa a un marco escondido (`stash`): su código sigue (`RefreshOfficers`), pero no se
-ve; sin «Miembros» que pulsar, el panel ya no lanza /who. A la izquierda ya no está el botón «Lista negra»: va en
-Configuración > Lista negra; su ventana (`HU:ShowBlacklist`, Blacklist.lua) solo se abre con `/gu listanegra`.
+ve; sin «Miembros» que pulsar, el panel ya no lanza /who. Del 24 al 25/11 la lista negra fue una pestaña de
+Configuración; hoy va en la columna izquierda (abajo).
+
+### BlizzTab.lua: la columna izquierda (Buscar · Lista negra · Ajustes)
+
+- **Buscar en el chat** y **Buscar jugador**, solo los oficiales (`panel.officerOnly`, `HU:CanPin`).
+- **«Silenciar», fuera por ahora** (Jorge, 25/11: «la parte de Mute la quitamos momentáneamente»): sus piezas (nombre,
+  minutos, motivo, Silenciar y Quitar) siguen en el marco escondido (`stash`), con su código; para volver a ponerla,
+  basta con no pasarlas allí y colocar la lista negra debajo. Silenciar sigue en los menús de clic derecho («Silenciar
+  10 min» y «Quitar silencio»: `PlayerMenu` y el de la lista del juego); no hay `/gu` para silenciar, así que hasta que
+  vuelva esta parte no se puede elegir cuánto ni el motivo.
+- **«Lista negra»**, en su sitio (Jorge: «ahí ponemos BlackList… y un view Black List»): el título y «Ver lista negra»
+  («View Black List»), que abre y cierra la lista negra de la comunidad en su ventana (`HU:ShowBlacklist`, Blacklist.lua;
+  también `/gu listanegra`). Es la ventana de siempre (`HU.NewListWindow`, ListWindow.lua): se mueve arrastrándola, va
+  por encima de la de hermandad y de la de GuildUnion y se repinta cada 2 s. Columnas Nombre (en rojo, quien está ahora
+  en mi hermandad) · Lo vetó (con su etiqueta en su color) · Motivo; al pasar el ratón, el motivo entero; un clic deja el
+  nombre abajo. Añadir (con motivo) y Quitar, y «Comprobar ahora» (`HU:BlacklistCheck(true)`), solo el maestro y los
+  oficiales (`HU:CanPin`), como en la pestaña de Configuración que tuvo del 24 al 25/11. La ven todos: para quien no es
+  oficial, sin los buscadores, va arriba del todo, donde empiezan (`RefreshStatus` la recoloca: `panel.blackAfter`).
+- **Ajustes**, abajo, para todos. «Nivel» (`db.chatLevel`): al ponerlo se piden las listas completas de las otras
+  hermandades que falten (`HU:PackNeed(etiqueta, "MB")`): de ellas sale el nivel de todos (Config.lua, «El nivel en el
+  chat»).
 
 ## ChatTabs.lua · Chattynator
 
@@ -3352,8 +3423,9 @@ Dos defensas (la segunda, cambiada en la copia 84):
 - **24/11: «Nivel» en Ajustes.** La tercera fila pasa a «Mostrar  [v] Emoticonos  [v] Nivel» (una cuarta no cabe con las
   herramientas de oficial encima). Con `db.chatLevel` (apagado de serie), delante del nombre de quien escribe va su
   nivel en gris (`HU:LevelText`, Channel.lua), si se sabe (`HU:LevelOf`, Config.lua: la lista de mi hermandad o las
-  de las otras). Lo ponen `NamePrefix` (líneas de las otras y las mías que repinta ChatPaint.lua, y Prat) y el formato
-  corto (`FormatLineParts`, chat del addon y de la ventana de hermandad).
+  de las otras; desde el 25/11, también sus listas completas: Config.lua, «El nivel en el chat»). Lo ponen `NamePrefix`
+  (líneas de las otras y las mías que repinta ChatPaint.lua, y Prat) y el formato corto (`FormatLineParts`, chat del
+  addon y de la ventana de hermandad).
 - **Copias 96–97 (14/11): Ajustes con casillas.** Tres filas bajo «Ajustes» (BlizzTab.lua): Marca
   (dos redondeles, etiqueta o punto), Hermandad (casilla «En color») y Emoticonos (casilla
   «Mostrar»), con una raya de división encima.
@@ -4357,9 +4429,11 @@ aquí: al apagar y encender el modo prueba vuelven como eran.
 
 La configuración de la hermandad, en la mitad derecha de la pestaña GuildUnion (BlizzTab.lua llama a
 `HU:BuildUnionConfig`; Oficiales y Miembros siguen allí, escondidos en `stash`). Título «Configuración» con «Puedes
-cambiarla» o «Solo el maestro la cambia» al lado. Cuatro pestañas en dos filas (3 + 1, de 84, con la letra normal del
-botón: la pequeña cambiaba de tamaño al pasar el ratón): Comercio, Lista negra, Eventos (hasta el 25/11, Calendario, como
-su sección) y Hermandad; se abre en Comercio. La cambia el maestro (`HU:IsUnionGM()`: `HU:IsMaster()`, el maestro de la hermandad o quien tiene el
+cambiarla» o «Solo el maestro la cambia» al lado. Tres pestañas en una fila (de 3 en 3 por fila, de 84, con la letra
+normal del botón: la pequeña cambiaba de tamaño al pasar el ratón; las páginas empiezan debajo de la última fila,
+`pageTop`): Comercio, Eventos (hasta el 25/11, Calendario, como su sección) y Hermandad; se abre en Comercio. Del 24 al
+25/11 hubo una cuarta, Lista negra: Jorge pidió quitarla de aquí y abrirla desde «Ver lista negra», en la columna
+izquierda de la pestaña (BlizzTab.lua), en su ventana. La cambia el maestro (`HU:IsUnionGM()`: `HU:IsMaster()`, el maestro de la hermandad o quien tiene el
 rango 0, o la casilla «Probar como maestro (solo en este PC)», `testGM`, para probar la ventana); los controles del
 maestro (`controls`) se apagan para los demás, que la ven igual.
 
@@ -4376,12 +4450,6 @@ solo publicará el maestro.
 - **Comercio** (lo lee Trade.lua): «Comercio activo en la hermandad» (`tradeOff`; apagado, Comercio solo enseña un
   aviso y no deja pedir) y «Permitir propinas» (`tipsOff`; sin propinas, no hay columna Propina y la ventana de pedir
   esconde la propina y no la guarda).
-- **Lista negra**: la de la comunidad, aquí dentro (la misma que `/gu listanegra`, Blacklist.lua). No es de fase 1: es
-  `db.bans` (Social.lua), que ya viaja entre hermandades. Lista con barra (`HU:BlacklistEntries`; en rojo, los que
-  están ahora en mi hermandad; al pasar el ratón, quién lo vetó y el motivo; clic: el nombre a la caja de abajo).
-  Nombre + «Quitar» (`HU:Unban`), motivo + «Añadir» (`HU:SetBan`, que pide motivo) y «Comprobar ahora»
-  (`HU:BlacklistCheck(true)`) solo los ven los oficiales (`HU:CanPin`), no solo el maestro; en la ventana de
-  `/gu listanegra`, igual.
 - **Eventos** (la página `calendar`): quién crea eventos (`calMake`: «gm», «officers» por defecto o «all») y «Permiso por un tiempo»:
   nombre (con sugerencias, `HU:NameSuggest`), horas (24 por defecto, de 1 a 999) y «Dar» → `calAllow[clave] = { name,
   untilT, by }`. Debajo, quién lo tiene y hasta cuándo, el que caduca primero arriba (lista con barra: las filas

@@ -237,8 +237,9 @@ local function ProfIcon(skill)
     return icons[skill]
 end
 
--- (bySkill[profesión] y byName[clave]: filas { name, key, tag, skill, rank, t, bits }; bits, solo con mi misma lista. Si
--- alguien sale en dos hermandades (se cambió), la más nueva)
+-- (bySkill[profesión] y byName[clave]: filas { name, key, tag, skill, rank, t, bits, recipes }; bits, solo con mi misma
+-- lista; recipes, si su línea trae recetas, de la lista que sea (ha abierto esa ventana con el addon). Si alguien sale en
+-- dos hermandades (se cambió), la más nueva)
 local function Index()
     if index then return index end
     local seen = {}
@@ -248,7 +249,7 @@ local function Index()
         if k then
             local l = ListOf(skill)
             local r = { name = e.n, key = k, tag = e.tag, skill = skill, rank = rank, t = e.t,
-                bits = (hash == l.hash and l.n > 0) and bits or nil }
+                bits = (hash == l.hash and l.n > 0) and bits or nil, recipes = hash ~= nil }
             local old = seen[k .. "|" .. skill]
             if not old or old.t < r.t then seen[k .. "|" .. skill] = r end
         end
@@ -297,17 +298,18 @@ function HU:UnionCrafters(q, items, needs)
     return out
 end
 
--- Las profesiones de alguien de la unión, de sus líneas de OF: { id, name, icon, rank, secondary }, primero las
+-- Las profesiones de alguien de la unión, de sus líneas de OF: { id, name, icon, rank, secondary, recipes }, primero las
 -- principales; nil si no hay (sin el addon o sin su paquete todavía). Cocina y Primeros auxilios van marcadas
 -- (`secondary`): la ficha no las enseña, pero cuentan para «Quién lo hace» (Jorge, 25/11: «que no salga en las
--- profesiones de alguien normal, pero sí para tener la data»)
+-- profesiones de alguien normal, pero sí para tener la data»). `recipes`: su línea trae recetas («Ver recetas» de la
+-- ficha, UnionRoster.lua)
 function HU:UnionProfessionsOf(name)
     local rows = Index().byName[self:Key(name) or ""]
     if not rows then return nil end
     local out = {}
     for _, r in ipairs(rows) do
         out[#out + 1] = { id = r.skill, name = ProfName(r.skill), icon = ProfIcon(r.skill), rank = r.rank,
-            secondary = SECONDARY[r.skill] or nil }
+            secondary = SECONDARY[r.skill] or nil, recipes = r.recipes }
     end
     table.sort(out, function(a, b)
         if (SECONDARY[a.id] == true) ~= (SECONDARY[b.id] == true) then return not SECONDARY[a.id] end
