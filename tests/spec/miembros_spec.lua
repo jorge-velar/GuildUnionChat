@@ -1588,12 +1588,12 @@ describe("Comercio (Trade.lua)", function()
     local function Btn(a, parent, text)
         for _, fr in ipairs(a.w.frames) do if fr._parent == parent and fr:GetText() == text then return fr end end
     end
-    -- (pedir con la ventana «Nueva solicitud»; en el WoW de mentira las casillas no se marcan: privada, para Bea)
+    -- (pedir con la ventana «Nuevo anuncio»; en el WoW de mentira las casillas no se marcan: privada, para Bea)
     local function Ask(a, tr, item)
         tr.OpenNew(nil)
         local d = a.env.GuildUnionTradeNew
         d.item:SetText(item); d.to:SetText("Bea-Reino")
-        Click(Btn(a, d, "Pedir"))
+        Click(Btn(a, d, "Publicar"))
     end
     local function CtrlClick(a, row)
         a.env.IsControlKeyDown = function() return true end
@@ -1601,7 +1601,7 @@ describe("Comercio (Trade.lua)", function()
         a.env.IsControlKeyDown = function() return false end
     end
 
-    it("arriba, los botones Tablón · Mis encargos; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha; abajo, «+ Nueva solicitud» y «Eliminar (N)» a su lado; sin modo prueba", function()
+    it("arriba, los botones Tablón · Mis encargos; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha; abajo, «+ Nuevo anuncio» y «Eliminar (N)» a su lado; sin modo prueba", function()
         local a = F.Community()
         -- (dónde se pide cada marco: el último sitio de cada punto)
         local meta = a.w.frameMeta
@@ -1614,12 +1614,12 @@ describe("Comercio (Trade.lua)", function()
         meta.__index = function(f, k) if k == "SetPoint" then return SetPoint end return base(f, k) end
         local tr = OpenTrade(a)
         local new = tr.new
-        A.equal("+ Nueva solicitud", new:GetText(), "con su texto, como antes")
+        A.equal("+ Nuevo anuncio", new:GetText(), "con su texto: «Nuevo anuncio»")
         A.same({ tr, "TOP", 0, -4 }, tr.switch._pts.TOP, "los botones, arriba en el centro")
         A.same({ "Tablón", "Mis encargos" }, { tr.viewBtns.pub:GetText(), tr.viewBtns.priv:GetText() }, "sus dos botones")
         A.same({ tr, "TOPLEFT", 23, -39 }, tr.search._pts.TOPLEFT, "el buscador, debajo a la izquierda")
         A.same({ tr, "TOPRIGHT", -168, -50 }, tr.onlyCraft._pts.LEFT, "«Solo lo que puedo hacer», a la derecha")
-        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM, "«+ Nueva solicitud», abajo en el centro")
+        A.same({ tr, "BOTTOM", 0, 8 }, new._pts.BOTTOM, "«+ Nuevo anuncio», abajo en el centro")
         A.same({ new, "RIGHT", 6, 0 }, tr.delBtn._pts.LEFT, "«Eliminar (N)», junto a él")
         A.is_nil(tr.testBtn, "sin modo prueba")
         -- (las filas acaban en -72: la lista empieza debajo y acaba encima del botón, que llega a 8 + 24)
@@ -1639,7 +1639,7 @@ describe("Comercio (Trade.lua)", function()
         A.truthy(d:IsShown())
         d.item:SetText("Algo"); d.to:SetText("Bea-Reino")
         a.HU:UnionCfg().tradeOff = true
-        Click(Btn(a, d, "Pedir"))
+        Click(Btn(a, d, "Publicar"))
         A.falsy(d:IsShown(), "se cierra")
         a.HU:Changed("unionCfg")
         A.truthy(tr.offMsg:IsShown(), "el aviso")
@@ -1808,7 +1808,7 @@ describe("Comercio (Trade.lua)", function()
         end
         table.sort(ids)
         local special = { [ids[#ids]] = "Lino grueso", [ids[#ids - 1]] = "Lino", [ids[#ids - 2]] = "Lino fino" }
-        a.env.GetItemInfo = function(id)
+        a.env.C_Item.GetItemInfo = function(id)
             if type(id) ~= "number" then return nil end
             local name = special[id] or ("Paño de lino " .. id)
             return name, "|cffffffff|Hitem:" .. id .. "::::::::60:::::::|h[" .. name .. "]|h|r"

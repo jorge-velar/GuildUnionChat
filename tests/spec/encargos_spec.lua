@@ -61,12 +61,12 @@ end
 local function Btn(a, parent, text)
     for _, fr in ipairs(a.w.frames) do if fr._parent == parent and fr:GetText() == text then return fr end end
 end
--- (pedir con «+ Nueva solicitud»: al Tablón o, con `to`, a esa persona)
+-- (pedir con «+ Nuevo anuncio»: al Tablón o, con `to`, a esa persona)
 local function Ask(a, item, to)
     a.tr.OpenNew(to)
     local d = a.env.GuildUnionTradeNew
     d.item:SetText(item)
-    Click(Btn(a, d, "Pedir"))
+    Click(Btn(a, d, "Publicar"))
 end
 -- (escribir en el chat del encargo que se ve)
 local function Say(a, text)
@@ -116,12 +116,25 @@ end
 
 local LINO = "|cffffffff|Hitem:2589::::::::60:::::::|h[Paño de lino]|h|r"
 
+-- (los objetos que conoce el juego de un jugador: [número] = { nombre, calidad, clase, ligado, color }, como los da
+-- C_Item.GetItemInfo: nombre, enlace, calidad, nivel, nivel mínimo, tipo, subtipo, pila, hueco, icono, precio, clase,
+-- subclase y ligado (2: al equipar))
+local function Knows(a, items)
+    a.env.C_Item.GetItemInfo = function(id)
+        local it = items[id]
+        if not it then return nil end
+        local link = "|cff" .. (it[5] or "ffffff") .. "|Hitem:" .. id .. "::::::::60:::::::|h[" .. it[1] .. "]|h|r"
+        return it[1], link, it[2], 20, 1, "", "", 1, "", 0, 0, it[3], 0, it[4]
+    end
+end
+
 describe("Comercio con la red: tres hermandades", function()
     it("el Tablón llega a todas; Bea (DOS) acepta, escribe y la marca hecha, y Ana (UNO) lo ve; una privada solo la ven los dos; tras /reload, todo sigue", function()
         local net, p = Union()
         local ana, bea, blas, tere = p.ana, p.bea, p.blas, p.tere
         for _, q in ipairs({ ana, bea, blas, tere }) do OpenTrade(q.a) end
-        -- (Ana pide algo al Tablón: en el suyo, ya)
+        -- (Ana pide algo al Tablón: en el suyo, ya. Su juego conoce el paño: no es BOE)
+        Knows(ana.a, { [2589] = { "Paño de lino", 1, 7, 0 } })
         Ask(ana.a, LINO)
         A.truthy(Row(ana.a.tr, "Paño de lino"), "en el Tablón de Ana")
         -- (Bea, de DOS, y Tere, de TRES, lo ven en el suyo)
@@ -229,6 +242,90 @@ describe("Comercio con la red: tres hermandades", function()
 end)
 
 ---------------------------------------------------------------------------
+-- Ventas de BOE y anuncios que caducan, entre hermandades (Jorge, 25/11)
+---------------------------------------------------------------------------
+local COFIA = "|cff1eff00|Hitem:7931::::::::60:::::::|h[Cofia de mitril]|h|r"
+
+describe("Comercio con la red: ventas y caducidad", function()
+    it("Ana (UNO) vende un BOE; Bea y Blas (DOS) lo quieren; Ana ve a los dos, habla con cada uno y la marca vendida; los dos ven «Vendida»", function()
+        local net, p = Union()
+        local ana, bea, blas = p.ana, p.bea, p.blas
+        for _, q in ipairs({ ana, bea, blas }) do OpenTrade(q.a) end
+        -- (el juego de Ana conoce la cofia: verde y se liga al equipar)
+        Knows(ana.a, { [7931] = { "Cofia de mitril", 2, 4, 2, "1eff00" } })
+        ana.a.tr.OpenNew(nil)
+        local d = ana.env.GuildUnionTradeNew
+        Click(d.kindSell)
+        d.item:SetText(COFIA)
+        Click(Btn(ana.a, d, "Publicar"))
+        A.truthy(Row(ana.a.tr, "Cofia"), "en el tablón de Ana")
+        -- (llega a DOS: Bea y Blas la quieren)
+        for _, q in ipairs({ bea, blas }) do
+            A.truthy(Until(net, function() return Row(q.a.tr, "Cofia") ~= nil end, 400), "no le llega a " .. q.name)
+            local row = Row(q.a.tr, "Cofia")
+            A.same({ "Ana-Reino", "UNO", "Me interesa" }, { row.entry.who, row.entry.tag, row.accept:GetText() })
+            Click(row.accept)
+            A.matches("Te interesa", Row(q.a.tr, "Cofia").actText:GetText())
+        end
+        -- (Ana los ve a los dos en Mis encargos: una fila con cada uno)
+        Click(ana.a.tr.viewBtns.priv)
+        A.truthy(Until(net, function() return #Rows(ana.a.tr) == 2 end, 400), "Ana no los ve a los dos")
+        local names = {}
+        for _, r in ipairs(Rows(ana.a.tr)) do names[#names + 1] = r.entry.buyer end
+        table.sort(names)
+        A.same({ "Bea-Reino", "Blas-Reino" }, names)
+        A.equal("open", Rows(ana.a.tr)[1].entry.state, "sigue a la venta")
+        -- (habla con cada uno por el chat del encargo)
+        local i0 = #net.log
+        for _, r in ipairs(Rows(ana.a.tr)) do
+            Click(r, "LeftButton")
+            Say(ana.a, "Hola, " .. r.entry.buyer)
+        end
+        A.truthy(Until(net, function() return #TCs(net, i0) == 2 end, 30))
+        A.truthy(Until(net, function()
+            local cb, cl = bea.HU.db.tradeChats["Ana-Reino"], blas.HU.db.tradeChats["Ana-Reino"]
+            return cb ~= nil and cl ~= nil and cb[#cb]:find("Hola, Bea", 1, true) ~= nil and cl[#cl]:find("Hola, Blas", 1, true) ~= nil
+        end, 30), "a cada uno, lo suyo")
+        -- (la marca vendida: los dos lo ven en Mis encargos)
+        A.equal("Vendida", ana.a.tr.doneBtn:GetText())
+        Click(ana.a.tr.doneBtn)
+        for _, q in ipairs({ bea, blas }) do
+            Click(q.a.tr.viewBtns.priv)
+            A.truthy(Until(net, function()
+                local r = Row(q.a.tr, "Cofia")
+                return r ~= nil and r.entry.state == "sold"
+            end, 400), q.name .. " no la ve vendida")
+            A.matches("Vendida", Row(q.a.tr, "Cofia").cells[5]:GetText())
+        end
+        A.same({}, net:Errors())
+    end)
+
+    it("un anuncio del tablón caduca en todas las hermandades: pasada su hora no se ve en ninguna parte ni se publica", function()
+        local net, p = Union()
+        local ana, alba, bea, tere = p.ana, p.alba, p.bea, p.tere
+        for _, q in ipairs({ ana, alba, bea, tere }) do OpenTrade(q.a) end
+        ana.a.tr.OpenNew(nil)
+        local d = ana.env.GuildUnionTradeNew
+        Click(d.expChecks[1])
+        A.equal(5, d.expChecks[1].hours)
+        d.item:SetText("Capa de prueba")
+        Click(Btn(ana.a, d, "Publicar"))
+        for _, q in ipairs({ alba, bea, tere }) do
+            A.truthy(Until(net, function() return Row(q.a.tr, "Capa de prueba") ~= nil end, 400), "no le llega a " .. q.name)
+        end
+        -- (pasan las 5 h)
+        for _, q in ipairs(net.players) do if q.online then q.w.epoch = q.w.epoch + 5 * 3600 + 1 end end
+        net:Advance(65)
+        for _, q in ipairs({ ana, alba, bea, tere }) do
+            A.is_nil(Row(q.a.tr, "Capa de prueba"), "se ve en el de " .. q.name)
+            A.is_nil(Req(q.HU, "Capa de prueba"), q.name)
+        end
+        for _, l in pairs(ana.HU.PackRefresh("TR").lineOf) do A.falsy(l:find("Capa de prueba", 1, true), l) end
+        A.same({}, net:Errors())
+    end)
+end)
+
+---------------------------------------------------------------------------
 -- Sin red: lo que hay dentro de una propuesta TR y cómo sale el estado de cada solicitud
 ---------------------------------------------------------------------------
 -- (una línea de TR de un compañero de mi hermandad, como llega por GUILD)
@@ -239,14 +336,20 @@ end
 local function Id(HU, who, n) return HU.Hash(who):sub(1, 4) .. string.format("%012d", n) end
 
 describe("Comercio con la red: el paquete TR (Packs/Trade.lua)", function()
-    it("los datos de una solicitud: estado, cantidad, materiales, propina, pública, para quién y lo que pide", function()
+    it("los datos de un anuncio: estado, tipo, cantidad, materiales, propina, pública, para quién, caducidad y lo que pide", function()
         local HU = F.Community().HU
-        A.equal("o,2,1,15000,1,-,i2589:Paño de lino", HU.TradeOrderData({ qty = 2, mats = true, tip = 15000, pub = true, item = LINO }))
-        A.equal("o,1,0,-,0,Bea-Reino,t:Cosa rara", HU.TradeOrderData({ pub = false, to = "Bea-Reino", item = "Cosa rara" }))
-        A.equal("g,999,0,0,0,Bea-Reino,s7418:Encantar 7418", HU.TradeOrderData({ state = "gone", qty = 5000, tip = 0, to = "Bea-Reino",
+        A.equal("o,p,2,1,15000,1,-,-,i2589:Paño de lino", HU.TradeOrderData({ qty = 2, mats = true, tip = 15000, pub = true, item = LINO }))
+        A.equal("o,p,1,0,-,0,Bea-Reino,-,t:Cosa rara", HU.TradeOrderData({ pub = false, to = "Bea-Reino", item = "Cosa rara" }))
+        A.equal("g,p,999,0,0,0,Bea-Reino,-,s7418:Encantar 7418", HU.TradeOrderData({ state = "gone", qty = 5000, tip = 0, to = "Bea-Reino",
             item = "|cff71d5ff|Henchant:7418|h[Encantar 7418]|h|r" }))
-        A.equal("o,1,0,-,1,-,s7418:Encantar", HU.TradeOrderData({ pub = true, item = "|cff71d5ff|Hspell:7418:0|h[Encantar]|h|r" }))
-        A.equal("o,1,0,-,1,-,t:abcd", HU.TradeOrderData({ pub = true, item = "a~b;c|d\n" }), "sin lo que no puede viajar")
+        A.equal("o,p,1,0,-,1,-,-,s7418:Encantar", HU.TradeOrderData({ pub = true, item = "|cff71d5ff|Hspell:7418:0|h[Encantar]|h|r" }))
+        A.equal("o,p,1,0,-,1,-,-,t:abcd", HU.TradeOrderData({ pub = true, item = "a~b;c|d\n" }), "sin lo que no puede viajar")
+        -- (la caducidad, la hora en base 36; una venta va siempre al tablón y sin materiales; vendida, «s»)
+        local exp = HU.StampNow() + 5 * 3600
+        A.equal("o,p,1,0,-,1,-," .. HU.B36(exp) .. ",t:x", HU.TradeOrderData({ pub = true, exp = exp, item = "x" }))
+        A.equal("o,v,1,0,90000,1,-,-,i2589:Paño de lino", HU.TradeOrderData({ sale = true, mats = true, tip = 90000, to = "Bea-Reino", item = LINO }))
+        A.equal("s,v,1,0,-,1,-,-,t:x", HU.TradeOrderData({ sale = true, state = "sold", item = "x" }))
+        A.equal("o,p,1,0,-,1,-,-,t:x", HU.TradeOrderData({ pub = true, state = "sold", item = "x" }), "vendida, solo una venta")
         local long = HU.TradeOrderData({ pub = true, item = string.rep("é", 120) })
         A.truthy(#long <= 180 and not long:find("[\195]$"), "cabe y no parte letras: " .. #long)
         -- (y la línea del paquete, con mi nombre, la clave y la hora, cabe en los 200 de Net/Packs.lua: si no, no se publica)
@@ -256,13 +359,16 @@ describe("Comercio con la red: el paquete TR (Packs/Trade.lua)", function()
         A.truthy(m and m.lineOf["tester-reino,o" .. lid], "sale para las otras hermandades")
         A.truthy(#m.lineOf["tester-reino,o" .. lid] <= 200)
         -- (lo que no tiene su forma no se propone)
-        for _, bad in ipairs({ "o,0,1,-,1,-,t:x", "o,1,2,-,1,-,t:x", "o,1,1,abc,1,-,t:x", "o,1,1,-,1,Bea-Reino,t:x",
-            "o,1,1,-,0,-,t:x", "x,1,1,-,1,-,t:x", "o,1,1,-,1,-,z:x", "o,1,1,-,1,-,t:", "o,1000,1,-,1,-,t:x" }) do
+        for _, bad in ipairs({ "o,p,0,1,-,1,-,-,t:x", "o,p,1,2,-,1,-,-,t:x", "o,p,1,1,abc,1,-,-,t:x", "o,p,1,1,-,1,Bea-Reino,-,t:x",
+            "o,p,1,1,-,0,-,-,t:x", "x,p,1,1,-,1,-,-,t:x", "o,p,1,1,-,1,-,-,z:x", "o,p,1,1,-,1,-,-,t:", "o,p,1000,1,-,1,-,-,t:x",
+            "o,x,1,0,-,1,-,-,t:x", "o,v,1,0,-,0,Bea-Reino,-,t:x", "s,p,1,0,-,1,-,-,t:x", "o,p,1,0,-,1,-,ABC,t:x",
+            "o,p,1,0,-,1,-,12345678,t:x", "o,p,1,0,-,1,-,t:x", "o,1,1,-,1,-,t:x" }) do
             A.falsy(HU:Propose("TR", "o12", bad), bad)
         end
+        A.truthy(HU:Propose("TR", "o13", "s,v,1,0,-,1,-,abc,t:x"), "una venta vendida, con su caducidad")
         A.falsy(HU:Propose("TR", "a12", "z"), "respuesta que no existe")
         A.falsy(HU:Propose("TR", "q12", "t"), "clave que no es o ni a")
-        A.falsy(HU:Propose("TR", "o" .. string.rep("1", 21), "o,1,1,-,1,-,t:x"), "número de más de 20")
+        A.falsy(HU:Propose("TR", "o" .. string.rep("1", 21), "o,p,1,1,-,1,-,-,t:x"), "número de más de 20")
         A.truthy(HU:Propose("TR", "a12", "t"))
         A.equal(30 * 86400, HU.packSets.TR.keep, "30 días")
     end)
@@ -273,7 +379,7 @@ describe("Comercio con la red: el paquete TR (Packs/Trade.lua)", function()
         local t = HU.StampNow()
         -- (Compi pide algo al Tablón y Jefa y yo lo aceptamos: gana Jefa, que fue antes; lo que dice Compi de la suya, no cuenta)
         local id = Id(HU, "Compi-Reino", 1)
-        WU(a, "Compi-Reino", "o" .. id, "o,3,1,500,1,-,i2589:Paño de lino", t - 50)
+        WU(a, "Compi-Reino", "o" .. id, "o,p,3,1,500,1,-,-,i2589:Paño de lino", t - 50)
         A.equal("open", Req(HU, "Paño de lino").state)
         A.equal("Compi-Reino", Req(HU, "Paño de lino").who)
         A.same({ 3, true, 500, true }, { Req(HU, "Paño").qty, Req(HU, "Paño").mats, Req(HU, "Paño").tip, Req(HU, "Paño").pub })
@@ -290,32 +396,32 @@ describe("Comercio con la red: el paquete TR (Packs/Trade.lua)", function()
         A.matches("Linen Cloth", Req(HU, "Linen").item)
         -- (una privada de Compi para mí: la de Jefa no cuenta; mi «r» la rechaza)
         local id2 = Id(HU, "Compi-Reino", 2)
-        WU(a, "Compi-Reino", "o" .. id2, "o,1,0,-,0,Tester-Reino,t:Botas raras", t - 10)
+        WU(a, "Compi-Reino", "o" .. id2, "o,p,1,0,-,0,Tester-Reino,-,t:Botas raras", t - 10)
         A.equal("open", Req(HU, "Botas raras").state)
         WU(a, "Jefa-Reino", "a" .. id2, "t", t - 9)
         A.equal("open", Req(HU, "Botas raras").state, "solo para quien es")
         HU:TradeAnswer(id2, "r")
         A.equal("gone", Req(HU, "Botas raras").state, "rechazada")
         -- (una de Compi para Jefa: no la veo)
-        WU(a, "Compi-Reino", "o" .. Id(HU, "Compi-Reino", 3), "o,1,0,-,0,Jefa-Reino,t:Secreto", t - 8)
+        WU(a, "Compi-Reino", "o" .. Id(HU, "Compi-Reino", 3), "o,p,1,0,-,0,Jefa-Reino,-,t:Secreto", t - 8)
         A.truthy(HU:PackLines("UNO", "TR")[1], "la tengo guardada")
         A.is_nil(Req(HU, "Secreto"), "pero no la veo")
         -- (Compi cancela la suya)
-        WU(a, "Compi-Reino", "o" .. id, "g,3,1,500,1,-,i2589:Paño de lino", t - 5)
+        WU(a, "Compi-Reino", "o" .. id, "g,p,3,1,500,1,-,-,i2589:Paño de lino", t - 5)
         A.equal("gone", Req(HU, "Linen").state)
         -- (otra con el mismo número, de otro: vale la de quien sale en él)
-        WU(a, "Jefa-Reino", "o" .. id, "o,1,1,-,1,-,t:Falsa", t - 60)
+        WU(a, "Jefa-Reino", "o" .. id, "o,p,1,1,-,1,-,-,t:Falsa", t - 60)
         A.equal("Compi-Reino", Req(HU, "Linen").who)
         A.is_nil(Req(HU, "Falsa"))
         -- (un encantamiento: su enlace de hechizo, el del juego si lo tiene)
-        WU(a, "Jefa-Reino", "o" .. Id(HU, "Jefa-Reino", 4), "o,1,0,-,1,-,s7418:Encantar brazales", t - 4)
+        WU(a, "Jefa-Reino", "o" .. Id(HU, "Jefa-Reino", 4), "o,p,1,0,-,1,-,-,s7418:Encantar brazales", t - 4)
         A.equal("|cff71d5ff|Hspell:7418|h[Encantar brazales]|h|r", Req(HU, "Encantar brazales").item)
         a.env.C_Spell = { GetSpellLink = function(n) return "|cff71d5ff|Hspell:" .. n .. ":0|h[Enchant Bracer]|h|r" end }
         A.matches("Enchant Bracer", Req(HU, "Enchant Bracer").item)
         -- (el mismo número, que no es de ninguno de los dos: la más antigua. Cada uno ya ha mandado 5 seguidas: se espera)
         a.w:Advance(13)
-        WU(a, "Compi-Reino", "o12345", "o,1,0,-,1,-,t:Nueva", t - 3)
-        WU(a, "Jefa-Reino", "o12345", "o,1,0,-,1,-,t:Vieja", t - 70)
+        WU(a, "Compi-Reino", "o12345", "o,p,1,0,-,1,-,-,t:Nueva", t - 3)
+        WU(a, "Jefa-Reino", "o12345", "o,p,1,0,-,1,-,-,t:Vieja", t - 70)
         A.truthy(Req(HU, "Vieja"))
         A.is_nil(Req(HU, "Nueva"))
         A.same({}, a:Errors())
@@ -362,8 +468,8 @@ describe("Comercio con la red: la ventana", function()
         local tr = OpenTrade(a)
         local t = HU.StampNow()
         local pub, priv = Id(HU, "Compi-Reino", 1), Id(HU, "Compi-Reino", 2)
-        WU(a, "Compi-Reino", "o" .. pub, "o,1,1,-,1,-,t:Capa verde", t)
-        WU(a, "Compi-Reino", "o" .. priv, "o,2,0,-,0,Tester-Reino,t:Guantes", t)
+        WU(a, "Compi-Reino", "o" .. pub, "o,p,1,1,-,1,-,-,t:Capa verde", t)
+        WU(a, "Compi-Reino", "o" .. priv, "o,p,2,0,-,0,Tester-Reino,-,t:Guantes", t)
         a.w:Advance(2)
         -- (el Tablón se pinta solo al llegar; la privada para mí, en Mis encargos y con su aviso sin leer)
         A.truthy(Row(tr, "Capa verde"), "en el Tablón, sin tocar nada")
@@ -432,7 +538,7 @@ describe("Comercio con la red: la ventana", function()
         a.w:Receive("HU20", "TC~   ", "WHISPER", "Compi-Reino")
         A.is_nil(HU.db.tradeChats["Compi-Reino"], "sin solicitud: espera")
         -- (llega su solicitud: ya está en su chat, detrás del aviso)
-        WU(a, "Compi-Reino", "o" .. Id(HU, "Compi-Reino", 7), "o,1,0,-,0,Tester-Reino,t:Anillo", HU.StampNow())
+        WU(a, "Compi-Reino", "o" .. Id(HU, "Compi-Reino", 7), "o,p,1,0,-,0,Tester-Reino,-,t:Anillo", HU.StampNow())
         a.w:Advance(2)
         local chat = HU.db.tradeChats["Compi-Reino"]
         A.equal(2, #chat)
@@ -442,7 +548,7 @@ describe("Comercio con la red: la ventana", function()
         -- (de quien no tiene nada conmigo: a los 10 min, fuera)
         a.w:Receive("HU20", "TC~spam", "WHISPER", "Jefa-Reino")
         a.w:Advance(620)
-        WU(a, "Jefa-Reino", "o" .. Id(HU, "Jefa-Reino", 1), "o,1,0,-,0,Tester-Reino,t:Tarde", HU.StampNow())
+        WU(a, "Jefa-Reino", "o" .. Id(HU, "Jefa-Reino", 1), "o,p,1,0,-,0,Tester-Reino,-,t:Tarde", HU.StampNow())
         a.w:Advance(40)
         A.equal(1, #HU.db.tradeChats["Jefa-Reino"], "solo el aviso de su solicitud")
         A.same({}, a:Errors())

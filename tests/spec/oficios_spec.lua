@@ -42,7 +42,7 @@ end
 -- Los nombres de los objetos, como los da el juego (los demás, «Objeto n»)
 local function ItemLink(id, name) return "|cffffffff|Hitem:" .. id .. "::::::::60:::::::|h[" .. name .. "]|h|r" end
 local function Names(a, names)
-    a.env.GetItemInfo = function(id)
+    a.env.C_Item.GetItemInfo = function(id)
         if type(id) ~= "number" then return nil end
         local name = names[id] or ("Objeto " .. id)
         return name, ItemLink(id, name)

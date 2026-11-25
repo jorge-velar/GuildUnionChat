@@ -57,7 +57,7 @@ local SECTION_H = (426 - 28 - 4) - ((23 + 60 - 57) + 2)   -- 366
 
 -- Lo que mide un texto en la letra del juego (Friz Quadrata, FRIZQT__.TTF; el WoW de mentira mide 0): el avance de cada
 -- letra en milésimas de su tamaño, leído del archivo de la letra (sin kerning), y un 5 % más por lo que redondea el juego
-local FRIZ = { [" "] = 261, ["("] = 322, [")"] = 325, ["+"] = 640, ["."] = 257,
+local FRIZ = { [" "] = 261, ["("] = 322, [")"] = 325, ["+"] = 640, ["."] = 257, [":"] = 257, ["<"] = 640,
     A = 767, B = 633, C = 670, D = 743, E = 550, F = 469, G = 793, H = 791, I = 304, J = 290, K = 657, L = 552, M = 1003,
     N = 788, O = 856, P = 577, Q = 855, R = 633, S = 580, T = 538, U = 752, V = 655, W = 1002, X = 722, Y = 638, Z = 654,
     a = 545, b = 588, c = 521, d = 624, e = 582, f = 333, g = 619, h = 589, i = 256, j = 254, k = 528, l = 252, m = 926,
@@ -300,7 +300,7 @@ describe("Comercio (Trade.lua): ¿puedo hacerlo? (HU:CanCraft)", function()
         local a = F.Community()
         local HU = a.HU
         local names = { [7960] = "Espada de prueba", [7936] = "Botas de prueba" }
-        a.env.GetItemInfo = function(id)
+        a.env.C_Item.GetItemInfo = function(id)
             if type(id) ~= "number" then return nil end
             local name = names[id] or ("Objeto " .. id)
             return name, ItemLink(id, name)
@@ -468,7 +468,7 @@ describe("Comercio (Trade.lua): «Solo lo que puedo hacer»", function()
         tr.OpenNew(nil)
         local d = a.env.GuildUnionTradeNew
         d.item:SetText("Cosa rara")
-        Click(Btn(a, d, "Pedir"))
+        Click(Btn(a, d, "Publicar"))
         A.same({ "Cofia de mitril", "Bolsa de tejido de lana" }, Items(tr))
         -- (al buscar, también en lo publicado)
         Search(tr, "o")
@@ -555,7 +555,7 @@ describe("Comercio (Trade.lua): aspecto", function()
         A.same({}, a:Errors())
     end)
 
-    it("arriba, los botones Tablón · Mis encargos en el centro, igual que los de Eventos; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha, sin pisarse (también en inglés)", function()
+    it("arriba, los botones Tablón · Mis encargos · Buscar en el centro, igual que los de Eventos; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha, sin pisarse (también en inglés)", function()
         for _, locale in ipairs({ "esES", "enUS" }) do
             local a = F.Community({ locale = locale })
             Observe(a)
@@ -563,16 +563,23 @@ describe("Comercio (Trade.lua): aspecto", function()
             local tr = OpenTrade(a)
             local cal = a.env.GuildUnionUnionRoster.calendar
             local sw, search, only = tr.switch, tr.search, tr.onlyCraft
-            -- (fila 1: los botones, en el centro y enteros dentro de la sección; son las vistas de siempre)
+            -- (fila 1: los botones, en el centro y enteros dentro de la sección; son las vistas de siempre, y Buscar al lado
+            -- de Mis encargos)
             A.same({ tr, "TOP", 0, -4 }, sw._pts.TOP)
             A.equal(sw.btns.pub, tr.viewBtns.pub)
             A.equal(sw.btns.priv, tr.viewBtns.priv)
+            A.equal(sw.btns.find, tr.viewBtns.find)
+            A.same({ sw, "TOPLEFT", 2 * (150 + 6), 0 }, tr.viewBtns.find._pts.TOPLEFT, "Buscar, a la derecha de Mis encargos")
             local l, r = Span(tr, sw)
             A.truthy(l >= 2 and r <= SECTION_W - 2, locale .. ": los botones caben: de " .. l .. " a " .. r)
             A.same({ cal, "TOP", 0, -4 }, cal.switch._pts.TOP, "los de Eventos, en el mismo sitio")
-            A.same({ sw._w, sw._h }, { cal.switch._w, cal.switch._h }, "y del mismo tamaño")
+            for _, b in pairs(sw.btns) do
+                A.same({ b._w, b._h }, { cal.switch.btns.list._w, cal.switch.btns.list._h }, "y del mismo tamaño y estilo")
+                A.truthy(b.Left and b.Pick, "el botón rojo del juego (DJ.Button)")
+            end
             -- (los textos caben, también con dos cifras de sin leer)
-            for _, t in ipairs({ { tr.viewBtns.pub, L("Tablón") }, { tr.viewBtns.priv, string.format(L("Mis encargos (%d)"), 99) } }) do
+            for _, t in ipairs({ { tr.viewBtns.pub, L("Tablón") }, { tr.viewBtns.priv, string.format(L("Mis encargos (%d)"), 99) },
+                { tr.viewBtns.find, L("Buscar") } }) do
                 A.truthy(TextWidth(t[2], 12) + 16 <= t[1]._w, locale .. ": «" .. t[2] .. "» cabe en su botón")
             end
             -- (fila 2, debajo: el buscador del juego, como antes, 200 x 22, centrado en la fila, con su marco de borde dorado)
@@ -594,13 +601,13 @@ describe("Comercio (Trade.lua): aspecto", function()
         end
     end)
 
-    it("«+ Nueva solicitud», como hasta la copia 304, abajo: en el Tablón, en el centro; en Mis encargos, centrado debajo de la lista, y el chat de arriba abajo a la derecha, sin chocar", function()
+    it("«+ Nuevo anuncio» (antes «+ Nueva solicitud»), como hasta la copia 304, abajo: en el Tablón, en el centro; en Mis encargos, centrado debajo de la lista, y el chat de arriba abajo a la derecha, sin chocar", function()
         local a = F.Community()
         Observe(a)
         local L = a.HU.L
         local tr = OpenTrade(a)
         local new, del, chat = tr.new, tr.delBtn, tr.chat
-        A.equal("+ Nueva solicitud", new:GetText())
+        A.equal("+ Nuevo anuncio", new:GetText())
         A.same({ 200, 24 }, { new._w, new._h })
         for _, k in ipairs({ "Left", "Middle", "Right" }) do A.same({ 0.45, 1, 0.45 }, new[k]._color, "teñido de verde: " .. k) end
         A.equal("GameFontHighlight", new._font, "letra blanca")
@@ -635,8 +642,14 @@ describe("Comercio (Trade.lua): aspecto", function()
         A.truthy(new:IsShown())
         Click(new)
         A.truthy(a.env.GuildUnionTradeNew:IsShown())
+        A.equal("Nuevo anuncio", a.env.GuildUnionTradeNew.title:GetText(), "y su ventana, con el mismo nombre")
+        A.truthy(Btn(a, a.env.GuildUnionTradeNew, "Publicar"), "que se publica con «Publicar»")
         local en = F.Community({ locale = "enUS" })
-        A.equal("+ New request", OpenTrade(en).new:GetText())
+        local tr2 = OpenTrade(en)
+        A.equal("+ New post", tr2.new:GetText())
+        Click(tr2.new)
+        A.equal("New post", en.env.GuildUnionTradeNew.title:GetText())
+        A.truthy(Btn(en, en.env.GuildUnionTradeNew, "Post"))
         A.same({}, a:Errors())
         A.same({}, en:Errors())
     end)
@@ -677,7 +690,7 @@ describe("Comercio (Trade.lua): aspecto", function()
         Click(d.pubNo)
         d.item:SetText("Algo")
         local n0 = #a.w.chat
-        Click(Btn(a, d, "Pedir"))
+        Click(Btn(a, d, "Publicar"))
         A.matches("Si no va al tablón, pon a quién se la pides.", tostring(a.w.chat[n0 + 1] and a.w.chat[n0 + 1].msg))
         local en = F.Community({ locale = "enUS" })
         local tr2 = OpenTrade(en)
@@ -778,7 +791,7 @@ describe("Comercio (Trade.lua): qué es un objeto, al pasar el ratón", function
         local list = HU.CRAFT_ITEMS[197]
         local names = { [list[1]] = "Embolsar", [list[3]] = "Bolsas de pólvora", [list[5]] = "Gran bolsa de cuero",
             [list[7]] = "Bolsa de bombas de cobre", [list[9]] = "Bolsa de lino" }
-        a.env.GetItemInfo = function(id)
+        a.env.C_Item.GetItemInfo = function(id)
             if type(id) ~= "number" then return nil end
             local name = names[id] or ("Objeto " .. id)
             return name, ItemLink(id, name)
@@ -809,7 +822,7 @@ describe("Comercio (Trade.lua): qué es un objeto, al pasar el ratón", function
         tr.OpenNew(nil)
         local d = a.env.GuildUnionTradeNew
         d.item:SetText("Cosa rara")
-        Click(Btn(a, d, "Pedir"))
+        Click(Btn(a, d, "Publicar"))
         HU:TradeChatLine("Ana-Reino", "Ana-Reino", "hola")
         A.truthy(HU.cdb.tradeReqs and HU.cdb.tradeChats["Ana-Reino"], "en el personaje")
         a.w:Fire("PLAYER_LOGOUT")
@@ -828,5 +841,648 @@ describe("Comercio (Trade.lua): qué es un objeto, al pasar el ratón", function
         A.equal(0, #b.HU.db.tradeReqs)
         A.same({}, a:Errors())
         A.same({}, b:Errors())
+    end)
+end)
+
+---------------------------------------------------------------------------
+-- Anuncios (25/11): cuánto duran en el tablón, vender BOE y la pestaña Buscar
+---------------------------------------------------------------------------
+-- (los objetos que conoce el juego: [número] = { nombre, calidad, nivel, clase, ligado }, como los da C_Item.GetItemInfo:
+-- nombre, enlace, calidad, nivel, nivel mínimo, tipo, subtipo, pila, hueco, icono, precio, clase, subclase y ligado
+-- (2: al equipar). En Forever no hay GetItemInfo suelto)
+local QCOLOR = { [0] = "9d9d9d", "ffffff", "1eff00", "0070dd", "a335ee", "ff8000" }
+local function Known(a, items)
+    a.env.C_Item.GetItemInfo = function(id)
+        local it = items[id]
+        if not it then return nil end
+        local link = "|cff" .. QCOLOR[it[2]] .. "|Hitem:" .. id .. "::::::::60:::::::|h[" .. it[1] .. "]|h|r"
+        return it[1], link, it[2], it[3], 1, "", "", 1, "", 0, 0, it[4], 0, it[5]
+    end
+end
+-- (una línea de TR u OF de alguien de mi hermandad, como llega por GUILD)
+local function WU(a, from, set, key, data, t)
+    a.w:Receive("HU20B", "WU~UNO~" .. set .. "~" .. key .. "~" .. (t or a.HU.StampNow()) .. "~" .. data, "GUILD", from)
+end
+local function Id(HU, who, n) return HU.Hash(who):sub(1, 4) .. string.format("%012d", n) end
+-- (¿lo último que ha dicho el addon en el chat lleva ese texto?)
+local function Said(a, text)
+    local m = a.w.chat[#a.w.chat]
+    return m ~= nil and tostring(m.msg):find(text, 1, true) ~= nil
+end
+-- (mi línea de TR en el almacén que lleva ese texto, y su número)
+local function Mine(HU, text)
+    local st = HU.db.wuStore.UNO and HU.db.wuStore.UNO.TR or {}
+    for k, e in pairs(st) do
+        if k:find("^tester%-reino,o") and e.d:find(text, 1, true) then return e, k:match(",o(%w+)$") end
+    end
+end
+-- (la caducidad de unos datos de TR)
+local function Expiry(d) return d:match("^[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,([^,]*),") end
+-- (un menú de mentira, el de clic derecho o el de un filtro: título, botones y casillas)
+local function FakeMenu(a)
+    local m = { buttons = {}, checks = {} }
+    local root = {
+        CreateTitle = function(_, t) m.title = t end,
+        CreateButton = function(_, t, fn) m.buttons[t] = fn end,
+        CreateCheckbox = function(_, t, is, set) m.checks[#m.checks + 1] = { text = t, is = is, set = set } end,
+    }
+    a.env.MenuUtil = { CreateContextMenu = function(owner, gen) gen(owner, root) end }
+    return m
+end
+-- (poner un anuncio con su ventana: opts = { item, sell, to, hours, gold })
+local function Post(a, tr, opts)
+    tr.OpenNew(opts.to)
+    local d = a.env.GuildUnionTradeNew
+    if opts.sell then Click(d.kindSell) end
+    d.item:SetText(opts.item)
+    for _, c in ipairs(d.expChecks) do if c.hours == opts.hours then Click(c) end end
+    if opts.gold then d.coins[1]:SetText(tostring(opts.gold)) end
+    Click(Btn(a, d, a.HU.L("Publicar")))
+    return d
+end
+local function Req(HU, text)
+    for _, r in ipairs(HU:TradeRequests()) do if r.item:find(text, 1, true) then return r end end
+end
+local ACT_W = 84 -- (la última columna del Tablón, Trade.lua)
+
+describe("Comercio (Trade.lua): anuncios que caducan", function()
+    it("en el tablón se elige cuánto dura (5, 12, 24 de entrada o 48 h): viaja su hora, se ve lo que le queda y, al caducar, no se ve en ninguna parte ni se publica; las privadas no caducan", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        local tr = OpenTrade(a)
+        tr.OpenNew(nil)
+        local d = a.env.GuildUnionTradeNew
+        local hours = {}
+        for _, c in ipairs(d.expChecks) do hours[#hours + 1] = c.Text:GetText() .. (c:GetChecked() and " *" or "") end
+        A.same({ "5 h", "12 h", "24 h *", "48 h" }, hours, "24 h de entrada")
+        A.equal("Dura:", d.expLabel:GetText())
+        A.same({ true, true, false }, { d.expLabel:IsShown(), d.expChecks[1]:IsShown(), d.to:IsShown() }, "en el tablón: cuánto dura")
+        Click(d.pubNo)
+        A.same({ false, false, true }, { d.expLabel:IsShown(), d.expChecks[1]:IsShown(), d.to:IsShown() }, "privada: a quién")
+        Click(d.expChecks[4])
+        A.same({ false, false, false, true }, { d.expChecks[1]:GetChecked(), d.expChecks[2]:GetChecked(),
+            d.expChecks[3]:GetChecked(), d.expChecks[4]:GetChecked() }, "se elige una")
+        d:Hide()
+        -- (5 h: la hora en que caduca, en base 36, en sus datos; en el tablón, lo que le queda)
+        local t0 = HU.StampNow()
+        Post(a, tr, { item = "Cosa rara", hours = 5 })
+        A.equal("o,p,1,1,-,1,-," .. HU.B36(t0 + 5 * 3600) .. ",t:Cosa rara", Mine(HU, "Cosa rara").d)
+        A.same({ "Cosa rara" }, Items(tr))
+        A.matches("Abierta.*5h", Row(tr, "Cosa rara").cells[6]:GetText())
+        -- (otra de 48 h, y una privada, que no caduca)
+        Post(a, tr, { item = "Otra cosa", hours = 48 })
+        A.equal(HU.B36(t0 + 48 * 3600), Expiry(Mine(HU, "Otra cosa").d))
+        Post(a, tr, { item = "Para Compi", to = "Compi-Reino" })
+        A.equal("o,p,1,1,-,0,Compi-Reino,-,t:Para Compi", Mine(HU, "Para Compi").d)
+        -- (la última hora, «<1h»; cada minuto se repinta solo. Lo más largo cabe en su casilla del Estado, sin apretar:
+        -- la lista mide lo que la sección menos 6 y 24, y el Estado es lo que dejan las otras columnas, menos sus márgenes)
+        Click(tr.viewBtns.pub)
+        a.w.epoch = a.w.epoch + 5 * 3600 - 40 * 60
+        a.w:Advance(60)
+        A.truthy(Row(tr, "Cosa rara").cells[6]:GetText():find("Abierta |cff9a8f78<1h|r", 1, true))
+        local cell = (SECTION_W - 6 - 24) - (100 + 170 + 40 + 44 + 66 + ACT_W + 6) - 8 - 2 * 4
+        for _, t in ipairs({ "Abierta 48h", "Abierta <1h", "Venta 48h", "Open 48h", "Sale <1h" }) do
+            A.truthy(TextWidth(t, 10) <= cell, "«" .. t .. "» cabe en " .. cell)
+        end
+        -- (caducada: fuera del tablón sin tocar nada, de lo que publica mi hermandad y, al limpiar, del almacén; ya no cuenta
+        -- para el tope)
+        a.w.epoch = a.w.epoch + 40 * 60
+        a.w:Advance(60)
+        A.same({ "Otra cosa" }, Items(tr))
+        A.is_nil(Req(HU, "Cosa rara"))
+        for _, l in ipairs((HU:PackLines("UNO", "TR"))) do A.falsy(l:find("Cosa rara", 1, true), l) end
+        for _, l in pairs(HU.PackRefresh("TR").lineOf) do A.falsy(l:find("Cosa rara", 1, true), l) end
+        HU.PackCleanStores()
+        A.is_nil(Mine(HU, "Cosa rara"), "fuera del almacén")
+        for i = 1, 3 do Post(a, tr, { item = "Más " .. i }) end
+        A.truthy(Mine(HU, "Más 3"), "caben otras 3 (con la de 48 h y la privada, 5)")
+        -- (a los 3 días: la de 48 h, fuera; la privada sigue)
+        a.w.epoch = a.w.epoch + 3 * 86400
+        a.w:Advance(60)
+        Click(tr.viewBtns.pub)
+        A.same({}, Items(tr))
+        Click(tr.viewBtns.priv)
+        A.same({ "Para Compi" }, Items(tr))
+        A.same({}, a:Errors())
+    end)
+
+    it("una mía del tablón que alguien acepta deja de caducar (se vuelve a mandar sin la hora): el encargo no se borra a medias", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        local tr = OpenTrade(a)
+        Post(a, tr, { item = "Yelmo", hours = 5 })
+        local e, id = Mine(HU, "Yelmo")
+        A.truthy(Expiry(e.d) ~= "-")
+        WU(a, "Compi-Reino", "TR", "a" .. id, "t")
+        a.w:Advance(2)
+        A.equal("o,p,1,1,-,1,-,-,t:Yelmo", Mine(HU, "Yelmo").d, "sin caducidad")
+        a.w.epoch = a.w.epoch + 6 * 3600
+        a.w:Advance(60)
+        Click(tr.viewBtns.priv)
+        A.same({ "Yelmo" }, Items(tr))
+        A.same({ "taken", "Compi-Reino" }, { Row(tr, "Yelmo").entry.state, Row(tr, "Yelmo").entry.taker })
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Comercio (Trade.lua): vender BOE", function()
+    -- (verde y se liga al equipar: BOE; blanco y sin ligar; azul que se liga al recogerlo; gris al equipar; legendaria)
+    local GOODS = {
+        [7931] = { "Cofia de mitril", 2, 40, 4, 2 }, [2589] = { "Paño de lino", 1, 5, 7, 0 },
+        [7954] = { "Gran espada de mitril", 3, 47, 2, 1 }, [6948] = { "Gris al equipar", 0, 10, 4, 2 },
+        [12345] = { "Legendaria", 5, 70, 2, 2 },
+    }
+
+    it("un BOE no se puede pedir y lo que no es BOE no se vende (se dice por qué); la venta va al tablón, sin materiales, con precio y de otro color, con «Venta»", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        Known(a, GOODS)
+        local tr = OpenTrade(a)
+        -- (pedir un BOE: no se deja, y la ventana sigue abierta)
+        local d = Post(a, tr, { item = ItemLink(7931, "Cofia de mitril") })
+        A.truthy(Said(a, "Es BOE (se liga al equipar): solo se puede vender, no pedir."))
+        A.truthy(d:IsShown())
+        -- (vender lo que no es BOE: blanco, que se liga al recogerlo, gris, escrito a mano o un encantamiento)
+        for _, item in ipairs({ ItemLink(2589, "Paño de lino"), ItemLink(7954, "Gran espada de mitril"), ItemLink(6948, "Gris"),
+            "Cosa rara", SpellLink(7418) }) do
+            Post(a, tr, { item = item, sell = true })
+            A.truthy(Said(a, "Solo se venden objetos BOE: los que se ligan al equipar, de verde a legendario."), item)
+        end
+        A.is_nil(Mine(HU, ""), "nada propuesto")
+        A.same({}, Items(tr))
+        -- (al vender, ni materiales ni «En el tablón» (va siempre) y la propina es el precio; cuánto dura, sí)
+        tr.OpenNew(nil)
+        Click(d.kindSell)
+        A.same({ false, false, true, true }, { d.matsLabel:IsShown(), d.pubLabel:IsShown(), d.expLabel:IsShown(), d.tipLabel:IsShown() })
+        A.equal("Precio:", d.tipLabel:GetText())
+        Click(d.kindAsk)
+        A.same({ true, true, "Propina:" }, { d.matsLabel:IsShown(), d.pubLabel:IsShown(), d.tipLabel:GetText() })
+        -- (sin propinas, tampoco precio)
+        HU:UnionCfg().tipsOff = true
+        Click(d.kindSell)
+        A.falsy(d.coins[1]:IsShown())
+        HU:UnionCfg().tipsOff = nil
+        d:Hide()
+        -- (el BOE, a la venta: al tablón, de otro color, con «Venta», su precio y sin materiales; la mía, con Cancelar)
+        Post(a, tr, { item = ItemLink(7931, "Cofia de mitril"), sell = true, gold = 3 })
+        A.falsy(d:IsShown())
+        A.matches("^o,v,1,0,30000,1,%-,%w+,i7931:Cofia de mitril$", Mine(HU, "Cofia").d)
+        local row = Row(tr, "Cofia")
+        A.truthy(row.saleTex:IsShown(), "de otro color")
+        A.same({ 0.25, 0.82, 0.75, 0.10 }, row.saleTex._fill)
+        A.matches("3fd0c0Venta|r.*24h", row.cells[6]:GetText())
+        A.same({ "—", true }, { row.cells[4]:GetText(), row.cells[5]:GetText():find("^3|T") ~= nil })
+        A.truthy(row.cancel:IsShown())
+        -- (una legendaria también se vende; una solicitud no lleva el color de las ventas)
+        Post(a, tr, { item = ItemLink(12345, "Legendaria"), sell = true })
+        Post(a, tr, { item = "Encargo normal" })
+        A.truthy(Row(tr, "Legendaria").saleTex:IsShown())
+        A.falsy(Row(tr, "Encargo normal").saleTex:IsShown())
+        A.equal("Abierta |cff9a8f7824h|r", Row(tr, "Encargo normal").cells[6]:GetText())
+        -- (eliminar la legendaria con Cancelar: «g», fuera para todos)
+        Click(Row(tr, "Legendaria").cancel)
+        A.matches("^g,v,", Mine(HU, "Legendaria").d)
+        A.is_nil(Row(tr, "Legendaria"))
+        -- (en inglés: «Sale»)
+        local en = F.Community({ locale = "enUS" })
+        Observe(en)
+        Known(en, GOODS)
+        local tr2 = OpenTrade(en)
+        Post(en, tr2, { item = ItemLink(7931, "Cofia de mitril"), sell = true })
+        A.falsy(en.env.GuildUnionTradeNew:IsShown())
+        A.matches("Sale", Row(tr2, "Cofia").cells[6]:GetText())
+        A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("la quieren varios: quien vende ve una fila con cada uno (con su aviso), habla con cada uno y la marca «Vendida» (o desde el clic derecho); vendida, deja de estar abierta", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        Known(a, GOODS)
+        local tr = OpenTrade(a)
+        Post(a, tr, { item = ItemLink(7931, "Cofia de mitril"), sell = true })
+        local _, id = Mine(HU, "Cofia")
+        local now = HU.StampNow()
+        WU(a, "Compi-Reino", "TR", "a" .. id, "t", now - 2)
+        WU(a, "Jefa-Reino", "TR", "a" .. id, "t", now - 1)
+        WU(a, "Tester-Reino", "TR", "a" .. id, "t", now - 1)
+        a.w:Advance(2)
+        A.equal(2, HU:TradeUnread(), "un aviso de cada uno")
+        A.matches("Le interesa.*Cofia", HU.db.tradeChats["Compi-Reino"][1])
+        A.equal("open", Row(tr, "Cofia").entry.state, "sigue a la venta")
+        Click(tr.viewBtns.priv)
+        local who = {}
+        for _, r in ipairs(Rows(tr)) do who[#who + 1] = r.entry.buyer end
+        A.same({ "Compi-Reino", "Jefa-Reino" }, who)
+        local jefa = Rows(tr)[2]
+        A.matches("Jefa", jefa.cells[1]:GetText())
+        A.matches("Venta", jefa.cells[5]:GetText())
+        A.same({ false, true }, { jefa.yes:IsShown(), jefa.no:IsShown() }, "sin tic; la X la elimina")
+        -- (elijo a Jefa: su chat, leído, y «Vendida» en vez de «Hecha»; solo su fila elegida)
+        Click(jefa, "LeftButton")
+        A.matches("Jefa", tr.chatTitle:GetText())
+        A.equal(1, HU:TradeUnread())
+        A.same({ "Vendida", true, true }, { tr.doneBtn:GetText(), tr.doneBtn:IsShown(), tr.doneBtn:IsEnabled() })
+        for _, t in ipairs({ "Vendida", "Sold" }) do A.truthy(TextWidth(t, 12) + 8 <= tr.doneBtn._w, t .. " cabe en su botón") end
+        A.same({ false, true }, { Rows(tr)[1].pickTex:IsShown(), Rows(tr)[2].pickTex:IsShown() })
+        tr.chatInput:SetText("Te la guardo")
+        tr.chatInput:GetScript("OnEnterPressed")(tr.chatInput)
+        local sent = a.w.sent[#a.w.sent]
+        A.same({ "TC~Te la guardo", "WHISPER", "Jefa-Reino" }, { sent.text, sent.dist, sent.target })
+        -- (lo que escribe Compi entra en su fila)
+        a.w:Receive("HU20", "TC~¿Sigue?", "WHISPER", "Compi-Reino")
+        A.matches("¿Sigue%?", HU.db.tradeChats["Compi-Reino"][2])
+        -- (Ctrl+clic en las dos: «Eliminar (2)»)
+        a.env.IsControlKeyDown = function() return true end
+        Click(Rows(tr)[1], "LeftButton")
+        a.env.IsControlKeyDown = function() return false end
+        A.equal("Eliminar (2)", tr.delBtn:GetText())
+        Click(Rows(tr)[1], "LeftButton")
+        -- (el clic derecho también la marca vendida)
+        local m = FakeMenu(a)
+        Click(Rows(tr)[1], "RightButton")
+        A.truthy(m.buttons["Marcar como vendida"])
+        A.is_nil(m.buttons["Marcar como hecha"])
+        m.buttons["Marcar como vendida"]()
+        A.matches("^s,v,", Mine(HU, "Cofia").d)
+        for _, r in ipairs(Rows(tr)) do A.matches("Vendida", r.cells[5]:GetText()) end
+        A.same({ false, false }, { Rows(tr)[1].no:IsShown(), tr.doneBtn:IsEnabled() }, "ya no se marca otra vez")
+        -- (en el tablón, 10 min con «Vendida»; luego, solo en Mis encargos)
+        Click(tr.viewBtns.pub)
+        A.matches("Vendida", Row(tr, "Cofia").actText:GetText())
+        A.falsy(Row(tr, "Cofia").cancel:IsShown())
+        a.w.epoch = a.w.epoch + 601
+        a.w:Advance(60)
+        A.is_nil(Row(tr, "Cofia"))
+        Click(tr.viewBtns.priv)
+        A.equal(2, #Rows(tr))
+        -- (otra, eliminada desde Mis encargos con «Eliminar (N)»: una vez aunque tenga dos filas)
+        Post(a, tr, { item = ItemLink(12345, "Legendaria"), sell = true })
+        local _, id2 = Mine(HU, "Legendaria")
+        WU(a, "Compi-Reino", "TR", "a" .. id2, "t")
+        WU(a, "Jefa-Reino", "TR", "a" .. id2, "t")
+        a.w:Advance(2)
+        Click(tr.viewBtns.priv)
+        local rows = {}
+        for _, r in ipairs(Rows(tr)) do if r.entry.item:find("Legendaria", 1, true) then rows[#rows + 1] = r end end
+        A.equal(2, #rows)
+        Click(rows[1], "LeftButton")
+        a.env.IsShiftKeyDown = function() return true end
+        Click(rows[2], "LeftButton")
+        a.env.IsShiftKeyDown = function() return false end
+        local n0 = #a.w.sent
+        Click(tr.delBtn)
+        A.matches("^g,v,", Mine(HU, "Legendaria").d)
+        local n = 0
+        for i = n0 + 1, #a.w.sent do if a.w.sent[i].text:find("~TR~o" .. id2 .. "~", 1, true) then n = n + 1 end end
+        A.equal(1, n, "una sola vez")
+        A.same({}, a:Errors())
+    end)
+
+    it("una venta de otro: «Me interesa» (aunque no tenga la profesión), la pueden querer varios; en Mis encargos, con quien vende; vendida, «Vendida»; quitarla de mi lista es ya no quererla", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        Professions(a, {})
+        local tr = OpenTrade(a)
+        local id, id2 = Id(HU, "Compi-Reino", 1), Id(HU, "Compi-Reino", 2)
+        local exp = HU.B36(HU.StampNow() + 12 * 3600)
+        WU(a, "Compi-Reino", "TR", "o" .. id, "o,v,1,0,50000,1,-," .. exp .. ",i7931:Cofia de mitril")
+        WU(a, "Compi-Reino", "TR", "o" .. id2, "o,v,1,0,-,1,-," .. exp .. ",i7954:Gran espada")
+        a.w:Advance(2)
+        local row = Row(tr, "Cofia")
+        A.truthy(row.saleTex:IsShown())
+        A.same({ true, true, "Me interesa" }, { row.accept:IsShown(), row.accept:IsEnabled(), row.accept:GetText() })
+        A.matches("12h", row.cells[6]:GetText())
+        -- (los textos caben, también en inglés: el botón, con su letra; «Te interesa», en la casilla de la acción)
+        for _, t in ipairs({ "Me interesa", "I want it" }) do A.truthy(TextWidth(t, 12) + 8 <= row.accept._w, t) end
+        for _, t in ipairs({ "Te interesa", "You want it", "Vendida", "Sold" }) do A.truthy(TextWidth(t, 10) + 8 <= row.actText._w, t) end
+        A.is_nil(Hover(a, row.accept), "sin porqué: no se hace")
+        -- (con «Solo lo que puedo hacer», las ventas no salen en el tablón: no se hacen)
+        Click(tr.onlyCraft)
+        A.is_nil(Row(tr, "Cofia"))
+        Click(tr.onlyCraft)
+        Click(Row(tr, "Cofia").accept)
+        A.equal("t", HU.db.wuStore.UNO.TR["tester-reino,a" .. id].d)
+        row = Row(tr, "Cofia")
+        A.falsy(row.accept:IsShown())
+        A.matches("Te interesa", row.actText:GetText())
+        -- (Jefa también, después: sigue a la venta, con los dos, por orden)
+        WU(a, "Jefa-Reino", "TR", "a" .. id, "t", HU.StampNow() + 1)
+        a.w:Advance(2)
+        A.equal("open", Row(tr, "Cofia").entry.state)
+        A.same({ "Tester-Reino", "Jefa-Reino" }, Row(tr, "Cofia").entry.buyers)
+        -- (en Mis encargos, con Compi: sin tic ni X ni «Vendida»; con «Solo lo que puedo hacer», también)
+        Click(tr.viewBtns.priv)
+        A.same({ "Cofia de mitril" }, Items(tr))
+        local mine = Row(tr, "Cofia")
+        A.matches("Compi", mine.cells[1]:GetText())
+        A.same({ false, false }, { mine.yes:IsShown(), mine.no:IsShown() })
+        Click(mine, "LeftButton")
+        A.matches("Compi", tr.chatTitle:GetText())
+        A.falsy(tr.doneBtn:IsShown(), "no la vendo yo")
+        Click(tr.onlyCraft)
+        A.same({ "Cofia de mitril" }, Items(tr))
+        Click(tr.onlyCraft)
+        -- (Compi la vende: «Vendida»; y lo que me escribe, a su chat)
+        WU(a, "Compi-Reino", "TR", "o" .. id, "s,v,1,0,50000,1,-," .. exp .. ",i7931:Cofia de mitril")
+        a.w:Advance(2)
+        A.matches("Vendida", Row(tr, "Cofia").cells[5]:GetText())
+        a.w:Receive("HU20", "TC~Vendida, lo siento", "WHISPER", "Compi-Reino")
+        A.matches("lo siento", HU.db.tradeChats["Compi-Reino"][#HU.db.tradeChats["Compi-Reino"]])
+        -- (la espada: me interesa y luego la quito de mi lista: ya no la quiero)
+        Click(tr.viewBtns.pub)
+        Click(Row(tr, "Gran espada").accept)
+        Click(tr.viewBtns.priv)
+        local m = FakeMenu(a)
+        Click(Row(tr, "Gran espada"), "RightButton")
+        A.is_nil(m.buttons["Marcar como vendida"], "no es mía")
+        m.buttons["Eliminar"]()
+        A.equal("", HU.db.wuStore.UNO.TR["tester-reino,a" .. id2].d)
+        A.is_nil(Row(tr, "Gran espada"))
+        Click(tr.viewBtns.pub)
+        A.equal("Me interesa", Row(tr, "Gran espada").accept:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("si el juego aún no conoce el objeto, se le pide y se decide al llegar: venderlo (BOE), al tablón; pedirlo (BOE), no; si no llega, pedirlo vale y venderlo no", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        local items, asked = {}, {}
+        Known(a, items)
+        a.env.C_Item.RequestLoadItemDataByID = function(id) asked[#asked + 1] = id end
+        local tr = OpenTrade(a)
+        local d = Post(a, tr, { item = ItemLink(7931, "Cofia de mitril"), sell = true })
+        A.same({ 7931 }, asked, "se le pide")
+        A.truthy(Said(a, "Comprobando el objeto con el juego…"))
+        A.truthy(d:IsShown())
+        A.same({}, Items(tr))
+        -- (llega: es BOE; se publica)
+        items[7931] = { "Cofia de mitril", 2, 40, 4, 2 }
+        a.w:Fire("ITEM_DATA_LOAD_RESULT", 7931, true)
+        A.falsy(d:IsShown())
+        A.same({ "Cofia de mitril" }, Items(tr))
+        A.matches("^o,v,", Mine(HU, "Cofia").d)
+        -- (pedir otro BOE que no conoce: lo que llega de otro objeto no cuenta; al llegar el suyo, no se deja)
+        Post(a, tr, { item = ItemLink(7932, "Otra cofia") })
+        items[7932] = { "Otra cofia", 3, 45, 4, 2 }
+        a.w:Fire("ITEM_DATA_LOAD_RESULT", 9999, true)
+        A.truthy(Said(a, "Comprobando"))
+        a.w:Fire("GET_ITEM_INFO_RECEIVED", 7932, true)
+        A.truthy(Said(a, "Es BOE"))
+        A.truthy(d:IsShown())
+        A.is_nil(Mine(HU, "Otra cofia"))
+        -- (si no llega: pedirlo vale (no se puede comprobar); venderlo, no)
+        Post(a, tr, { item = ItemLink(7933, "Misterio") })
+        a.w:Advance(5)
+        A.falsy(d:IsShown())
+        A.truthy(Mine(HU, "Misterio"))
+        Post(a, tr, { item = ItemLink(7934, "Enigma"), sell = true })
+        a.w:Advance(5)
+        A.truthy(Said(a, "No se ha podido comprobar el objeto: prueba otra vez."))
+        A.truthy(d:IsShown())
+        -- (cerrada antes de que llegue: no se publica)
+        Post(a, tr, { item = ItemLink(7935, "Cerrada"), sell = true })
+        d:Hide()
+        items[7935] = { "Cerrada", 2, 10, 4, 2 }
+        a.w:Fire("ITEM_DATA_LOAD_RESULT", 7935, true)
+        a.w:Advance(5)
+        A.is_nil(Mine(HU, "Cerrada"))
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Comercio (Trade.lua): la pestaña Buscar", function()
+    -- (la comunidad de mi hermandad: yo, Compi (Herrería) y Jefa (Sastrería); el juego, los nombres de profesión e iconos)
+    local function Club(a)
+        a.env.C_Club = {
+            GetGuildClubId = function() return 9 end,
+            GetClubMembers = function() return { 1, 2, 3 } end,
+            GetMemberInfo = function(_, id)
+                if id == 1 then return { name = "Tester", isSelf = true } end
+                if id == 2 then return { name = "Compi", profession1ID = 164, profession1Name = "Herrería", profession1Rank = 1 } end
+                return { name = "Jefa", profession1ID = 197, profession1Name = "Sastrería", profession1Rank = 1 }
+            end,
+        }
+        a.env.C_TradeSkillUI = { GetTradeSkillTexture = function(id) return "icono" .. id end }
+    end
+    -- (lo de OF de otra hermandad, ya llegado: «Nombre-Reino,profesión,datos»)
+    local function PackOf(HU, tag, list)
+        local lines, t = {}, HU.B36(HU.StampNow())
+        for _, x in ipairs(list) do
+            local n, k, d = x:match("^([^,]+),([^,]+),(.*)$")
+            lines[#lines + 1] = n .. "," .. k .. "," .. t .. "," .. d
+        end
+        HU.db.packs = HU.db.packs or {}
+        HU.db.packs[tag] = { OF = { h = { "h1" }, ok = { "h1" }, t = { lines } } }
+        HU.packSets.OF.onChange(tag)
+    end
+    -- (lo que se ve: los objetos y, de quién lo hace, «Nombre ETIQ nivel ✓»)
+    local function Found(tr, lst)
+        local out = {}
+        for _, r in ipairs((lst or tr.items).rows) do
+            if r:IsShown() and r.entry then
+                if r.entry.key then out[#out + 1] = r.cells[1]:GetText():match("%[(.-)%]")
+                else out[#out + 1] = r.entry.name:match("^([^-]+)") .. " " .. r.entry.tag .. " " .. (r.cells[4]:GetText():gsub(" |T.-|t", " ✓")) end
+            end
+        end
+        return out
+    end
+    local function Check(a, menu, text)
+        for _, c in ipairs(menu.checks) do if c.text:find(text, 1, true) then return c.set() end end
+        error("no hay casilla " .. text)
+    end
+
+    it("al lado de Mis encargos: filtros de profesión, nivel de objeto, color y tipo (varios a la vez) entre los fabricables; de cada uno, quién de la unión lo hace, conectados primero; clic, quién lo hace", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        Club(a)
+        -- (tres de Herrería, en el orden de su lista de oficios, una de Sastrería y una de Alquimia)
+        local l = HU.ProfessionsForTests.list(164)
+        local hoja, botas, espada = l[1].id, l[2].id, l[3].id
+        local bolsa, pocion = HU.CRAFT_ITEMS[197][1], HU.CRAFT_ITEMS[171][1]
+        Known(a, { [hoja] = { "Hoja tosca", 1, 6, 2, 0 }, [botas] = { "Botas verdes", 2, 15, 4, 2 },
+            [espada] = { "Espada azul", 3, 30, 2, 2 }, [bolsa] = { "Bolsa de lino", 1, 10, 1, 0 },
+            [pocion] = { "Poción menor", 1, 5, 0, 0 } })
+        -- (Compi (UNO) sabe la espada; Bea (DOS, desconectada) también, con más nivel; Blas (DOS), solo la hoja)
+        WU(a, "Compi-Reino", "OF", "164", "250," .. l.hash .. ",E")
+        PackOf(HU, "DOS", { "Bea-Reino,164,275," .. l.hash .. ",E", "Blas-Reino,164,290," .. l.hash .. ",B" })
+        HU.remoteRoster.DOS = { updated = a.env.GetTime(), members = { { name = "Bea-Reino", online = false }, { name = "Blas-Reino", online = true } } }
+        local asked = {}
+        local crafters = HU.UnionCrafters
+        F.Stub(HU, "UnionCrafters", function(self, q, items, needs)
+            if items and not q then asked[#asked + 1] = next(items) end
+            return crafters(self, q, items, needs)
+        end)
+        local tr = OpenTrade(a)
+        a.w:Advance(40) -- (los nombres, poco a poco: 30 cada medio segundo)
+        A.falsy(tr.filters:IsShown(), "los filtros, solo en Buscar")
+        Click(tr.viewBtns.find)
+        A.truthy(tr.viewBtns.find.picked, "elegido, negro")
+        A.same({ true, false, false, false }, { tr.filters:IsShown(), tr.search:IsShown(), tr.searchBox:IsShown(), tr.onlyCraft:IsShown() })
+        A.same({ true, false, false, true }, { tr.items.list:IsShown(), tr.req.list:IsShown(), tr.chat:IsShown(), tr.found.list:IsShown() })
+        -- (sin filtros, todos los que el juego conoce, de más nivel a menos; se pintan las 4 filas que se ven, y quién lo
+        -- hace solo de esas)
+        A.same({ "Espada azul", "Botas verdes", "Bolsa de lino", "Hoja tosca" }, Found(tr))
+        A.equal(4, tr.items.n)
+        table.sort(asked)
+        local want = { espada, botas, bolsa, hoja }
+        table.sort(want)
+        A.same(want, asked, "quién lo hace, solo de lo que se ve")
+        local rows = tr.items.rows
+        A.same({ "30", "Herrería", true }, { rows[1].cells[2]:GetText(), rows[1].cells[3]:GetText():match("Herrería"),
+            rows[1].cells[3]:GetText():find("icono164", 1, true) ~= nil })
+        A.matches("Compi.*250 |T.-|t |cff9a8f78%+1", rows[1].cells[4]:GetText(), "el conectado primero, con el tic, y cuántos más")
+        A.matches("Nadie", rows[2].cells[4]:GetText())
+        A.matches("Jefa.*—", rows[3].cells[4]:GetText(), "de mi hermandad sin línea: lo que da el juego")
+        A.matches("Blas.*290", rows[4].cells[4]:GetText())
+        A.equal("Elige un objeto para ver quién lo hace.", tr.found.empty:GetText())
+        -- (bajando: la poción, la última)
+        a.env.FauxScrollFrame_SetOffset(tr.items.scroll, 1)
+        tr.items.scroll:GetScript("OnVerticalScroll")(tr.items.scroll, 24)
+        A.same({ "Botas verdes", "Bolsa de lino", "Hoja tosca", "Poción menor" }, Found(tr))
+        -- (profesión: Herrería)
+        local m = FakeMenu(a)
+        Click(tr.filters.prof)
+        A.equal("Profesión", m.title)
+        Check(a, m, "Herrería")
+        A.equal("Herrería", tr.filters.prof:GetText())
+        A.same({ "Espada azul", "Botas verdes", "Hoja tosca" }, Found(tr), "y se vuelve arriba")
+        -- (color: verde y azul)
+        m.checks = {}
+        Click(tr.filters.qual)
+        A.same({ "|cffffffffBlanco|r", "|cff1eff00Verde|r", "|cff0070ddAzul|r", "|cffa335eeMorado|r", "|cffff8000Naranja|r" },
+            { m.checks[1].text, m.checks[2].text, m.checks[3].text, m.checks[4].text, m.checks[5].text })
+        m.checks = {}
+        Click(tr.filters.qual)
+        Check(a, m, "Verde")
+        Check(a, m, "Azul")
+        A.equal("Color (2)", tr.filters.qual:GetText())
+        A.truthy(m.checks[2].is(), "marcada")
+        A.same({ "Espada azul", "Botas verdes" }, Found(tr))
+        -- (nivel de objeto, de 20 a…)
+        tr.filters.lvlMin:SetText("20")
+        tr.filters.lvlMin:GetScript("OnTextChanged")(tr.filters.lvlMin)
+        A.same({ "Espada azul" }, Found(tr))
+        tr.filters.lvlMax:SetText("25")
+        tr.filters.lvlMax:GetScript("OnTextChanged")(tr.filters.lvlMax)
+        A.same({}, Found(tr))
+        A.equal("Ningún objeto fabricable encaja con los filtros.", tr.items.empty:GetText())
+        for _, box in ipairs({ tr.filters.lvlMin, tr.filters.lvlMax }) do box:SetText(""); box:GetScript("OnTextChanged")(box) end
+        -- (tipo: armadura; y armas)
+        m.checks = {}
+        Click(tr.filters.type)
+        Check(a, m, "Armadura")
+        A.same({ "Botas verdes" }, Found(tr))
+        m.checks = {}
+        Click(tr.filters.type)
+        Check(a, m, "Armas")
+        A.equal("Tipo (2)", tr.filters.type:GetText())
+        A.same({ "Espada azul", "Botas verdes" }, Found(tr))
+        -- (clic en la espada: debajo, quién lo hace, conectados primero; elegida)
+        Click(tr.items.rows[1], "LeftButton")
+        A.truthy(tr.items.rows[1].pickTex:IsShown())
+        A.matches("Quién lo hace: .*Espada azul", tr.found.title:GetText())
+        A.same({ "Compi UNO 250 ✓", "Bea DOS 275 ✓" }, Found(tr, tr.found))
+        -- (clic derecho en Compi: pedírsela, con la espada ya puesta)
+        m = FakeMenu(a)
+        Click(tr.found.rows[1], "RightButton")
+        m.buttons["Pedir una receta"]()
+        local d = a.env.GuildUnionTradeNew
+        A.same({ true, "Pedir una receta a Compi-Reino", "Compi-Reino" }, { d:IsShown(), d.title:GetText(), d.to:GetText() })
+        A.matches("Espada azul", d.item:GetText())
+        d:Hide()
+        -- («+ Nuevo anuncio», con lo elegido, al tablón)
+        A.truthy(tr.new:IsShown())
+        Click(tr.new)
+        A.same({ "Nuevo anuncio", true }, { d.title:GetText(), d.expLabel:IsShown() })
+        A.matches("Espada azul", d.item:GetText())
+        d:Hide()
+        -- (fuera los filtros de color y tipo, solo Sastrería: la bolsa (Jefa, sin línea); ya no está la espada elegida)
+        for _, b in ipairs({ tr.filters.qual, tr.filters.type, tr.filters.prof }) do
+            m.checks = {}
+            Click(b)
+            for _, c in ipairs(m.checks) do if c.is() then c.set() end end
+        end
+        A.same({ "Profesión", "Color", "Tipo" }, { tr.filters.prof:GetText(), tr.filters.qual:GetText(), tr.filters.type:GetText() })
+        m.checks = {}
+        Click(tr.filters.prof)
+        Check(a, m, "Sastrería")
+        A.same({ "Bolsa de lino" }, Found(tr))
+        A.same({}, Found(tr, tr.found), "lo elegido ya no encaja")
+        A.matches("Quién lo hace$", tr.found.title:GetText())
+        Click(tr.items.rows[1], "LeftButton")
+        A.same({ "Jefa UNO —" }, Found(tr, tr.found))
+        -- (sin repintar por fotograma)
+        local function Inside(f)
+            while f do if f == tr then return true end f = f._parent end
+            return false
+        end
+        for _, fr in ipairs(a.w.frames) do A.falsy(Inside(fr) and fr._scripts.OnUpdate, "un OnUpdate en Comercio") end
+        -- (de vuelta al Tablón: el buscador y la casilla, sin filtros)
+        Click(tr.viewBtns.pub)
+        A.same({ false, true, true, false }, { tr.filters:IsShown(), tr.search:IsShown(), tr.onlyCraft:IsShown(), tr.items.list:IsShown() })
+        A.same({}, a:Errors())
+    end)
+
+    it("los encantamientos (no son objetos) solo salen sin filtros de color, tipo o nivel; mientras cargan los nombres, lo dice; con OF nuevo se repinta; caben, también en inglés", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        local first = HU.CRAFT_SPELLS[333][1]
+        a.env.C_Spell = {
+            GetSpellName = function(id) if id == first then return "Encantar brazales" end end,
+            GetSpellLink = function(id) if id == first then return "|cff71d5ff|Hspell:" .. id .. "|h[Encantar brazales]|h|r" end end,
+        }
+        local tr = OpenTrade(a)
+        Click(tr.viewBtns.find)
+        A.same({ "Encantar brazales" }, Found(tr))
+        A.equal("—", tr.items.rows[1].cells[2]:GetText(), "sin nivel")
+        local m = FakeMenu(a)
+        Click(tr.filters.qual)
+        Check(a, m, "Verde")
+        A.same({}, Found(tr))
+        m.checks[2].set()
+        A.same({ "Encantar brazales" }, Found(tr))
+        -- (lo que llega de oficios con Buscar a la vista se pinta 2 s después)
+        WU(a, "Compi-Reino", "OF", "333", "300")
+        a.w:Advance(3)
+        A.matches("Compi.*300", tr.items.rows[1].cells[4]:GetText())
+        -- (sin nada del juego todavía)
+        local b = F.Community()
+        Observe(b)
+        b.env.C_Spell = nil
+        local tr2 = OpenTrade(b)
+        Click(tr2.viewBtns.find)
+        A.equal("Cargando los objetos del juego…", tr2.items.empty:GetText())
+        -- (la fila de filtros cabe y no se pisa, en los dos idiomas)
+        for _, x in ipairs({ { b, tr2 }, { F.Community({ locale = "enUS" }) } }) do
+            local c, t = x[1], x[2]
+            if not t then Observe(c); t = OpenTrade(c) end
+            local L, f = c.HU.L, t.filters
+            local right = 0
+            for _, w in ipairs({ f.prof, f.lvlLabel, f.lvlMin, f.lvlTo, f.lvlMax, f.qual, f.type }) do
+                local l, r = Span(t, w)
+                A.truthy(l >= right, "se pisan: " .. l .. " < " .. right)
+                right = r
+            end
+            A.truthy(right <= SECTION_W - 14, "cabe: acaba en " .. right)
+            A.truthy(TextWidth(L("Nivel de objeto:"), 10) <= f.lvlLabel._w, L("Nivel de objeto:"))
+            A.truthy(TextWidth(L("a"), 10) <= f.lvlTo._w, L("a"))
+            -- (lo más largo que puede decir cada botón)
+            for _, y in ipairs({ { f.prof, { L("Primeros auxilios"), L("Encantamiento"), L("Peletería"), L("Profesión") .. " (9)" } },
+                { f.qual, { L("Naranja"), L("Morado"), L("Color") .. " (5)" } },
+                { f.type, { L("Contenedores"), L("Misceláneo"), L("Mercancías"), L("Consumible"), L("Tipo") .. " (7)" } } }) do
+                for _, text in ipairs(y[2]) do A.truthy(TextWidth(text, 12) + 16 <= y[1]._w, "«" .. text .. "» cabe en su botón") end
+            end
+            A.same({}, c:Errors())
+        end
+        A.same({}, a:Errors())
     end)
 end)

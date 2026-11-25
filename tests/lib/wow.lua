@@ -438,6 +438,12 @@ function wow.New(opts)
         GetNumWhoResults = function() return #w.who, w.whoTotal or #w.who end,
         GetWhoInfo = function(i) return w.who[i] end,
     }
+    -- (los objetos, con C_Item como en Forever, que no tiene GetItemInfo suelto: el juego aún no conoce ninguno (la prueba
+    -- pone los suyos en C_Item.GetItemInfo) y pedirlo no hace nada)
+    api.C_Item = {
+        GetItemInfo = function() return nil end,
+        RequestLoadItemDataByID = function() end,
+    }
     -- (los FPS: 60 salvo que la prueba ponga otros en w.fps)
     api.GetFramerate = function() return w.fps or 60 end
     api.GetNetStats = function() return 0, 0, 50, 50 end

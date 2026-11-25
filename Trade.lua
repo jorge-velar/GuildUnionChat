@@ -1,7 +1,7 @@
 -- Guild Union - Comercio (la sección Trade de la lista de miembros) [+ARCHITECTURE.md]
--- Las solicitudes viajan a toda la unión con el conjunto TR (Packs/Trade.lua) y el chat de cada encargo, por susurro (TC).
--- HU:TradeTest (solo por código: las pruebas) la rellena de solicitudes y chats de mentira, que no viajan. Diseño:
--- Obsidian/Addons/GuildUnion - Comercio (diseño).md
+-- Los anuncios (pedir o vender) viajan a toda la unión con el conjunto TR (Packs/Trade.lua) y el chat de cada encargo, por
+-- susurro (TC). HU:TradeTest (solo por código: las pruebas) la rellena de solicitudes y chats de mentira, que no viajan.
+-- Diseño: Obsidian/Addons/GuildUnion - Comercio (diseño).md
 local _, HU = ...
 local L = HU.L
 
@@ -16,49 +16,65 @@ HU:Saved({ char = { "tradeRecipes", "tradeOnlyCraft", tradeReqs = {}, tradeChats
 -- con la ventana del juego a su alto de siempre: comercio_spec)
 local ROW_H, ROWS = 24, 9
 local HDR_H, CELL_PAD = 24, 4
--- (arriba, dos filas: los botones Tablón · Mis encargos (DJ.Switch) y, en ROW2_Y, el buscador y la casilla; las
--- listas van de BODY_Y a BOTTOM_H por encima del borde de abajo, donde va «+ Nueva solicitud» (24 de alto, a 8 del
--- borde), para que no tape nada) [+ARCHITECTURE.md]
+-- (arriba, dos filas: los botones Tablón · Mis encargos · Buscar (DJ.Switch) y, en ROW2_Y, el buscador y la casilla (en
+-- Buscar, los filtros); las listas van de BODY_Y a BOTTOM_H por encima del borde de abajo, donde va «+ Nuevo anuncio» (24
+-- de alto, a 8 del borde), para que no tape nada) [+ARCHITECTURE.md]
 local ROW2_Y, ROW2_H = -36, 28   -- (más pegada a los botones: Jorge, 24/11, «sube un poco más»)
 local BODY_Y, BOTTOM_H = -74, 36   -- (la lista, 6 por debajo del buscador: Jorge, 24/11, «un poco menos» de gris)
 local SEARCH_W = 200
 local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
-local MAX_OPEN = 5          -- solicitudes abiertas por persona
+local FIND_ROWS, FIND_WHO_ROWS = 4, 3 -- en Buscar: los objetos arriba y quién lo hace el elegido, abajo
+local MAX_OPEN = 5          -- anuncios abiertos por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
+local GREY = "|cff9a8f78"
+-- (las ventas, de otro color: su texto y un fondo suave en la fila)
+local SALE, SALE_RGB = "|cff3fd0c0", { 0.25, 0.82, 0.75 }
 local TICK = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local CROSS = "Interface\\RaidFrame\\ReadyCheck-NotReady"
 local CHAT_W = 200
 local DOT_ON = "|TInterface\\FriendsFrame\\StatusIcon-Online:10:10|t"
 local DOT_OFF = "|TInterface\\FriendsFrame\\StatusIcon-Offline:10:10|t"
 local testOnline = { ["Pepe-Prueba"] = true, ["Bea-Prueba"] = true, ["Lyra-Prueba"] = false, ["Jandra-Prueba"] = false }
-local ACT_W = 84            -- la última columna: el botón (Aceptar / Cancelar) o quién la aceptó
+local ACT_W = 84            -- la última columna: el botón (Aceptar / Me interesa / Cancelar) o quién la aceptó
 local COIN_ICON = { "Interface\\MoneyFrame\\UI-GoldIcon", "Interface\\MoneyFrame\\UI-SilverIcon", "Interface\\MoneyFrame\\UI-CopperIcon" }
 local GOLD = { 1, 0.82, 0.2 }
+-- (lo que dura un anuncio del tablón, a elegir al ponerlo: Jorge, 25/11, «desde 5h-12h-24-48h»)
+local EXPIRY_HOURS, EXPIRY_DEFAULT = { 5, 12, 24, 48 }, 24
+local ITEM_WAIT = 5         -- lo que se espera a que el juego conozca un objeto para decidir si es BOE
+local BIND_EQUIP = (Enum and Enum.ItemBind and Enum.ItemBind.OnEquip) or 2
+-- (los filtros de Buscar: colores (la calidad del juego) y tipos (las clases del juego, Enum.ItemClass); varios a la vez)
+local QUALITIES = { { 1, "Blanco", "ffffff" }, { 2, "Verde", "1eff00" }, { 3, "Azul", "0070dd" }, { 4, "Morado", "a335ee" },
+    { 5, "Naranja", "ff8000" } }
+local TYPES = { { "cons", "Consumible", { 0 } }, { "trade", "Mercancías", { 7 } }, { "cont", "Contenedores", { 1, 11 } },
+    { "armor", "Armadura", { 4 } }, { "weapon", "Armas", { 2 } }, { "ammo", "Munición", { 6 } },
+    { "misc", "Misceláneo", { 15 } } }
 
 -- Botones con el estilo del Dungeon Journal (DJStyle.lua): rojos, y negros los elegidos
 local DJ = HU.DJ
 local function Flat(parent, text, w, h) return DJ.Button(parent, text, w, h) end
 
--- Columnas: en el Tablón, con materiales; en Mis encargos (más estrecha, con el chat al lado), sin ellos
+-- Columnas: en el Tablón, con materiales; en Mis encargos (más estrecha, con el chat al lado), sin ellos; en Buscar, los
+-- objetos que encajan con quién lo hace
 local COLS = {
     pub = { { "who", "Quién", 100 }, { "item", "Receta / objeto", 170 }, { "qty", "Cant.", 40 }, { "mats", "Mats", 44 }, { "tip", "Propina", 66 }, { "state", "Estado", 0 },
         { "act", "Acción", ACT_W + 6 } },
     priv = { { "who", "Con quién", 86 }, { "item", "Receta / objeto", 120 }, { "qty", "Cant.", 36 }, { "tip", "Propina", 56 }, { "state", "Estado", 0 } },
     search = { { "who", "Quién", 110 }, { "guild", "Hermandad", 80 }, { "prof", "Profesión", 130 }, { "lvl", "Nivel", 0 } },
+    find = { { "item", "Objeto", 0 }, { "lvl", "Nivel", 44 }, { "prof", "Profesión", 120 }, { "who", "Quién lo hace", 190 } },
 }
 
 -- (lo que se ve: las de prueba y las de la red, juntas; se rehace con Merge)
-local reqs = {}             -- { id, who, item, mats, tip, state = "open"|"taken"|"done"|"gone", taker, pub, to, t, test }
+local reqs = {}             -- { id, who, item, sale, mats, tip, state = "open"|"taken"|"done"|"sold"|"gone", taker, buyers, pub, to, exp, t, test }
 local testReqs = {}         -- las de prueba (HU:TradeTest): solo en este PC
 local netReqs = {}          -- las de la red (HU:TradeRequests, Packs/Trade.lua): se rehacen con Rebuild
 local netDirty = true       -- han cambiado (aviso «trade») o se abre la sección: se rehacen antes de usarlas
 local chats = {}            -- [persona] = { líneas }: uno por persona
 local unread = {}           -- [persona] = sus líneas sin leer (llegadas con su chat fuera de la pantalla)
 local chatKey
-local view = "pub"          -- "pub": el Tablón; "priv": Mis encargos
+local view = "pub"          -- "pub": el Tablón; "priv": Mis encargos; "find": Buscar
 local sortKey, sortDesc     -- nil: lo más nuevo arriba; si no, por esa columna (clic en su título), si la vista la tiene
-local PUB_KEEP = 600        -- una aceptada sigue 10 min en el Tablón
-local selected
+local PUB_KEEP = 600        -- una aceptada (o vendida) sigue 10 min en el Tablón
+local selected              -- la fila elegida (EntryKey)
 local picks = {}            -- Mis encargos: las elegidas con Ctrl / Mayús (para eliminar varias)
 local lastPick              -- la última elegida (para Mayús)
 local ui
@@ -76,8 +92,21 @@ local function NewId()
     idSeq = (idSeq + 1) % 256
     return string.format("%s%06x%02x%04x", HU.Hash(Me()):sub(1, 4), time() % 0x1000000, idSeq, math.random(0, 0xffff))
 end
--- (en una privada, la otra persona: a quién se la pido o quién la hace, o quién me la pide)
-local function Other(r) if IsMine(r) then return r.taker or r.to end return r.who end
+-- (¿me interesa esta venta? lo dije con mi «t»)
+local function Interested(r)
+    for _, n in ipairs(r.buyers or {}) do if IsMe(n) then return true end end
+    return false
+end
+-- (en una privada, la otra persona: a quién se la pido o quién la hace, o quién me la pide. En una venta mía, cada
+-- interesado tiene su fila en Mis encargos: `buyer`)
+local function Other(r)
+    if r.buyer then return r.buyer end
+    if IsMine(r) then return r.taker or r.to end
+    return r.who
+end
+-- (cada fila: su número o, en una venta mía, el número y el interesado)
+local function EntryKey(e) return e.buyer and (e.id .. "|" .. e.buyer:lower()) or e.id end
+local function IdOf(key) return type(key) == "string" and key:match("^[^|]+") or nil end
 local function Plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")) end
 -- (cobre -> «2 [oro] 50 [plata]», con los iconos)
 local function Coins(c)
@@ -121,8 +150,10 @@ local function Query()
     local t = Plain(HU.Trim(ui.search:GetText() or ""))
     return (t:gsub("^%[", ""):gsub("%]$", "")):lower()
 end
--- (¿me toca a mí? la pedí yo, me la piden a mí o la hago yo)
-local function Involved(r) return IsMine(r) or IsMe(r.to) or IsMe(r.taker) end
+-- (¿me toca a mí? la pedí yo, me la piden a mí, la hago yo o me interesa la venta)
+local function Involved(r) return IsMine(r) or IsMe(r.to) or IsMe(r.taker) or (r.sale == true and Interested(r)) end
+-- (caducado: un anuncio del tablón pasada su hora; ya no se ve en ninguna parte. Packs/Trade.lua tampoco lo publica)
+local function Expired(r, now) return r.exp ~= nil and (now or HU.StampNow()) >= r.exp end
 
 ---------------------------------------------------------------------------
 -- Sin leer: las líneas de otro que llegan con su chat fuera de la pantalla [+ARCHITECTURE.md]
@@ -192,7 +223,7 @@ local function OpenChat(key)
 end
 
 ---------------------------------------------------------------------------
--- La red: las solicitudes de toda la unión (conjunto TR, Packs/Trade.lua) y el chat de cada encargo (TC) [+ARCHITECTURE.md]
+-- La red: los anuncios de toda la unión (conjunto TR, Packs/Trade.lua) y el chat de cada encargo (TC) [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local CHAT_MAX = 200                -- letras de una línea del chat que viaja
 local HOLD_FOR, HOLD_MAX = 600, 30  -- lo que llega sin una solicitud entre los dos espera esto (aún no la tengo), tantas como mucho
@@ -210,18 +241,24 @@ local function Merge()
     for _, r in ipairs(netReqs) do reqs[#reqs + 1] = r end
 end
 
--- (la solicitud entre los dos que se ve en Mis encargos: ni canceladas ni quitadas de mi lista)
+-- (el anuncio entre los dos que se ve en Mis encargos, ni cancelado ni quitado de mi lista, y el nombre de su chat: en
+-- una venta mía, el interesado que es)
 local function Between(name)
     for i = #reqs, 1, -1 do
         local r = reqs[i]
-        if not r.test and r.state ~= "gone" and not r.closed and Involved(r) and SameName(Other(r), name) then return r end
+        if not r.test and r.state ~= "gone" and not r.closed and Involved(r) then
+            if r.sale and IsMine(r) then
+                for _, b in ipairs(r.buyers or {}) do if SameName(b, name) then return r, b end end
+            elseif SameName(Other(r), name) then
+                return r, Other(r)
+            end
+        end
     end
 end
--- (una línea de otro, al chat de la solicitud entre los dos; sin ella, false)
+-- (una línea de otro, al chat del anuncio entre los dos; sin él, false)
 local function TakeLine(from, text)
-    local r = Between(from)
+    local r, key = Between(from)
     if not r then return false end
-    local key = Other(r)
     ChatLine(key, key, text)
     return true
 end
@@ -233,23 +270,37 @@ local function RecheckHeld()
     held = keep
 end
 
--- (una privada nueva para mí: un aviso en el chat con quien la pide, que cuenta como sin leer; una vez por solicitud)
+-- (una privada nueva para mí o alguien a quien le interesa una venta mía: un aviso en el chat con esa persona, que cuenta
+-- como sin leer; una vez por solicitud y por interesado)
 local function NotifyNew()
     local seen = HU.db.tradeSeen
     for _, r in ipairs(netReqs) do
         if not seen[r.id] and not r.pub and r.state == "open" and IsMe(r.to) and not IsMine(r) then
             seen[r.id] = time()
-            ChatLine(r.who, r.who, "|cff9a8f78" .. L("Nueva solicitud") .. ":|r " .. r.item .. ((r.qty or 1) > 1 and (" x" .. r.qty) or ""), true)
+            ChatLine(r.who, r.who, GREY .. L("Nueva solicitud") .. ":|r " .. r.item .. ((r.qty or 1) > 1 and (" x" .. r.qty) or ""), true)
+        end
+        if r.sale and r.state == "open" and IsMine(r) then
+            for _, b in ipairs(r.buyers or {}) do
+                local k = r.id .. ":" .. b:lower()
+                if not seen[k] then
+                    seen[k] = time()
+                    ChatLine(b, b, GREY .. L("Le interesa") .. ":|r " .. r.item, true)
+                end
+            end
         end
     end
 end
 
--- Las de la red, otra vez (al abrir la sección, con el aviso «trade» y si cambia mi hermandad), con lo quitado de mi lista
+-- Las de la red, otra vez (al abrir la sección, con el aviso «trade» y si cambia mi hermandad), con lo quitado de mi lista.
+-- Una mía del tablón ya aceptada se vuelve a mandar sin caducidad, para que no se borre a medias [+ARCHITECTURE.md]
 local function Rebuild()
     netDirty, builtTag = false, HU.myTag
     netReqs = HU:TradeRequests()
     local closed = HU.db.tradeClosed
-    for _, r in ipairs(netReqs) do r.closed = closed[r.id] ~= nil or nil end
+    for _, r in ipairs(netReqs) do
+        r.closed = closed[r.id] ~= nil or nil
+        if r.exp and not r.sale and IsMine(r) and (r.state == "taken" or r.state == "done") then HU:TradeKeep(r) end
+    end
     Merge()
     NotifyNew()
     if held[1] then RecheckHeld() end
@@ -358,15 +409,27 @@ local function Repaso()
 end
 
 ---------------------------------------------------------------------------
--- Buscar: arriba, las publicadas que encajan (por quién la pide, el objeto o quién la aceptó); abajo, quién lo
--- hace: los de mi hermandad con una profesión que encaja o con la de un fabricable que encaja (las da el juego).
--- Las otras hermandades, con la red
+-- Objetos: lo que el juego sabe de ellos (C_Item; en Forever no hay GetItemInfo suelto) y si son BOE [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
+local function Pack(...) return { n = select("#", ...), ... } end
+local function Num(v) return (type(v) == "number" and not HU.Secret(v)) and v or nil end
+-- (de un objeto (número, nombre o enlace): { name, link, q (calidad), il (nivel), cls (clase), bind (ligado) }; nil si
+-- el juego aún no lo tiene)
+local function ItemInfo(item)
+    local get = C_Item and C_Item.GetItemInfo
+    if type(get) ~= "function" then return nil end
+    local res = Pack(pcall(get, item))
+    local name, link = res[2], res[3]
+    if not (res[1] and type(name) == "string" and type(link) == "string") or HU.Secret(name) or HU.Secret(link) then return nil end
+    return { name = name, link = link, q = Num(res[4]), il = Num(res[5]), cls = Num(res[13]), bind = Num(res[15]) }
+end
+
 -- Fabricables (CraftItems.lua): el juego da su nombre y enlace en tu idioma; se piden poco a poco (30 cada
 -- medio segundo) desde que se monta la sección (al cargar la ventana de hermandad del juego), y los que tarda se
--- reintentan dos vueltas más [+ARCHITECTURE.md]
-local craft = {}            -- [objeto] (o ["s" .. hechizo]) = { key = nombre en minúsculas, link, skill, lv }
+-- reintentan dos vueltas más. De paso se guardan su calidad, su nivel y su clase, para Buscar [+ARCHITECTURE.md]
+local craft = {}            -- [objeto] (o ["s" .. hechizo]) = { key = nombre en minúsculas, link, skill, lv, q, il, cls, bind }
 local craftLoader
+local findDirty = true      -- Buscar: la lista de objetos que encajan, por rehacer (cambia un filtro o llegan objetos)
 -- (los encantamientos son hechizos, no objetos: el juego da su nombre y su enlace al momento, sin pedirlos)
 local function LoadCraftSpells()
     local S = C_Spell
@@ -379,6 +442,7 @@ local function LoadCraftSpells()
             if okN and okL and type(name) == "string" and type(link) == "string" and not HU.Secret(name)
                 and not HU.Secret(link) then
                 craft["s" .. id] = { key = HU.Fold(name), link = link, skill = skill, lv = list[i + 1] }
+                findDirty = true
             end
         end
     end
@@ -393,25 +457,54 @@ local function LoadCraftNames()
             info[list[i]] = { skill = skill, lv = list[i + 1] }
         end
     end
-    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
     local pos, pass, missing = 1, 1, {}
     craftLoader = HU:Every(0.5, "Comercio: nombres", function()
         for _ = 1, 30 do
             local id = queue[pos]
             if not id then
+                -- (una vuelta entera: con Buscar a la vista, se pinta lo que ha llegado)
+                if ui and view == "find" and ui:IsVisible() then Paint() end
                 if pass >= 3 or #missing == 0 then craftLoader:Cancel(); return end
                 queue, missing, pos, pass = missing, {}, 1, pass + 1
                 return
             end
             pos = pos + 1
-            local ok, name, link = pcall(get, id)
-            if ok and type(name) == "string" and type(link) == "string" and not HU.Secret(name) then
-                craft[id] = { key = HU.Fold(name), link = link, skill = info[id].skill, lv = info[id].lv }
+            local it = ItemInfo(id)
+            if it then
+                craft[id] = { key = HU.Fold(it.name), link = it.link, skill = info[id].skill, lv = info[id].lv, q = it.q,
+                    il = it.il, cls = it.cls, bind = it.bind }
+                findDirty = true
             else
                 missing[#missing + 1] = id
             end
         end
     end, { pauseInCombat = true })
+end
+
+-- (el número del objeto que pide un anuncio: su enlace o, lo escrito a mano, el nombre exacto de un fabricable; un
+-- hechizo o un encantamiento no es un objeto)
+local function ItemIdOf(item)
+    if type(item) ~= "string" or HU.Secret(item) then return nil end
+    local id = item:match("|Hitem:(%d+)")
+    if id then return tonumber(id) end
+    if item:find("|H", 1, true) then return nil end
+    local name = HU.Fold(Plain(item)):gsub("^%s*%[", ""):gsub("%]%s*$", "")
+    for k, c in pairs(craft) do if type(k) == "number" and c.key == name then return k end end
+    return nil
+end
+-- ¿Es BOE (se liga al equipar, de verde a legendario)? true o false, y el número del objeto. nil si el juego aún no lo
+-- conoce: se le pide y avisa al llegar (ITEM_DATA_LOAD_RESULT). Lo que no es un objeto, no [+ARCHITECTURE.md]
+local function BoeOf(item)
+    local id = ItemIdOf(item)
+    if not id then return false end
+    local it = ItemInfo(id)
+    if not it then
+        local ask = C_Item and C_Item.RequestLoadItemDataByID
+        if type(ask) == "function" then pcall(ask, id) end
+        return nil, id
+    end
+    local q = it.q or 0
+    return it.bind == BIND_EQUIP and q >= 2 and q <= 5, id
 end
 
 -- (las profesiones y el nivel que hacen falta para algo que encaje con q, por su nombre, y lo que encaja ([clave] = true).
@@ -434,6 +527,37 @@ local function CraftNeeds(q)
     return needs, keys
 end
 
+-- (los de mi hermandad con sus profesiones de la comunidad, { name, tag, prof, icon, id, online, rank } por profesión; se
+-- leen una vez por repintado)
+local clubRows
+local function ClubRows()
+    if clubRows then return clubRows end
+    clubRows = {}
+    local cid = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
+    local ok, ids = false, nil
+    if cid and not HU.Secret(cid) then ok, ids = pcall(C_Club.GetClubMembers, cid) end
+    for _, id in ipairs((ok and type(ids) == "table") and ids or {}) do
+        local ok2, info = pcall(C_Club.GetMemberInfo, cid, id)
+        local n = ok2 and info and info.name
+        if type(n) == "string" and not HU.Secret(n) then
+            local off = Enum and Enum.ClubMemberPresence and info.presence == Enum.ClubMemberPresence.Offline
+            local full = HU:FullName(n) or n
+            for _, p in ipairs(HU:ClubProfessions(info)) do
+                clubRows[#clubRows + 1] = { name = full, tag = HU.myTag, prof = p.name, icon = p.icon, id = p.id,
+                    online = not off, rank = p.rank }
+            end
+        end
+    end
+    return clubRows
+end
+local function ClubRow(m) return { name = m.name, tag = m.tag, prof = m.prof, icon = m.icon, online = m.online, rank = m.rank } end
+-- (¿tiene ya línea de oficios de esa profesión? Entonces vale lo que dice su línea, también si seguro que no sabe la
+-- receta: no sale otra vez con lo que da el juego)
+local function HasLine(name, skill)
+    for _, p in ipairs(HU:UnionProfessionsOf(name) or {}) do if p.id == skill then return true end end
+    return false
+end
+
 -- «Quién lo hace»: los de toda la unión con su línea de oficios (Packs/Professions.lua: nivel de verdad y si saben la
 -- receta, también desconectados) y los de mi hermandad que no la tienen, con lo que da el juego [+ARCHITECTURE.md]
 local function SearchMembers(q)
@@ -445,23 +569,12 @@ local function SearchMembers(q)
         out[#out + 1] = r
         have[(HU:Key(r.name) or r.name) .. "|" .. r.skill] = true
     end
-    local cid = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
-    local ok, ids = false, nil
-    if cid and not HU.Secret(cid) then ok, ids = pcall(C_Club.GetClubMembers, cid) end
-    for _, id in ipairs((ok and type(ids) == "table") and ids or {}) do
-        local ok2, info = pcall(C_Club.GetMemberInfo, cid, id)
-        local n = ok2 and info and info.name
-        if type(n) == "string" and not HU.Secret(n) then
-            local off = Enum and Enum.ClubMemberPresence and info.presence == Enum.ClubMemberPresence.Offline
-            local full = HU:FullName(n) or n
-            for _, p in ipairs(HU:ClubProfessions(info)) do
-                local need = needs and type(p.id) == "number" and needs[p.id]
-                -- (sin nivel —el de los demás, que la comunidad no da—: sale si tiene la profesión)
-                if not have[full:lower() .. "|" .. tostring(p.id)]
-                    and (HU.TextRank(p.name, q) or (need and (p.rank == nil or p.rank >= need))) then
-                    out[#out + 1] = { name = full, tag = HU.myTag, prof = p.name, icon = p.icon, online = not off, rank = p.rank }
-                end
-            end
+    for _, m in ipairs(ClubRows()) do
+        local need = needs and type(m.id) == "number" and needs[m.id]
+        -- (sin nivel —el de los demás, que la comunidad no da—: sale si tiene la profesión)
+        if not have[m.name:lower() .. "|" .. tostring(m.id)] and not HasLine(m.name, m.id)
+            and (HU.TextRank(m.prof, q) or (need and (m.rank == nil or m.rank >= need))) then
+            out[#out + 1] = ClubRow(m)
         end
     end
     -- (primero quien sabe la receta; luego los de nivel sabido, de más a menos; los demás, detrás)
@@ -471,6 +584,50 @@ local function SearchMembers(q)
         if ra ~= rb then return ra > rb end
         return a.name < b.name
     end)
+    return out
+end
+
+---------------------------------------------------------------------------
+-- Buscar (la pestaña): los fabricables que encajan con los filtros (profesión, nivel de objeto, color y tipo; de varios,
+-- cualquiera) y, de cada uno, quién de la unión lo hace, conectados primero. La lista, solo al cambiar un filtro o al
+-- llegar objetos; quién lo hace, solo de las filas que se ven [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local findProf, findQual, findType = {}, {}, {}   -- [profesión] / [calidad] / [tipo] = true
+local findMin, findMax                             -- nivel de objeto, de… a…
+local findList                                     -- lo que encaja: { key, item, il, skill, lv, name }
+local findSel                                      -- el elegido (su clave)
+local crafters = {}                                -- [clave] = quién lo hace (se vacía en cada repintado)
+local function FindItems(idx)
+    if findList and not findDirty then return findList end
+    findDirty = false
+    local classes = {}
+    for _, t in ipairs(TYPES) do if findType[t[1]] then for _, c in ipairs(t[3]) do classes[c] = true end end end
+    local anyP, anyQ, anyT = next(findProf) ~= nil, next(findQual) ~= nil, next(findType) ~= nil
+    -- (un encantamiento no es un objeto: no tiene color, tipo ni nivel; con uno de esos filtros, fuera)
+    local itemOnly = anyQ or anyT or findMin ~= nil or findMax ~= nil
+    local out = {}
+    for k, c in pairs(craft) do
+        local spell = type(k) ~= "number"
+        local skill, lv
+        for _, t in ipairs(idx[k] or {}) do
+            if (not anyP or findProf[t.skill]) and (lv == nil or t.lv < lv) then skill, lv = t.skill, t.lv end
+        end
+        local ok = skill ~= nil and not (spell and itemOnly)
+        if ok and not spell then
+            ok = (not anyQ or findQual[c.q] == true) and (not anyT or classes[c.cls] == true)
+                and (not findMin or (c.il or -1) >= findMin) and (not findMax or (c.il or math.huge) <= findMax)
+        end
+        if ok then out[#out + 1] = { key = k, item = c.link, il = (not spell) and c.il or nil, skill = skill, lv = lv, name = c.key } end
+    end
+    -- (de más nivel a menos; sin nivel, detrás; luego por el que pide la profesión y por nombre)
+    table.sort(out, function(a, b)
+        local ia, ib = a.il or -1, b.il or -1
+        if ia ~= ib then return ia > ib end
+        if a.lv ~= b.lv then return a.lv > b.lv end
+        if a.name ~= b.name then return a.name < b.name end
+        return tostring(a.key) < tostring(b.key)
+    end)
+    findList = out
     return out
 end
 
@@ -501,6 +658,57 @@ local function CraftIndex()
     return craftIndex
 end
 
+-- Quién lo hace un fabricable (su clave): los de la unión con su línea de oficios que lo saben o tienen el nivel, y los de
+-- mi hermandad sin línea que tienen la profesión; conectados primero, luego quien sabe la receta y por nivel
+local function CraftersOf(key)
+    if crafters[key] then return crafters[key] end
+    local needs = {}
+    for _, t in ipairs(CraftIndex()[key] or {}) do
+        if needs[t.skill] == nil or t.lv < needs[t.skill] then needs[t.skill] = t.lv end
+    end
+    local out = {}
+    for _, r in ipairs(HU:UnionCrafters(nil, { [key] = true }, needs)) do
+        r.online = Status(r.name)
+        out[#out + 1] = r
+    end
+    for _, m in ipairs(ClubRows()) do
+        local need = type(m.id) == "number" and needs[m.id]
+        if need and (m.rank == nil or m.rank >= need) and not HasLine(m.name, m.id) then out[#out + 1] = ClubRow(m) end
+    end
+    table.sort(out, function(a, b)
+        if (a.online == true) ~= (b.online == true) then return a.online == true end
+        if (a.knows == true) ~= (b.knows == true) then return a.knows == true end
+        local ra, rb = a.rank or -1, b.rank or -1
+        if ra ~= rb then return ra > rb end
+        return a.name < b.name
+    end)
+    crafters[key] = out
+    return out
+end
+-- (en la fila de un objeto: el primero que lo hace, con su circulito, su nivel y el tic, y cuántos más)
+local function WhoSummary(list)
+    local c = list[1]
+    if not c then return "|cff808080" .. L("Nadie") .. "|r" end
+    local s = (IsMe(c.name) and MINE or OTHERS) .. HU:Short(c.name) .. "|r " .. (c.online and DOT_ON or DOT_OFF) .. " "
+        .. (c.rank and tostring(c.rank) or "—") .. (c.knows and (" |T" .. TICK .. ":12:12|t") or "")
+    if #list > 1 then s = s .. " " .. GREY .. "+" .. (#list - 1) .. "|r" end
+    return s
+end
+-- (el icono de una profesión, el del juego, si lo da: se recuerda)
+local profIcons = {}
+local function ProfLabel(skill)
+    if profIcons[skill] == nil then
+        local f = C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillTexture
+        local ok, tex = false, nil
+        if type(f) == "function" then ok, tex = pcall(f, skill) end
+        profIcons[skill] = (ok and tex and not HU.Secret(tex)) and tex or false
+    end
+    local icon = profIcons[skill]
+    return (icon and ("|T" .. icon .. ":14:14|t ") or "") .. L(PROF_NAMES[skill] or "?")
+end
+-- (el enlace del objeto elegido en Buscar, para pedirlo)
+local function FindLink() return findSel and craft[findSel] and craft[findSel].link or nil end
+
 -- (lo que pide una solicitud, entre los fabricables: su lista de CraftIndex, o nil si no se reconoce. Un enlace de
 -- objeto o de encantamiento, por su número; lo escrito a mano, por el nombre exacto que da el juego)
 local function CraftTargets(item)
@@ -516,7 +724,6 @@ local function CraftTargets(item)
 end
 
 -- (mis profesiones: [número] = nivel; false si el juego no las da: entonces no se puede comprobar)
-local function Pack(...) return { n = select("#", ...), ... } end
 local function MyProfessions()
     if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then return false end
     local res = Pack(pcall(GetProfessions))
@@ -648,9 +855,19 @@ HU:On("TRADE_SKILL_LIST_UPDATE", QueueRead)
 -- Solicitudes
 ---------------------------------------------------------------------------
 local function StateText(r)
-    if r.state == "done" then return "|cff9a8f78" .. L("Hecha") .. "|r" end
+    if r.sale then
+        if r.state == "sold" then return GREY .. L("Vendida") .. "|r" end
+        return SALE .. L("Venta") .. "|r"
+    end
+    if r.state == "done" then return GREY .. L("Hecha") .. "|r" end
     if r.state == "taken" then return "|cff40ff40" .. L("Aceptada") .. "|r" end
     return L("Abierta")
+end
+-- (en el Tablón, cuánto le queda a uno abierto: «5h» o, la última hora, «<1h»; en minutos no cabía sin apretar)
+local function TimeLeft(r, now)
+    if not r.exp or r.state ~= "open" then return "" end
+    local s = r.exp - now
+    return " " .. GREY .. (s >= 3600 and (math.floor(s / 3600 + 0.5) .. "h") or "<1h") .. "|r"
 end
 
 local function Matches(r, q)
@@ -663,38 +880,53 @@ end
 -- (¿está puesta «Solo lo que puedo hacer»? vale en las dos vistas y al buscar)
 local function OnlyCraft() return HU.db ~= nil and HU.db.tradeOnlyCraft == true end
 
+-- (¿sale en el Tablón? los abiertos y, 10 min más, los aceptados, con quién lo aceptó, y los vendidos; con la hora del
+-- servidor, la de la red)
+local function OnBoard(r, now)
+    if r.pub ~= true then return false end
+    if r.state == "open" then return true end
+    if r.state == "taken" then return now - (r.takenAt or 0) < PUB_KEEP end
+    return r.state == "sold" and now - (r.soldAt or 0) < PUB_KEEP
+end
+
 -- (profs: las de MyProfessions, si ya están leídas)
 local function Visible(profs)
     local out = {}
     local q = Searching() and Query()
     local priv = view == "priv" and not q
     local only = OnlyCraft()
+    local now = HU.StampNow()
     if only and profs == nil then profs = MyProfessions() end
     for i = #reqs, 1, -1 do
         local r = reqs[i]
         local ok
-        if q then
-            ok = r.pub == true and (r.state == "open" or (r.state == "taken" and HU.StampNow() - (r.takenAt or 0) < PUB_KEEP))
-                and Matches(r, q)
-        elseif view == "pub" then
-            -- (Tablón: las públicas abiertas y, 10 min más, las aceptadas, con quién la aceptó; con la hora del servidor, la
-            -- de la red)
-            ok = r.pub == true and (r.state == "open" or (r.state == "taken" and HU.StampNow() - (r.takenAt or 0) < PUB_KEEP))
+        if r.state == "gone" or Expired(r, now) then
+            ok = false
+        elseif not priv then
+            -- (Tablón y, al buscar, lo publicado que encaja)
+            ok = OnBoard(r, now) and (not q or Matches(r, q))
         else
-            -- (Mis encargos: las que me tocan: las mías, las que me piden a mí y las que hago yo)
-            -- (una pública sin aceptar no tiene a nadie al otro lado: solo sale en el Tablón)
-            ok = Involved(r) and not r.closed and not (r.pub and r.state == "open")
+            -- (Mis encargos: las que me tocan: las mías, las que me piden a mí, las que hago yo y las ventas que me
+            -- interesan. Una pública sin aceptar no tiene a nadie al otro lado: solo sale en el Tablón; una venta mía,
+            -- una fila con cada interesado)
+            ok = Involved(r) and not r.closed
+            if ok and r.sale and IsMine(r) then
+                for _, b in ipairs(r.buyers or {}) do out[#out + 1] = setmetatable({ buyer = b }, { __index = r }) end
+                ok = false
+            elseif ok and not r.sale then
+                ok = not (r.pub and r.state == "open")
+            end
         end
-        -- (con la casilla: en el Tablón y al buscar, solo lo que se reconoce y puedo hacer; en Mis encargos, fuera lo que
-        -- haría yo y no puedo hacer, y lo que pedí yo, siempre: Jorge, 24/11)
+        -- (con la casilla: en el Tablón y al buscar, solo lo que se reconoce y puedo hacer (una venta no se hace); en Mis
+        -- encargos, fuera lo que haría yo y no puedo hacer, y lo que pedí yo o quiero comprar, siempre: Jorge, 24/11)
         if ok and only then
-            if priv then ok = IsMine(r) or (CraftCheck(r.item, profs))
-            else ok = CraftTargets(r.item) ~= nil and (CraftCheck(r.item, profs)) end
+            if priv then ok = IsMine(r) or r.sale or (CraftCheck(r.item, profs))
+            else ok = not r.sale and CraftTargets(r.item) ~= nil and (CraftCheck(r.item, profs)) end
         end
-        if ok and r.state ~= "gone" then out[#out + 1] = r end
+        if ok then out[#out + 1] = r end
     end
     if sortKey then
-        local STATE = { open = 1, taken = 2, done = 3 }
+        local STATE = { open = 1, taken = 2, done = 3, sold = 4 }
         local function V(r)
             -- (Quién: lo que enseña la columna; en Mis encargos, la otra persona)
             if sortKey == "who" then return (priv and Other(r) or r.who or ""):lower() end
@@ -716,11 +948,11 @@ local function Visible(profs)
     return out
 end
 
--- (las mías sin terminar, para el tope: abiertas o aceptadas; las que he quitado de mi lista ya no cuentan)
+-- (los míos sin terminar, para el tope: abiertos o aceptados; los quitados de mi lista y los caducados ya no cuentan)
 local function OpenCount()
-    local n = 0
+    local n, now = 0, HU.StampNow()
     for _, r in ipairs(reqs) do
-        if IsMine(r) and not r.closed and (r.state == "open" or r.state == "taken") then n = n + 1 end
+        if IsMine(r) and not r.closed and (r.state == "open" or r.state == "taken") and not Expired(r, now) then n = n + 1 end
     end
     return n
 end
@@ -731,19 +963,26 @@ local function Live(r) Fresh(); return FindReq(r.id) or r end
 
 -- Las acciones de las de la red pasan por HU:Propose (Packs/Trade.lua) y se ven al repintar; las de prueba cambian aquí
 -- Aceptar una de otro: la haces tú (sigue en el Tablón con tu nombre, y aparece en tus encargos con su chat). Solo si
--- puedes hacerla (HU:CanCraft): el botón ya sale apagado
+-- puedes hacerla (HU:CanCraft): el botón ya sale apagado. Una venta: «Me interesa», la pueden querer varios
 local function Accept(r)
     r = Live(r)
-    if IsMine(r) or r.state ~= "open" or not HU:CanCraft(r.item) then return end
-    if r.test then r.state, r.taker, r.takenAt = "taken", Me(), HU.StampNow()
-    elseif not HU:TradeAnswer(r.id, "t") then return end
+    if IsMine(r) or r.state ~= "open" then return end
+    if r.sale then
+        if Interested(r) then return end
+        if r.test then r.buyers = r.buyers or {}; table.insert(r.buyers, Me())
+        elseif not HU:TradeAnswer(r.id, "t") then return end
+    else
+        if not HU:CanCraft(r.item) then return end
+        if r.test then r.state, r.taker, r.takenAt = "taken", Me(), HU.StampNow()
+        elseif not HU:TradeAnswer(r.id, "t") then return end
+    end
     OpenChat(r.who)
     Paint()
 end
--- La X: mía, cancelarla; de otro (privada, me la piden a mí), rechazarla
+-- La X: mía, cancelarla (una venta, eliminarla); de otro (privada, me la piden a mí), rechazarla
 local function Cancel(r)
     r = Live(r)
-    if r.state == "done" or not (IsMine(r) or IsMe(r.to)) then return end
+    if r.state == "done" or r.state == "sold" or not (IsMine(r) or IsMe(r.to)) then return end
     if r.test then r.state = "gone"
     elseif IsMine(r) then HU:TradeCancel(r)
     else HU:TradeAnswer(r.id, "r") end
@@ -751,8 +990,9 @@ local function Cancel(r)
     Paint()
 end
 
--- (eliminar de Mis encargos: la mía sin aceptar se cancela; las demás solo se quitan de mi lista, y la que hago yo y no
--- está hecha, además, se suelta: vuelve a estar abierta para quien la pidió)
+-- (eliminar de Mis encargos: el mío sin aceptar (o la venta mía, sin vender) se cancela; los demás solo se quitan de mi
+-- lista, y la que hago yo y no está hecha, además, se suelta: vuelve a estar abierta para quien la pidió. Una venta que
+-- me interesaba: ya no)
 local function RemoveReq(r)
     r = Live(r)
     if IsMine(r) and r.state == "open" then
@@ -762,7 +1002,18 @@ local function RemoveReq(r)
     r.closed = true
     if r.test then return end
     HU.db.tradeClosed[r.id] = time()
-    if r.state == "taken" and IsMe(r.taker) then HU:TradeAnswer(r.id, "") end
+    if (r.state == "taken" and IsMe(r.taker)) or (r.sale and r.state == "open" and Interested(r)) then HU:TradeAnswer(r.id, "") end
+end
+-- (eliminar las marcadas, una vez cada una: en una venta mía, varias filas son la misma)
+local function RemovePicked()
+    local done = {}
+    for key in pairs(picks) do
+        local id = IdOf(key)
+        local x = not done[id] and FindReq(id)
+        if x then done[id] = true; RemoveReq(x) end
+    end
+    picks, selected = {}, nil
+    Paint()
 end
 -- «Hecha»: solo quien la hace (quien la aceptó) y mientras está aceptada
 local function CanMarkDone(r) return r ~= nil and r.state == "taken" and IsMe(r.taker) end
@@ -772,9 +1023,18 @@ local function MarkDone(r)
     if r.test then r.state = "done" else HU:TradeAnswer(r.id, "d") end
     Paint()
 end
+-- «Vendida»: solo quien vende y mientras sigue a la venta; deja de estar abierta para todos
+local function CanMarkSold(r) return r ~= nil and r.sale == true and r.state == "open" and IsMine(r) end
+local function MarkSold(r)
+    r = r and Live(r)
+    if not CanMarkSold(r) then return end
+    if r.test then r.state, r.soldAt = "sold", HU.StampNow() else HU:TradeSold(r) end
+    Paint()
+end
 
 -- Clic derecho en una fila: la otra persona (susurrar, invitar al grupo); en Mis encargos, marcarla como hecha (si la
--- hago yo y está aceptada) y eliminarla; en la búsqueda, pedirle una receta; y Cancelar (cierra el menú)
+-- hago yo y está aceptada) y eliminarla; una venta mía, marcarla vendida; en la búsqueda, pedirle una receta (en Buscar,
+-- el objeto elegido); y Cancelar (cierra el menú)
 local function RowMenu(owner, r)
     if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
     local person
@@ -791,20 +1051,19 @@ local function RowMenu(owner, r)
                 local fn = C_PartyInfo and C_PartyInfo.InviteUnit
                 if fn then pcall(fn, HU:FullName(person) or person) end
             end)
-            if not r.id then root:CreateButton(L("Pedir una receta"), function() ui.OpenNew(person) end) end
+            if not r.id then root:CreateButton(L("Pedir una receta"), function() ui.OpenNew(person, view == "find" and FindLink() or nil) end) end
         end
         if priv and CanMarkDone(r) then
             root:CreateButton(L("Marcar como hecha"), function() MarkDone(r) end)
+        end
+        if r.id and CanMarkSold(r) then
+            root:CreateButton(L("Marcar como vendida"), function() MarkSold(r) end)
         end
         if priv then
             local n = 0
             for _ in pairs(picks) do n = n + 1 end
             if n > 0 then
-                root:CreateButton(string.format(L("Eliminar (%d)"), n), function()
-                    for id in pairs(picks) do local x = FindReq(id); if x then RemoveReq(x) end end
-                    picks, selected = {}, nil
-                    Paint()
-                end)
+                root:CreateButton(string.format(L("Eliminar (%d)"), n), RemovePicked)
             else
                 root:CreateButton(L("Eliminar"), function() RemoveReq(r); selected = nil; Paint() end)
             end
@@ -860,12 +1119,35 @@ local function ReqCols()
     return out
 end
 
+-- (Buscar: arriba los objetos que encajan; debajo, quién lo hace el elegido, con su nombre en el título)
+local function LayoutFind()
+    local items, found = ui.items, ui.found
+    ui.chat:Hide(); ui.req.list:Hide()
+    items.list:ClearAllPoints()
+    items.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0); items.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0)
+    items.n = FIND_ROWS
+    Titled(items, nil)
+    items.list:Show()
+    found.n = FIND_WHO_ROWS
+    found.list:ClearAllPoints()
+    found.list:SetPoint("TOPLEFT", items.list, "BOTTOMLEFT", 0, -6); found.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0)
+    local link = FindLink()
+    Titled(found, link and (L("Quién lo hace") .. ": " .. link) or L("Quién lo hace"))
+    found.list:Show()
+    Columns(items, COLS.find, 4)
+    Columns(found, COLS.search, 4)
+    ui.new:ClearAllPoints()
+    ui.new:SetPoint("BOTTOM", ui, "BOTTOM", 0, 8)
+    ui.new:Show()
+end
+
 -- En Mis encargos, con el chat a la derecha; en el Tablón, a todo lo ancho. Al buscar: arriba las publicadas que
 -- encajan y abajo quién lo hace [+ARCHITECTURE.md]. `list`: las solicitudes que se ven (Visible)
 local function Layout(cols, list)
     local searching = Searching()
     local priv = view == "priv" and not searching
     local req, found = ui.req, ui.found
+    ui.items.list:Hide()
     -- (en Mis encargos, el chat siempre a la derecha)
     local withChat = priv
     ui.chat:SetShown(withChat)
@@ -887,7 +1169,7 @@ local function Layout(cols, list)
     found.list:SetShown(searching)
     Columns(req, cols, priv and 44 or 4)
     if searching then Columns(found, COLS.search, 4) end
-    -- («+ Nueva solicitud», en el centro de la sección; en Mis encargos, en el de la lista, que deja la derecha al chat:
+    -- («+ Nuevo anuncio», en el centro de la sección; en Mis encargos, en el de la lista, que deja la derecha al chat:
     -- así no choca con él. Jorge, 24/11)
     ui.new:ClearAllPoints()
     ui.new:SetPoint("BOTTOM", ui, "BOTTOM", withChat and -(24 + CHAT_W) / 2 or 0, 8)
@@ -901,11 +1183,11 @@ local function PaintRows(lst, list, fill)
         local e = i <= lst.n and list[off + i] or nil
         row.entry = e
         row.accept:Hide(); row.cancel:Hide(); row.actText:Hide()
-        row.itemBtn:SetShown(e ~= nil and e.id ~= nil); row.yes:Hide(); row.no:Hide(); row.pickTex:Hide()
+        row.itemBtn:SetShown(e ~= nil and e.item ~= nil); row.yes:Hide(); row.no:Hide(); row.pickTex:Hide(); row.saleTex:Hide()
         if e then fill(row, e); row:Show() else row:Hide() end
         -- (el clic del enlace, solo encima del texto del enlace, no en toda la casilla)
         if row.itemBtn:IsShown() then
-            local fs = row.cells[2]
+            local fs = row.cells[lst.itemCol or 2]
             local w = fs:GetStringWidth() or 0
             local cw = fs:GetWidth() or w
             row.itemBtn:SetWidth(math.max(8, math.min(w, cw > 0 and cw or w) + 2))
@@ -914,20 +1196,59 @@ local function PaintRows(lst, list, fill)
     lst.empty:SetShown(#list == 0)
 end
 
+-- (una fila de «Quién lo hace»: con su color de siempre y el circulito; clic derecho: pedir una receta. El tic: sabe la
+-- receta)
+local function FillWho(row, e)
+    local c = row.cells
+    c[1]:SetText((e.name == Me() and MINE or OTHERS) .. HU:Short(e.name) .. "|r " .. (e.online and DOT_ON or DOT_OFF))
+    c[2]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
+    c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof)
+    c[4]:SetText((e.rank and tostring(e.rank) or "—") .. (e.knows and (" |T" .. TICK .. ":12:12|t") or ""))
+end
+
+-- Buscar: los objetos que encajan (quién lo hace, solo de los que se ven) y quién lo hace el elegido
+local function PaintFind()
+    local items = FindItems(CraftIndex())
+    local still = false
+    for _, e in ipairs(items) do if e.key == findSel then still = true; break end end
+    if not still then findSel = nil end
+    LayoutFind()
+    ui.items.empty:SetText(next(craft) and L("Ningún objeto fabricable encaja con los filtros.") or L("Cargando los objetos del juego…"))
+    PaintRows(ui.items, items, function(row, e)
+        local c = row.cells
+        row.pickTex:SetShown(e.key == findSel)
+        c[1]:SetText(e.item)
+        c[2]:SetText(e.il and tostring(e.il) or "—")
+        c[3]:SetText(ProfLabel(e.skill))
+        c[4]:SetText(WhoSummary(CraftersOf(e.key)))
+    end)
+    ui.found.empty:SetText(findSel and L("Nadie de la unión lo hace.") or L("Elige un objeto para ver quién lo hace."))
+    PaintRows(ui.found, findSel and CraftersOf(findSel) or {}, FillWho)
+end
+
 function Paint()
     if not (ui and ui:IsShown()) then return end
     -- (comercio apagado por el maestro: solo el panel con el aviso; ni interruptor, ni buscador, ni casilla, ni pedir)
     local off = HU:UnionCfg().tradeOff and true or false
+    local find = view == "find"
     ui.offMsg:SetShown(off)
     for _, w in ipairs(ui.onlyOn) do w:SetShown(not off) end
+    -- (la fila 2: el buscador y la casilla; en Buscar, los filtros)
+    for _, w in ipairs(ui.row2) do w:SetShown(not off and not find) end
+    ui.filters:SetShown(not off and find)
     if off then ui.newDlg:Hide(); return end
     Fresh()
     BuildOnline()
+    clubRows, crafters = nil, {}
     local searching = Searching()
     -- (el chat que queda en pantalla, leído; antes de pintar las filas, que llevan lo de cada uno)
     if ChatOnScreen(chatKey) then MarkRead(chatKey) end
     PaintUnread()
     for k, b in pairs(ui.viewBtns) do b:SetSelected(k == view and not searching) end
+    if find then
+        ui.delBtn:Hide(); ui.doneBtn:Hide()
+        return PaintFind()
+    end
     -- (se ordena por una columna de la vista: si esta no la tiene (Mats y Acción solo están en el Tablón; sin propinas,
     -- tampoco la suya), vuelve a lo más nuevo arriba)
     local cols = ReqCols()
@@ -942,14 +1263,7 @@ function Paint()
     ui.onlyCraft:SetChecked(only)
     if searching then
         ui.found.empty:SetText(L("Nadie de la unión lo hace (profesión u objeto fabricable)."))
-        PaintRows(ui.found, SearchMembers(Query()), function(row, e)
-            local c = row.cells
-            -- (con su color de siempre y el circulito; clic derecho: pedir una receta. El tic: sabe la receta)
-            c[1]:SetText((e.name == Me() and MINE or OTHERS) .. HU:Short(e.name) .. "|r " .. (e.online and DOT_ON or DOT_OFF))
-            c[2]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
-            c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof)
-            c[4]:SetText((e.rank and tostring(e.rank) or "—") .. (e.knows and (" |T" .. TICK .. ":12:12|t") or ""))
-        end)
+        PaintRows(ui.found, SearchMembers(Query()), FillWho)
     end
     ui.req.empty:SetText(searching and L("Ninguna solicitud publicada encaja.")
         or (view == "pub" and only and L("En el tablón no hay nada que puedas hacer.")) or L("No hay solicitudes."))
@@ -957,29 +1271,41 @@ function Paint()
     for _ in pairs(picks) do nPicks = nPicks + 1 end
     ui.delBtn:SetShown(view == "priv" and not searching and nPicks > 0)
     ui.delBtn:SetText(string.format(L("Eliminar (%d)"), nPicks))
-    local cur = selected and FindReq(selected)
-    -- («Hecha», en las que hago yo; ya hecha, apagado)
-    ui.doneBtn:SetShown(view == "priv" and not searching and cur ~= nil and IsMe(cur.taker))
-    ui.doneBtn:SetEnabled(CanMarkDone(cur))
+    local cur = selected and FindReq(IdOf(selected))
+    -- («Hecha», en las que hago yo; ya hecha, apagado. En una venta mía, «Vendida»)
+    local sale = cur ~= nil and cur.sale == true and IsMine(cur)
+    ui.doneBtn:SetText(sale and L("Vendida") or L("Hecha"))
+    ui.doneBtn:SetShown(view == "priv" and not searching and cur ~= nil and (sale or IsMe(cur.taker)))
+    ui.doneBtn:SetEnabled(sale and CanMarkSold(cur) or CanMarkDone(cur))
+    local now = HU.StampNow()
     PaintRows(ui.req, ui.lastList, function(row, r)
         local mine = IsMine(r)
         local test = r.test and (" |cff808080(" .. L("prueba") .. ")|r") or ""
-        row.pickTex:SetShown(r.id == selected or picks[r.id] == true)
+        local key = EntryKey(r)
+        row.pickTex:SetShown(key == selected or picks[key] == true)
+        row.saleTex:SetShown(r.sale == true)
         -- (lo de cada columna, por su clave: sin propinas, la suya no está)
         local v = { item = r.item or "?", qty = tostring(r.qty or 1), state = StateText(r) .. test,
-            tip = r.tip and Coins(r.tip) or ("|cff9a8f78" .. L("A negociar") .. "|r") }
+            tip = r.tip and Coins(r.tip) or (GREY .. L("A negociar") .. "|r") }
         if view == "pub" or searching then
+            v.state = v.state .. TimeLeft(r, now)
             v.who = mine and (MINE .. L("Yo") .. "|r " .. DOT_ON) or (OTHERS .. HU:Short(r.who) .. "|r " .. Dot(r.who))
-            v.mats = r.mats == nil and "—" or (r.mats and L("Sí") or L("No"))
-            -- (la última columna: Aceptar si es de otro y está abierta; Cancelar si es mía; si ya la
-            -- aceptó alguien, su nombre)
+            v.mats = (r.mats == nil or r.sale) and "—" or (r.mats and L("Sí") or L("No"))
+            -- (la última columna: Aceptar (o Me interesa, en una venta) si es de otro y está abierta; Cancelar si es mía;
+            -- si ya la aceptó alguien, su nombre; vendida, «Vendida»; una venta que ya me interesa, «Te interesa»)
             if r.taker then
                 row.actText:SetText(IsMe(r.taker) and (MINE .. L("Yo") .. "|r") or (OTHERS .. HU:Short(r.taker) .. "|r " .. Dot(r.taker))); row.actText:Show()
+            elseif r.state == "sold" then
+                row.actText:SetText(GREY .. L("Vendida") .. "|r"); row.actText:Show()
             elseif mine then
                 row.cancel:Show()
+            elseif r.sale and Interested(r) then
+                row.actText:SetText("|cff40ff40" .. L("Te interesa") .. "|r"); row.actText:Show()
             elseif r.state == "open" then
-                -- (apagado si no puedo hacerla: el porqué, al pasar el ratón)
-                local can, why = CraftCheck(r.item, profs)
+                -- (apagado si no puedo hacerla: el porqué, al pasar el ratón. Una venta no se hace: siempre encendido)
+                local can, why = true, nil
+                if not r.sale then can, why = CraftCheck(r.item, profs) end
+                row.accept:SetText(r.sale and L("Me interesa") or L("Aceptar"))
                 row.accept:SetEnabled(can); row.accept.why = why
                 row.accept:Show()
             end
@@ -988,22 +1314,23 @@ function Paint()
             local other = Other(r)
             v.who = (mine and MINE or OTHERS) .. HU:Short(other) .. "|r " .. Dot(other) .. UnreadMark(other)
             -- (solo en las abiertas: el tic para aceptarla —si me la piden a mí y puedo hacerla— y la X para
-            -- cancelarla —mía— o rechazarla; las aceptadas, sin nada)
-            local ask = r.state == "open" and not mine
+            -- cancelarla —mía, también una venta— o rechazarla; las aceptadas y las ventas de otros, sin nada)
+            local ask = r.state == "open" and not mine and not r.sale
             row.yes:SetShown(ask)
             if ask then
                 local can, why = CraftCheck(r.item, profs)
                 row.yes:SetEnabled(can); row.yes.why = why
             end
-            row.no:SetShown(r.state == "open")
+            row.no:SetShown(r.state == "open" and (mine or not r.sale))
         end
         for i, col in ipairs(cols) do row.cells[i]:SetText(v[col[1]] or "") end
     end)
 end
 
 ---------------------------------------------------------------------------
--- Nueva solicitud: objeto (con autorrelleno), quién pone los materiales, propina en oro · plata · cobre
--- y si es pública o para alguien (con autorrelleno del nombre) [+ARCHITECTURE.md]
+-- Nuevo anuncio: pedir o vender (un BOE solo se vende, y solo se venden BOE), el objeto (con autorrelleno), quién pone
+-- los materiales, propina o precio en oro · plata · cobre, si va al tablón (con cuánto dura) o para alguien (con
+-- autorrelleno del nombre) [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local SUGGEST_N = 6
 
@@ -1084,11 +1411,10 @@ local function ItemMatches(text)
         if type(link) ~= "string" or HU.Secret(link) or not link:find("|H", 1, true) then return end
         push(link, (HU.Fold(Plain(link)):gsub("^%[", ""):gsub("%]$", "")))
     end
-    local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    local ok, _, link = pcall(get, text)
-    if ok then add(link) end
+    local exact = ItemInfo(text)
+    if exact then add(exact.link) end
     local numSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
-    local slotLink = (C_Container and C_Container.GetContainerItemLink) or GetContainerItemLink
+    local slotLink = C_Container and C_Container.GetContainerItemLink
     for bag = 0, NUM_BAG_SLOTS or 4 do
         local okN, n = pcall(numSlots, bag)
         for slot = 1, (okN and type(n) == "number") and n or 0 do
@@ -1122,9 +1448,12 @@ local function NameMatches(text)
     return out
 end
 
+-- (lo que espera a que el juego conozca el objeto para decidir si es BOE: { id }; se publica al llegar)
+local pendingSubmit
+
 local function BuildNewDialog(host)
     local d = CreateFrame("Frame", "GuildUnionTradeNew", host, "BackdropTemplate")
-    d:SetSize(310, 264)
+    d:SetSize(310, 290)
     d:SetPoint("CENTER", host, "CENTER", 0, 0)
     d:SetFrameStrata("DIALOG")
     DJ.Panel(d, DJ.T.content, DJ.T.border, 14, 4)
@@ -1133,40 +1462,46 @@ local function BuildNewDialog(host)
     d:Hide()
     d.title = d:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     d.title:SetPoint("TOPLEFT", 12, -10)
-    local function Label(text, x, y, font)
+    local function Label(text, font)
         local l = d:CreateFontString(nil, "OVERLAY", font or "GameFontNormalSmall")
-        l:SetPoint("TOPLEFT", x, y); l:SetText(text)
+        l:SetText(text)
         return l
     end
-    local function Check(text, x, y)
+    local function Check(text)
         local c = CreateFrame("CheckButton", nil, d, "UICheckButtonTemplate")
-        c:SetSize(20, 20); c:SetPoint("TOPLEFT", x, y)
+        c:SetSize(20, 20)
         if c.Text then c.Text:SetFontObject("GameFontHighlightSmall"); c.Text:SetText(text) end
         return c
     end
-    -- (dos casillas que se excluyen: marcar una desmarca la otra)
-    local function Pair(a, b, onChange)
-        a:SetScript("OnClick", function() a:SetChecked(true); b:SetChecked(false); if onChange then onChange() end end)
-        b:SetScript("OnClick", function() b:SetChecked(true); a:SetChecked(false); if onChange then onChange() end end)
+    -- (casillas que se excluyen: marcar una desmarca las demás)
+    local function Group(list, onChange)
+        for _, c in ipairs(list) do
+            c:SetScript("OnClick", function()
+                for _, o in ipairs(list) do o:SetChecked(o == c) end
+                if onChange then onChange() end
+            end)
+        end
     end
 
-    Label(L("Objeto o encantamiento (o Mayús+clic):"), 12, -34)
-    d.item = HU.NewEditBox(d, 222); d.item:SetPoint("TOPLEFT", 18, -48)
-    Label(L("Cantidad:"), 248, -34)
-    d.qty = HU.NewEditBox(d, 42); d.qty:SetPoint("TOPLEFT", 254, -48); d.qty:SetNumeric(true); d.qty:SetMaxLetters(3)
+    d.kindLabel = Label(L("Anuncio:"))
+    d.kindAsk, d.kindSell = Check(L("Pedir")), Check(L("Vender"))
+    d.itemLabel = Label(L("Objeto o encantamiento (o Mayús+clic):"))
+    d.item = HU.NewEditBox(d, 222)
+    d.qtyLabel = Label(L("Cantidad:"))
+    d.qty = HU.NewEditBox(d, 42); d.qty:SetNumeric(true); d.qty:SetMaxLetters(3)
     d.qty:SetJustifyH("CENTER")
     Suggest(d.item, ItemMatches)
 
-    Label(L("Materiales:"), 12, -80)
-    d.matsMe = Check(L("Yo"), 96, -75)
-    d.matsSeller = Check(L("Vendedor"), 170, -75)
-    Pair(d.matsMe, d.matsSeller)
+    d.matsLabel = Label(L("Materiales:"))
+    d.matsMe, d.matsSeller = Check(L("Yo")), Check(L("Vendedor"))
+    Group({ d.matsMe, d.matsSeller })
 
-    -- (lo de la propina: se esconde si el maestro no permite propinas, UnionConfig.lua)
-    d.tipParts = { Label(L("Propina:"), 12, -106), Label(L("(en blanco: a negociar)"), 64, -106, "GameFontDisableSmall") }
+    -- (la propina (o el precio, al vender): se esconde si el maestro no permite propinas, UnionConfig.lua)
+    d.tipLabel = Label(L("Propina:"))
+    d.tipParts = { d.tipLabel, Label(L("(en blanco: a negociar)"), "GameFontDisableSmall") }
     d.coins = {}
     for i, icon in ipairs(COIN_ICON) do
-        local box = HU.NewEditBox(d, 56); box:SetPoint("TOPLEFT", 18 + (i - 1) * 74, -138); box:SetNumeric(true)
+        local box = HU.NewEditBox(d, 56); box:SetNumeric(true)
         box:SetMaxLetters(i == 1 and 6 or 2); box:SetJustifyH("CENTER")
         local tex = d:CreateTexture(nil, "ARTWORK")
         tex:SetSize(14, 14); tex:SetTexture(icon); tex:SetPoint("BOTTOM", box, "TOP", -3, 2)
@@ -1174,26 +1509,82 @@ local function BuildNewDialog(host)
         d.tipParts[#d.tipParts + 1] = box; d.tipParts[#d.tipParts + 1] = tex
     end
 
-    Label(L("En el tablón:"), 12, -170)
-    d.pubYes = Check(L("Sí"), 96, -165)
-    d.pubNo = Check(L("No"), 170, -165)
-    d.toLabel = Label(L("Personaje:"), 12, -198)
-    d.to = HU.NewEditBox(d, 196); d.to:SetPoint("TOPLEFT", 102, -194)
+    d.pubLabel = Label(L("En el tablón:"))
+    d.pubYes, d.pubNo = Check(L("Sí")), Check(L("No"))
+    d.toLabel = Label(L("Personaje:"))
+    d.to = HU.NewEditBox(d, 196)
     Suggest(d.to, NameMatches)
+    -- (cuánto dura en el tablón: 5, 12, 24 (de entrada) o 48 h; las privadas no caducan, como hasta ahora)
+    d.expLabel = Label(L("Dura:"))
+    d.expChecks = {}
+    for i, h in ipairs(EXPIRY_HOURS) do
+        local c = Check(h .. " h")
+        c.hours = h
+        d.expChecks[i] = c
+    end
+    Group(d.expChecks)
+
+    -- Coloca las filas que tocan, de arriba abajo: al vender no hay materiales ni «En el tablón» (una venta va siempre
+    -- al tablón) y la propina es el precio; en el tablón, cuánto dura; si no, a quién
+    function d.Relayout()
+        local sale = d.kindSell:GetChecked() and true or false
+        local pub = sale or (d.pubYes:GetChecked() and true or false)
+        local tips = not HU:UnionCfg().tipsOff
+        local y = -34
+        local function At(w, x, dy)
+            w:ClearAllPoints(); w:SetPoint("TOPLEFT", x, y + (dy or 0)); w:Show()
+        end
+        At(d.kindLabel, 12); At(d.kindAsk, 96, 5); At(d.kindSell, 170, 5)
+        y = y - 26
+        At(d.itemLabel, 12); At(d.qtyLabel, 248); At(d.item, 18, -14); At(d.qty, 254, -14)
+        y = y - 46
+        for _, w in ipairs({ d.matsLabel, d.matsMe, d.matsSeller, d.pubLabel, d.pubYes, d.pubNo }) do w:SetShown(not sale) end
+        if not sale then
+            At(d.matsLabel, 12); At(d.matsMe, 96, 5); At(d.matsSeller, 170, 5)
+            y = y - 26
+        end
+        d.tipLabel:SetText(sale and L("Precio:") or L("Propina:"))
+        for _, w in ipairs(d.tipParts) do w:SetShown(tips) end
+        if tips then
+            At(d.tipParts[1], 12); At(d.tipParts[2], 64)
+            for i, box in ipairs(d.coins) do At(box, 18 + (i - 1) * 74, -32) end
+            y = y - 64
+        end
+        if not sale then
+            At(d.pubLabel, 12); At(d.pubYes, 96, 5); At(d.pubNo, 170, 5)
+            y = y - 28
+        end
+        d.toLabel:SetShown(not pub); d.to:SetShown(not pub); d.expLabel:SetShown(pub)
+        for _, c in ipairs(d.expChecks) do c:SetShown(pub) end
+        if pub then
+            At(d.expLabel, 12)
+            for i, c in ipairs(d.expChecks) do At(c, 64 + (i - 1) * 58, 5) end
+        else
+            At(d.toLabel, 12); At(d.to, 102, 4)
+        end
+        y = y - 28
+        d:SetHeight(-y + 38)
+    end
     function d.SetPub(pub)
         d.pubYes:SetChecked(pub); d.pubNo:SetChecked(not pub)
-        d.toLabel:SetShown(not pub); d.to:SetShown(not pub)
-        d:SetHeight(pub and 236 or 264)
+        d.Relayout()
     end
-    Pair(d.pubYes, d.pubNo, function()
-        d.SetPub(d.pubYes:GetChecked() and true or false)
+    function d.SetExpiry(hours)
+        for _, c in ipairs(d.expChecks) do c:SetChecked(c.hours == hours) end
+    end
+    local function Hours()
+        for _, c in ipairs(d.expChecks) do if c:GetChecked() then return c.hours end end
+        return EXPIRY_DEFAULT
+    end
+    Group({ d.kindAsk, d.kindSell }, d.Relayout)
+    Group({ d.pubYes, d.pubNo }, function()
+        d.Relayout()
         if d.to:IsShown() then d.to:SetFocus() end
     end)
 
-    local ok = Flat(d, L("Pedir"), 110, 22); ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -6, 12)
-    local no = Flat(d, L("Cancelar"), 110, 22); no:SetPoint("BOTTOMLEFT", d, "BOTTOM", 6, 12)
-    no:SetScript("OnClick", function() d:Hide() end)
-    ok:SetScript("OnClick", function()
+    -- Publicar. Un BOE solo se vende y solo se venden BOE: si el juego aún no conoce el objeto, se le pide y se decide al
+    -- llegar (final: ya no se espera más; lo que sigue sin saberse, al pedir vale y al vender no) [+ARCHITECTURE.md]
+    function d.Submit(final)
         -- (con el comercio apagado no se pide nada, aunque la ventana se hubiera quedado abierta de antes)
         if HU:UnionCfg().tradeOff then
             d:Hide()
@@ -1203,10 +1594,25 @@ local function BuildNewDialog(host)
         if item == "" then return HU:Print(L("Pon el objeto que pides (Mayús+clic en él).")) end
         Fresh()
         if OpenCount() >= MAX_OPEN then return HU:Print(string.format(L("Ya tienes %d solicitudes abiertas: cierra alguna antes."), MAX_OPEN)) end
-        local pub = d.pubYes:GetChecked() and true or false
+        local sale = d.kindSell:GetChecked() and true or false
+        local pub = sale or (d.pubYes:GetChecked() and true or false)
         local to = HU.Trim(d.to:GetText() or "")
         if not pub and to == "" then return HU:Print(L("Si no va al tablón, pon a quién se la pides.")) end
-        -- (la propina, en cobre; las tres cajas vacías: a negociar)
+        local boe, id = BoeOf(item)
+        if boe == nil and not final then
+            local p = { id = id }
+            pendingSubmit = p
+            HU.After(ITEM_WAIT, function()
+                if pendingSubmit ~= p then return end
+                pendingSubmit = nil
+                if d:IsShown() then d.Submit(true) end
+            end)
+            return HU:Print(L("Comprobando el objeto con el juego…"))
+        end
+        if boe and not sale then return HU:Print(L("Es BOE (se liga al equipar): solo se puede vender, no pedir.")) end
+        if sale and boe == nil then return HU:Print(L("No se ha podido comprobar el objeto: prueba otra vez.")) end
+        if sale and not boe then return HU:Print(L("Solo se venden objetos BOE: los que se ligan al equipar, de verde a legendario.")) end
+        -- (la propina o el precio, en cobre; las tres cajas vacías: a negociar)
         local tip, any = 0, false
         for i, box in ipairs(d.coins) do
             local v = tonumber(box:GetText() or "")
@@ -1215,14 +1621,20 @@ local function BuildNewDialog(host)
         local mats
         if d.matsMe:GetChecked() then mats = true elseif d.matsSeller:GetChecked() then mats = false end
         -- (a toda la unión, con el conjunto TR: queda ya en lo mío y sale por mi hermandad; sin la unión, no se puede)
-        local r = { id = NewId(), who = Me(), item = item, mats = mats, tip = (any and not (HU:UnionCfg().tipsOff)) and tip or nil, qty = math.max(1, tonumber(d.qty:GetText() or "") or 1), state = "open", pub = pub,
-            to = (not pub) and (HU:FullName(to) or to) or nil }
+        local r = { id = NewId(), who = Me(), item = item, sale = sale or nil, mats = (not sale) and mats or nil,
+            tip = (any and not (HU:UnionCfg().tipsOff)) and tip or nil, qty = math.max(1, tonumber(d.qty:GetText() or "") or 1),
+            state = "open", pub = pub, to = (not pub) and (HU:FullName(to) or to) or nil,
+            exp = pub and (HU.StampNow() + Hours() * 3600) or nil }
         if not HU:TradeOrder(r) then return HU:Print(L("No se ha podido pedir: tu hermandad todavía no está en la unión.")) end
         d:Hide()
         view = pub and "pub" or "priv"
         ui.search:SetText("")
         Paint()
-    end)
+    end
+    local ok = Flat(d, L("Publicar"), 110, 22); ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -6, 12)
+    local no = Flat(d, L("Cancelar"), 110, 22); no:SetPoint("BOTTOMLEFT", d, "BOTTOM", 6, 12)
+    no:SetScript("OnClick", function() d:Hide() end)
+    ok:SetScript("OnClick", function() pendingSubmit = nil; d.Submit(false) end)
     -- (Mayús+clic en un objeto con esta caja escribiendo: entra su enlace)
     if ChatFrameUtil and ChatFrameUtil.InsertLink then
         hooksecurefunc(ChatFrameUtil, "InsertLink", function(text)
@@ -1231,6 +1643,15 @@ local function BuildNewDialog(host)
     end
     return d
 end
+-- (el juego ya conoce el objeto que esperaba un anuncio: se decide ahora)
+local function ItemArrived(itemID)
+    local p = pendingSubmit
+    if not (p and itemID == p.id) then return end
+    pendingSubmit = nil
+    if ui and ui.newDlg:IsShown() then ui.newDlg.Submit(true) end
+end
+HU:On("ITEM_DATA_LOAD_RESULT", ItemArrived)
+HU:On("GET_ITEM_INFO_RECEIVED", ItemArrived)
 
 ---------------------------------------------------------------------------
 -- Modo prueba: solicitudes y chats de mentira; no se manda nada. Sin botón ni comando (Jorge, 24/11: «quitando el
@@ -1257,9 +1678,8 @@ local function AddTest()
             to = to, taker = taker, takenAt = taker and now or nil, t = now, test = true }
     end
     local function Link(id, name, color)
-        local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-        local ok, _, link = pcall(get, id)
-        if ok and type(link) == "string" then return link end
+        local it = ItemInfo(id)
+        if it then return it.link end
         return "|cff" .. color .. "|Hitem:" .. id .. "::::::::60:::::::|h[" .. name .. "]|h|r"
     end
     R("Jandra-Prueba", Link(3928, "Poción de curación superior", "ffffff"), false, 2.5, "open", true, nil, nil, 5)
@@ -1316,14 +1736,15 @@ local function Migrate()
     for i = #old, 1, -1 do old[i] = nil end
 end
 -- (con el aviso «trade» se rehacen las de la red; si cambia mi hermandad, también, y se mira lo de la copia 324. Con
--- «professions», lo de oficios que llega mientras se busca: se repinta un momento después, una vez)
+-- «professions», lo de oficios que llega mientras se busca (o con Buscar a la vista): se repinta un momento después, una
+-- vez)
 local foundQueued
 HU:Listen("CHANGED", function(what)
     if what == "trade" then MarkDirty()
     elseif what == "config" then
         Migrate()
         if builtTag ~= HU.myTag then MarkDirty() end
-    elseif what == "professions" and not foundQueued and ui and ui:IsVisible() and Searching() then
+    elseif what == "professions" and not foundQueued and ui and ui:IsVisible() and (Searching() or view == "find") then
         foundQueued = true
         HU.After(2, function()
             foundQueued = nil
@@ -1338,8 +1759,11 @@ HU:OnStart(function()
     netDirty = true
     HU:Changed("tradeUnread")
     HU:Every(30, "Comercio: chat pendiente", Repaso)
-    -- (con la sección a la vista, lo que falte de las solicitudes, cada minuto)
-    HU:Every(60, "Comercio: al día", function() if ui and ui:IsVisible() then NeedAll() end end)
+    -- (con la sección a la vista, cada minuto: lo que falte de las solicitudes, y se repinta (lo que le queda a cada
+    -- anuncio; lo caducado se va))
+    HU:Every(60, "Comercio: al día", function()
+        if ui and ui:IsVisible() then NeedAll(); Paint() end
+    end)
 end)
 HU:On("PLAYER_LOGOUT", Tidy)
 
@@ -1354,12 +1778,82 @@ local function WhyTip(s)
     GameTooltip:Show()
 end
 
+-- (un filtro de Buscar cambia: la lista se rehace y se vuelve arriba)
+local function FilterChanged()
+    findDirty = true
+    FauxScrollFrame_SetOffset(ui.items.scroll, 0)
+    Paint()
+end
+-- (el texto del botón de un filtro: su nombre sin nada elegido; lo elegido, si es uno; si no, cuántos)
+local function FilterLabel(base, set, opts)
+    local n, one = 0, nil
+    for _, o in ipairs(opts) do if set[o[1]] then n, one = n + 1, o end end
+    if n == 0 then return L(base) end
+    if n == 1 then return L(one[2]) end
+    return string.format("%s (%d)", L(base), n)
+end
+-- (el menú de un filtro: casillas, varias a la vez; con su color, si lo tiene)
+local function FilterMenu(owner, base, set, opts)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(L(base))
+        for _, o in ipairs(opts) do
+            local text = o.color and ("|cff" .. o.color .. L(o[2]) .. "|r") or L(o[2])
+            root:CreateCheckbox(text, function() return set[o[1]] == true end, function()
+                set[o[1]] = (not set[o[1]]) or nil
+                owner:SetText(FilterLabel(base, set, opts))
+                FilterChanged()
+            end)
+        end
+    end)
+end
+
+-- La fila 2 de Buscar: profesión · nivel de objeto de… a… · color · tipo, en vez del buscador y la casilla. Los menús, con
+-- casillas (MenuUtil, como el resto del addon) [+ARCHITECTURE.md]
+local function BuildFilters(host)
+    local f = CreateFrame("Frame", nil, host)
+    f:SetAllPoints(host)
+    local y = ROW2_Y - ROW2_H / 2
+    local profs = {}
+    for skill, name in pairs(PROF_NAMES) do profs[#profs + 1] = { skill, name } end
+    table.sort(profs, function(a, b) return L(a[2]) < L(b[2]) end)
+    local quals, types = {}, {}
+    for i, q in ipairs(QUALITIES) do quals[i] = { q[1], q[2], color = q[3] } end
+    for i, t in ipairs(TYPES) do types[i] = { t[1], t[2] } end
+    local function Menu(base, set, opts, x, w)
+        local b = Flat(f, L(base), w, 22)
+        b:SetPoint("LEFT", host, "TOPLEFT", x, y)
+        b:SetScript("OnClick", function(s) FilterMenu(s, base, set, opts) end)
+        return b
+    end
+    f.prof = Menu("Profesión", findProf, profs, 23, 130)
+    f.lvlLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.lvlLabel:SetPoint("LEFT", host, "TOPLEFT", 163, y); f.lvlLabel:SetWidth(86); f.lvlLabel:SetJustifyH("LEFT")
+    f.lvlLabel:SetText(L("Nivel de objeto:"))
+    local function Level(x, set)
+        local box = HU.NewEditBox(f, 34)
+        box:SetPoint("LEFT", host, "TOPLEFT", x, y); box:SetNumeric(true); box:SetMaxLetters(3); box:SetJustifyH("CENTER")
+        box:HookScript("OnTextChanged", function(s)
+            set(tonumber(s:GetText() or ""))
+            FilterChanged()
+        end)
+        return box
+    end
+    f.lvlMin = Level(255, function(v) findMin = v end)
+    f.lvlTo = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.lvlTo:SetPoint("LEFT", host, "TOPLEFT", 295, y); f.lvlTo:SetWidth(12); f.lvlTo:SetText(L("a"))
+    f.lvlMax = Level(313, function(v) findMax = v end)
+    f.qual = Menu("Color", findQual, quals, 357, 110)
+    f.type = Menu("Tipo", findType, types, 475, 110)
+    return f
+end
+
 function HU:BuildTrade(host)
     ui = host
-    -- Arriba, los botones rojos Tablón · Mis encargos, juntos en el centro; debajo, el buscador a la izquierda y «Solo lo
-    -- que puedo hacer» a la derecha; abajo, «+ Nueva solicitud» (Jorge, 24/11: el sitio de la «opción 3», con los botones
-    -- y el buscador y la casilla de antes) [+ARCHITECTURE.md]
-    local sw = DJ.Switch(host, { { "pub", L("Tablón") }, { "priv", L("Mis encargos") } })
+    -- Arriba, los botones rojos Tablón · Mis encargos · Buscar, juntos en el centro; debajo, el buscador a la izquierda y
+    -- «Solo lo que puedo hacer» a la derecha (en Buscar, los filtros); abajo, «+ Nuevo anuncio» (Jorge, 24/11: el sitio
+    -- de la «opción 3», con los botones y el buscador y la casilla de antes) [+ARCHITECTURE.md]
+    local sw = DJ.Switch(host, { { "pub", L("Tablón") }, { "priv", L("Mis encargos") }, { "find", L("Buscar") } })
     sw:SetPoint("TOP", host, "TOP", 0, -4)
     ui.switch = sw
     ui.viewBtns = sw.btns
@@ -1417,6 +1911,8 @@ function HU:BuildTrade(host)
     end)
     only:SetScript("OnLeave", function() GameTooltip:Hide() end)
     ui.onlyCraft = only
+    -- (en Buscar, en la misma fila, los filtros)
+    ui.filters = BuildFilters(host)
 
     -- (detrás de todo, el panel de la sección, justo debajo de las dos filas: color «content» y borde, como el calendario)
     local bg = CreateFrame("Frame", nil, host, "BackdropTemplate")
@@ -1445,9 +1941,13 @@ function HU:BuildTrade(host)
     ui.chatTitle = chat:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     ui.chatTitle:SetPoint("TOPLEFT", 8, -7); ui.chatTitle:SetPoint("RIGHT", chat, "RIGHT", -8, 0)
     ui.chatTitle:SetJustifyH("LEFT"); ui.chatTitle:SetWordWrap(false)
+    -- («Hecha» en lo que hago yo; «Vendida» en una venta mía)
     local done = Flat(chat, L("Hecha"), 64, 18)
     done:SetPoint("TOPRIGHT", -5, -4)
-    done:SetScript("OnClick", function() MarkDone(selected and FindReq(selected)) end)
+    done:SetScript("OnClick", function()
+        local r = selected and FindReq(IdOf(selected))
+        if r and r.sale then MarkSold(r) else MarkDone(r) end
+    end)
     ui.doneBtn = done
     ui.chatTitle:SetPoint("RIGHT", done, "LEFT", -6, 0)
     local msgs = CreateFrame("ScrollingMessageFrame", nil, chat)
@@ -1475,7 +1975,7 @@ function HU:BuildTrade(host)
     ui.chatHint = chat:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.chatHint:SetPoint("LEFT", input, "LEFT", 2, 0); ui.chatHint:SetText(L("Elige un comercio con alguien para escribir"))
 
-    -- Las listas: las solicitudes y, al buscar, debajo, quién lo hace
+    -- Las listas: las solicitudes y, al buscar, debajo, quién lo hace; en Buscar, los objetos
     local function MakeList(n, sortable, sfName)
         local lst = { n = n, rows = {}, hdrCells = {} }
         local list = CreateFrame("Frame", nil, body)
@@ -1519,6 +2019,9 @@ function HU:BuildTrade(host)
             row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
             row.pickTex = row:CreateTexture(nil, "BORDER")
             row.pickTex:SetAllPoints(); row.pickTex:SetColorTexture(0.25, 0.55, 1, 0.28); row.pickTex:Hide()
+            -- (una venta: un fondo suave de su color)
+            row.saleTex = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+            row.saleTex:SetAllPoints(); row.saleTex:SetColorTexture(SALE_RGB[1], SALE_RGB[2], SALE_RGB[3], 0.10); row.saleTex:Hide()
             if i % 2 == 0 then
                 local stripe = row:CreateTexture(nil, "BACKGROUND")
                 stripe:SetAllPoints(); stripe:SetColorTexture(1, 1, 1, 0.05)
@@ -1545,8 +2048,8 @@ function HU:BuildTrade(host)
             end)
             itemBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row.itemBtn = itemBtn
-            -- (Tablón, última columna: Aceptar / Cancelar, o el nombre de quien la aceptó. Aceptar, apagado si no
-            -- puedo hacerla, con el porqué al pasar el ratón)
+            -- (Tablón, última columna: Aceptar / Me interesa / Cancelar, o el nombre de quien la aceptó. Aceptar, apagado si
+            -- no puedo hacerla, con el porqué al pasar el ratón)
             local accept = Flat(row, L("Aceptar"), ACT_W, 20)
             accept:SetPoint("RIGHT", row, "RIGHT", -2, 0)
             accept:SetScript("OnClick", function() if row.entry then Accept(row.entry) end end)
@@ -1580,30 +2083,31 @@ function HU:BuildTrade(host)
                 local r = s.entry
                 if r and button == "RightButton" then return RowMenu(s, r) end
                 if not (r and r.id) then return end
+                local key = EntryKey(r)
                 -- (en Mis encargos: Ctrl suma o quita; Mayús elige desde la última hasta esta; clic solo, solo esa)
                 if view == "priv" and not Searching() then
                     if IsControlKeyDown() then
                         -- (la elegida con un clic solo también cuenta: si no, quedaba fuera de las marcadas)
-                        if selected and selected ~= r.id and next(picks) == nil then
-                            for _, x in ipairs(ui.lastList or {}) do if x.id == selected then picks[selected] = true end end
+                        if selected and selected ~= key and next(picks) == nil then
+                            for _, x in ipairs(ui.lastList or {}) do if EntryKey(x) == selected then picks[selected] = true end end
                         end
-                        picks[r.id] = (not picks[r.id]) or nil
+                        picks[key] = (not picks[key]) or nil
                     elseif IsShiftKeyDown() and lastPick then
                         local a, b
                         for k, x in ipairs(ui.lastList or {}) do
-                            if x.id == lastPick then a = k end
-                            if x.id == r.id then b = k end
+                            if EntryKey(x) == lastPick then a = k end
+                            if EntryKey(x) == key then b = k end
                         end
                         if a and b then
                             if a > b then a, b = b, a end
-                            for k = a, b do picks[ui.lastList[k].id] = true end
+                            for k = a, b do picks[EntryKey(ui.lastList[k])] = true end
                         end
                     else
                         picks = {}
                     end
-                    lastPick = r.id
+                    lastPick = key
                 end
-                selected = r.id
+                selected = key
                 if view == "priv" and not Searching() then
                     OpenChat(Other(r))
                 end
@@ -1618,41 +2122,53 @@ function HU:BuildTrade(host)
     ui.req = MakeList(ROWS, true, "GuildUnionTradeScroll")
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
+    -- (Buscar: los objetos, con su enlace en la primera columna; clic, se elige y debajo sale quién lo hace)
+    ui.items = MakeList(ROWS, false, "GuildUnionTradeScroll3")
+    ui.items.itemCol = 1
+    for _, row in ipairs(ui.items.rows) do
+        row.itemBtn:ClearAllPoints(); row.itemBtn:SetPoint("CENTER", row.cells[1], "CENTER")
+        row:SetScript("OnClick", function(s)
+            if not s.entry then return end
+            findSel = s.entry.key
+            FauxScrollFrame_SetOffset(ui.found.scroll, 0)
+            Paint()
+        end)
+    end
+    ui.items.list:Hide()
 
-    -- Abajo: «+ Nueva solicitud», como hasta la copia 304 (teñido de verde, letra blanca), centrado debajo de la lista
+    -- Abajo: «+ Nuevo anuncio», como hasta la copia 304 (teñido de verde, letra blanca), centrado debajo de la lista
     -- (Layout); va en el panel, para quedar encima de él [+ARCHITECTURE.md]
     local newDlg = BuildNewDialog(host)
-    local new = Flat(bg, "+ " .. L("Nueva solicitud"), 200, 24)
+    local new = Flat(bg, "+ " .. L("Nuevo anuncio"), 200, 24)
     new:SetPoint("BOTTOM", host, "BOTTOM", 0, 8)
     for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
     new:SetNormalFontObject("GameFontHighlight")
-    -- (to: pedírsela a alguien en concreto, privada: «Pedir una receta» desde la búsqueda. Con el comercio
-    -- apagado no se abre)
-    function ui.OpenNew(to)
+    -- (to: pedírsela a alguien en concreto, privada: «Pedir una receta» desde la búsqueda; item: lo que se pide (en
+    -- Buscar, el objeto elegido). Con el comercio apagado no se abre)
+    function ui.OpenNew(to, item)
         if HU:UnionCfg().tradeOff then return end
-        newDlg.title:SetText(to and (L("Pedir una receta a ") .. HU:Short(to)) or L("Nueva solicitud"))
-        newDlg.item:SetText(""); newDlg.to:SetText(to or ""); newDlg.qty:SetText("1")
+        pendingSubmit = nil
+        newDlg.title:SetText(to and (L("Pedir una receta a ") .. HU:Short(to)) or L("Nuevo anuncio"))
+        newDlg.item:SetText(item or ""); newDlg.to:SetText(to or ""); newDlg.qty:SetText("1")
         for _, box in ipairs(newDlg.coins) do box:SetText("") end
-        local noTips = HU:UnionCfg().tipsOff
-        for _, w in ipairs(newDlg.tipParts) do w:SetShown(not noTips) end
         newDlg.matsMe:SetChecked(true); newDlg.matsSeller:SetChecked(false)
-        newDlg.SetPub(not to and view == "pub")
+        newDlg.kindAsk:SetChecked(true); newDlg.kindSell:SetChecked(false)
+        newDlg.SetExpiry(EXPIRY_DEFAULT)
+        newDlg.SetPub(not to and view ~= "priv")
         newDlg:Show(); newDlg.item:SetFocus()
     end
-    new:SetScript("OnClick", function() ui.OpenNew(nil) end)
+    new:SetScript("OnClick", function() ui.OpenNew(nil, view == "find" and FindLink() or nil) end)
     ui.new, ui.newDlg = new, newDlg
     -- (a su derecha, «Eliminar (N)», con algo marcado en Mis encargos: cabe antes del chat)
     local del = Flat(body, "", 80, 22)
     del:SetPoint("LEFT", new, "RIGHT", 6, 0)
-    del:SetScript("OnClick", function()
-        for id in pairs(picks) do local x = FindReq(id); if x then RemoveReq(x) end end
-        picks, selected = {}, nil
-        Paint()
-    end)
+    del:SetScript("OnClick", RemovePicked)
     del:Hide()
     ui.delBtn = del
-    -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso)
-    ui.onlyOn = { body, sw, search, sbox, only, new }
+    -- (lo que solo se ve con el comercio encendido: apagado, queda el panel con el aviso. La fila 2 va aparte: en Buscar
+    -- lleva los filtros)
+    ui.onlyOn = { body, sw, new }
+    ui.row2 = { search, sbox, only }
 
     Suggest(ui.search, ItemMatches)
     -- (al abrirla: las solicitudes otra vez y lo que falte de toda la unión)
