@@ -119,8 +119,6 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         wuStore = {},
         -- (nuevo, eventos por la red: las raids de los eventos que organizo, UnionCalendar.lua)
         calRaids = {},
-        -- (nuevo, copia 330: los eventos que fijo arriba en Eventos, UnionCalendar.lua)
-        calPinned = {},
         -- (nuevo, Comercio con la red, Trade.lua: también empiezan vacíos)
         tradeClosed = {}, tradeSeen = {}, tradePending = {} }
 

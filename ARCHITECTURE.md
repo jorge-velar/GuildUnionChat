@@ -2346,6 +2346,7 @@ organiza (UnionCalendar.lua, `calRaids`).
 |---|---|---|
 | `e<id>` | el creador | `<hora36>,<tipo>,<nivelMin>,<icono>,<título>,<descripción>`; editarlo, otra vez con el mismo id; eliminarlo, datos vacíos |
 | `s<id>` | quien se apunta | su rol: `T`, `H` o `D`; desapuntarse, datos vacíos |
+| `p<id>` | el creador | `1`: fijado arriba en Eventos para todos (copia 331); quitarlo, datos vacíos. De otro, no cuenta |
 
 - `<id>`: letras y cifras, 20 como mucho (el de `NewId` del calendario: 8 cifras hexadecimales).
 - `<hora36>`: la hora del evento en base 36 (`HU.B36`; se lee con `tonumber(x, 36)`). `<tipo>`: raid, dungeon, pvp,
@@ -2357,15 +2358,19 @@ organiza (UnionCalendar.lua, `calRaids`).
 - **Lo que cabe.** La línea del paquete («Nombre-Reino,clave,hora,datos») no puede pasar de 200 (`PART` de
   Net/Packs.lua): una más larga no se publicaría a las otras hermandades. `HU:ProposeEvent` mide lo que queda con mi
   nombre y la clave, y corta la descripción (y, si hiciera falta, el título) para que quepa; los datos, además, en 180.
-- **`validate`** comprueba la forma de las dos claves. **`alive`**: el evento vive hasta 30 días después de su hora
+- **`validate`** comprueba la forma de las tres claves. **`alive`**: el evento vive hasta 30 días después de su hora
   (`EVENT_LIVES`, también en `HU.EVENT_LIVES`; antes del 25/11, 7 días): hasta entonces se ve en el mes del calendario, y
-  las raids de quien organiza se guardan lo mismo. Lo apuntado y lo borrado, 45 días desde que se propuso
+  las raids de quien organiza se guardan lo mismo. Lo apuntado, el fijado y lo borrado, 45 días desde que se propuso
   (`SIGNUP_LIVES`). **`onChange`** → `HU:Changed("calendar")`.
 - **Editar** es proponer otra vez `e<id>` con los datos nuevos: la línea es la del creador y gana la más nueva. Lo
   apuntado va en sus `s<id>`, de cada uno, y no se toca: quien estaba apuntado sigue.
 - **Eliminar** (`HU:ProposeEventDelete`) es `e<id>` con datos vacíos: borrada con su hora, no vuelve con una más vieja, y
   el enlace la publica para que se borre en las otras hermandades (Net/Packs.lua, «Propuestas (`WU`)»). Los `s<id>` se
-  quedan hasta que caducan: sin su evento no se ven.
+  quedan hasta que caducan: sin su evento no se ven. Si estaba fijado, el calendario quita también su `p<id>`.
+- **Fijar** (`HU:ProposeEventPin(id, sí/no)`; Jorge, 25/11: «para todos», tras probar en la 330 que cada uno fijara los
+  suyos): la línea `p<id>` del creador. Va aparte de `e<id>`, así que editar el evento no lo toca, y las copias de antes,
+  que no conocen la clave `p`, la tiran (su `validate`) sin romper nada. `HU:PackedEvents` solo marca
+  `pinned` si el `p<id>` es de quien creó ese evento: el de otro, no cuenta.
 - **Pendiente (visto al hacerlo, 25/11):** lo borrado vive 45 días desde que se borra y el evento, 30 días desde su hora.
   Un evento eliminado más de 15 días antes de su hora puede volver en el PC de alguien de mi hermandad que estuvo fuera
   todo ese tiempo: al juntar los trozos del equipo (`OwnChunk`), Net/Packs.lua no quita lo que falta en ellos, y si luego
@@ -2377,8 +2382,9 @@ Lo que usa el calendario (así el formato está solo aquí):
   mismo id); devuelve si ha podido.
 - `HU:ProposeEventDelete(id)`: elimino mi evento; devuelve si ha podido.
 - `HU:ProposeSignup(id, rol)`: me apunto con `TANK`, `HEALER` o `DAMAGER` (otro rol, como daño); sin rol, me desapunto.
+- `HU:ProposeEventPin(id, sí/no)`: fijo arriba mi evento para todos, o lo quito; devuelve si ha podido.
 - `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
-  icon, title, desc }` y quién se apunta `{ id, tag, who, role }`.
+  icon, title, desc, pinned }` y quién se apunta `{ id, tag, who, role }`.
 
 ## Packs/Trade.lua
 
@@ -4137,12 +4143,12 @@ Solo eventos de la unión: el calendario del juego no se toca.
   hermandad a color) y tipo · hora · «Nv. N+»—, a su derecha los roles y «N van» (tic si voy), y a la derecha del todo
   «Apuntarme» encima de «Más información» (112 de ancho; o clic en la tarjeta). Hasta la 329 no había raya, la imagen
   iba en 112 pegada a «Wednesday» y las líneas eran título, tipo · hora y quién (Jorge, 25/11: «primero la fecha… luego
-  una pequeña separación… el nombre, by… debajo del nombre y debajo la hora»). **Fijar arriba** (copia 330; Jorge:
-  «por orden de fecha, pudiendo fijar si se quiere»): en el clic derecho de cualquier evento, «Fijar arriba» / «Quitar
-  de arriba», solo para mí (`calPinned[id] = hora del evento`, en la cuenta). `Upcoming` pone los fijados primero (entre
-  ellos, por fecha) y luego los demás por fecha (a igual hora, por id); el título del fijado lleva delante la estrella
-  de las marcas de banda. Un fijado se olvida cuando su evento ya no sale en las tarjetas. El clic derecho de uno mío
-  sigue con «Editar evento» y «Eliminar». Fondo con el
+  una pequeña separación… el nombre, by… debajo del nombre y debajo la hora»). **Fijar arriba para todos** (copia 331;
+  Jorge: «por orden de fecha, pudiendo fijar si se quiere» y, tras probar en la 330 que cada uno fijara los suyos, «para
+  todos»): en el clic derecho de un evento mío, «Fijar arriba para todos» / «Quitar de arriba» (`HU:ProposeEventPin`, la
+  línea `p<id>` de Packs/Events.lua; uno mío de prueba se fija solo aquí). `Upcoming` pone los fijados (`e.pinned`)
+  primero (entre ellos, por fecha) y luego los demás por fecha (a igual hora, por id); el título del fijado lleva delante
+  la estrella de las marcas de banda. En los de otros, el clic derecho no saca nada, como antes. Fondo con el
   tinte del tipo, sombra arriba y la raya de brillo dorado, como antes. Van en un panel centrado (`ui.list`) cuya zona
   de tarjetas (`ui.cardArea`) solo deja el hueco de la barra con más de 4, para no descentrarse. La rueda baja **de una
   tarjeta en una** (Jorge, 24/11: «baja de golpe»; antes, una fila de dos): mueve la barra 68 por vuelta y la lista la
@@ -4167,13 +4173,13 @@ evento no tiene hora de fin: acaba 3 h después de su hora (`LASTS`, lo mismo qu
 - Lo apuntado sigue con su regla: 45 días desde que cada uno se apuntó. En un evento puesto con más de 15 días de
   antelación, al final de esos 30 días el mes puede enseñarlo con menos apuntados.
 
-### Clic derecho en un evento: fijar arriba y, en uno mío, editar y eliminar (`EventMenu`, `DeleteEvent`)
+### Clic derecho en un evento mío: fijar arriba para todos, editar y eliminar (`EventMenu`, `DeleteEvent`)
 
 Jorge, 25/11: «poner botón derecho - editar evento y botón derecho - eliminar». En la tarjeta y en la fila del día del mes
 (`RegisterForClicks` con el botón derecho; el izquierdo sigue abriendo la ficha), solo en los que creé yo (`who == Me()`):
 un menú del juego (`MenuUtil.CreateContextMenu`, como el de los nombres de la ficha) con el título del evento, «Fijar
-arriba» (o «Quitar de arriba»), «Editar evento», «Eliminar» y «Cancelar». En los de otros, solo «Fijar arriba» y
-«Cancelar» (desde la copia 330: hasta entonces, nada); sin el menú del juego, nada. No hace
+arriba para todos» (o «Quitar de arriba»), «Editar evento», «Eliminar» y «Cancelar». En los de otros, el clic derecho no
+hace nada (en la 330 dejaba fijarlo solo para mí); sin el menú del juego, tampoco. No hace
 falta poder crear eventos (`HU:CanMakeEvents`): lo mío lo edito y lo elimino siempre.
 - **Editar evento**: la ventana de nuevo evento con todo puesto (ver «Nuevo evento»); al guardar, el mismo id otra vez a
   la red (`HU:ProposeEvent(id, e)`). Lo apuntado va en las líneas de cada uno (`s<id>`) y no se toca, y las raids, en

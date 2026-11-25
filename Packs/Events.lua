@@ -1,6 +1,7 @@
 -- Guild Union - Paquete EV: los eventos de la sección Eventos (UnionCalendar.lua) y quién se apunta, de todas las hermandades [+ARCHITECTURE.md]
 --   e<id>  del creador: «hora en base 36,tipo,nivel mínimo,icono,título,descripción» (editarlo: otra vez; eliminarlo: vacío)
 --   s<id>  de quien se apunta: su rol, «T», «H» o «D» (desapuntarse: datos vacíos)
+--   p<id>  del creador: «1», fijado arriba en Eventos para todos (quitarlo: vacío). De otro que no sea el creador, no cuenta
 -- Son propuestas (Net/Packs.lua): cada uno manda lo suyo y lo de las otras hermandades llega con su paquete
 local _, HU = ...
 
@@ -32,13 +33,14 @@ HU:RegisterPackSet("EV", {
     chunks = 16,
     proposals = true,
     validate = function(_, key, d)
-        local what, id = key:match("^([es])(%w+)$")
+        local what, id = key:match("^([esp])(%w+)$")
         if not id or #id > ID_MAX then return false end
         if what == "s" then return CODE_ROLE[d] ~= nil end
+        if what == "p" then return d == "1" end
         return Parse(d) ~= nil
     end,
     -- (vivo: el evento, hasta 30 días después de su hora; uno borrado, 90 días desde que se borró; lo apuntado (y lo
-    -- desapuntado), 45 desde que se propuso)
+    -- desapuntado) y el fijado, 45 desde que se propuso)
     alive = function(_, key, d, t, now)
         local isEvent = key:sub(1, 1) == "e"
         local at = isEvent and tonumber(d:match("^(%w+),") or "", 36)
@@ -86,19 +88,27 @@ function HU:ProposeSignup(id, role)
     return self:Propose("EV", "s" .. tostring(id or ""), role and (ROLE_CODE[role] or "D") or "")
 end
 
+-- Fijo arriba mi evento para todos, o lo quito (Jorge, 25/11: «para todos»). Devuelve si ha podido
+function HU:ProposeEventPin(id, on)
+    id = tostring(id or "")
+    return id:match("^%w+$") ~= nil and #id <= ID_MAX and self:Propose("EV", "p" .. id, on and "1" or "")
+end
+
 -- Lo que hay en la red, de todas las hermandades: los eventos { id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
--- icon, title, desc } y quién se apunta { id, tag, who, role }
+-- icon, title, desc, pinned } y quién se apunta { id, tag, who, role }. Fijado: solo si lo fijó su creador
 function HU:PackedEvents()
-    local evs, signs = {}, {}
+    local evs, signs, pins = {}, {}, {}
     for _, p in ipairs(self:Proposals("EV")) do
-        local what, id = p.k:match("^([es])(%w+)$")
+        local what, id = p.k:match("^([esp])(%w+)$")
         local t, kind, lv, icon, title, desc = Parse(what == "e" and p.d or "")
         if t then
             evs[#evs + 1] = { id = id, tag = p.tag, who = p.n, pt = p.t, t = t, kind = kind, minLevel = lv > 1 and lv or nil,
                 icon = icon ~= "" and (ICONS .. icon) or nil, title = title, desc = desc }
         end
         if what == "s" then signs[#signs + 1] = { id = id, tag = p.tag, who = p.n, role = CODE_ROLE[p.d] } end
+        if what == "p" then pins[id .. "|" .. p.n] = true end
     end
+    for _, e in ipairs(evs) do e.pinned = pins[e.id .. "|" .. e.who] end
     return evs, signs
 end
 

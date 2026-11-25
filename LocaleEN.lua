@@ -1089,7 +1089,7 @@ E["¿Seguro que quieres salir del evento?"] = "Are you sure you want to leave th
 E["No se ha podido crear el evento."] = "The event could not be created."
 
 E["Editar evento"] = "Edit event"
-E["Fijar arriba"] = "Pin to top"
+E["Fijar arriba para todos"] = "Pin to top for everyone"
 E["Quitar de arriba"] = "Unpin"
 E["¿Seguro que quieres eliminar el evento?"] = "Are you sure you want to delete this event?"
 E["No se ha podido guardar el evento."] = "The event could not be saved."

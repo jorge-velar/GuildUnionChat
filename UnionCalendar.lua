@@ -8,9 +8,8 @@ local _, HU = ...
 local L = HU.L
 
 -- (las raids de los eventos que organizo, en este PC: calRaids[id] = { raid, …, t = hora del evento }. calEvents: los
--- eventos de la copia 324, que pasan a la red al entrar: ver Migrate. calPinned[id] = hora del evento: los que fijé
--- arriba en Eventos, solo para mí)
-HU:Saved({ account = { calEvents = {}, calRaids = {}, calPinned = {} } })
+-- eventos de la copia 324, que pasan a la red al entrar: ver Migrate)
+HU:Saved({ account = { calEvents = {}, calRaids = {} } })
 
 -- (Eventos: una tarjeta por línea, a todo lo ancho, y 4 a la vista; la rueda baja de una en una. Jorge, 24/11)
 local CARD_H, CARD_GAP, CARD_N = 62, 6, 4
@@ -129,22 +128,13 @@ end
 -- (un evento no tiene hora de fin: acaba LASTS (3 h) después de su hora. En Eventos, por fecha, hasta CARDS_AFTER (2 días)
 -- después de acabar; luego solo en el mes, hasta que caduca su línea en la red (Packs/Events.lua)) [+ARCHITECTURE.md]
 local LASTS, CARDS_AFTER = 3 * 3600, 2 * 86400
--- (por fecha, y arriba los que fijé yo (Jorge, 25/11: «por orden de fecha, pudiendo fijar si se quiere»); un fijado se
--- olvida cuando su evento ya no sale en las tarjetas) [+ARCHITECTURE.md]
+-- (por fecha, y arriba los que su creador fijó para todos (Jorge, 25/11: «por orden de fecha, pudiendo fijar si se
+-- quiere», «para todos»: `pinned`, Packs/Events.lua) [+ARCHITECTURE.md]
 local function Upcoming()
-    local out, now, pins = {}, time(), HU.db.calPinned
-    for _, e in ipairs(events) do
-        if now < e.t + LASTS + CARDS_AFTER then
-            out[#out + 1] = e
-            if pins[e.id] then pins[e.id] = e.t end
-        end
-    end
-    for id, t in pairs(pins) do
-        if type(t) ~= "number" or now >= t + LASTS + CARDS_AFTER then pins[id] = nil end
-    end
+    local out, now = {}, time()
+    for _, e in ipairs(events) do if now < e.t + LASTS + CARDS_AFTER then out[#out + 1] = e end end
     table.sort(out, function(a, b)
-        local pa, pb = pins[a.id] ~= nil, pins[b.id] ~= nil
-        if pa ~= pb then return pa end
+        if (a.pinned == true) ~= (b.pinned == true) then return a.pinned == true end
         if a.t ~= b.t then return a.t < b.t end
         return tostring(a.id) < tostring(b.id)
     end)
@@ -545,31 +535,36 @@ local function DeleteEvent(id)
         for k = #testEvents, 1, -1 do if testEvents[k].id == id then table.remove(testEvents, k) end end
     elseif not HU:ProposeEventDelete(id) then
         return HU:Print(L("No se ha podido eliminar el evento."))
+    elseif e.pinned then
+        -- (fuera también su fijado, para que no quede en la red)
+        HU:ProposeEventPin(id, false)
     end
     HU.db.calRaids[id] = nil
     if selected == id then selected = nil end
     Rebuild()
     Paint()
 end
--- (clic derecho en un evento: fijarlo arriba de Eventos o quitarlo, solo para mí; en uno mío, además, editarlo o
--- eliminarlo)
+-- (clic derecho en un evento mío: fijarlo arriba de Eventos para todos (o quitarlo), editarlo o eliminarlo. Uno de
+-- prueba se fija solo aquí)
 local function EventMenu(owner, id)
     local e = id and Find(id)
-    if not (e and MenuUtil and MenuUtil.CreateContextMenu) then return end
-    local pins = HU.db.calPinned
+    if not (e and e.who == Me() and MenuUtil and MenuUtil.CreateContextMenu) then return end
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(e.title)
-        root:CreateButton(pins[id] and L("Quitar de arriba") or L("Fijar arriba"), function()
+        root:CreateButton(e.pinned and L("Quitar de arriba") or L("Fijar arriba para todos"), function()
             local x = Find(id)
-            if pins[id] then pins[id] = nil elseif x then pins[id] = x.t end
-            Paint()
+            if not x then return end
+            if x.test then
+                x.pinned = (not x.pinned) or nil
+                Paint()
+            elseif not HU:ProposeEventPin(id, not x.pinned) then
+                HU:Print(L("No se ha podido guardar el evento."))
+            end
         end)
-        if e.who == Me() then
-            root:CreateButton(L("Editar evento"), function() local x = Find(id); if x then ui.newDlg.Open(nil, x) end end)
-            root:CreateButton(L("Eliminar"), function()
-                ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
-            end)
-        end
+        root:CreateButton(L("Editar evento"), function() local x = Find(id); if x then ui.newDlg.Open(nil, x) end end)
+        root:CreateButton(L("Eliminar"), function()
+            ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
+        end)
         root:CreateButton(L("Cancelar"), function() end)
     end)
 end
@@ -1044,7 +1039,7 @@ local function PaintCards()
             card.wash:SetColorTexture(r, g, b, 0.10)
             card.icon:SetTexture(EventIcon(e))
             -- (fijado: con la estrella delante)
-            card.title:SetText((HU.db.calPinned[e.id] and "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:14:14|t " or "") .. e.title)
+            card.title:SetText((e.pinned and "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:14:14|t " or "") .. e.title)
             card.kind:SetText(KindText(e.kind) .. "  |cffe6e6ea" .. date("%H:%M", e.t) .. "|r"
                 .. (e.minLevel and ("  |cffa0a4ad" .. string.format(L("Nv. %d+"), e.minLevel) .. "|r") or ""))
             card.num:SetText(tonumber(date("%d", e.t)))
