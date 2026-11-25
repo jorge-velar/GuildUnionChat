@@ -2327,6 +2327,59 @@ Lo que usa el calendario (así el formato está solo aquí):
 - `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
   icon, title, desc }` y quién se apunta `{ id, tag, who, role }`.
 
+## Packs/Trade.lua
+
+### Qué hay en el archivo
+
+El conjunto `TR` de propuestas (Net/Packs.lua, «Propuestas (`WU`)»): las solicitudes de Comercio de toda la unión, para que
+el Tablón y Mis encargos lleguen a todas las hermandades y sigan ahí tras /reload. 16 trozos, `keep` de 30 días; su
+`onChange` avisa con `HU:Changed("trade")`, que escucha Trade.lua. Cada uno escribe solo lo suyo:
+
+| Clave | De quién | Datos |
+|---|---|---|
+| `o<id>` | quien la pide | `<estado>,<cant>,<mats>,<propina>,<pública>,<para quién>,<objeto>` |
+| `a<id>` | quien la hace o, en una privada, para quien es | `t` la acepto, `d` hecha, `r` la rechazo; sin datos, la suelto |
+
+- `<id>`: el de `NewId` (Trade.lua); letras y cifras, 20 como mucho.
+- `<estado>`: `o` abierta o `g` cancelada. Cancelar es volver a mandar la misma con `g` (`HU:TradeCancel`, con sus datos tal
+  cual: `data`).
+- `<cant>` de 1 a 999; `<mats>` 1 (los pone quien pide) o 0; `<propina>` en cobre, o `-` (a negociar; 0 es una propina de
+  0); `<pública>` 1 o 0; `<para quién>`, el nombre, o `-` en las públicas (una pública no lleva a quién y una privada sí).
+- `<objeto>` va el último y puede llevar comas: `i<objeto>:<nombre>` de un enlace de objeto, `s<hechizo>:<nombre>` de uno de
+  hechizo o de encantamiento (`enchant:` también va como `s`) o `t:<texto>`, lo escrito a mano. Sin `~`, `;`, `|` ni
+  códigos de control (`Clean`), y recortado (`HU.Utf8Cut`) para que todo quepa en los 180 de una propuesta y, sobre todo,
+  en la línea del paquete: «Nombre,clave,hora,datos» no puede pasar de 200 (`PART`, Net/Packs.lua), y una más larga no se
+  publica y no llega a las otras hermandades (`LINE_MAX`, con mi nombre y el número de la solicitud).
+- **Al leer** (`ItemLink`) se rehace el enlace: el del juego (`C_Item.GetItemInfo`, `C_Spell.GetSpellLink`) si ya lo tiene,
+  y entonces se recuerda; si no, uno con su nombre, como los de prueba (`AddTest`). Lo escrito a mano, tal cual.
+- `validate` comprueba todo eso (`ParseOrder`): lo que no tiene su forma ni se propone ni se acepta.
+
+### `Resolve`
+
+El estado de cada solicitud con sus respuestas, en este orden:
+
+1. `g` de quien la pide → `gone` (cancelada);
+2. si no, una `d` → `done` (hecha; `taker`, quien la hizo);
+3. si no, una `t` → `taken` (aceptada; gana la más antigua, y `takenAt` es su hora);
+4. si no, una privada con `r` → `gone` (rechazada);
+5. si no, `open`.
+
+En las públicas cuentan las respuestas de cualquiera menos quien la pide; en las privadas, solo las de para quien es (nadie
+más puede aceptarla). De cada tipo, la más antigua; a la misma hora, por nombre: igual en todos los ordenadores. Quitarla de
+mi lista (`closed`) no viaja: es de cada personaje (`tradeClosed`, Trade.lua).
+
+### `HU:TradeRequests()`
+
+- Lee `HU:Proposals("TR")` (lo de mi hermandad, de mi almacén; lo de las otras, de sus paquetes), junta cada `o<id>` con sus
+  `a<id>` y da la lista de la más antigua a la más nueva: `{ id, who, tag, t, item, qty, mats, tip, pub, to, state, taker,
+  takenAt, data }`. La rehace Trade.lua solo al abrir la sección o con el aviso «trade».
+- **Las privadas** solo salen para quien la pide, para quien es y para quien la hace. Sus datos viajan a todos (los guarda
+  todo el que tiene el addon, como cualquier propuesta): se esconden al leer.
+- **El mismo número dos veces** (alguien que copia el de una ajena): vale la de quien sale en él (`NewId` empieza por la
+  huella de su nombre, `HU.Hash`); si no, la más antigua.
+- `HU:TradeOrder(r)`, `HU:TradeCancel(r)` y `HU:TradeAnswer(id, qué)` proponen lo de Trade.lua; devuelven si han podido (sin
+  la unión, `HU.myTag`, no).
+
 ## History.lua
 
 ### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)
@@ -3369,9 +3422,11 @@ La sección Comercio de la lista de miembros (UnionRoster.lua crea `cover.trade`
 pedir objetos fabricados a la unión, en el Tablón (a todos) o a alguien concreto (Mis encargos), y hablar con cada
 persona. Las vistas se llamaban Público y Privado hasta el 24/11 (Jorge: «Tablón» y «Mis encargos»; en inglés
 «Board» y «My Orders»); por dentro siguen siendo `view = "pub"` y `"priv"`.
-**Fase 1: solo la ventana, sin red.** Nada viaja: las solicitudes (`reqs`) y los chats (`chats`) son tablas del
-archivo, solo de esta sesión (se pierden con /reload), y nadie más las ve; el modo prueba (`HU:TradeTest`, abajo) la
-llena de datos. La red está prevista con los paquetes con huella: el conjunto `TR` (`Net/Packs.lua`, aún sin escribir).
+**Con la red** (25/11; Jorge, 24/11: «mis orders no se ven entre guild», «¿todas las publicaciones en el board, my orders…
+lo verán todas las guild y se mantendrán ahí?», «¿los chats del my orders se guardan?»): las solicitudes viajan a toda la
+unión como propuestas, el conjunto `TR` (Packs/Trade.lua), y siguen tras /reload; el chat de cada encargo va por susurro a la
+otra persona (`TC`). Ver «La red: el conjunto TR y el chat de cada encargo», abajo. Hasta entonces (fase 1) nada viajaba. El
+modo prueba (`HU:TradeTest`, abajo) la llena de datos que no viajan.
 **Qué va dónde** (Jorge, 24/11, al ver la 314 —«me parece feo y no se ven bien los botones… muy pequeño, parece
 oculto»—, eligió entre tres dibujos la «opción 3», la misma para Calendario: un interruptor dorado grande en su fila y,
 debajo, el buscador y la casilla. En el juego, en la 315, «no pega ni con cola, los botones eran bonitos»: en la 316
@@ -3414,15 +3469,17 @@ el `Sync` de BlizzTab.lua lo volvería a sacar.
 
 ### Una solicitud
 
-`{ id, who, item, qty, mats, tip, pub, to, state, taker, takenAt, t, closed, test }`
+`{ id, who, item, qty, mats, tip, pub, to, state, taker, takenAt, t, closed, test }` (las de la red, además, `tag`, la
+hermandad de quien la pide, y `data`, sus datos tal cual: Packs/Trade.lua)
 - `id` (`NewId`), 16 cifras: huella del nombre de quien la pide (`HU.Hash`, 4), la hora (6), un contador de la sesión
-  (2) y azar (4); con la red, distinto en toda la unión aunque dos pidan en el mismo segundo.
+  (2) y azar (4); distinto en toda la unión aunque dos pidan en el mismo segundo.
 - `item`, el enlace (o lo escrito); `qty`, 1 o más; `tip`, la propina en cobre (nil: «A negociar»); `mats`, true si
   los materiales los pone quien pide («Yo», de entrada), false si quien la hace («Vendedor»).
-- `pub`: pública, o privada para `to`. `state`: `open` (Abierta), `taken` (Aceptada por `taker` a la hora `takenAt`),
-  `done` (Hecha) o `gone` (cancelada o rechazada: ya no sale). `closed`: quitada de Mis encargos (solo de mi lista).
+- `pub`: pública, o privada para `to`. `state`: `open` (Abierta), `taken` (Aceptada por `taker` a la hora `takenAt`, la
+  del servidor), `done` (Hecha) o `gone` (cancelada o rechazada: ya no sale). `t`: cuándo se pidió (la hora de su
+  propuesta). `closed`: quitada de Mis encargos (solo de mi lista, guardado en el personaje: `tradeClosed`).
 - `test`: del modo prueba. Tope: 5 sin terminar por persona (`MAX_OPEN`, `OpenCount`: abiertas y aceptadas; las
-  quitadas de mi lista no cuentan), pensado para la red.
+  quitadas de mi lista no cuentan).
 - Lo mío va en azul (`MINE`; en el Tablón, «Yo») y lo de otros en amarillo (`OTHERS`).
 
 ### Tablón y Mis encargos (`Visible`, `Layout`)
@@ -3430,7 +3487,8 @@ el `Sync` de BlizzTab.lua lo volvería a sacar.
 - **Tablón**, a todo lo ancho: las públicas abiertas y, 10 min más (`PUB_KEEP`), las aceptadas con quien la aceptó,
   para que se vea que ya está cogida; luego solo en Mis encargos. Quién · Receta / objeto · Cant. · Mats (Sí / No) ·
   Propina · Estado · Acción: «Aceptar» (de otro y abierta), «Cancelar» (mía sin aceptar) o quién la aceptó. `Accept`
-  la pasa a `taken` conmigo como `taker` y deja puesto el chat con quien la pidió. «Aceptar» sale apagado si no puedo
+  la pasa a `taken` conmigo como `taker` (en la red, mi respuesta `t`) y deja puesto el chat con quien la pidió. Salen las
+  de todas las hermandades. «Aceptar» sale apagado si no puedo
   hacerla (`HU:CanCraft`, abajo) y al pasar el ratón dice por qué, en rojo (`WhyTip`, con el porqué en `why`); `Accept`
   lo vuelve a mirar.
 - **Mis encargos**: las que me tocan (`Involved`: mías, las que me piden y las que hago yo), menos las quitadas y las
@@ -3482,18 +3540,21 @@ Solo en Mis encargos, a la derecha (`ui.chat`, 200 de ancho, `CHAT_W`), y solo a
 arriba abajo (Jorge, 24/11): desde debajo del buscador (arriba del cuerpo) hasta 8 del borde de abajo de la sección,
 donde estuvo el modo prueba; la lista, a su izquierda, y «+ Nueva solicitud», centrado debajo de ella. Uno por persona
 (`chats[nombre]`, hasta 200 líneas); elegir una solicitud lo cambia al de la otra persona (`OpenChat(Other(r))`); sin
-nadie, la caja está apagada. A un desconectado se le escribe igual (con la red, lo leería al entrar); hoy solo se añade
-aquí. Todas las líneas entran por `ChatLine`; desde fuera, por `HU:TradeChatLine(persona, quién, texto)`, que hoy
-solo usan las pruebas y con la red usarán las que lleguen.
+nadie, la caja está apagada. Lo que escribo sale por susurro a la otra persona (`SendChat`, orden `TC`); a un
+desconectado se le escribe igual y le llega al entrar (ver «La red», abajo). A las personas de prueba no se manda nada.
+Todas las líneas entran por `ChatLine` (con `sys`, un aviso del addon, tal cual y sin nombre delante); las que llegan,
+por la orden `TC`, y desde fuera, por `HU:TradeChatLine(persona, quién, texto)`, que usan las pruebas.
 Detrás de cada nombre, un circulito verde o gris (desconectado o no se sabe): `BuildOnline` rehace `onlineMap` en cada
 repintado con mi hermandad (`HU.rosterList`), las listas de las otras (`HU.remoteRoster`), los que tienen GuildUnion
-vistos hace menos de 5 min (`HU.remote`) y los de prueba. Yo, siempre verde; en «Quién lo hace», la presencia del club.
+vistos hace menos de 5 min (`HU.remote`), quien me ha escrito por el chat de un encargo hace menos de 5 min (`wroteT`)
+y los de prueba. `Status(nombre)` da lo que se sabe: conectado, desconectado o nil (no se sabe). Yo, siempre verde; en
+«Quién lo hace», la presencia del club.
 
 ### Sin leer (`unread`, `HU:TradeUnread`)
 
-Ya montado para cuando llegue la red (Jorge, 24/11), aunque hoy solo escriben las personas del modo prueba, que
-cuentan (así se ve en el juego).
-- Una línea de otro (`ChatLine` con `who ~= Me()`) cuenta como sin leer (`unread[persona]`, nunca más que las líneas
+Montado para la red (Jorge, 24/11): cuentan las líneas que llegan por `TC`, el aviso de una privada nueva para mí
+(`NotifyNew`, en «La red») y las de las personas del modo prueba (así se ve en el juego).
+- Una línea de otro (`ChatLine` con `who` que no soy yo) cuenta como sin leer (`unread[persona]`, nunca más que las líneas
   que guarda su chat) salvo que ese chat esté en pantalla en ese momento (`ChatOnScreen`): la sección a la vista
   (`ui:IsVisible()`: ella y todo lo de encima, también la ventana del juego), en Mis encargos, sin buscar, con el
   comercio encendido y con ese chat puesto (`chatKey`). Las mías nunca cuentan.
@@ -3557,17 +3618,68 @@ para que nunca vayan cada una por su lado.
   «Cancelar», que cierra el menú.
 - En Mis encargos, Ctrl+clic suma o quita una fila (la elegida con un clic solo entra también) y Mayús+clic, el tramo desde
   la última (`picks`); con algo marcado sale «Eliminar (N)» a la derecha de «+ Nueva solicitud». `RemoveReq`: la mía
-  sin aceptar se cancela; las demás salen de mi lista.
+  sin aceptar se cancela (para todos); las demás salen de mi lista (`tradeClosed`), y la que hago yo sin hacer, además, se
+  suelta (mi respuesta, vacía): vuelve a estar abierta para quien la pidió, que si no se quedaría esperando.
 - «Hecha» (arriba a la derecha del chat, para la elegida, si la hago yo) y «Marcar como hecha» la pasan a `done`
-  (`MarkDone`): solo quien la hace y mientras está aceptada (`CanMarkDone`); ya hecha, «Hecha» queda apagado.
+  (`MarkDone`, mi respuesta `d`): solo quien la hace y mientras está aceptada (`CanMarkDone`); ya hecha, «Hecha» queda
+  apagado.
 
-### Lo guardado (`tradeReqs`, `tradeChats`, `tradeUnread`)
+### La red: el conjunto TR y el chat de cada encargo (`TC`)
 
-Desde la copia 324 (Jorge, 24/11: «al hacer /reload se borra todo»): las solicitudes, los chats con cada persona y lo
-sin leer se guardan en el personaje (`HU:Saved` char, con `{}` de entrada). Al entrar (`HU:OnStart`), `reqs`, `chats` y
-`unread` pasan a ser esas tablas y `Tidy` quita lo de prueba (`test`, personas «-Prueba»), lo que no tiene forma de
-solicitud y lo pedido hace más de `KEEP_DAYS` (30) días; lo mismo al salir (`PLAYER_LOGOUT`), para que lo de prueba no
-llegue a guardarse. Todavía no viaja: con la red (conjunto `TR` de paquetes) las de los demás llegarán aparte.
+**Lo que se ve** (`reqs`) son dos listas juntas (`Merge`): las de prueba (`testReqs`, solo en este PC) y las de la red
+(`netReqs`, `HU:TradeRequests()`, Packs/Trade.lua). Las de la red se rehacen (`Rebuild`) al abrir la sección (su `OnShow`),
+con el aviso `CHANGED` «trade» (el `onChange` del conjunto: los de un segundo se juntan en uno, `MarkDirty`, y se pinta si
+se ve; un paquete llega en varios trozos) y si cambia mi hermandad. Lo que las usa (`Paint`, pedir, las acciones, la orden
+`TC`) pasa antes por `Fresh`, que solo las rehace si ha cambiado algo: nada pesado por mensaje recibido.
+- **Pedir lo que falta** (`NeedAll`): `HU:PackNeed` de mi hermandad (lo que me perdí estando fuera, `SyncMine`) y de las
+  otras, al abrir la sección, cada 60 s mientras se ve («Comercio: al día») y cuando llega una línea del chat sin su
+  solicitud.
+- **Las acciones** de las de la red pasan por las propuestas (las de prueba cambian en el sitio, como antes): pedir
+  (`HU:TradeOrder`; sin la unión no se puede y se dice), Aceptar y el tic (`t`), «Hecha» (`d`), la X (la mía,
+  `HU:TradeCancel`; la que me piden, `r`) y Eliminar (arriba). Cada una mira antes la de ahora (`Live`): la fila pudo
+  pintarse antes de que llegara un cambio. Se ven al repintar, con lo que ya está en mi almacén.
+- **Los nombres** de la red se comparan sin mayúsculas (`IsMe`, `SameName`): el «para quién» es lo que escribió quien pide.
+- **Una privada nueva para mí** (`NotifyNew`): al rehacer, un aviso gris en el chat con quien la pide («Nueva solicitud:
+  objeto x2», `ChatLine` con `sys`), que cuenta como sin leer: así brilla la pestaña. Una vez por solicitud (`tradeSeen`).
+
+**El chat de cada encargo**: `TC~texto` (200 letras como mucho, sin códigos de control), por susurro a la otra persona.
+En el registro, «abierta» (vale de cualquiera por susurro), cola `chat`, 60 s.
+- **Mandar** (`SendChat`): la línea entra en lo que espera a esa persona (`tradePending`) y sale ya (`TryFlush` →
+  `Deliver`: `HU:MarkPinged` y `HU:Send`) si está conectada o si no se sabe. De otra hermandad casi nunca se sabe (de ella
+  solo se tiene la lista pequeña: maestro, oficiales, enlace y ayudantes), y con «esperar a verla conectada» no le llegaría
+  nunca: por eso se prueba. Si el juego dice que no estaba (`HU:ForgetOffline`, que se envuelve aquí: el envío dio
+  `TargetOffline` o «no hay ningún jugador llamado…»), lo mandado en los últimos 30 s (`IN_FLIGHT`) vuelve a esperar,
+  delante, y a quien no se sabe si está se le vuelve a probar a los 5 min (`RETRY_UNKNOWN`). A quien se sabe
+  desconectado (los de mi hermandad), no se le manda.
+- No va por `HU:Whisper` a propósito: si el contacto se va, `HU:Whisper` reenvía lo de los últimos 30 s al siguiente de su
+  hermandad (`Resend`, Net/Transport.lua), y una línea privada podía acabar en el chat de otro.
+- **El repaso** (cada 30 s, «Comercio: chat pendiente»): lo que espera sale si la otra persona ya se ve conectada (o, si no
+  se sabe, pasados los 5 min), y lo que llegó sin su solicitud se vuelve a mirar.
+- **Recibir** (el manejador de `TC`, solo por susurro): entra en el chat de la solicitud entre los dos (`Between`: ni
+  cancelada ni quitada de mi lista, en la que me toca y con esa persona al otro lado; el nombre del chat es `Other`). Si aún
+  no la tengo (el susurro llega antes que su paquete: el enlace de su hermandad publica al minuto), espera hasta 10 min
+  (`HOLD_FOR`, 30 líneas como mucho), se pide lo que falte y se vuelve a mirar en cada `Rebuild` y en el repaso. De quien
+  no tiene nada conmigo, nunca entra. Quien me escribe está conectado: lo que le esperaba sale ya.
+- **Seguridad**: «abierta», porque alguien de otra hermandad que no es maestro, oficial ni ayudante no sale en ninguna lista
+  (`InAnyGuild`) y nunca le llegaría. Lo que la limita es el manejador: solo hay solicitud entre los dos si uno la pidió y
+  el otro la acepta o es para quien es, y eso solo lo escribe alguien de una hermandad de la unión (propuestas). Lo de
+  fuera, además, con el tope de siempre por remitente (`Admit`).
+
+### Lo guardado (`tradeChats`, `tradeUnread`, `tradeClosed`, `tradeSeen`, `tradePending`, `tradeReqs`)
+
+Desde la copia 324 (Jorge, 24/11: «al hacer /reload se borra todo»), y con la red:
+- **Las solicitudes** van en las propuestas (`HU.db.wuStore`, en la cuenta, y los paquetes de las otras hermandades,
+  `HU.db.packs`): tras /reload están, y caducan a los 30 días (`keep` del conjunto).
+- **En el personaje** (`HU:Saved` char, con `{}` de entrada): los chats con cada persona (`tradeChats`), lo sin leer
+  (`tradeUnread`), las que quité de mi lista (`tradeClosed[id] = hora`), las privadas para mí ya avisadas
+  (`tradeSeen[id] = hora`) y lo que espera a que la otra persona se conecte (`tradePending[persona] = { { m, t } }`, 50
+  como mucho por persona).
+- Al entrar (`HU:OnStart`, que pone `chats` y `unread` a esas tablas) y al salir (`PLAYER_LOGOUT`), `Tidy` quita lo de
+  prueba (personas «-Prueba»), lo sin leer sin chat y lo de hace más de `KEEP_DAYS` (30) días de `tradeClosed`,
+  `tradeSeen` y `tradePending`.
+- **`tradeReqs`** (la copia 324 guardaba ahí las solicitudes, sin red) se queda declarada. Al entrar, en cuanto se sabe mi
+  hermandad (`CHANGED` «config»), `Migrate` propone una vez mis abiertas, con su mismo número, y la vacía. Entonces nada
+  viajaba: nadie pudo aceptarlas, y las canceladas ya no se ven. Los chats y lo sin leer se quedan como estaban.
 
 ### Modo prueba y configuración
 
@@ -3575,7 +3687,8 @@ Sin botón ni comando (Jorge, 24/11: «quitando el test mode»; no quiere orden 
 prueba (`AddTest`) o lo quita (`ClearTest`), solo por código; lo usan las pruebas para tener datos (el de Calendario sí
 sigue con su botón). `AddTest` quita lo de prueba que hubiera y pone 8 solicitudes (4 públicas, 4 privadas: me piden,
 pido, aceptadas) y tres líneas de chat, con personas «-Prueba» (Pepe y Bea conectados, Lyra y Jandra no) y el enlace
-de verdad si el juego conoce el objeto; `ClearTest` lo quita todo, también sus líneas sin leer.
+de verdad si el juego conoce el objeto; `ClearTest` lo quita todo, también sus líneas sin leer. Van en su propia lista
+(`testReqs`), no viajan ni se guardan.
 `tradeOff` y `tipsOff`, en la configuración de la hermandad (`HU:UnionCfg()`, Configuración → Comercio,
 UnionConfig.lua), los cambia el maestro y de momento solo valen en su personaje; sin poner, todo activo. `tradeOff`
 deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, interruptor, buscador y su
