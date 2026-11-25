@@ -354,7 +354,8 @@ Cómo encaja lo escrito en un buscador con un nombre, sin mayúsculas ni acentos
 entera («Gran bolsa»); 3 empieza por lo escrito pero a media palabra («Bolsas»); 4 una palabra de dentro empieza así;
 5 dentro de una palabra («Embolsar»); 6 varias palabras, cada una al principio de alguna, en cualquier orden («seda
 bolsa»); nil, no encaja. Palabra entera = lo que sigue no es letra ni número (los bytes de UTF-8 cuentan como letra).
-Lo usa Comercio (Trade.lua) en sus sugerencias, en «Quién lo hace» y al buscar en el Tablón. Jorge, 24/11: «que bolsa
+Lo usa Comercio en sus sugerencias (TradeOrder.lua), en «Quién lo hace» (TradeCraft.lua, TradeFind.lua) y al buscar en el
+Tablón (TradeView.lua). Jorge, 24/11: «que bolsa
 pille primero bolsa y no bolsas, así iremos más al grano».
 
 ### `local LINK_OK = { item = true, spell = true, quest = true, achievement = true…`
@@ -2422,7 +2423,7 @@ Trade.lua. Cada uno escribe solo lo suyo:
   esas copias en el juego: sin compatibilidad vieja.
 - `<estado>`: `o` abierto, `g` cancelado (o eliminado) o `s` vendido (solo una venta). Cancelar o vender es volver a mandar
   el mismo con `g` o `s` (`HU:TradeCancel`, `HU:TradeSold`, con sus datos tal cual: `data`).
-- `<tipo>`: `p` pedir (una solicitud) o `v` vender (una venta, de un BOE: Trade.lua lo mira al publicar). Una venta va
+- `<tipo>`: `p` pedir (una solicitud) o `v` vender (una venta, de un BOE: TradeOrder.lua lo mira al publicar). Una venta va
   siempre al tablón (`<pública>` 1, sin para quién) y sin materiales (0); su `<propina>` es el precio.
 - `<cant>` de 1 a 999; `<mats>` 1 (los pone quien pide) o 0; `<propina>` en cobre, o `-` (a negociar; 0 es una propina de
   0); `<pública>` 1 o 0; `<para quién>`, el nombre, o `-` en las públicas (una pública no lleva a quién y una privada sí).
@@ -3638,6 +3639,10 @@ Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el
 
 ## Trade.lua
 
+**Cinco archivos** (desde el 25/11; antes, todo en Trade.lua): Trade.lua, TradeCraft.lua, TradeOrder.lua, TradeView.lua y
+TradeFind.lua, con lo que comparten en `HU.TradeInternal`. Qué va en cada uno: «Los archivos de Comercio y lo que
+comparten», abajo. Las notas de los cinco van en esta sección.
+
 La sección Comercio de la lista de miembros (UnionRoster.lua crea `cover.trade` y llama a `HU:BuildTrade(host)`):
 pedir objetos fabricados a la unión, en el Tablón (a todos) o a alguien concreto (Mis encargos), vender BOE en el Tablón,
 hablar con cada persona y buscar quién de la unión fabrica qué (Buscar). Las vistas se llamaban Público y Privado hasta el
@@ -3699,6 +3704,59 @@ juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
   vista de chat y no contaba que lo nuestro sube 57.
 El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua, `HU.charSearchOff`) y no Trade.lua, porque
 el `Sync` de BlizzTab.lua lo volvería a sacar.
+
+### Los archivos de Comercio y lo que comparten (`HU.TradeInternal`)
+
+Hasta el 25/11 todo Comercio iba en Trade.lua (unas 2.500 líneas), en el tope de Lua 5.1 (abajo); Jorge: «Después de
+hacer todo refactoriza». Desde entonces va en cinco archivos, en este orden de carga (GuildUnion.toc), haciendo lo mismo:
+
+| Archivo | Qué hay |
+|---|---|
+| `Trade.lua` | el estado y sus ayudas (`Me`, `IsMe`, `Other`, `EntryKey`, `Plain`, `Coins`; quién está conectado: `BuildOnline`, `Status`), sin leer, el chat de cada encargo, la red (`Rebuild`, `Fresh`, la orden `TC`), las acciones de las solicitudes (`Accept`, `Cancel`, `RemoveReq`, `MarkDone`, `MarkSold`…), el modo prueba y lo guardado; y todas las funciones de HU de Comercio |
+| `TradeCraft.lua` | los objetos (`ItemInfo`, `BoeOf`), los fabricables y su cargador (`craft`, `LoadCraftNames`), quién lo hace (`SearchMembers`, `CraftersOf`, `ClubRows`), ¿puedo hacerlo? (`CraftTargets`, `MyProfessions`, `ClubProfessions`, `CraftCheck`) y las recetas (`ReadRecipes`) |
+| `TradeOrder.lua` | la ventana de nuevo encargo (`BuildNewDialog`, que pone también `ui.OpenNew`), el autorrelleno (`Suggest`, `ItemMatches`, `NameMatches`), la ficha al pasar el ratón (`HyperTip`) y el tope (`OpenCount`) |
+| `TradeView.lua` | lo que se ve en el Tablón y en Mis encargos (`Visible`, `StateText`, `TimeLeft`), las columnas y las listas (`Columns`, `Titled`, `Layout`, `PaintRows`, `MakeList`, `MakeRow`), `Paint` (y su fila, `FillReq`), el clic derecho (`RowMenu`) y el montaje (`T.Build`, con `BuildChat` y `SearchBox`) |
+| `TradeFind.lua` | la pestaña Buscar: `FindItems` con sus filtros, `PaintFind`, la fila de los filtros (`BuildFilters`, `FilterMenu`) y la ventana «Quién lo hace» (`BuildWho`) |
+
+- **Las funciones de HU, todas en Trade.lua**: `HU:TradeUnread`, `HU:TradeUnreadChats`, `HU:TradeChatLine`,
+  `HU:TradeTest`, la envoltura de `HU:ForgetOffline` y, en una línea que pasa a la de dentro, `HU:ClubProfessions`,
+  `HU:CanCraft` y `HU:BuildTrade`. Así lo de fuera (UnionRoster.lua) solo necesita «Trade» en su `HU:Module`, y mover
+  algo por dentro no cambia las líneas de otros archivos.
+- **`HU.TradeInternal`** (`T` en cada archivo): una tabla privada del addon que crea Trade.lua, el primero que carga;
+  no hay globales nuevas.
+  - El estado que cambia va en sus campos y se lee y se escribe siempre por la tabla, sin copiarlo: `T.reqs` (lo que se
+    ve), `T.unread`, `T.view`, `T.picks`, `T.selected`, `T.chatKey`, `T.netDirty`, `T.ui` (la sección: la pone
+    `T.Build`), `T.craftLoader` y `T.findDirty` (TradeCraft.lua).
+  - Las funciones que usan varios: cada archivo pone las suyas en la tabla (`T.Accept = Accept`, al final de su
+    apartado) y se copia como locales, al cargar, las de los archivos de antes (`local Accept = T.Accept`). Las de los
+    de después se llaman por la tabla, en el momento: `T.Paint()` (TradeView.lua) desde Trade.lua, TradeCraft.lua y
+    TradeOrder.lua; `T.ItemInfo` desde el modo prueba; `T.PaintFind`, `T.BuildFilters`, `T.BuildWho` y `T.FindLink`
+    (TradeFind.lua) desde TradeView.lua; y las tres funciones de HU de arriba.
+  - Lo que usa un archivo solo se queda en él: los chats y las listas de la red y de prueba (Trade.lua), `clubRows` y
+    `crafters` (TradeCraft.lua; `T.ResetCrafters` los vacía en cada repintado), `pendingSubmit` (TradeOrder.lua), el
+    orden y `lastPick` (TradeView.lua), y los filtros y el elegido de Buscar (TradeFind.lua).
+- **Lo guardado**, cada archivo lo suyo (`HU:Saved`, al principio): Trade.lua, los chats, lo sin leer, `tradeClosed`,
+  `tradeSeen`, `tradePending` y `tradeReqs`; TradeCraft.lua, `tradeRecipes`; TradeView.lua, `tradeOnlyCraft`.
+- **Quién lo vigila**: modulos_spec solo ve lo que se llama por `HU:` y luacheck no ve los campos de `T`; comercio_spec
+  («lo que comparten sus archivos») mira que todo `T.x` que lee un archivo de Comercio exista con la sección montada
+  (salvo `chatKey` y `selected`, que empiezan vacíos).
+- Lo nuevo, en el archivo de su tema; si lo usa otro, a la tabla.
+
+**Límites de Lua 5.1**: 200 variables locales por función (también en el archivo, que es una función) y 60 de fuera
+(«upvalues») por función. Hasta el refactor, Trade.lua tenía 195 locales y `HU:BuildTrade` usaba 57 de fuera: cada
+cambio costaba (por eso salieron `SIZES` y `BuildWho` aparte). Ahora, medido con `luac5.1 -l` («locals» del archivo y
+el mayor «upvalues»):
+
+| Archivo | Líneas | Locales del archivo | Mayor de fuera |
+|---|---:|---:|---|
+| `Trade.lua` | 595 | 82 | 11 (el manejador de `TC`) |
+| `TradeCraft.lua` | 415 | 39 | 9 (el cargador de nombres) |
+| `TradeOrder.lua` | 402 | 30 | 18 (`BuildNewDialog`) |
+| `TradeView.lua` | 818 | 97 | 28 (`Paint`) |
+| `TradeFind.lua` | 397 | 43 | 18 (`BuildWho`) |
+
+Una función que se acerque a 30 de fuera, mejor partirla: así salieron `FillReq` de `Paint`, `MakeRow` de `MakeList` y
+`BuildChat` del montaje.
 
 ### Una solicitud (un anuncio)
 
@@ -3889,7 +3947,7 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   - El buscador («Buscar objeto», `GuildUnionTradeFindSearch`, como el del Tablón, con su marco oscuro de borde dorado):
     un texto deja los fabricables cuyo nombre lo lleva (`HU.TextRank`, sin acentos ni mayúsculas); un enlace (Mayús+clic
     en un objeto, o pegado) deja solo ese fabricable (`|Hitem:` o `|Hspell:`/`|Henchant:`), y si no se fabrica, nada.
-    Con un enlace, al pasar el ratón, su ficha (`HyperTip`). **Mayús+clic** (en `BuildTrade`): un enganche a
+    Con un enlace, al pasar el ratón, su ficha (`HyperTip`). **Mayús+clic** (en el montaje, `T.Build`): un enganche a
     `ChatFrameUtil.InsertLink` (al que llama `HandleModifiedItemClick` de Forever) pone el enlace en el buscador que
     tenga el foco, el de Buscar o el del Tablón; el juego avisa con `OnTextChanged` y la lista se rehace.
   - **Un enlace en un buscador** (`f.SetLink`, `f.WatchLink`, en `BuildFilters`; los dos buscadores): en la caja se ve
@@ -3947,9 +4005,8 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   (`OnMouseDown`) si su menú estaba abierto (`b.menu`, que se borra con `SetClosedCallback`) o si el juego lo acaba de
   cerrar en ese mismo instante (`b.closedAt == GetTime()`), y entonces el clic lo cierra en vez de abrirlo otra vez.
 - Nada se repinta por fotograma: la pestaña no usa `OnUpdate`.
-- **Límites de Lua 5.1**: Trade.lua tiene casi 200 variables en el archivo (196 con la 330; Lua 5.1 no deja más) y
-  `HU:BuildTrade` usa 57 de fuera (el tope es 60). Por eso los tamaños nuevos van juntos en `SIZES` y la ventana de quién
-  lo hace se monta aparte (`BuildWho`, que recibe `MakeList`). Lo nuevo, en tablas o en funciones aparte.
+- Los tamaños juntos en `SIZES` y la ventana de quién lo hace montada aparte (`BuildWho`) vienen de cuando todo iba en
+  Trade.lua, en el tope de Lua 5.1: ver «Límites de Lua 5.1», arriba.
 
 ### Chat con cada persona y circulitos
 
@@ -4148,7 +4205,7 @@ de hechizo: se cruzaron por nombre con los de vanilla de Wowhead Classic (119) y
 (`/forever/search/suggestions-template`, hechizo con el nombre exacto: los 46 salieron sin dudas). Antes la lista era
 de Wowhead Classic y traía objetos de Season of Discovery que Forever no tiene: ya no.
 
-### Los nombres: `LoadCraftNames` (en Trade.lua)
+### Los nombres: `LoadCraftNames` (en TradeCraft.lua)
 
 - Pide cada objeto al juego (`C_Item.GetItemInfo`, con `ItemInfo`: en Forever no hay `GetItemInfo` suelto) y guarda lo
   que llega en `craft[id] = { key, link, skill, lv, q, il, cls, bind }` (`key`, el nombre en minúsculas; de paso, en la
@@ -4210,7 +4267,7 @@ Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos d
   dorada. Si ya está así no hace nada (`djPicked`): se llama en cada repintado.
 - Por qué el elegido mantiene la forma: no se esconde ni se añade nada, solo se tiñen las piezas que ya tiene. Sigue
   siendo el mismo botón que sus vecinos (contorno y tamaño), solo que oscuro, y vale para botones de otros archivos.
-- «+ Nuevo anuncio» (Trade.lua; hasta el 25/11, «+ Nueva solicitud») y «+ Nuevo evento» (UnionCalendar.lua) son `DJ.Button` con sus tres piezas teñidas
+- «+ Nuevo anuncio» (TradeView.lua; hasta el 25/11, «+ Nueva solicitud») y «+ Nuevo evento» (UnionCalendar.lua) son `DJ.Button` con sus tres piezas teñidas
   de verde y la letra blanca; lo hace cada archivo, como hasta la copia 304. Entre medias fueron un «+» solo, verde
   claro (`DJ.Plus`, quitado el 24/11: Jorge los quiso «como antes y abajo centrado»).
 

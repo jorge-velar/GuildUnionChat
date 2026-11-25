@@ -69,6 +69,10 @@ UnionRoster.lua
 CraftItems.lua
 DJStyle.lua
 Trade.lua
+TradeCraft.lua
+TradeOrder.lua
+TradeView.lua
+TradeFind.lua
 UnionCalendar.lua
 UnionConfig.lua
 ListWindow.lua

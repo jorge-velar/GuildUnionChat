@@ -1851,3 +1851,31 @@ describe("Comercio (Trade.lua): lo del 25/11 por la tarde", function()
         A.same({}, a:Errors())
     end)
 end)
+
+---------------------------------------------------------------------------
+-- Lo que comparten los archivos de Comercio (HU.TradeInternal, Trade.lua): luacheck no ve sus campos
+---------------------------------------------------------------------------
+describe("Comercio: lo que comparten sus archivos (HU.TradeInternal)", function()
+    it("todo lo que leen de la tabla existe con la sección montada (salvo el estado que empieza vacío)", function()
+        local runner = require("lib.runner")
+        local addon = require("lib.addon")
+        local a = F.Community()
+        OpenTrade(a)
+        local T = a.HU.TradeInternal
+        -- (vacíos hasta que se elige algo: el chat puesto y la fila elegida)
+        local MAYBE_NIL = { chatKey = true, selected = true }
+        local missing, n = {}, 0
+        for _, f in ipairs(addon.LuaFiles()) do
+            if f:match("^Trade%w*%.lua$") then
+                local src = assert(addon.ReadFile(runner.here .. "/../" .. f))
+                for name in src:gsub("%-%-[^\n]*", ""):gmatch("%f[%w_.]T%.([%a_][%w_]*)") do
+                    n = n + 1
+                    if T[name] == nil and not MAYBE_NIL[name] then missing[#missing + 1] = f .. ": T." .. name end
+                end
+            end
+        end
+        A.same({}, missing)
+        A.truthy(n > 100, "no se han leído los archivos de Comercio")
+        A.same({}, a:Errors())
+    end)
+end)
