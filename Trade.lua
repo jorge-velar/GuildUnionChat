@@ -1609,7 +1609,12 @@ local function BuildNewDialog(host)
             end)
             return HU:Print(L("Comprobando el objeto con el juego…"))
         end
-        if boe and not sale then return HU:Print(L("Es BOE (se liga al equipar): solo se puede vender, no pedir.")) end
+        -- (un BOE que se fabrica sí se pide: es encargarlo a quien sabe hacerlo, no comprarlo. Casi todo el equipo fabricado
+        -- de Forever es BOE verde o mejor. Uno de botín, solo se vende. Jorge, 25/11: «los BOES solo se podrán vender, nunca
+        -- poner para comprar»)
+        if boe and not sale and not CraftTargets(item) then
+            return HU:Print(L("Es BOE de botín (se liga al equipar y no se fabrica): solo se puede vender, no pedir."))
+        end
         if sale and boe == nil then return HU:Print(L("No se ha podido comprobar el objeto: prueba otra vez.")) end
         if sale and not boe then return HU:Print(L("Solo se venden objetos BOE: los que se ligan al equipar, de verde a legendario.")) end
         -- (la propina o el precio, en cobre; las tres cajas vacías: a negociar)

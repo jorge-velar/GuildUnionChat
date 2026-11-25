@@ -995,15 +995,28 @@ describe("Comercio (Trade.lua): vender BOE", function()
         [12345] = { "Legendaria", 5, 70, 2, 2 },
     }
 
-    it("un BOE no se puede pedir y lo que no es BOE no se vende (se dice por qué); la venta va al tablón, sin materiales, con precio y de otro color, con «Venta»", function()
+    it("un BOE que se fabrica sí se pide: es encargarlo a quien sabe hacerlo, no comprarlo (Jorge, 25/11)", function()
         local a = F.Community()
         Observe(a)
         local HU = a.HU
         Known(a, GOODS)
         local tr = OpenTrade(a)
-        -- (pedir un BOE: no se deja, y la ventana sigue abierta)
-        local d = Post(a, tr, { item = ItemLink(7931, "Cofia de mitril") })
-        A.truthy(Said(a, "Es BOE (se liga al equipar): solo se puede vender, no pedir."))
+        Post(a, tr, { item = ItemLink(7931, "Cofia de mitril") })
+        local e = Mine(HU, "Cofia de mitril")
+        A.truthy(e, "propuesta")
+        A.truthy(e.d:match("^o,p,"), "un encargo (pedir), no una venta: " .. tostring(e and e.d))
+        A.same({}, a:Errors())
+    end)
+
+    it("un BOE de botín no se puede pedir y lo que no es BOE no se vende (se dice por qué); la venta va al tablón, sin materiales, con precio y de otro color, con «Venta»", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        Known(a, GOODS)
+        local tr = OpenTrade(a)
+        -- (pedir un BOE de botín, que no se fabrica: no se deja, y la ventana sigue abierta)
+        local d = Post(a, tr, { item = ItemLink(12345, "Legendaria") })
+        A.truthy(Said(a, "Es BOE de botín (se liga al equipar y no se fabrica): solo se puede vender, no pedir."))
         A.truthy(d:IsShown())
         -- (vender lo que no es BOE: blanco, que se liga al recogerlo, gris, escrito a mano o un encantamiento)
         for _, item in ipairs({ ItemLink(2589, "Paño de lino"), ItemLink(7954, "Gran espada de mitril"), ItemLink(6948, "Gris"),
@@ -1228,12 +1241,13 @@ describe("Comercio (Trade.lua): vender BOE", function()
         A.falsy(d:IsShown())
         A.same({ "Cofia de mitril" }, Items(tr))
         A.matches("^o,v,", Mine(HU, "Cofia").d)
-        -- (pedir otro BOE que no conoce: lo que llega de otro objeto no cuenta; al llegar el suyo, no se deja)
-        Post(a, tr, { item = ItemLink(7932, "Otra cofia") })
-        items[7932] = { "Otra cofia", 3, 45, 4, 2 }
+        -- (pedir otro BOE que no conoce, de botín (no se fabrica): lo que llega de otro objeto no cuenta; al llegar el suyo,
+        -- no se deja)
+        Post(a, tr, { item = ItemLink(12346, "Otra cofia") })
+        items[12346] = { "Otra cofia", 3, 45, 4, 2 }
         a.w:Fire("ITEM_DATA_LOAD_RESULT", 9999, true)
         A.truthy(Said(a, "Comprobando"))
-        a.w:Fire("GET_ITEM_INFO_RECEIVED", 7932, true)
+        a.w:Fire("GET_ITEM_INFO_RECEIVED", 12346, true)
         A.truthy(Said(a, "Es BOE"))
         A.truthy(d:IsShown())
         A.is_nil(Mine(HU, "Otra cofia"))

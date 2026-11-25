@@ -3691,8 +3691,14 @@ vender, nunca poner para comprar. En la lista aparecerán de otro color».
   Forever). `ItemInfo` lo junta en `{ name, link, q, il, cls, bind }`. El objeto sale del enlace o, lo escrito a mano,
   del nombre exacto de un fabricable (`ItemIdOf`); lo que no es un objeto (texto suelto, un hechizo, un encantamiento)
   no es BOE.
-- **Las reglas**, al publicar (`d.Submit`): un BOE solo se vende («Es BOE (se liga al equipar): solo se puede vender, no
-  pedir.»); lo que no es BOE no se vende («Solo se venden objetos BOE: …»). La ventana sigue abierta.
+- **Las reglas**, al publicar (`d.Submit`):
+  - un BOE de botín solo se vende («Es BOE de botín (se liga al equipar y no se fabrica): solo se puede vender, no
+    pedir.»);
+  - un BOE que se fabrica (`CraftTargets`) sí se pide: es encargarlo a quien sabe hacerlo, no comprarlo. Casi todo el
+    equipo fabricado de Forever es BOE verde o mejor, y con «un BOE no se pide» ya no se podría encargar nada (lo vio el
+    ayudante del tablón; decidido por ADMIN el 25/11);
+  - lo que no es BOE no se vende («Solo se venden objetos BOE: …»).
+  - Si no se cumple, la ventana sigue abierta.
 - **Si el juego aún no conoce el objeto** (`GetItemInfo` da nada): se le pide (`C_Item.RequestLoadItemDataByID`, el que
   usa AsyncCallbackSystem.lua de Forever), se dice «Comprobando el objeto con el juego…» y se decide al llegar
   (`ITEM_DATA_LOAD_RESULT` o `GET_ITEM_INFO_RECEIVED` de ese objeto, `ItemArrived`: vuelve a publicar con `final`). Si en
