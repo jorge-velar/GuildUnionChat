@@ -107,7 +107,9 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         -- (nuevo: Comercio, las recetas leídas de cada profesión y la casilla «Solo lo que puedo hacer»)
         "tradeRecipes", "tradeOnlyCraft",
         -- (nuevo, copia 324: Comercio guarda sus solicitudes, los chats con cada persona y lo sin leer)
-        "tradeReqs", "tradeChats", "tradeUnread" }
+        "tradeReqs", "tradeChats", "tradeUnread",
+        -- (nuevo, Comercio con la red: lo quitado de mi lista, las privadas ya avisadas y el chat que espera)
+        "tradeClosed", "tradeSeen", "tradePending" }
     local OLD_DEFAULTS = { showTag = true, chatMark = "dot", chatGuildColor = false, ownPaint = true, autoGuard = false,
         bans = {}, grace = 120, debug = false, showChannel = false, audit = {}, history = {}, log = {}, profiles = {},
         offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {},
@@ -116,7 +118,9 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         -- (nuevo, paquetes: las propuestas de mi hermandad, Net/Packs.lua)
         wuStore = {},
         -- (nuevo, eventos por la red: las raids de los eventos que organizo, UnionCalendar.lua)
-        calRaids = {} }
+        calRaids = {},
+        -- (nuevo, Comercio con la red, Trade.lua: también empiezan vacíos)
+        tradeClosed = {}, tradeSeen = {}, tradePending = {} }
 
     it("da exactamente lo de antes: qué va en el personaje y los valores por defecto", function()
         local HU = F.Community().HU

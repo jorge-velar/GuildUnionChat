@@ -40,6 +40,9 @@ local NEW = {
     WT = { tagField = 1, bootstrap = true, queue = "blow", ttl = 120, combat = "data" },
     -- (propuestas: mi línea de un conjunto, por GUILD; Net/Packs.lua)
     WU = { tagField = 1, queue = "blow", ttl = 300, combat = "data" },
+    -- (el chat de un encargo de Comercio, por susurro a la otra persona; el manejador mira que haya una solicitud entre
+    -- los dos, Trade.lua)
+    TC = { open = true, queue = "chat", ttl = 60 },
 }
 for cmd, marks in pairs(NEW) do
     for key, v in pairs(marks) do

@@ -10,6 +10,7 @@ M.DESC = {
     WP = "`WP~deEtiq~etiq~conj~turno~3,7|m`: pedir trozos o el anuncio (GUILD: al porteador; susurro: al equipo dueño)",
     WT = "`WT~etiq~conj~trozo~parte~partes~datos`: un trozo de un paquete, en partes de líneas enteras",
     WU = "`WU~etiq~conj~clave~hora~datos`: una propuesta, mi línea de un conjunto (por GUILD; datos vacíos: la borro)",
+    TC = "`TC~texto`: una línea del chat de un encargo de Comercio, a la otra persona (por susurro; vale si hay una solicitud entre los dos)",
     AU = "`AU~id~hora~etiq~autor~texto`: una entrada del registro compartido",
     BN = "`BN~nombre~1|0~autor~etiq~t`: veto (1) o readmisión (0)",
     CF = "`CF~canal~[ETIQ] mensaje`: chat de un compañero cuyo texto no sale por el canal (por GUILD)",

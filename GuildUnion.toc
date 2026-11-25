@@ -49,6 +49,7 @@ Social.lua
 UnionMembers.lua
 Packs\Members.lua
 Packs\Events.lua
+Packs\Trade.lua
 History.lua
 Channels.lua
 Community.lua

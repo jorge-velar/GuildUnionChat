@@ -91,6 +91,7 @@ colas `b…` (datos grandes), que salen por `HU20B`.
 | `RN` | `RN~ETIQ~nombres~rangos de oficial`: los nombres de los rangos de una hermandad | Ranks.lua | normal |  | etiq. 1, arranque, datos remotos |  |
 | `RQ` | el primero de su hermandad en entrar pregunta si hay alguien más (para ser enlace sin esperar) | Net/Relay.lua | normal |  |  |  |
 | `RR` | `RR~id~ok\|no~quién~objetivo`: respuesta a una petición de rango | Ranks.lua | normal |  |  |  |
+| `TC` | `TC~texto`: una línea del chat de un encargo de Comercio, a la otra persona (por susurro; vale si hay una solicitud entre los dos) | Trade.lua | chat | 60 s | abierta |  |
 | `WD` | `WD~etiq~conj~trozo~antes~después~-línea;+línea`: un cambio pequeño en un trozo de un paquete con huella | Net/Packs.lua | blow | 300 s | etiq. 1, arranque, datos remotos | datos |
 | `WM` | `WM~etiq~conj~n~h1,…,hn`: cómo es ahora un paquete con huella (la huella de cada trozo); lo anuncia el enlace dueño | Net/Packs.lua | blow | 300 s | etiq. 1, arranque, datos remotos | la última |
 | `WP` | `WP~deEtiq~etiq~conj~turno~3,7\|m`: pedir trozos o el anuncio (GUILD: al porteador; susurro: al equipo dueño) | Net/Packs.lua | blow | 60 s | etiq. 1, arranque | petición |

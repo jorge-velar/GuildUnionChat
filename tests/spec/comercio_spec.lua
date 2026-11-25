@@ -820,8 +820,10 @@ describe("Comercio (Trade.lua): qué es un objeto, al pasar el ratón", function
         A.equal(1, #b.HU.db.tradeChats["Ana-Reino"], "su chat")
         A.equal(1, b.HU:TradeUnread(), "y su línea, sin leer")
         A.is_nil(b.HU.db.tradeChats["Lyra-Prueba"])
-        -- (a los 30 días de pedirla, al salir se quita)
+        -- (a los 30 días de pedirla, se quita: la propuesta caduca y al volver a abrir ya no está. tradeReqs ya no se usa)
         b.w.epoch = b.w.epoch + 31 * 86400
+        tr2:Hide(); tr2:Show()
+        A.same({}, Items(tr2))
         b.w:Fire("PLAYER_LOGOUT")
         A.equal(0, #b.HU.db.tradeReqs)
         A.same({}, a:Errors())
