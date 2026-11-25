@@ -2478,7 +2478,7 @@ por nombre). `d` y `r` no cuentan.
 ### Qué hay en el archivo
 
 El conjunto **`OF`** (oficios; 16 trozos, de propuestas, `keep` de 30 días): las profesiones de cada uno, su nivel y sus
-recetas, para «Quién lo hace» (Trade.lua) y la ficha (UnionRoster.lua) de toda la unión, también de los desconectados.
+recetas, para «Quién lo hace» (TradeCraft.lua y TradeFind.lua) y la ficha (UnionRoster.lua) de toda la unión, también de los desconectados.
 Jorge, 24/11: «las recetas de otras guild se verán?» y «al menos tener un registro de cada uno, lo mejor sería que se mande
 cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profesiones y recetas.md (y su plan). No se llama
 `PF` porque `PF` ya es la orden de la ficha vieja (Social.lua), que ninguna ventana usa.
@@ -2489,7 +2489,7 @@ cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profes
 
 - Van las de `PROFS`: las de CraftItems.lua más Herboristería (182) y Desuello (393); Pesca no. `<nivel>`, de 1 a 450.
 - **`<recetas>`**, solo si la lista de esa profesión se leyó entera en su ventana (`tradeRecipes[profesión].full`,
-  Trade.lua) y la línea cabe en 200: un bit por cosa de su lista, 6 por letra (`A–Z a–z 0–9 + /`: la letra vale de 0 a
+  TradeCraft.lua) y la línea cabe en 200: un bit por cosa de su lista, 6 por letra (`A–Z a–z 0–9 + /`: la letra vale de 0 a
   63 y su bit *k*, de 0 a 5, es la cosa 6·(letra − 1) + k + 1), sin las `A` (ceros) del final. Peletería entera, 86
   letras (511 cosas); la peor línea, unas 150 con un reino de nombre largo.
 - **La lista** (`ListOf`), igual en todos los PC con la misma versión: lo de `CRAFT_ITEMS[profesión]` y
@@ -2512,7 +2512,7 @@ cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profes
 - **Cuándo**: al entrar, a los 2 min y unos segundos que salen del nombre (`HU.PackChunkOf`, sin `math.random`: así no
   cambian los números al azar de las pruebas), cuando WU ya ha vuelto a mandar lo mío (`ResendAllMine`) y el tope de quien
   recibe se ha rellenado; con `SKILL_LINES_CHANGED`, 30 s después del último aviso; con `TRADE_SKILL_SHOW` y
-  `TRADE_SKILL_LIST_UPDATE`, 5 s después (Trade.lua ya ha guardado las recetas, a los 0,3 s).
+  `TRADE_SKILL_LIST_UPDATE`, 5 s después (TradeCraft.lua ya ha guardado las recetas, a los 0,3 s).
 - **Ritmo**: una tanda cada 5 min como mucho (`SEND_GAP`), de 4 líneas como mucho (`BATCH`: caben en la ráfaga de 5 de
   quien recibe); lo que no cabe, en la siguiente. En combate o en una entrada masiva (`HU.QuietLogins`), 10 s más cada
   vez, hasta 2 min (`QUIET_MAX`).
@@ -2523,7 +2523,7 @@ cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profes
   `HU:Proposals("OF")` la primera vez que se mira tras un cambio. Si alguien sale en dos hermandades (se cambió), su línea
   más nueva. Las recetas solo se guardan en la fila si la huella es la mía.
 - **`HU:UnionCrafters(q, items, needs)`** → `{ name, tag, skill, prof, icon, rank, knows }`: los que tienen la profesión
-  cuyo nombre encaja con `q` o pueden hacer algo de `items` (las claves de Trade.lua: el objeto o `"s" .. hechizo`;
+  cuyo nombre encaja con `q` o pueden hacer algo de `items` (las claves de TradeCraft.lua: el objeto o `"s" .. hechizo`;
   `needs`, el nivel que pide cada profesión). Saber una receta es mirar un bit (`Known`: una letra). `knows`, true si sabe
   alguna; quien seguro que no (su lista leída entera, sin ese bit) no sale; sin saberse (otra huella o sin la lista
   leída), sale si tiene el nivel. Primero quien la sabe, luego por nivel.
@@ -3152,7 +3152,7 @@ miembro» del juego (`GuildUnionChatOfficers`).
     al día con `CHANGED` «requests» y al enseñarse.
   - **El desplegable sale siempre encima del botón**, como los del juego (los botones están abajo del todo de la ventana):
     `Menu.GetManager():OpenMenu(botón, menú, CreateAnchor("BOTTOMLEFT", botón, "TOPLEFT", 0, 2))`, con el estilo del de
-    clic derecho, como `FilterMenu` de Trade.lua; sin esas funciones, el de clic derecho.
+    clic derecho, como `FilterMenu` de TradeFind.lua; sin esas funciones, el de clic derecho.
   - **Otro clic en el botón lo cierra.** El juego cierra el menú con cualquier clic fuera de él, también en el botón
     (`GLOBAL_MOUSE_DOWN`, Blizzard_Menu), y puede hacerlo antes o después de que el botón se entere. Así que al pulsar
     (`OnMouseDown`, enganchado: la plantilla del botón usa el suyo) se mira si estaba abierto o si el juego lo acaba de
@@ -4006,7 +4006,7 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   cerrar en ese mismo instante (`b.closedAt == GetTime()`), y entonces el clic lo cierra en vez de abrirlo otra vez.
 - Nada se repinta por fotograma: la pestaña no usa `OnUpdate`.
 - Los tamaños juntos en `SIZES` y la ventana de quién lo hace montada aparte (`BuildWho`) vienen de cuando todo iba en
-  Trade.lua, en el tope de Lua 5.1: ver «Límites de Lua 5.1», arriba.
+  Trade.lua, en el tope de Lua 5.1; desde la copia 332 Comercio va en cinco archivos (ver «Límites de Lua 5.1», arriba).
 
 ### Chat con cada persona y circulitos
 

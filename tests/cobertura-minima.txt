@@ -2,8 +2,8 @@
 # Un archivo falla si baja de su % Y tiene más líneas sin probar (borrar código probado no falla).
 # Se rehace con Lua 5.1:  lua5.1 tests/cobertura.lua --actualizar   (o con el artefacto del CI)
 Audit.lua 83.7 13
-Blacklist.lua 88.3 14
-BlizzTab.lua 61.6 417
+Blacklist.lua 96.6 4
+BlizzTab.lua 61.8 415
 ChanPresence.lua 95.0 3
 Channel.lua 80.4 279
 Channels.lua 14.4 196
@@ -12,7 +12,7 @@ ChatTabs.lua 45.0 39
 Combat.lua 58.5 100
 Comm.lua 63.0 31
 Community.lua 7.2 371
-Config.lua 71.7 99
+Config.lua 72.7 100
 Core.lua 85.8 76
 DJStyle.lua 98.7 1
 Domain/Trust.lua 79.0 51
@@ -20,14 +20,14 @@ ErrorShare.lua 29.2 46
 Guard.lua 55.0 216
 GuardKeeper.lua 57.8 73
 History.lua 64.3 403
-InviteLog.lua 98.5 4
-ListWindow.lua 98.8 1
+InviteLog.lua 98.4 5
+ListWindow.lua 100.0 0
 Lists.lua 68.3 55
 MassLogin.lua 54.9 23
 MemGuard.lua 39.1 28
 Mention.lua 3.6 80
 Minimap.lua 33.3 12
-Net/Packs.lua 96.3 21
+Net/Packs.lua 96.5 20
 Net/Relay.lua 84.8 136
 Net/RosterSync.lua 78.2 174
 Net/Security.lua 81.2 33
@@ -56,9 +56,9 @@ TradeOrder.lua 98.5 4
 TradeView.lua 96.6 18
 UI.lua 87.5 3
 UIWindows.lua 95.0 3
-UnionCalendar.lua 98.7 17
+UnionCalendar.lua 98.7 18
 UnionConfig.lua 100.0 0
 UnionMembers.lua 94.1 16
-UnionRoster.lua 91.0 85
+UnionRoster.lua 93.8 60
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144
