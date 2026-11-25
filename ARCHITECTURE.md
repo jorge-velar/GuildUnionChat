@@ -2259,7 +2259,9 @@ y la hora, por lo que caduca): el resto de la maquinaria es la de `MB`.
 
 - **Mandar** (`HU:Propose(conj, clave, datos)`): queda ya en mi almacén y sale por GUILD
   `WU~etiq~conj~clave~hora~datos`. La hora es la del servidor (`HU.StampNow`), una más si repito en el mismo segundo.
-  Datos vacíos = borrada (con su hora: no resucita con una vieja).
+  Datos vacíos = borrada (con su hora: no resucita con una vieja). Lo que no cabría en una línea del paquete (200 con
+  nombre, clave y hora: `Fits`) no se propone ni se acepta al recibir: el equipo lo tiraría al publicar y nunca
+  llegaría a las otras hermandades (lo vio el ayudante de EV, 25/11).
 - **Recibir**: solo por GUILD y de mi etiqueta; el nombre lo pongo yo (el del remitente, nunca del mensaje); como
   mucho 10 por minuto de cada uno en cada conjunto con hueco para 5 seguidas (`WU_RATE`, `WU_BURST`; también cuentan
   las que no valen); `validate` y `HU.NetStamp` (nada del futuro). Gana la más nueva (`KeepEntry`).

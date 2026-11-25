@@ -101,6 +101,11 @@ local function ParseLine(def, l)
 end
 local function GoodKey(key) return type(key) == "string" and #key <= KEY_MAX and key:match("^[%w_]+$") ~= nil end
 local function GoodData(d) return type(d) == "string" and #d <= DATA_MAX and not d:find("[~;\n|]") end
+-- (¿cabe su línea en el paquete? Si no, el equipo la tiraría al publicar y nunca llegaría a las otras hermandades)
+local function Fits(def, name, key, t, data)
+    local line = LineOf(def, { n = name, k = key, t = t, d = data })
+    return type(line) == "string" and #line <= PART and not line:find("[~;\n|]")
+end
 -- (gana la más nueva; una borrada son datos vacíos, y tampoco resucita con una más vieja)
 local function KeepEntry(tag, id, name, key, t, data)
     local st = StoreOf(tag, id, true)
@@ -774,6 +779,7 @@ function HU:Propose(id, key, data)
     local old = st and st[me:lower() .. "," .. key]
     -- (dos seguidas en el mismo segundo: la segunda, más nueva)
     local t = math.max(HU.StampNow(), old and old.t + 1 or 0)
+    if not Fits(def, me, key, t, data) then return false end
     KeepEntry(self.myTag, id, me, key, t, data)
     Changed(id, self.myTag)
     self:Send("WU~" .. self.myTag .. "~" .. id .. "~" .. key .. "~" .. t .. "~" .. data, "GUILD")
@@ -794,7 +800,7 @@ HU.comm.WU = function(self, sender, f, dist)
     b.n, b.t = math.min(WU_BURST, b.n + (now - b.t) * WU_RATE / 60), now
     if b.n < 1 then return end
     b.n = b.n - 1
-    if data ~= "" and not def.validate(name, key, data) then return end
+    if (data ~= "" and not def.validate(name, key, data)) or not Fits(def, name, key, t, data) then return end
     if KeepEntry(tag, id, name, key, t, data) then Changed(id, tag) end
 end
 
