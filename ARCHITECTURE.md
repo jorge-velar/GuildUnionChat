@@ -2380,6 +2380,69 @@ mi lista (`closed`) no viaja: es de cada personaje (`tradeClosed`, Trade.lua).
 - `HU:TradeOrder(r)`, `HU:TradeCancel(r)` y `HU:TradeAnswer(id, qué)` proponen lo de Trade.lua; devuelven si han podido (sin
   la unión, `HU.myTag`, no).
 
+## Packs/Professions.lua
+
+### Qué hay en el archivo
+
+El conjunto **`OF`** (oficios; 16 trozos, de propuestas, `keep` de 30 días): las profesiones de cada uno, su nivel y sus
+recetas, para «Quién lo hace» (Trade.lua) y la ficha (UnionRoster.lua) de toda la unión, también de los desconectados.
+Jorge, 24/11: «las recetas de otras guild se verán?» y «al menos tener un registro de cada uno, lo mejor sería que se mande
+cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profesiones y recetas.md (y su plan). No se llama
+`PF` porque `PF` ya es la orden de la ficha vieja (Social.lua), que ninguna ventana usa.
+
+| Clave | De quién | Datos |
+|---|---|---|
+| `<profesión>`, su número (164 Herrería…) | cada uno, la suya | `<nivel>` o `<nivel>,<huella>,<recetas>` |
+
+- Van las de `PROFS`: las de CraftItems.lua más Herboristería (182) y Desuello (393); Pesca no. `<nivel>`, de 1 a 450.
+- **`<recetas>`**, solo si la lista de esa profesión se leyó entera en su ventana (`tradeRecipes[profesión].full`,
+  Trade.lua) y la línea cabe en 200: un bit por cosa de su lista, 6 por letra (`A–Z a–z 0–9 + /`: la letra vale de 0 a
+  63 y su bit *k*, de 0 a 5, es la cosa 6·(letra − 1) + k + 1), sin las `A` (ceros) del final. Peletería entera, 86
+  letras (511 cosas); la peor línea, unas 150 con un reino de nombre largo.
+- **La lista** (`ListOf`), igual en todos los PC con la misma versión: lo de `CRAFT_ITEMS[profesión]` y
+  `CRAFT_SPELLS[profesión]` en orden de nivel para aprenderlo, los objetos antes que los encantamientos del mismo nivel y
+  por número. Encantamiento: 54 objetos y 165 encantamientos, 219. Se monta la primera vez que hace falta (CraftItems.lua
+  carga después).
+- **`<huella>`**: 3 letras de `HU.PackHash` de la lista con la posición de cada cosa (si cambia el orden, cambia). Con
+  otra huella (otra versión del addon) no se leen las recetas: quedan la profesión y el nivel.
+- **`validate`** (`Parse`): profesión de `PROFS` escrita como número, nivel, huella de 3 letras y recetas con su alfabeto
+  y, como mucho, las letras de su lista (86 con otra huella). **`publish`**: solo los que siguen en mi hermandad
+  (`HU:MemberOf`; con la lista aún sin leer, todos). **`onChange`**: tira el índice y avisa con
+  `HU:Changed("professions")`, que escuchan «Quién lo hace» y la ficha para repintarse 2 s después, una vez.
+
+### Lo mío (`Due`, `SendDue`)
+
+- Mis profesiones del juego (`GetProfessions` + `GetProfessionInfo`, sin Pesca) con lo guardado de sus recetas, contra lo
+  mío en el almacén de propuestas (`wuStore`, Net/Packs.lua). Sale, en este orden: lo que ha cambiado, lo que ya no tengo
+  (datos vacíos: borrada; si el juego no da ninguna, no se borra nada: puede que aún no las dé) y lo de más de una semana
+  (`RENEW`: caduca a los 30 días).
+- **Cuándo**: al entrar, a los 2 min y unos segundos que salen del nombre (`HU.PackChunkOf`, sin `math.random`: así no
+  cambian los números al azar de las pruebas), cuando WU ya ha vuelto a mandar lo mío (`ResendAllMine`) y el tope de quien
+  recibe se ha rellenado; con `SKILL_LINES_CHANGED`, 30 s después del último aviso; con `TRADE_SKILL_SHOW` y
+  `TRADE_SKILL_LIST_UPDATE`, 5 s después (Trade.lua ya ha guardado las recetas, a los 0,3 s).
+- **Ritmo**: una tanda cada 5 min como mucho (`SEND_GAP`), de 4 líneas como mucho (`BATCH`: caben en la ráfaga de 5 de
+  quien recibe); lo que no cabe, en la siguiente. En combate o en una entrada masiva (`HU.QuietLogins`), 10 s más cada
+  vez, hasta 2 min (`QUIET_MAX`).
+
+### Buscar (`Index`)
+
+- **Al recibir no se descifra nada**: lo guarda Net/Packs.lua tal cual. El índice (`bySkill`, `byName`) sale de
+  `HU:Proposals("OF")` la primera vez que se mira tras un cambio. Si alguien sale en dos hermandades (se cambió), su línea
+  más nueva. Las recetas solo se guardan en la fila si la huella es la mía.
+- **`HU:UnionCrafters(q, items, needs)`** → `{ name, tag, skill, prof, icon, rank, knows }`: los que tienen la profesión
+  cuyo nombre encaja con `q` o pueden hacer algo de `items` (las claves de Trade.lua: el objeto o `"s" .. hechizo`;
+  `needs`, el nivel que pide cada profesión). Saber una receta es mirar un bit (`Known`: una letra). `knows`, true si sabe
+  alguna; quien seguro que no (su lista leída entera, sin ese bit) no sale; sin saberse (otra huella o sin la lista
+  leída), sale si tiene el nivel. Primero quien la sabe, luego por nivel.
+- **`HU:UnionProfessionsOf(nombre)`** → `{ id, name, icon, rank }`, primero las principales (Cocina y Primeros auxilios
+  detrás); nil si no hay. El nombre y el icono, los del juego (`C_TradeSkillUI.GetTradeSkillDisplayName` y
+  `GetTradeSkillTexture`, como en su lista de miembros); si no, el nuestro y sin icono.
+- **`HU:NeedUnionProfessions(etiqueta)`**: pide `OF` de esa hermandad o, sin ella, de todas, también la mía
+  (`HU:PackNeed`: de la mía, lo que me perdí estando fuera). Lo llaman Comercio al abrirse y cada minuto mientras se ve
+  (`NeedAll`, 5 s después de lo de Comercio, que va antes) y la ficha de alguien de otra hermandad.
+- Una línea que nadie del equipo del enlace oyó no sale hasta que su dueño vuelve a entrar o cambia el enlace
+  (`ResendAllMine`), o hasta que alguien de su hermandad mira y el equipo no la tiene igual (`ResendMine`).
+
 ## History.lua
 
 ### Lo buscado, marcado como texto seleccionado (ReduceClean-46/47)
@@ -2792,7 +2855,9 @@ resaltado, solo leyendo la lista. La casilla sigue a la vista para volver; las o
 Clic izquierdo: nuestra ficha (`GuildUnionMemberCard`, a la derecha de los iconos de la ventana; otro clic en la
 misma persona la cierra), para todas las hermandades. La del juego no se abre desde aquí: abierta por un addon, el
 juego bloquearía sus botones (expulsar, rango, notas). Con su aspecto y sus textos: hermandad, zona, rango, última
-conexión, profesiones (solo de mi hermandad, `C_Club.GetMemberInfo`, con su nivel y «Ver recetas», ver abajo),
+conexión, profesiones (de mi hermandad, las de `C_Club.GetMemberInfo`, con «Ver recetas», ver abajo, y el nivel de su
+línea de oficios si el juego no lo da; de otra hermandad, las de su línea de oficios, `OF`, Packs/Professions.lua, sin
+«Ver recetas», que el juego solo da en mi hermandad; abrirla pide su `OF` y, si llega con la ficha abierta, se repinta),
 nota y nota de oficial (si puedo verla; con «GU:», «(configuración de GuildUnion)»); abajo, Echar (como el clic
 derecho: activo con los de mi hermandad que mi rango puede echar, `HU:CanKickMember`, y con los de otra si soy
 oficial) e Invitar al grupo. Las notas solo se leen: hasta la 308, un clic en ellas ponía «Solo mi hermandad» y
@@ -2939,14 +3004,15 @@ Las dos profesiones de cada uno de mi hermandad, solo con su icono, juntos (2 px
 40 con el título corto «Prof.» (Jorge, 24/11: «que se vea bien»; en la 305-312 llevaban también el nivel y, al ver que de
 los demás no sale, pidió «esta pestaña sin niveles» y luego «júntalos y haz esa pestaña más pequeña»: el nivel, en la
 ficha y en «Quién lo hace»). Las da el juego por la comunidad de la hermandad (`C_Club.GetMemberInfo`,
-`profession1ID`…), y de las otras hermandades no llegan.
+`profession1ID`…), y la columna solo las tiene de mi hermandad (las de las otras, con su nivel, en la ficha y en «Quién
+lo hace», con `OF`: Packs/Professions.lua).
 Se leen todas de una vez (`ReadProfs`) al cambiar la lista del juego, como mucho cada `PROF_EVERY` (30) segundos: son
 cientos de miembros y `Paint` corre cada 2 segundos. Los nombres de las profesiones, en la ficha.
 - **El nivel, en Forever**: la comunidad da siempre 1 (Jorge, 24/11: su personaje daba Herboristería 195 y Minería 111;
   la comunidad, 1 y 1). Las lee `HU:ClubProfessions` (Trade.lua), también para la ficha y «Quién lo hace»: las mías
   (`isSelf`) llevan el nivel de mi personaje (`GetProfessionInfo`, por número de profesión o, si no casa, por nombre);
-  las de los demás con nivel 1 o menos quedan sin nivel (`nil`): el icono, sin número. Para saber el de los demás haría
-  falta que cada uno lo mandara por la red.
+  las de los demás con nivel 1 o menos quedan sin nivel (`nil`): el icono, sin número. El de los demás con el addon lo
+  manda cada uno por la red (`OF`, Packs/Professions.lua) y sale en la ficha y en «Quién lo hace».
 
 ### Botones de abajo: Peticiones de oficiales · Ver registro · Invitar miembro
 
@@ -3526,13 +3592,20 @@ Sugiere objetos como al pedir; compara en texto llano (`Query`: de un enlace, su
 mitad del interruptor elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos de 3 filas:
 - **Publicadas**: las del Tablón que encajan por quién la pide, el objeto o quién la aceptó (`Matches`), con «Solo lo
   que puedo hacer» si está puesta; si no hay ninguna, se esconde y «Quién lo hace» ocupa todo (8 filas).
-- **Quién lo hace** (`SearchMembers`): los de mi hermandad con una profesión cuyo nombre encaja, o con la profesión y
-  el nivel de un fabricable que encaja (`CraftNeeds`), de más nivel a menos. De los fabricables solo cuenta el grupo que
-  mejor encaja: palabra entera (0–2 de `HU.TextRank`), si no a media palabra (3–4), si no el resto; con «bolsa», las
-  bolsas y no «Bolsas» ni «Embolsar». Es aproximado: el juego da sus dos
-  profesiones (`HU:ClubProfessions`), no sus recetas, y en Forever tampoco el nivel de los demás (la comunidad da 1):
-  quien no lo tiene sale igual si tiene la profesión, con «—» y detrás; el mío, el de mi personaje. Las otras
-  hermandades, con la red.
+- **Quién lo hace** (`SearchMembers`): los de toda la unión con una profesión cuyo nombre encaja, o que pueden hacer un
+  fabricable que encaja (`CraftNeeds`, que da el nivel que pide cada profesión y las claves de lo que encaja). De los
+  fabricables solo cuenta el grupo que mejor encaja: palabra entera (0–2 de `HU.TextRank`), si no a media palabra
+  (3–4), si no el resto; con «bolsa», las bolsas y no «Bolsas» ni «Embolsar».
+  - Primero, los que tienen línea de oficios (`HU:UnionCrafters`, Packs/Professions.lua), de cualquier hermandad y
+    también desconectados: con su nivel de verdad y un tic junto al nivel si saben la receta; quien seguro que no la
+    sabe no sale. Su circulito, el de `Status`.
+  - Después, los de mi hermandad sin línea (sin el addon o sin mandarla aún), con lo que da el juego
+    (`HU:ClubProfessions`): sus dos profesiones, sin recetas y, en Forever, sin el nivel de los demás (la comunidad da
+    1): salen igual si tienen la profesión, con «—» y detrás; el mío, el de mi personaje. Nadie sale dos veces (misma
+    persona y profesión).
+  - Orden: quien sabe la receta, luego los de nivel sabido de más a menos, luego los demás.
+  - Al abrir la sección y cada minuto mientras se ve (`NeedAll`), 5 s después de pedir lo de Comercio, se pide `OF` de
+    todas (`HU:NeedUnionProfessions`); lo que llega mientras se busca se repinta 2 s después, una vez.
 
 ### Chat con cada persona y circulitos
 
@@ -3548,7 +3621,7 @@ Detrás de cada nombre, un circulito verde o gris (desconectado o no se sabe): `
 repintado con mi hermandad (`HU.rosterList`), las listas de las otras (`HU.remoteRoster`), los que tienen GuildUnion
 vistos hace menos de 5 min (`HU.remote`), quien me ha escrito por el chat de un encargo hace menos de 5 min (`wroteT`)
 y los de prueba. `Status(nombre)` da lo que se sabe: conectado, desconectado o nil (no se sabe). Yo, siempre verde; en
-«Quién lo hace», la presencia del club.
+«Quién lo hace», la presencia del club (los de mi hermandad sin línea de oficios) o `Status` (los de las líneas).
 
 ### Sin leer (`unread`, `HU:TradeUnread`)
 
