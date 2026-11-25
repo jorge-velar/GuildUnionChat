@@ -903,6 +903,10 @@ tenga algo):
 urgent = true pone el mensaje delante de su cola. Devuelve false si no ha entrado en la cola.
 slow = true: a la cola de poca prisa aunque la orden sea de las del chat (repasos periódicos)
 fast = true: por la cola del chat, delante (conectado/desconectado de oficiales: Presence.lua)
+onSent: una función que se llama en el fotograma siguiente a que el mensaje salga de verdad (`SendOne`, tras el envío
+sin saturar); no se llama si caduca en la cola, se tira por estar llena o falla el envío. La usa `/gu sinaddon`
+(Report.lua) para contar una pregunta solo cuando ha salido (copia 335). Al que espera con «gana el último» no se le
+pone (las órdenes con `latestWins` no la usan).
 
 ### `HU:DropQueued`
 
@@ -4741,19 +4745,32 @@ la copia 334 se le pregunta a cada uno; solo mi hermandad (de las otras no hay p
   saludo. A los demás oficiales una `PG` solo les quita su pregunta pendiente por esa persona (`ImpostorAsked`), y lo
   de GUILD no tiene tope por remitente (`Admit`), así que ninguna pregunta se queda sin leer por ir muchas seguidas.
 - **Uno a uno, tres veces** (`Round`, `Ask`): una vuelta pregunta a los conectados de `HU.rosterList` (sin mí) que aún
-  no han contestado, uno detrás de otro, repartidos en 80 s (de 0,5 a 3 s entre dos). Tres vueltas, cada una 100 s
-  después de la anterior; tras la última, 30 s para las respuestas que tardan (en combate dentro de una instancia el
-  addon aplaza las peticiones: Combat.lua). En total, unos 5 minutos; si contestan todos antes, acaba antes. Cada vuelta
-  pide la lista de la hermandad (`HU:RequestRoster`) para ver quién se ha ido.
+  no han contestado, uno detrás de otro, y **cada pregunta solo cuando ha salido de verdad la anterior** y ha pasado
+  1 s (`STEP`): `HU:Send` avisa al salir (`onSent`, Net/Transport.lua), y una pregunta solo cuenta (`row.asked`) cuando
+  sale. Si no sale en 90 s (`SENT_WAIT`, la cola muy llena), no cuenta y se pasa al siguiente. Tres vueltas, con 60 s
+  entre una y otra (`ROUND_GAP`); tras la última, 30 s para las respuestas que tardan (en combate dentro de una
+  instancia el addon aplaza las peticiones: Combat.lua). Al empezar dice cuánto tardará (`Eta`: una pregunta cada
+  ~1,5 s y uno de cada tres otra vez en las dos vueltas siguientes); con 200 conectados recién entrado al juego, unos
+  10 minutos. Cada vuelta pide la lista de la hermandad (`HU:RequestRoster`) para ver quién se ha ido.
+- **Por qué así (copia 335)**: la cola manda un mensaje por segundo (`QueueTick`, 6 de reserva) y en la 334 las
+  preguntas entraban a dos por segundo y contaban al entrar. Jorge pasó dos veces seguidas `/gu sinaddon` con unos 217
+  conectados: la primera, nada más entrar al juego (casi nadie en `HU.guildPeers`: unas 200 preguntas por vuelta), dio
+  70 «sin addon»; la segunda, 15 min después (los de la primera ya contaban como «con addon»: unas 40 preguntas), 37,
+  35 de ellos también en la primera. En la primera las preguntas se amontonaron en la cola y muchas no llegaron a
+  salir antes del resultado: unos 34 que sí tenían el addon salieron como «sin addon».
 - **Con addon**: yo y quien está en `HU.guildPeers` (me ha saludado o contestado). **Sin addon**: solo quien no ha
   contestado a ninguna de las tres, seguía conectado y no estaba en una instancia ni con el móvil. **No se sabe**, con
   su porqué: se ha desconectado; con la aplicación del móvil (`e.mobile`, el 14.º dato de `GetGuildRosterInfo`, Roster.lua);
   en una instancia (en un campo de batalla el juego no deja contestar, y en mazmorras y bandas, en combate, el addon
   aplaza la pregunta y a los 15 s la tira); o no le he podido preguntar las tres veces (la cola no la admitió).
 - **Las instancias** (`InstanceZone`): por la zona de la lista de la hermandad. Los campos de batalla de Forever por su
-  nombre (en castellano y en inglés) y todas las instancias de vanilla por su número, con el nombre que da el juego
-  (`GetRealZoneText(id)`, como GuildNews.lua de Blizzard). Un nombre que el juego da para varios números no cuenta: es
-  lo que devuelve cuando no conoce el número.
+  nombre (en castellano y en inglés) y las mazmorras nuevas de Forever que dijo Jorge (Alcaz Prison, The Drowned City;
+  25/11, tras ver a dos compañeros en ellas en la lista de «sin addon»); todas las instancias de vanilla por su número,
+  con el nombre que da el juego (`GetRealZoneText(id)`, como GuildNews.lua de Blizzard; un nombre que el juego da para
+  varios números no cuenta: es lo que devuelve cuando no conoce el número); y los mapas del juego que son mazmorra
+  (`C_Map.GetMapInfo`, del 1 al 3000, `mapType` Dungeon), que traen también las nuevas en el idioma del jugador. Se
+  calcula una vez, la primera vez que hace falta. Si alguna zona de más cuenta como instancia, ese sale en «no se
+  sabe»: nunca al revés.
 - **Seguro o nada**: con `GU:v:` en la Información de la hermandad (`HU.guildMin`) no se mira, porque el addon de
   quien tenga una versión anterior está en pausa (`HU.paused`: no manda nada) y saldría como «sin addon». Tampoco si yo
   estoy en un campo de batalla (`IsChatLockedDown`), y si entro en uno a mitad, para sin resultado.

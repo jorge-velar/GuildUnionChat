@@ -110,6 +110,8 @@ local function SendOne(prefix, q, m)
         return true
     end
     perf.sentN = perf.sentN + 1
+    -- (quien lo mandó quiere saber cuándo sale de verdad: /gu sinaddon, Report.lua)
+    if m.onSent then local fn = m.onSent; m.onSent = nil; HU.After(0, fn) end
     -- (el destinatario se ha ido: lo mismo que con el aviso «no hay ningún jugador llamado...»)
     if r == OFFLINE and m[2] == "WHISPER" and type(m[3]) == "string" then
         HU.qStats.offline = HU.qStats.offline + 1
@@ -157,8 +159,9 @@ local function FlushBulk()
     end
 end
 
--- urgent = true pone el mensaje delante de su cola. Devuelve false si no ha entrado en la cola. [+ARCHITECTURE.md]
-function HU:Send(msg, dist, target, urgent, slow, fast)
+-- urgent = true pone el mensaje delante de su cola; onSent, si lo hay, se llama cuando sale de verdad (no si caduca
+-- o se tira). Devuelve false si no ha entrado en la cola. [+ARCHITECTURE.md]
+function HU:Send(msg, dist, target, urgent, slow, fast, onSent)
     if #msg > 255 then msg = HU.Utf8Cut(msg, 255) end
     local cmd = msg:sub(1, 2)
     local spec = HU.msgs[cmd] or NO_SPEC
@@ -189,7 +192,7 @@ function HU:Send(msg, dist, target, urgent, slow, fast)
             if d.key and pending[d.key] == d then pending[d.key] = nil end
             Count(self.qStats.dropped, d.cmd)
         end
-        local m = { msg, dist, target, t = GetTime(), cmd = cmd, key = key, gtag = HU.sendGroup and HU.sendGroup.tag, gdest = HU.sendGroup and HU.sendGroup.dest }
+        local m = { msg, dist, target, t = GetTime(), cmd = cmd, key = key, gtag = HU.sendGroup and HU.sendGroup.tag, gdest = HU.sendGroup and HU.sendGroup.dest, onSent = onSent }
         if key then pending[key] = m end
         if urgent and (cmd == "CW" or cmd == "CG" or cmd == "CF") then
             -- (copia 150) El chat del respaldo se ponía SIEMPRE el primero: con varios esperando, el

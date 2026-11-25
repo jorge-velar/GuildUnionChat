@@ -1269,8 +1269,9 @@ E["¿Seguro que quieres pasar a estas %d personas a «%s»?"] = "Are you sure yo
 E["Hay otra lista de órdenes a medias: esta va después ("] = "Another list of orders is in progress: this one goes after it ("
 E[" en espera)."] = " waiting)."
 -- (/gu sinaddon: quién de mi hermandad no tiene el addon, preguntando a cada uno, 25/11)
-E["Miro quién tiene el addon en tu hermandad: les pregunto a los %d conectados, uno a uno y tres veces. Tarda unos 5 minutos; te aviso al acabar."] = "Checking who has the addon in your guild: I'm asking the %d online members, one by one, three times. It takes about 5 minutes; I'll tell you when it's done."
+E["Miro quién tiene el addon en tu hermandad: les pregunto a los %d conectados, uno a uno y tres veces. Tarda unos %d minutos; te aviso al acabar."] = "Checking who has the addon in your guild: I'm asking the %d online members, one by one, three times. It takes about %d minutes; I'll tell you when it's done."
 E["Ya lo estoy mirando: faltan unos %d minutos."] = "Already checking: about %d minutes left."
+E["Ya lo estoy mirando: falta poco."] = "Already checking: almost done."
 E["No estás en una hermandad."] = "You are not in a guild."
 E["Así no es seguro: la Información de la hermandad tiene GU:v:%s y el addon de quien tenga una versión anterior está en pausa y no contesta. Quítalo, espera un minuto y vuelve a probar."] = "This would not be reliable: the Guild Information has GU:v:%s, and the addon of anyone on an older version is paused and does not answer. Remove it, wait a minute and try again."
 E["Ahora no se puede: el juego no deja mandar nada (campo de batalla). Prueba al salir."] = "Not possible right now: the game blocks sending (battleground). Try again when you leave."

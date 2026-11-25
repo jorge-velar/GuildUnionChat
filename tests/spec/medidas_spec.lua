@@ -173,7 +173,7 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         return out
     end
 
-    it("a cada conectado, tres preguntas en unos 5 minutos; «sin addon», solo quien no contesta a ninguna; «no se sabe», quien se va, está en una instancia o con el móvil", function()
+    it("a cada conectado, tres preguntas, una cuando ha salido la anterior; «sin addon», solo quien no contesta a ninguna; «no se sabe», quien se va, está en una instancia o con el móvil", function()
         local net, p, extra = Union()
         local HU = p.ana.HU
         -- (el nombre de Núcleo de Magma, el que da el juego por su número)
@@ -182,9 +182,15 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         HU.guildPeers["alba-reino"] = nil
         local c = Capture(HU)
         A.equal("Sin addon: sin mirar (/gu sinaddon, unos 5 minutos).", HU:WithoutAddonLine())
+        -- (cuándo entra cada pregunta en la cola: una, solo cuando ha salido la anterior y ha pasado 1 s)
+        local enq, send = {}, HU.Send
+        HU.Send = function(hu, msg, ...)
+            if msg:match("^PG~") then enq[#enq + 1] = p.ana.env.GetTime() end
+            return send(hu, msg, ...)
+        end
         local t0 = net.now
-        Has(p.ana:Gu("sinaddon"), "les pregunto a los 6 conectados, uno a uno y tres veces. Tarda unos 5 minutos; te aviso al acabar.")
-        Has(p.ana:Gu("sinaddon"), "Ya lo estoy mirando: faltan unos 5 minutos.")
+        Has(p.ana:Gu("sinaddon"), "les pregunto a los 6 conectados, uno a uno y tres veces. Tarda unos 3 minutos; te aviso al acabar.")
+        Has(p.ana:Gu("sinaddon"), "Ya lo estoy mirando: faltan unos 3 minutos.")
         A.equal("Sin addon: lo estoy mirando (/gu sinaddon).", HU:WithoutAddonLine())
         -- (a mitad, Carla se va)
         net:Advance(60)
@@ -192,20 +198,19 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         p.ana.w:Fire("GUILD_ROSTER_UPDATE")
         local took = net:AdvanceUntil(function() return c.text ~= "" end, 400, 1)
         A.truthy(took, "no acaba")
-        A.truthy(net.now - t0 >= 200 and net.now - t0 <= 320, "unos 5 minutos: " .. tostring(net.now - t0))
+        A.truthy(net.now - t0 >= 120 and net.now - t0 <= 400, "lo que tarda: " .. tostring(net.now - t0))
         -- (Abel, tres preguntas, separadas; Alba contestó a la primera; a Carla, ya ida, no se le pregunta más)
         local asked = Asked(net, p.ana)
         A.equal(3, #asked["Abel-Reino"], "Abel, tres veces")
         local ab = asked["Abel-Reino"]
-        A.truthy(ab[2] - ab[1] >= 90 and ab[3] - ab[2] >= 90, "una vuelta tras otra")
+        A.truthy(ab[2] - ab[1] >= 60 and ab[3] - ab[2] >= 60, "una vuelta tras otra")
         A.truthy(#(asked["Alba-Reino"] or {}) <= 1, "Alba contesta a la primera")
         A.truthy(#asked["Carla-Reino"] < 3, "a Carla, ida, no se le pregunta más")
         A.is_nil(asked["Aitor-Reino"], "a los desconectados, nada")
         A.is_nil(asked["Bea-Reino"], "a los de otras hermandades, nada")
-        local all = {}
-        for _, ts in pairs(asked) do for _, t in ipairs(ts) do all[#all + 1] = t end end
-        table.sort(all)
-        for i = 2, #all do A.truthy(all[i] - all[i - 1] >= 0.5, "uno a uno") end
+        A.equal(15, #enq, "6 + 5 + 4 preguntas")
+        for i = 2, #enq do A.truthy(enq[i] - enq[i - 1] >= 1 - 1e-6, "uno a uno, al ritmo de la cola: " .. tostring(enq[i] - enq[i - 1])) end
+        HU.Send = send
         local pa = false
         for _, m in ipairs(net.log) do if m.from == p.alba and m.text:match("^PA$") then pa = true end end
         A.truthy(pa, "la 5.4.43 de Alba contesta con PA")
@@ -227,6 +232,43 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         net:Advance(5)
         Has(c.text:match("== POR HERMANDAD ==(.-)\n==") or "", line)
         A.same({}, net:Errors())
+    end)
+
+    it("con la cola llena (recién entrado al juego), las preguntas esperan a salir: no se amontonan y nadie que lo tiene sale «sin addon»", function()
+        local net, p = Union()
+        local HU = p.ana.HU
+        HU.guildPeers["alba-reino"] = nil
+        -- (40 mensajes delante: la cola manda uno por segundo, así que la primera pregunta sale a los ~35 s)
+        for i = 1, 40 do HU:Send("ZZ~" .. i, "GUILD") end
+        local c = Capture(HU)
+        local t0 = net.now
+        p.ana:Gu("sinaddon")
+        A.truthy(net:AdvanceUntil(function() return c.text ~= "" end, 600, 1), "no acaba")
+        local asked = Asked(net, p.ana)
+        local first = math.huge
+        for _, ts in pairs(asked) do first = math.min(first, ts[1]) end
+        A.truthy(first - t0 >= 30, "la primera, tras los 40 de delante: " .. tostring(first - t0))
+        A.equal(1, #(asked["Alba-Reino"] or {}), "a Alba, una vez: contestó")
+        A.equal(3, #asked["Abel-Reino"], "Abel, tres veces")
+        -- (aquí Carla no se va y Núcleo de Magma no está en los mapas: Carla y Eli, también «sin addon»)
+        Has(c.text, "<UNO>: 6 conectados · con addon 1 · sin addon 3 · no se sabe 2")
+        Has(c.text, ":\n  Abel Reino  ·  Orgrimmar\n  Carla Reino  ·  Durotar\n  Eli Reino  ·  Núcleo de Magma\n\n")
+        A.same({}, net:Errors())
+    end)
+
+    it("una pregunta que no llega a salir no cuenta: quien no ha recibido las tres sale en «no se sabe», nunca en «sin addon»", function()
+        local a = F.Community()
+        local HU = a.HU
+        local c = Capture(HU)
+        Has(Gu(a, "sinaddon"), "les pregunto a los 2 conectados")
+        -- (desde aquí el juego no deja salir nada: lo que entra en la cola se pierde)
+        local send = a.env.C_ChatInfo.SendAddonMessage
+        a.env.C_ChatInfo.SendAddonMessage = function() error("no sale") end
+        a.w:Advance(1000)
+        a.env.C_ChatInfo.SendAddonMessage = send
+        Has(HU:WithoutAddonLine(), "0 de 2 conectados · no se sabe 2")
+        Has(c.text, "  Compi Reino: no le he podido preguntar las tres veces\n  Jefa Reino: no le he podido preguntar las tres veces")
+        A.same({}, a:Errors())
     end)
 
     -- Lo que escribe en el chat desde i0
@@ -284,6 +326,24 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         Has(out, "|r:   Compi Reino  ·  Orgrimmar")
         Has(out, "|r:   Jefa Reino")
         Lacks(out, "No se sabe (vuelve")
+        A.same({}, a:Errors())
+    end)
+
+    it("las mazmorras del mapa del juego, también las nuevas de Forever, son instancias; las zonas, no", function()
+        local a = F.Community()
+        local HU = a.HU
+        a.w.maps = { { mapID = 1429, name = "Elwynn Forest", mapType = 3 }, { mapID = 2207, name = "Cripta Nueva", mapType = 4 } }
+        for _, m in ipairs(a.w.guild.members) do
+            if m.name == "Compi-Reino" then m.zone = "Cripta Nueva" elseif m.name == "Jefa-Reino" then m.zone = "Elwynn Forest" end
+        end
+        a.w:Fire("GUILD_ROSTER_UPDATE")
+        a.w:Advance(5)
+        local c = Capture(HU)
+        Gu(a, "sinaddon")
+        a.w:Advance(400)
+        Has(c.text, "<UNO>: 2 conectados · con addon 0 · sin addon 1 · no se sabe 1")
+        Has(c.text, ":\n  Jefa Reino  ·  Elwynn Forest\n")
+        Has(c.text, "  Compi Reino: en Cripta Nueva: ahí no le deja contestar")
         A.same({}, a:Errors())
     end)
 end)

@@ -613,16 +613,18 @@ end
 -- Quién de mi hermandad no tiene el addon (/gu sinaddon): se le pregunta a cada uno, tres veces [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local ASKS = 3            -- veces que se le pregunta a cada uno (Jorge, 25/11: «preguntando 1 a 1 (que tarde 5 mins)»)
-local ROUND_EVERY = 100   -- de una vuelta de preguntas a la siguiente
-local ROUND_SPAN = 80     -- una vuelta reparte sus preguntas en este rato, de STEP_MIN a STEP_MAX s una de otra
-local STEP_MIN, STEP_MAX = 0.5, 3
+local STEP = 1            -- entre una pregunta que ya ha salido y la siguiente: la cola manda una por segundo
+local SENT_WAIT = 90      -- lo que se espera a que salga una pregunta (con la cola llena); si no sale, no cuenta
+local ROUND_GAP = 60      -- entre una vuelta y la siguiente: a cada uno, sus preguntas separadas al menos esto
 local LAST_WAIT = 30      -- tras la última, lo que se espera a las respuestas que tardan (en combate, Combat.lua)
+local MAP_IDS = 3000      -- los mapas del juego que se miran, por si son mazmorras o bandas
 -- (las instancias de Forever por su número, y el nombre, el del juego: en un campo de batalla el juego no deja
--- contestar, y en mazmorras y bandas, en combate, el addon aplaza las preguntas. Y los campos de batalla, por su nombre)
+-- contestar, y en mazmorras y bandas, en combate, el addon aplaza las preguntas. Y las de Forever por su nombre: los
+-- campos de batalla y las mazmorras nuevas que no son de vanilla, Jorge, 25/11)
 local INSTANCE_IDS = { 30, 489, 529, 33, 34, 36, 43, 47, 48, 70, 90, 109, 129, 189, 209, 229, 230, 289, 329, 349, 389,
     429, 249, 309, 409, 469, 509, 531, 533 }
-local BATTLEGROUNDS = { "Valle de Alterac", "Garganta Grito de Guerra", "Cuenca de Arathi", "Alterac Valley",
-    "Warsong Gulch", "Arathi Basin" }
+local INSTANCE_NAMES = { "Valle de Alterac", "Garganta Grito de Guerra", "Cuenca de Arathi", "Alterac Valley",
+    "Warsong Gulch", "Arathi Basin", "Alcaz Prison", "The Drowned City" }
 local instanceNames
 local addonRun, addonLast   -- la comprobación en marcha y la última acabada
 
@@ -630,7 +632,7 @@ local function InstanceZone(zone)
     if type(zone) ~= "string" or zone == "" then return false end
     if not instanceNames then
         instanceNames = {}
-        for _, n in ipairs(BATTLEGROUNDS) do instanceNames[n:lower()] = true end
+        for _, n in ipairs(INSTANCE_NAMES) do instanceNames[n:lower()] = true end
         -- (un nombre que sale con varios números no es el de una instancia: es lo que da el juego sin saberlo)
         local seen = {}
         for _, id in ipairs(INSTANCE_IDS) do
@@ -638,6 +640,14 @@ local function InstanceZone(zone)
             if ok and type(n) == "string" and n ~= "" then seen[n:lower()] = (seen[n:lower()] or 0) + 1 end
         end
         for n, c in pairs(seen) do if c == 1 then instanceNames[n] = true end end
+        -- (y las mazmorras y bandas del mapa del juego, también las nuevas de Forever)
+        local dungeon = Enum and Enum.UIMapType and Enum.UIMapType.Dungeon or 4
+        local get = C_Map and C_Map.GetMapInfo
+        for id = 1, get and MAP_IDS or 0 do
+            local ok, info = pcall(get, id)
+            if ok and type(info) == "table" and info.mapType == dungeon and type(info.name) == "string" and info.name ~= ""
+                and not HU.Secret(info.name) then instanceNames[info.name:lower()] = true end
+        end
     end
     return instanceNames[zone:lower()] == true
 end
@@ -646,14 +656,21 @@ end
 local function HasAddon(self, k) return k == self:MeKey() or self.guildPeers[k] ~= nil end
 
 -- (le pregunto a uno «¿eres de la hermandad?» (PG, por GUILD): su addon contesta solo con PA, en cualquier versión
--- desde la 5.4.12. Y apunto si está en una instancia o con el móvil)
-local function Ask(self, row)
-    if HasAddon(self, row.key) then return end
+-- desde la 5.4.12. Solo cuenta cuando sale de verdad de la cola: en la copia 334 contaba al entrar y, con 200
+-- conectados recién entrado al juego, muchas no llegaron a salir. Y apunto si está en una instancia o con el móvil.
+-- Devuelve la espera de esta pregunta, o nil si no la hay)
+local function Ask(self, r, row)
+    if HasAddon(self, row.key) then return nil end
     local e = self.roster[row.key]
-    if not (e and e.online) then row.gone = true return end
+    if not (e and e.online) then row.gone = true return nil end
     if e.mobile then row.mobile = true end
     if InstanceZone(e.zone) then row.inst = e.zone end
-    if self:Send("PG~" .. row.name, "GUILD") then row.asked = row.asked + 1 end
+    local wait = { t = GetTime() }
+    local queued = self:Send("PG~" .. row.name, "GUILD", nil, nil, nil, nil, function()
+        row.asked = row.asked + 1
+        wait.sent = GetTime()
+    end)
+    return queued and wait or nil
 end
 
 local function Stop(self, r)
@@ -687,7 +704,8 @@ local function Finish(self, r)
     self:ShowAddonCheck()
 end
 
--- (una vuelta: a los que aún no han contestado, uno detrás de otro; tras la última, la espera y el resultado)
+-- (una vuelta: a los que aún no han contestado, uno detrás de otro, y cada pregunta cuando ya ha salido la
+-- anterior; tras la última, la espera y el resultado)
 local function Round(self, r)
     if addonRun ~= r then return end
     r.round = r.round + 1
@@ -695,22 +713,29 @@ local function Round(self, r)
     for _, row in ipairs(r.rows) do if not row.gone and not HasAddon(self, row.key) then todo[#todo + 1] = row end end
     if #todo == 0 then return Finish(self, r) end
     self:RequestRoster()
-    local step, i = math.max(STEP_MIN, math.min(STEP_MAX, ROUND_SPAN / #todo)), 0
+    local i = 0
     local function Next()
         if addonRun ~= r then return end
         if self:IsChatLockedDown() then return Stop(self, r) end
+        -- (la anterior: hasta que sale, como mucho SENT_WAIT, y luego STEP más)
+        local w, now = r.waiting, GetTime()
+        if w and not w.sent and now - w.t < SENT_WAIT then return HU.After(0.5, Next) end
+        if w and w.sent and now - w.sent < STEP then return HU.After(STEP - (now - w.sent), Next) end
+        r.waiting = nil
         i = i + 1
-        if not todo[i] then return end
-        Ask(self, todo[i])
-        HU.After(step, Next)
+        if not todo[i] then
+            if r.round < ASKS then return HU.After(ROUND_GAP, function() Round(self, r) end) end
+            return HU.After(LAST_WAIT, function() Finish(self, r) end)
+        end
+        r.waiting = Ask(self, r, todo[i])
+        HU.After(r.waiting and STEP or 0, Next)
     end
     Next()
-    if r.round < ASKS then
-        HU.After(math.max(ROUND_EVERY, #todo * step + 20), function() Round(self, r) end)
-    else
-        HU.After(#todo * step + LAST_WAIT, function() Finish(self, r) end)
-    end
 end
+
+-- (cuánto tarda, más o menos, con n conectados que preguntar: cada pregunta, al ritmo de la cola, y uno de cada tres
+-- que no contesta a la primera, otra vez en las dos vueltas siguientes)
+local function Eta(n) return n * (STEP + 0.5) * (1 + 2 / 3) + 2 * ROUND_GAP + LAST_WAIT end
 
 -- La línea corta, para el chat y /gu informe
 function HU:WithoutAddonLine()
@@ -751,7 +776,8 @@ end
 -- de la guild»). Con GU:v puesto no se mira: el addon de quien tenga una versión anterior está en pausa y no contesta
 function HU:ShowWithoutAddon()
     if addonRun then
-        local left = math.max(1, math.floor((addonRun.t0 + (ASKS - 1) * ROUND_EVERY + ROUND_SPAN + LAST_WAIT - GetTime()) / 60 + 0.5))
+        local left = math.floor((addonRun.eta - GetTime()) / 60 + 0.5)
+        if left < 2 then return self:Print(L("Ya lo estoy mirando: falta poco.")) end
         return self:Print(string.format(L("Ya lo estoy mirando: faltan unos %d minutos."), left))
     end
     if not IsInGuild() then return self:Print(L("No estás en una hermandad.")) end
@@ -767,7 +793,12 @@ function HU:ShowWithoutAddon()
     end
     if #r.rows == 0 then return self:Print(L("No hay nadie más de tu hermandad conectado.")) end
     addonRun = r
-    self:Print(string.format(L("Miro quién tiene el addon en tu hermandad: les pregunto a los %d conectados, uno a uno y tres veces. Tarda unos 5 minutos; te aviso al acabar."), #r.rows))
+    -- (los que ya sé que lo tienen no se preguntan: con ellos, el cálculo)
+    local ask = 0
+    for _, row in ipairs(r.rows) do if not HasAddon(self, row.key) then ask = ask + 1 end end
+    r.eta = r.t0 + Eta(ask)
+    self:Print(string.format(L("Miro quién tiene el addon en tu hermandad: les pregunto a los %d conectados, uno a uno y tres veces. Tarda unos %d minutos; te aviso al acabar."),
+        #r.rows, math.max(1, math.floor(Eta(ask) / 60 + 0.5))))
     Round(self, r)
 end
 
