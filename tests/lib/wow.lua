@@ -348,6 +348,14 @@ function wow.New(opts)
     api.IsInGroup = function() return false end
     api.IsInRaid = function() return false end
     api.GetNumGroupMembers = function() return 0 end
+    -- (sin grupo: nadie en la banda, ni líder ni ayudante; mover a alguien de grupo no hace nada)
+    api.GetRaidRosterInfo = function() return nil end
+    api.SetRaidSubgroup = function() end
+    api.SwapRaidSubgroup = function() end
+    api.UnitIsGroupLeader = function() return false end
+    api.UnitIsGroupAssistant = function() return false end
+    api.UnitInRaid = function() return nil end
+    api.UnitInParty = function() return false end
     api.GetZoneText = function() return "Ventormenta" end
     -- Canales: GetChannelName(número o nombre) -> número, nombre
     api.GetChannelName = function(x)

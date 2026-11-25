@@ -1102,6 +1102,13 @@ E["Convertir en banda"] = "Convert to raid"
 E["Estás en grupo, no en banda: pulsa «Convertir en banda» antes de «Invitar a todos»."] = "You're in a party, not a raid: press “Convert to raid” before “Invite all”."
 E["No estás en banda: invita a alguien, pulsa «Convertir en banda» y luego «Invitar a todos»."] = "You're not in a raid: invite someone, press “Convert to raid” and then “Invite all”."
 
+E["Invitar seleccionados (%d)"] = "Invite selected (%d)"
+E["Invitar tanques (%d)"] = "Invite tanks (%d)"
+E["Invitar sanadores (%d)"] = "Invite healers (%d)"
+E["Invitar daño (%d)"] = "Invite damage (%d)"
+E["Ctrl+clic o Mayús+clic en los nombres: invitar solo a esos."] = "Ctrl+click or Shift+click names: invite only those."
+E["El juego no deja que el addon cambie a la gente de grupo en la banda: colócala a mano."] = "The game doesn't let the addon move people between raid groups: arrange them by hand."
+
 E["Imagen:"] = "Image:"
 
 E["Elegir imagen"] = "Select image"

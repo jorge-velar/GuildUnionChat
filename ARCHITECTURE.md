@@ -4355,6 +4355,10 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
   los de la descripción) y lo de debajo baja otro tanto, para que nada se salga ni se monte. «+ Añadir» pregunta quién la lleva
   en una ventanita con buscador y barra (`d.picker`; un menú no cabía con mucha gente), primero los apuntados sin raid.
   La nueva se llama «Raid N» con el número siguiente al más alto (`NewRaid`: al quitar una del medio no se repite).
+  Abierta la ventanita, otro clic en «+ Añadir» la cierra, y pinchar en cualquier otro sitio también (Jorge, 25/11: «si
+  le vuelves a pinchar desaparece… o si pinchas fuera u otro sitio»): como las de «Nuevo evento», una capa invisible de
+  toda la pantalla por debajo de ella (`pk.catcher`, nivel 1 frente al 20 de la ventanita) que solo se ve mientras está
+  abierta. En el juego, ese segundo clic en «+ Añadir» cae en la capa; el botón también la cierra si le llega el clic.
 - Barra «Líder de la raid» (corona, roles de la raid) sobre los grupos. `SetLeader`: el líder va el primero del grupo
   1 (si está lleno, el último baja a otro grupo) y nadie más puede ocupar ese hueco. El líder no se mueve
   (`LeadsAny`): no se arrastra (lo avisa) y su menú no trae «Mover a» ni «Sacar de la raid»; solo cambia con «Hacer
@@ -4363,11 +4367,14 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
 - Banquillo «Sin raid (N)» a la izquierda (`Unassigned`), con nivel (`LevelMap`) y color de clase (`ClassMap`: mi
   hermandad, las listas de las otras y el modo prueba); se ven 12 (`BENCH_N`) y, con más, la barra (las filas pasan de
   142 a 122 de ancho); al abrir otro evento vuelve arriba. Cada persona, en una sola raid del evento.
-- **Filtro por rol del banquillo** (Jorge, 24/11): debajo de su raya, cuatro botones rojos pequeños (`d.roleBtns`, 18 de
-  alto): «Todos» (44) y los iconos de tanque, sanador y daño (28; al pasar el ratón, el rol). El elegido, negro; con un
-  rol (`benchRole`), solo salen los de ese rol y la cabecera dice cuántos de cuántos («Sin raid (3/11)»); los que no
-  tienen rol, solo con «Todos». Las filas empiezan debajo de los botones (-50) y siguen cabiendo las 12. Al abrir otro
-  evento, otra vez «Todos». «Colocar en raids» sigue colocando a todos.
+- **Filtro por rol del banquillo** (Jorge, 24/11): debajo de su raya, cuatro botones rojos (`d.roleBtns`, de 22 de alto,
+  como los demás botones rojos): «Todos» (44) y los de tanque, sanador y daño (28; al pasar el ratón, el rol). El icono
+  del rol es una textura aparte, de 14 y centrada (`b.icon`: 4 de margen arriba y abajo y 7 a los lados). Hasta el 25/11
+  el icono iba en el texto de un botón de 18 y se salía (Jorge: «mejorar los botones de filtrado, el icono sobresale del
+  botón»). El elegido, negro; con un rol (`benchRole`), solo salen los de ese rol y la cabecera dice cuántos de cuántos
+  («Sin raid (3/11)»); los que no tienen rol, solo con «Todos». Las filas empiezan 4 por debajo de los botones (-54; antes,
+  -50) y siguen cabiendo las 12, 11 por encima de «Colocar en raids». Al abrir otro evento, otra vez «Todos». «Colocar en
+  raids» sigue colocando a todos; el botón de invitar, con un rol, invita solo a los de ese rol (ver «A quién invita»).
 - Al apuntarse se entra solo en una raid con sitio (`AutoPlace` → `BestRaid`: la que menos tiene de su rol y luego la
   más vacía) o al banquillo. **«Colocar en raids (N)»** (`PlaceBench`, Jorge, 24/11: «en orden») llena las raids en su
   orden (`FirstRaid`): la 1 hasta tener 40, luego la 2 y así hasta la última, grupo a grupo; antes repartía como al
@@ -4378,23 +4385,75 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
   líder, va a su lado, al hueco 2), un grupo (si cabe), la pestaña de otra raid, la barra del líder (lo hace líder) o
   el banquillo (sale de la raid); fuera de todo, vuelve.
 - Clic derecho (`NameMenu`): quien organiza, «Hacer líder de la raid», «Mover a >» y «Sacar de la raid» (al líder,
-  ninguno); todos, «Susurrar» e «Invitar al grupo» (uno a uno, desde el clic del menú, que el juego lo deja).
-- Bajo los grupos: «Invitar a todos (N)», «Quitar raid» (sin preguntar; su gente vuelve al banquillo) y «Convertir en
-  banda» (`C_PartyInfo.ConvertToRaid`; activo si estoy en grupo, no en banda, y lo llevo yo). Al líder sin banda, un
-  aviso en rojo en vez de la ayuda de arrastrar. Se repinta con `GROUP_ROSTER_UPDATE`.
-- `InviteRaid` invita (`C_PartyInfo.InviteUnit`) a los de la raid que no están en mi grupo (en grupo sin banda, antes
-  intenta convertirlo); sin banda, como mucho 4 (un grupo es de 5), y avisa de que otro clic invita al resto. Marca
+  ninguno); todos, «Susurrar» e «Invitar al grupo» (uno a uno, desde el clic del menú, que el juego lo deja). El clic
+  izquierdo, con Ctrl o Mayús, elige a quién invitar (ver «Elegir con Ctrl / Mayús»).
+- Bajo los grupos: el botón de invitar (190 de ancho, para que quepa «Invitar seleccionados (40)»; hasta el 25/11, 170),
+  «Quitar raid» (sin preguntar; su gente vuelve al banquillo) y «Convertir en banda» (`C_PartyInfo.ConvertToRaid`;
+  activo si estoy en grupo, no en banda, y lo llevo yo). Al líder sin banda, un aviso en rojo en vez de la ayuda de
+  arrastrar. Se repinta con `GROUP_ROSTER_UPDATE`.
+- **A quién invita el botón** (`InviteTargets`; Jorge, 25/11): con alguien elegido con Ctrl / Mayús, «Invitar
+  seleccionados (N)» y solo a esos, de la raid o del banquillo (para suplentes); si no, con un rol en el filtro del
+  banquillo, «Invitar tanques (N)», «Invitar sanadores (N)» o «Invitar daño (N)» y solo a los de la raid con ese rol
+  («cuando filtras por tank o healer el botón de invitar all, invitará solo a los tankes o healers o lo que tengas
+  filtrado»); si no, «Invitar a todos (N)». N cuenta como antes, conmigo (a mí no me invito). Al pasar el ratón, el
+  botón dice cómo elegir.
+- **Elegir con Ctrl / Mayús** (`picks`, `lastPick`, `PickName`; Jorge, 25/11: «que también se pueda seleccionar con
+  control y mayus e invitar solo a esos seleccionados (cambia el botón)»): solo quien lleva la raid que se ve, que es
+  quien invita. Ctrl+clic suma o quita a alguien de los grupos o del banquillo; Mayús+clic elige el tramo desde el último
+  elegido hasta ese (sin uno antes, solo ese), en el orden en que se ven: el banquillo de arriba abajo y luego la raid,
+  grupo a grupo (como «Mis encargos» de Comercio). Lo elegido lleva un fondo azul (`b.pick`, el de las filas elegidas de
+  Comercio). El clic izquierdo solo vacía lo elegido (sin nada elegido no hace nada, como antes); el derecho sigue con
+  su menú y arrastrar, igual. Lo elegido es lo que se ve: se vacía al cambiar de raid (también al pulsar su pestaña) o
+  de evento, y quien se esconde con el filtro del banquillo o deja de verse deja de estar elegido.
+- `InviteRaid` invita (`C_PartyInfo.InviteUnit`) a los que dice el botón que no están en mi grupo (en grupo sin banda,
+  antes intenta convertirlo); sin banda, como mucho 4 (un grupo es de 5), y avisa de que otro clic invita al resto. Marca
   junto al nombre (`invites`): reloj (invitado), tic (dentro) o X (rechaza, ya tiene grupo, no se le encuentra u
   ocupado, o no entra en 90 s). Los rechazos se leen de `CHAT_MSG_SYSTEM` con los textos del propio juego
-  (`ERR_DECLINE_GROUP_S` y compañía, pasados a patrón con `Pattern`): sirve en cualquier idioma.
+  (`ERR_DECLINE_GROUP_S` y compañía, pasados a patrón con `Pattern`): sirve en cualquier idioma. Y esa raid pasa a ser
+  el plan de la banda (ver «La banda de verdad, montada como la raid»).
+
+### La banda de verdad, montada como la raid (`SetPlan`, `Arrange`, `Bring`)
+
+Jorge, 25/11: «en la pestaña de raids de eventos, tal y como tienes la raid montada ahí, lo va cambiando en el juego
+para que quede montado igual según vayan entrando en la raid, con la misma distribución puesta en esa pestaña».
+- **El plan** (`arrange.plan`): la raid desde la que pulsé el botón de invitar (en cualquiera de sus formas). Vale 4
+  horas desde la última vez que lo pulsé (`PLAN_TTL`); otra vez la misma raid solo lo alarga (lo ya colocado sigue
+  igual), y desde otra raid lo cambia: hay uno solo. En un evento de verdad va guardado con sus raids
+  (`calRaids[id].plan = { id, name, who, untilT, placed }`): tras /reload sigue (`OnStart`), solo para el personaje
+  que invitó (`who`: lo guardado es de la cuenta). Uno de prueba no se guarda. Lo que se cambia en la pestaña
+  (arrastrar, el menú, colocar, el líder) es el plan en el momento.
+- **Cuándo**: con cada `GROUP_ROSTER_UPDATE` y cada vez que se pinta la ficha, una pasada 1 s después (`ARRANGE_GAP`); lo
+  que llega mientras tanto va en esa misma pasada (`arrange.soon`). Solo en una banda (`IsInRaid`), siendo líder o
+  ayudante (`UnitIsGroupLeader` / `UnitIsGroupAssistant`) y fuera de combate (`InCombatLockdown`); en combate, la pasada
+  espera a `PLAYER_REGEN_ENABLED` (`arrange.later`).
+- **Una pasada** (`Arrange`): lee la banda (`GetRaidRosterInfo`: nombre y grupo de cada uno) y a quien está en el plan y
+  no en su grupo lo lleva a él (`Bring`): `SetRaidSubgroup` si cabe; si el grupo está lleno, `SwapRaidSubgroup` con
+  alguien del plan que tampoco va ahí, mejor si va justo al grupo de este (así quedan bien los dos). Lo que mueve lo
+  cuenta en el momento: en la misma pasada no pide meter a nadie en un grupo que ya ha llenado. Como mucho 4
+  movimientos por pasada (`ARRANGE_MAX`): el servidor los hace y avisa con `GROUP_ROSTER_UPDATE`, que trae la
+  siguiente. Son las funciones que usa la ventana de banda del juego al arrastrar a alguien (Blizzard_RaidUI). Quién es
+  quién: por el nombre completo, sin mirar mayúsculas; a quien el juego da sin apellido, por su nombre, si en el plan no
+  hay dos que se llamen igual.
+- **Sin pelearse con nadie**: a quien no está en el plan no se le toca, ni para hacer sitio (si un grupo está lleno de
+  gente de fuera, quien va ahí espera a que haya sitio). Quien ya estuvo en su grupo (`placed`) y alguien movió luego se
+  queda donde lo pusieron, y tampoco se le saca para hacerle sitio a otro; si en la pestaña se le cambia de grupo, sí se
+  le lleva al nuevo. Quien sale de la banda y vuelve a entrar se coloca otra vez. Así, dos que mueven a la vez (una
+  persona a mano, u otro con otro plan) no se van devolviendo a la gente.
+- **Si el juego no lo deja** hacer a un addon (`ADDON_ACTION_BLOCKED` / `FORBIDDEN` mientras se mueve a alguien): un
+  aviso, una vez («El juego no deja que el addon cambie a la gente de grupo en la banda: colócala a mano.»), y no se
+  intenta más hasta /reload. El juego lo hace desde un arrastre (con clic) y no está probado en Forever desde un
+  temporizador. El bloqueo es esperado (`HU.expectBlock = "raid"`, como en Channel.lua): no se guarda como error.
+- Sin probar en el juego: las pruebas usan una banda de mentira (calendario_spec, «la banda de verdad»).
 
 ### Permisos
 
 «+ Nuevo evento»: `HU:CanMakeEvents()` (UnionConfig.lua) o el modo prueba; se pone al día con `CHANGED` «unionCfg».
 Apagado, al pasar el ratón dice quién crea eventos según `calMake` (`NoMakeTip`): «Solo el maestro crea eventos.» o
 «Solo los oficiales crean eventos.»; con «Todos», nada; encendido, nada (su nombre ya se lee). Organizar (`CanManage`:
-añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» y «Convertir en banda»: el líder de esa
-raid. «Quitar raid»: quien creó el evento o ese líder. Apuntarse, ver la ficha, susurrar e invitar al grupo: cualquiera.
+añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» (y
+elegir con Ctrl / Mayús a quién) y «Convertir en banda»: el líder de esa raid. «Quitar raid»: quien creó el evento o ese
+líder. Montar la banda de verdad como la raid: quien invitó desde ella, siendo líder o ayudante de la banda. Apuntarse,
+ver la ficha, susurrar e invitar al grupo: cualquiera.
 Editar y eliminar (clic derecho): solo quien lo creó, aunque ya no pueda crear eventos.
 
 ### Lo guardado (`calRaids`, `calEvents`)
@@ -4402,13 +4461,15 @@ Editar y eliminar (clic derecho): solo quien lo creó, aunque ya no pueda crear 
 Jorge, 24/11: «al hacer /reload se borra todo». Los eventos y quién va, con sus roles, están en el almacén de propuestas
 (Packs/Events.lua), que se guarda en la cuenta y quita solo lo caducado: tras /reload siguen. Aquí, en la cuenta
 (`HU:Saved` account, `{}` de entrada):
-- `calRaids[id] = { raid, …, t = hora del evento }`: las raids de los eventos que organizo, en este PC.
+- `calRaids[id] = { raid, …, t = hora del evento, plan }`: las raids de los eventos que organizo, en este PC, y el plan
+  de la banda si invité desde una de ellas (ver «La banda de verdad, montada como la raid»).
 - `calEvents`: lo que queda de la copia 324, donde los eventos solo se guardaban aquí.
 
 `Tidy`, al entrar y al salir (`PLAYER_LOGOUT`), quita de `calRaids` las de eventos que pasaron hace más de lo que vive un
-evento en la red (`HU.EVENT_LIVES`, 30 días desde su hora, Packs/Events.lua; hasta el 25/11, `KEEP_DAYS`, 7) o sin `t`, y
-de `calEvents` lo de prueba (`test`), lo que no tiene forma de evento y lo viejo: mientras un evento se ve en el mes, su
-ficha sigue con sus raids. Al eliminar un evento, sus raids salen enseguida.
+evento en la red (`HU.EVENT_LIVES`, 30 días desde su hora, Packs/Events.lua; hasta el 25/11, `KEEP_DAYS`, 7) o sin `t`,
+el plan de la banda que ya no vale (caducado o sin forma), y de `calEvents` lo de prueba (`test`), lo que no tiene forma
+de evento y lo viejo: mientras un evento se ve en el mes, su ficha sigue con sus raids. Al eliminar un evento, sus raids
+salen enseguida.
 
 **Migración de la copia 324** (`Migrate`, en cuanto se lee la comunidad: `CHANGED` «config»). Los eventos míos de
 `calEvents` (`who == Me()`) se proponen una vez, con mi apuntado (con el rol que tenía) y sus raids (pasan a `calRaids`), y

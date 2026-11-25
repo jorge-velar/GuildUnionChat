@@ -19,6 +19,7 @@ local function Observe(a)
     local extra = {
         SetTexture = function(self, t) rawset(self, "_tex", t) end,
         GetTexture = function(self) return rawget(self, "_tex") end,
+        SetTexCoord = function(self, ...) rawset(self, "_tc", { ... }) end,
         SetAlpha = function(self, v) rawset(self, "_alpha", v) end,
         GetAlpha = function(self) return rawget(self, "_alpha") or 1 end,
         SetEnabled = function(self, v) rawset(self, "_off", not v) end,
@@ -97,6 +98,12 @@ local function GuildWindow(a)
 end
 
 local function Click(b, ...) return b:GetScript("OnClick")(b, ...) end
+-- (clic izquierdo con Ctrl («ctrl») o Mayús («shift») pulsada; sin tecla, el clic solo)
+local function Pick(a, b, key)
+    a.env.IsControlKeyDown = function() return key == "ctrl" end
+    a.env.IsShiftKeyDown = function() return key == "shift" end
+    return Click(b, "LeftButton")
+end
 
 -- (abrir una sección como el jugador: Calendario, con su pestaña de la derecha; Miembros, con la pestaña de miembros del
 -- juego)
@@ -1679,6 +1686,34 @@ describe("Calendario: las raids de un evento", function()
         A.same({}, a:Errors())
     end)
 
+    it("«+ Añadir» otra vez cierra «¿Quién lleva la nueva raid?», y pinchar en cualquier otro sitio también (Jorge, 25/11)", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local pk, catcher = d.picker, d.picker.catcher
+        A.falsy(catcher:IsShown(), "cerrada, sin la capa")
+        Click(d.addRaid)
+        A.truthy(pk:IsShown())
+        A.truthy(catcher:IsShown(), "abierta, la capa invisible para pinchar fuera")
+        A.truthy(catcher:GetFrameLevel() < pk:GetFrameLevel(), "por debajo de la ventanita: su buscador y sus filas siguen")
+        Click(d.addRaid)
+        A.falsy(pk:IsShown(), "otro clic en «+ Añadir»: se cierra")
+        A.falsy(catcher:IsShown())
+        A.falsy(d.raidTabs[2]:IsShown(), "sin raid nueva")
+        Click(d.addRaid)
+        A.truthy(pk:IsShown(), "y otro, se abre otra vez")
+        Click(catcher)
+        A.falsy(pk:IsShown(), "pinchar fuera: se cierra")
+        A.falsy(catcher:IsShown())
+        A.falsy(d.raidTabs[2]:IsShown())
+        -- (elegir a alguien sigue creando la raid, y la capa se va con la ventanita)
+        AddRaid(d)
+        A.truthy(d.raidTabs[2]:IsShown())
+        A.falsy(catcher:IsShown())
+        A.same({}, a:Errors())
+    end)
+
     it("hasta 20 raids, en filas de 7 botones rojos de 92 con la letra de siempre (la elegida, negra): «+ Añadir» va en el hueco siguiente y a las 20 ya no sale", function()
         local a = Community()
         local ui = Open(a)
@@ -2144,7 +2179,7 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         -- (los botones, en una fila debajo de la raya del banquillo, y sus filas, debajo de ellos)
         A.same({ 7, -28 }, all._pts.TOPLEFT)
         A.same({ 7 + 44 + 4, -28 }, tank._pts.TOPLEFT)
-        A.same({ 7, -50 }, d.bench[1]._pts.TOPLEFT)
+        A.same({ 7, -54 }, d.bench[1]._pts.TOPLEFT)
         A.truthy(7 + 44 + 3 * (28 + 4) <= 156 - 3, "caben a lo ancho del banquillo")
         local count = { TANK = 0, HEALER = 0, DAMAGER = 0 }
         for _, b in ipairs(d.bench) do if b:IsShown() then local r = RoleIn(b.text:GetText()); count[r] = count[r] + 1 end end
@@ -2170,6 +2205,43 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         Detail(ui, "Profundidades de Roca Negra")
         A.truthy(all.picked)
         A.same({ "Pepe" }, Bench(d))
+        A.same({}, a:Errors())
+    end)
+
+    it("los botones del filtro, de 22 de alto como los demás botones rojos, con el icono del rol de 14 en el centro, dentro del botón; las 12 filas siguen cabiendo debajo (Jorge, 25/11: «el icono sobresale del botón»)", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local all = d.roleBtns[1]
+        A.same({ 44, 22 }, { all._w, all._h })
+        A.equal("Todos", all:GetText())
+        A.is_nil(all.icon, "«Todos», sin icono")
+        local x = 7 + 44 + 4
+        for i, role in ipairs({ "TANK", "HEALER", "DAMAGER" }) do
+            local b = d.roleBtns[i + 1]
+            A.same({ 28, 22 }, { b._w, b._h }, role)
+            A.same({ x, -28 }, b._pts.TOPLEFT, role)
+            x = x + 28 + 4
+            A.equal("", b:GetText(), "el icono ya no va en el texto")
+            -- (una textura aparte, centrada: 4 de margen arriba y abajo y 7 a los lados)
+            A.equal("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES", b.icon:GetTexture())
+            A.same({ 14, 14 }, { b.icon._w, b.icon._h })
+            A.same({ 0, 0 }, b.icon._pts.CENTER)
+            A.truthy(b.icon._h + 8 <= b._h and b.icon._w + 14 <= b._w, "cabe dentro del botón: " .. role)
+            local tc = {}
+            for v in TC[role]:gmatch("%d+") do tc[#tc + 1] = tonumber(v) / 64 end
+            A.same(tc, b.icon._tc, "el icono de su rol")
+        end
+        A.truthy(x - 4 <= 156 - 3, "caben a lo ancho del banquillo")
+        -- (las filas, 4 por debajo de los botones, y su barra con ellas; las 12, encima de «Colocar en raids», que va a 8
+        -- del borde de abajo del banquillo: 480 de ventana, el panel de dentro a 52 y 44, y el banquillo a 64 y 10)
+        A.same({ 7, -54 }, d.bench[1]._pts.TOPLEFT)
+        A.same({ 7, -54 }, a.env.GuildUnionCalendarBenchScroll._pts.TOPLEFT)
+        A.truthy(-28 - 22 - 4 >= -54, "los botones no pisan la primera fila")
+        local benchH = (480 - 52 - 44) - 64 - 10
+        local last = d.bench[#d.bench]
+        A.truthy(-last._pts.TOPLEFT[2] + last._h <= benchH - 8 - d.place._h - 4, "la última fila, por encima de «Colocar en raids»")
         A.same({}, a:Errors())
     end)
 end)
@@ -2272,6 +2344,454 @@ describe("Calendario: invitar a la raid", function()
         AddRaid(d)
         A.falsy(d.convert:IsShown(), "la raid nueva la lleva otro")
         A.same({}, a:Errors())
+    end)
+
+    it("con el filtro del banquillo en un rol, el botón invita solo a los de ese rol de la raid y lo dice: «Invitar tanques (N)», «… sanadores», «… daño» (Jorge, 25/11)", function()
+        local a = Community({ api = API })
+        local p = Party(a)
+        p.group, p.raid = true, true
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        -- (los de la raid por su rol, en el orden de los grupos)
+        local byRole = { TANK = {}, HEALER = {}, DAMAGER = {} }
+        for _, grp in ipairs(d.groups) do
+            for _, s in ipairs(grp.slots) do if s.name then table.insert(byRole[RoleIn(s.text:GetText())], s.name) end end
+        end
+        A.truthy(#byRole.TANK > 0 and #byRole.HEALER > 0 and #byRole.DAMAGER > 0, "en la raid hay de los tres")
+        local LABEL = { TANK = "Invitar tanques (%d)", HEALER = "Invitar sanadores (%d)", DAMAGER = "Invitar daño (%d)" }
+        for i, role in ipairs({ "TANK", "HEALER", "DAMAGER" }) do
+            Click(d.roleBtns[i + 1])
+            A.equal(string.format(LABEL[role], #byRole[role]), d.invite:GetText(), role)
+            p.invited = {}
+            Click(d.invite)
+            local want = {}
+            for _, n in ipairs(byRole[role]) do if n ~= "Tester-Reino" then want[#want + 1] = n end end
+            A.same(want, p.invited, role .. ": solo los de su rol, sin mí")
+        end
+        Click(d.roleBtns[1])
+        A.equal("Invitar a todos (13)", d.invite:GetText(), "con «Todos», todos")
+        -- (en inglés)
+        local en = Community({ locale = "enUS" })
+        local enUi = Open(en)
+        Click(Child(en, enUi, "Test mode"))
+        Click(Card(enUi, "Molten Core").info)
+        Click(enUi.detail.roleBtns[2])
+        A.matches("^Invite tanks %(%d+%)$", enUi.detail.invite:GetText())
+        Click(enUi.detail.roleBtns[3])
+        A.matches("^Invite healers %(%d+%)$", enUi.detail.invite:GetText())
+        Click(enUi.detail.roleBtns[4])
+        A.matches("^Invite damage %(%d+%)$", enUi.detail.invite:GetText())
+        A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("Ctrl+clic suma o quita a alguien (de la raid o del banquillo) y Mayús+clic elige el tramo desde el último; con elegidos, «Invitar seleccionados (N)» invita solo a esos; el clic derecho sigue con su menú y el clic solo vacía lo elegido (Jorge, 25/11)", function()
+        local a = Community({ api = API })
+        local p = Party(a)
+        p.group, p.raid = true, true
+        local menus = Menus(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local g1, bench = d.groups[1].slots, d.bench
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        A.same({ "Ctrl+clic o Mayús+clic en los nombres: invitar solo a esos." }, Hover(a, d.invite), "al pasar el ratón, cómo")
+        d.invite:GetScript("OnLeave")(d.invite)
+        A.falsy(a.env.GameTooltip:IsShown())
+        -- (Ctrl: uno del banquillo; Mayús: el tramo hasta el quinto)
+        Pick(a, bench[2], "ctrl")
+        A.truthy(bench[2].pick:IsShown(), "elegido: con su fondo azul")
+        A.falsy(bench[1].pick:IsShown())
+        A.equal("Invitar seleccionados (1)", d.invite:GetText())
+        Pick(a, bench[5], "shift")
+        for i = 1, 6 do A.equal(i >= 2 and i <= 5, bench[i].pick:IsShown(), "banquillo " .. i) end
+        A.equal("Invitar seleccionados (4)", d.invite:GetText())
+        -- (en la raid: Ctrl en uno y Mayús hacia arriba en su grupo)
+        Pick(a, g1[4], "ctrl")
+        Pick(a, g1[2], "shift")
+        for i = 1, 5 do A.equal(i >= 2 and i <= 4, g1[i].pick:IsShown(), "grupo 1, hueco " .. i) end
+        A.equal("Invitar seleccionados (7)", d.invite:GetText())
+        -- (Ctrl en uno elegido: lo quita)
+        Pick(a, bench[3], "ctrl")
+        A.falsy(bench[3].pick:IsShown())
+        A.equal("Invitar seleccionados (6)", d.invite:GetText())
+        -- (invita solo a esos: los del banquillo y los de la raid, como se ven)
+        local want = { bench[2].name, bench[4].name, bench[5].name, g1[2].name, g1[3].name, g1[4].name }
+        Click(d.invite)
+        A.same(want, p.invited)
+        A.truthy(Said(a, "Invitados 6 a Raid 1."))
+        -- (el clic derecho, el menú de siempre, y no cambia lo elegido; un hueco vacío, nada)
+        Click(g1[3], "RightButton")
+        A.equal(g1[3].name, menus[#menus].title)
+        A.equal("Invitar seleccionados (6)", d.invite:GetText())
+        local n = #menus
+        Pick(a, d.groups[8].slots[1], "ctrl")
+        A.equal("Invitar seleccionados (6)", d.invite:GetText(), "un hueco vacío no se elige")
+        -- (el clic solo: lo elegido, fuera, y sin menú)
+        Pick(a, g1[3])
+        for _, s in ipairs(g1) do A.falsy(s.pick:IsShown()) end
+        A.falsy(bench[2].pick:IsShown())
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        A.equal(n, #menus, "el clic izquierdo no abre el menú")
+        A.same({}, a:Errors())
+    end)
+
+    it("lo elegido se vacía al cambiar de raid o de evento; lo que el filtro del banquillo esconde deja de estar elegido; Mayús sin nada antes elige solo ese; quien no lleva la raid no elige", function()
+        local a = Community({ api = API })
+        Party(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local g1 = d.groups[1].slots
+        Pick(a, g1[3], "shift")
+        A.truthy(g1[3].pick:IsShown(), "Mayús sin nada antes: solo ese")
+        A.equal("Invitar seleccionados (1)", d.invite:GetText())
+        -- (otra raid: se vacía)
+        local second = AddRaid(d)
+        Click(d.raidTabs[1])
+        A.falsy(g1[3].pick:IsShown())
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        -- (un sanador y otro que no lo es, del banquillo; con el filtro de sanador, el otro se esconde y sale de lo elegido)
+        local healer, other
+        for _, b in ipairs(d.bench) do
+            if b:IsShown() then
+                if RoleIn(b.text:GetText()) == "HEALER" then healer = healer or b else other = other or b end
+            end
+        end
+        A.truthy(healer and other, "en el banquillo hay sanadores y de los otros")
+        local otherName = other.name
+        Pick(a, healer, "ctrl")
+        Pick(a, other, "ctrl")
+        A.equal("Invitar seleccionados (2)", d.invite:GetText())
+        Click(d.roleBtns[3])
+        A.equal("Invitar seleccionados (1)", d.invite:GetText(), "escondido por el filtro: fuera")
+        Click(d.roleBtns[1])
+        A.equal("Invitar seleccionados (1)", d.invite:GetText(), "y no vuelve")
+        A.truthy(OnBench(d, otherName))
+        for _, b in ipairs(d.bench) do if b.name == otherName then A.falsy(b.pick:IsShown(), "sin su fondo azul") end end
+        -- (otro evento y vuelta: se vacía)
+        Detail(ui, "Profundidades de Roca Negra")
+        Detail(ui, "Núcleo de Magma")
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        -- (la raid 2 la lleva otro: no hay botón y no se elige)
+        Click(d.raidTabs[2])
+        A.equal(second, d.groups[1].slots[1].name)
+        Pick(a, d.groups[1].slots[1], "ctrl")
+        A.falsy(d.groups[1].slots[1].pick:IsShown())
+        A.falsy(d.invite:IsShown())
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Calendario: la banda de verdad, montada como la raid de la que invité", function()
+    -- (una banda de mentira: quién está y en qué grupo (al entrar, el primero con sitio desde el que se diga, como el
+    -- juego); lo que el addon pide mover lo hace el servidor un momento después y avisa con GROUP_ROSTER_UPDATE)
+    local function Band(a)
+        local b = { list = {}, lead = true, assist = false, sets = 0, swaps = 0, invited = {} }
+        local function Size(g)
+            local n = 0
+            for _, m in ipairs(b.list) do if m.g == g then n = n + 1 end end
+            return n
+        end
+        local function Changed() a.w:Fire("GROUP_ROSTER_UPDATE") end
+        local function Server(fn) a.env.C_Timer.After(0.2, function() fn(); Changed() end) end
+        local function Of(name) for i, m in ipairs(b.list) do if m.name == name then return m, i end end end
+        function b.Join(name, g)
+            g = g or 1
+            while Size(g) >= 5 do g = g + 1 end
+            b.list[#b.list + 1] = { name = name, g = g }
+            Changed()
+        end
+        function b.Leave(name) table.remove(b.list, select(2, Of(name))); Changed() end
+        function b.Move(name, g) Of(name).g = g; Changed() end
+        function b.Group(name) local m = Of(name); return m and m.g end
+        -- (el juego lo da sin apellido)
+        function b.Bare(name) Of(name).shown = name:match("^[^-]+") end
+        -- (los grupos de la banda, por orden alfabético, sin los de fuera del plan: «…-Otro»)
+        function b.Groups()
+            local out = {}
+            for g = 1, 8 do out[g] = {} end
+            for _, m in ipairs(b.list) do if not m.name:find("%-Otro$") then table.insert(out[m.g], m.name) end end
+            for g = 1, 8 do table.sort(out[g]) end
+            return out
+        end
+        a.env.C_PartyInfo = { InviteUnit = function(n) b.invited[#b.invited + 1] = n end, ConvertToRaid = function() end }
+        a.env.IsInGroup = function() return #b.list > 0 end
+        a.env.IsInRaid = function() return #b.list > 0 end
+        a.env.GetNumGroupMembers = function() return #b.list end
+        a.env.GetRaidRosterInfo = function(i)
+            local m = b.list[i]
+            if m then return m.shown or m.name, 0, m.g end
+        end
+        a.env.UnitIsGroupLeader = function() return b.lead end
+        a.env.UnitIsGroupAssistant = function() return b.assist end
+        a.env.UnitInRaid = function(n) return Of(n) and 1 or nil end
+        a.env.UnitInParty = a.env.UnitInRaid
+        a.env.SetRaidSubgroup = function(i, g)
+            local m = b.list[i]
+            b.sets = b.sets + 1
+            -- (b.blocked: el juego no lo deja hacer a un addon, y avisa en el momento)
+            if b.blocked then return a.w:Fire("ADDON_ACTION_BLOCKED", "GuildUnion", "SetRaidSubgroup()") end
+            Server(function() if Size(g) < 5 then m.g = g end end)
+        end
+        a.env.SwapRaidSubgroup = function(i, j)
+            local x, y = b.list[i], b.list[j]
+            b.swaps = b.swaps + 1
+            Server(function() x.g, y.g = y.g, x.g end)
+        end
+        return b
+    end
+    -- (el plan: los nombres de cada grupo de la raid que se ve, por orden alfabético)
+    local function Plan(d)
+        local out = {}
+        for gi, grp in ipairs(d.groups) do
+            local g = {}
+            for _, s in ipairs(grp.slots) do if s.name then g[#g + 1] = s.name end end
+            table.sort(g)
+            out[gi] = g
+        end
+        return out
+    end
+    -- (Magma en el modo prueba, con la raid 1, que llevo yo; en la banda, de momento, yo solo)
+    local function Magma(a)
+        local b = Band(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        b.Join("Tester-Reino")
+        return d, b, Plan(d)
+    end
+    -- (los de la raid ya en la banda, cada uno en su grupo de la pestaña; o en el que diga `at`)
+    local function JoinAll(b, plan, at)
+        for g = 1, #plan do
+            for _, n in ipairs(plan[g]) do if n ~= "Tester-Reino" then b.Join(n, at and at[g] or g) end end
+        end
+    end
+
+    it("al invitar, la raid de la pestaña es el plan: quien entra en la banda va a su grupo, también con el grupo lleno (se cambia con quien no va ahí); a quien no está en el plan no se le toca", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        Click(d.invite)
+        a.w:Advance(2)
+        A.equal(12, #b.invited, "invita a los de la raid")
+        A.equal(0, b.sets + b.swaps, "yo solo, ya en mi grupo: nada que mover")
+        -- (uno que no está en el plan, en el grupo 3; los demás entran al revés del plan, donde el juego les da sitio)
+        b.Join("Fuera-Otro", 3)
+        local names = {}
+        for g = 8, 1, -1 do for k = #plan[g], 1, -1 do if plan[g][k] ~= "Tester-Reino" then names[#names + 1] = plan[g][k] end end end
+        for _, n in ipairs(names) do b.Join(n) end
+        A.falsy(table.concat(plan[1], ",") == table.concat(b.Groups()[1], ","), "al entrar, revueltos")
+        a.w:Advance(30)
+        A.same(plan, b.Groups(), "cada uno, en su grupo de la pestaña")
+        A.equal(3, b.Group("Fuera-Otro"), "quien no está en el plan, donde estaba")
+        A.truthy(b.sets > 0 and b.swaps > 0, "a grupos con sitio y, si están llenos, cambiándose")
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que se cambia en la pestaña pasa a la banda; a un grupo lleno de gente que no está en el plan no se lleva a nadie hasta que hay sitio", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        JoinAll(b, plan)
+        Click(d.invite)
+        a.w:Advance(5)
+        A.equal(0, b.sets + b.swaps, "ya estaban como en la pestaña")
+        -- (en la pestaña, uno del grupo 2 al 4: en la banda también)
+        local x = d.groups[2].slots[1].name
+        Drag(d.groups[2].slots[1], d.groups[4])
+        a.w:Advance(5)
+        A.equal(4, b.Group(x))
+        -- (el grupo 5, lleno de gente de fuera del plan; en la pestaña, otro al 5: no cabe, y no se mueve a nadie)
+        for k = 1, 5 do b.Join("Fuera" .. k .. "-Otro", 5) end
+        local y = d.groups[2].slots[1].name
+        Drag(d.groups[2].slots[1], d.groups[5])
+        local before = b.sets + b.swaps
+        a.w:Advance(5)
+        A.equal(2, b.Group(y), "su grupo, lleno de gente de fuera: espera")
+        A.equal(before, b.sets + b.swaps)
+        for k = 1, 5 do A.equal(5, b.Group("Fuera" .. k .. "-Otro")) end
+        -- (sale uno de fuera: hay sitio y entra)
+        b.Leave("Fuera1-Otro")
+        a.w:Advance(5)
+        A.equal(5, b.Group(y))
+        A.same({}, a:Errors())
+    end)
+
+    it("solo siendo líder o ayudante de la banda, y fuera de combate: en combate espera a salir", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        Click(d.invite)
+        a.w:Advance(2)
+        b.lead = false
+        local x, y = plan[2][1], plan[2][2]
+        b.Join(x, 4)
+        a.w:Advance(5)
+        A.equal(4, b.Group(x), "sin ser líder ni ayudante, nada")
+        b.assist = true
+        a.w.inCombat = true
+        b.Join(y, 4)
+        a.w:Advance(5)
+        A.equal(0, b.sets + b.swaps, "ayudante, pero en combate: espera")
+        a.w.inCombat = false
+        a.w:Fire("PLAYER_REGEN_ENABLED")
+        a.w:Advance(5)
+        A.same({ 2, 2 }, { b.Group(x), b.Group(y) }, "al salir de combate, a su grupo")
+        A.same({}, a:Errors())
+    end)
+
+    it("una pasada por cambio de banda (lo que llega seguido, en una) y como mucho 4 movimientos en cada una", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        -- (todos lejos de su grupo, con sitio en el suyo)
+        JoinAll(b, plan, { 5, 6, 7 })
+        Click(d.invite)
+        a.w:Advance(1.1)
+        A.equal(4, b.sets, "la primera pasada, 4")
+        for _ = 1, 5 do a.w:Fire("GROUP_ROSTER_UPDATE") end
+        a.w:Advance(1)
+        A.equal(8, b.sets, "nueve avisos seguidos (estos cinco y los cuatro del servidor): una pasada más")
+        a.w:Advance(10)
+        A.equal(12, b.sets, "cada uno, una vez")
+        A.equal(0, b.swaps)
+        A.same(plan, b.Groups())
+        A.same({}, a:Errors())
+    end)
+
+    it("sin pelearse: a quien ya estuvo en su grupo y alguien movió luego no se le devuelve; quien sale y vuelve a entrar, sí", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        JoinAll(b, plan)
+        Click(d.invite)
+        a.w:Advance(5)
+        local x = plan[2][1]
+        b.Move(x, 6)
+        a.w:Advance(5)
+        A.equal(6, b.Group(x), "lo movió alguien: se queda")
+        A.equal(0, b.sets + b.swaps)
+        b.Leave(x)
+        a.w:Advance(5)
+        b.Join(x, 7)
+        a.w:Advance(5)
+        A.equal(2, b.Group(x), "al volver a entrar, a su grupo")
+        -- (alguien llena a mano el grupo 1 con uno del 2 mientras falta uno del 1: al entrar este, no se le hace sitio
+        -- sacando al que pusieron ahí)
+        local y, z = plan[1][1] ~= "Tester-Reino" and plan[1][1] or plan[1][2], plan[2][2]
+        b.Leave(y)
+        a.w:Advance(5)
+        b.Move(z, 1)
+        a.w:Advance(5)
+        local swaps = b.swaps
+        b.Join(y, 6)
+        a.w:Advance(5)
+        A.same({ 1, 6 }, { b.Group(z), b.Group(y) }, "el que pusieron a mano se queda, y el otro espera")
+        A.equal(swaps, b.swaps)
+        A.same({}, a:Errors())
+    end)
+
+    it("con el grupo lleno, se cambia con quien va justo al grupo de este, que así quedan bien los dos; y en una pasada no se pide meter a nadie en un grupo que esa misma pasada ya ha llenado", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        local A1, B, C = {}, plan[2], plan[3]
+        for _, n in ipairs(plan[1]) do if n ~= "Tester-Reino" then A1[#A1 + 1] = n end end
+        -- (los tres grupos llenos: al 1 le falta uno que está en el 2, y en el 1 hay uno que va al 3 y, después, otro que
+        -- va al 2; en el 3, el que falta en el 1 y dos de fuera)
+        b.Join(A1[3], 2)
+        b.Join(A1[1], 1); b.Join(A1[2], 1); b.Join(C[1], 1); b.Join(B[1], 1)
+        for k = 2, 5 do b.Join(B[k], 2) end
+        b.Join(C[2], 3); b.Join(C[3], 3); b.Join(A1[4], 3); b.Join("Fuera1-Otro", 3); b.Join("Fuera2-Otro", 3)
+        Click(d.invite)
+        a.w:Advance(10)
+        A.same(plan, b.Groups(), "cada uno, en su grupo")
+        A.same({ 0, 2 }, { b.sets, b.swaps }, "dos cambios bastan")
+        A.same({ 3, 3 }, { b.Group("Fuera1-Otro"), b.Group("Fuera2-Otro") })
+        -- (el grupo 2, con uno de fuera y sitio para uno más; entran dos que van ahí: se pide meter a uno, no a los dos)
+        b.Leave(B[4]); b.Leave(B[5])
+        a.w:Advance(5)
+        b.Join("Fuera3-Otro", 2)
+        b.Join(B[4], 6); b.Join(B[5], 6)
+        a.w:Advance(5)
+        A.equal(1, b.sets, "con sitio para uno, una petición")
+        A.same({ 2, 6 }, { b.Group(B[4]), b.Group(B[5]) })
+        A.same({}, a:Errors())
+    end)
+
+    it("si el juego no deja que el addon cambie a la gente de grupo, lo dice una vez y no lo intenta más (un bloqueo esperado, sin guardarlo como error)", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        b.blocked = true
+        Click(d.invite)
+        local x, y = plan[2][1], plan[2][2]
+        b.Join(x, 6)
+        b.Join(y, 6)
+        a.w:Advance(5)
+        A.same({ 6, 6 }, { b.Group(x), b.Group(y) })
+        A.equal(1, b.sets, "al primer bloqueo, deja de intentarlo")
+        local function Notices()
+            local n = 0
+            for _, l in ipairs(a.w.chat) do
+                if tostring(l.msg):find("El juego no deja que el addon cambie a la gente de grupo en la banda: colócala a mano.", 1, true) then n = n + 1 end
+            end
+            return n
+        end
+        A.equal(1, Notices())
+        b.Join(plan[3][1], 7)
+        Click(d.invite)
+        a.w:Advance(5)
+        A.equal(1, b.sets, "ni con otro que entra ni al invitar otra vez")
+        A.equal(1, Notices(), "el aviso, una vez")
+        A.is_nil(a.HU.expectBlock)
+        A.same({}, a:Errors(), "no es un error del addon")
+    end)
+
+    it("el plan vale 4 horas desde la última vez que invité (otra vez, vuelve a valer); a quien el juego da sin apellido se le reconoce por su nombre", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        Click(d.invite)
+        a.w:Advance(2)
+        Later(a, 4 * 3600 - 10)
+        local x, y = plan[2][1], plan[2][2]
+        b.Join(x, 6)
+        b.Bare(x)
+        a.w:Advance(5)
+        A.equal(2, b.Group(x), "aún vale, y sin apellido también")
+        Later(a, 10)
+        b.Join(y, 6)
+        a.w:Advance(5)
+        A.equal(6, b.Group(y), "pasadas las 4 horas, ya no")
+        Click(d.invite)
+        a.w:Advance(5)
+        A.equal(2, b.Group(y), "al invitar otra vez, vuelve a valer")
+        A.same({}, a:Errors())
+    end)
+
+    it("en un evento de verdad el plan va guardado con sus raids: tras /reload la banda se sigue montando; caducado, al salir del juego se borra", function()
+        local a = Community()
+        local ui = Open(a)
+        a.env.C_PartyInfo = { InviteUnit = function() end }
+        NewEvent(a, ui, "Mía")
+        local d = Detail(ui, "Mía")
+        AddRaid(d)
+        Click(d.invite)
+        local id = next(a.HU.db.calRaids)
+        local saved = a.HU.db.calRaids[id]
+        A.same({ "Raid 1", "Tester-Reino" }, { saved.plan.name, saved.plan.who })
+        -- (invito desde otra raid: el plan pasa a ella; uno solo)
+        AddRaid(d)
+        Click(d.invite)
+        A.equal("Raid 2", saved.plan.name)
+        a.w:Fire("PLAYER_LOGOUT")
+        local a2 = Community({ db = a.env.GuildUnionDB, charDb = a.env.GuildUnionCharDB })
+        local b = Band(a2)
+        b.Join("Tester-Reino", 3)
+        a2.w:Advance(5)
+        A.equal(1, b.Group("Tester-Reino"), "tras /reload, a mi grupo de la raid 2")
+        -- (pasadas las 4 horas, al salir del juego el plan se borra; las raids siguen)
+        Later(a2, 4 * 3600)
+        a2.w:Fire("PLAYER_LOGOUT")
+        A.is_nil(a2.HU.db.calRaids[id].plan)
+        A.equal("Raid 2", a2.HU.db.calRaids[id][2].name)
+        A.same({}, a:Errors())
+        A.same({}, a2:Errors())
     end)
 end)
 

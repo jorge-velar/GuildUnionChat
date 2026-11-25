@@ -73,6 +73,8 @@ read_globals = {
     "C_FriendList", "C_Map", "C_Texture", "EventRegistry", "FCF_GetChatFrameByID", "GameFontHighlight",
     "GetBattlefieldStatus", "GetCVarBool", "GetGuildEventInfo", "GetLocale", "GetMaxBattlefieldID",
     "GetNumGuildEvents", "Menu", "MenuUtil", "TimeUtil", "UIErrorsFrame",
+    -- (la banda montada como la raid del evento: UnionCalendar.lua)
+    "GetRaidRosterInfo", "SetRaidSubgroup", "SwapRaidSubgroup", "UnitIsGroupAssistant",
     -- (el medidor de addons del juego, para /gu perf y /gu carga: Perf.lua)
     "C_AddOnProfiler",
     -- (los desplegables de Buscar, debajo de su botón, y su ventana «Quién lo hace»: Trade.lua)
