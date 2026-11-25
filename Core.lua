@@ -392,6 +392,7 @@ HU.MAYBE_NIL = {
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
     expectBlock = true, -- (un bloqueo que el canal espera mientras entra o escribe: Channel.lua)
     offCfg = true, chatServerUpT = true, -- (cuándo volvió el servidor de chat: Channel.lua)
+    chatServerDownT = true, -- (cuándo se cayó: Channel.lua; lo lee /gu informe, Report.lua)
     hlHeard = true, -- (cuántas respuestas de «mientras no estabas» han llegado: Social.lua)
     chanMembersSeen = true, -- (la lista del canal, la primera vez que se lee: Guard.lua)
     -- la configuración de la comunidad
