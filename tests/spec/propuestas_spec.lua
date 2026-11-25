@@ -160,6 +160,20 @@ describe("Propuestas (WU): que no se pierda nada", function()
         A.same({}, net:Errors())
     end)
 
+    it("muchas mías: al reenviarlas, de pocas en pocas, y a quien las recibe le llegan todas (su tope es 5 seguidas)", function()
+        local net, p = Union()
+        for i = 1, 12 do p.ana.HU:Propose("ZZ", "k" .. i, "dato " .. i); net:Advance(7) end
+        A.equal(12, #Lines(p.alba), "de una en una, todas")
+        -- (Alba las pierde todas, como si se hubiera perdido lo que se dijo mientras no estaba)
+        p.alba.HU.db.wuStore.UNO.ZZ = {}
+        local i0 = #net.log
+        F.Stub(p.ana.HU, "RelayName", "Alba-Reino")
+        net:Advance(150)
+        A.equal(12, WUs(net, "Ana", i0), "las 12, otra vez")
+        A.equal(12, #Lines(p.alba), "y le llegan todas")
+        A.same({}, net:Errors())
+    end)
+
     it("si el equipo no tiene lo mío (su trozo vacío), lo vuelvo a mandar", function()
         local net, p = Union()
         p.alba.HU:Propose("ZZ", "dos", "de Alba")

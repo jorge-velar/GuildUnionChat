@@ -836,10 +836,29 @@ local function FromMyTeam(self, sender)
     for _, n in ipairs(MyTeam()) do if self:Key(n) == k then return true end end
     return false
 end
+-- (lo mío otra vez, sin pasarme del tope de quien lo recibe (WU_BURST seguidas, WU_RATE por minuto): unas pocas ya y el
+-- resto de una en una cada RESEND_STEP. Lo vio el ayudante de TR, 25/11: hasta 30 de golpe y se perdían las de más)
+local RESEND_STEP = 7
+local resendQueue = {}
+local function PumpResend()
+    local msg = table.remove(resendQueue, 1)
+    if not msg then return end
+    HU:Send(msg, "GUILD")
+    if #resendQueue > 0 then HU.After(RESEND_STEP, PumpResend) end
+end
+local function QueueResend(msgs)
+    if #msgs == 0 then return end
+    local idle = #resendQueue == 0
+    for _, m in ipairs(msgs) do resendQueue[#resendQueue + 1] = m end
+    if not idle then return end
+    for _ = 1, math.min(WU_BURST - 1, #resendQueue) do HU:Send(table.remove(resendQueue, 1), "GUILD") end
+    if #resendQueue > 0 then HU.After(RESEND_STEP, PumpResend) end
+end
+local function ResendText(id, e) return "WU~" .. HU.myTag .. "~" .. id .. "~" .. e.k .. "~" .. e.t .. "~" .. e.d end
 -- (lo mío de ese trozo que el equipo no tiene igual: otra vez por GUILD, como mucho una vez cada RESEND_GAP)
 local function ResendMine(id, i, teamLines)
     local def = HU.packSets[id]
-    local have, now = {}, GetTime()
+    local have, now, msgs = {}, GetTime(), {}
     for _, l in ipairs(teamLines) do have[l] = true end
     for _, e in pairs(StoreOf(HU.myTag, id) or {}) do
         if IsMe(e.n) and HU.PackChunkOf(e.n:lower() .. "," .. e.k, def.chunks) == i and not have[LineOf(def, e)]
@@ -847,10 +866,11 @@ local function ResendMine(id, i, teamLines)
             local rk = id .. "|" .. e.k
             if not resent[rk] or now - resent[rk] >= RESEND_GAP then
                 resent[rk] = now
-                HU:Send("WU~" .. HU.myTag .. "~" .. id .. "~" .. e.k .. "~" .. e.t .. "~" .. e.d, "GUILD")
+                msgs[#msgs + 1] = ResendText(id, e)
             end
         end
     end
+    QueueResend(msgs)
 end
 SyncMine = function(id)
     local s = ownSync[id] or { shift = -1 }
@@ -871,18 +891,19 @@ end
 -- (todo lo mío vivo, otra vez por GUILD: al entrar y cuando cambia el enlace; como mucho una vez cada RESEND_GAP)
 ResendAllMine = function()
     if not (HU.myTag and HU:Me()) then return end
-    local now, sent = GetTime(), 0
+    local now, msgs = GetTime(), {}
     for id, def in pairs(HU.packSets) do
         if def.proposals then
             for _, e in pairs(StoreOf(HU.myTag, id) or {}) do
                 local rk = id .. "|" .. e.k
-                if sent < 30 and IsMe(e.n) and Alive(def, e, HU.StampNow()) and (not resent[rk] or now - resent[rk] >= RESEND_GAP) then
-                    resent[rk], sent = now, sent + 1
-                    HU:Send("WU~" .. HU.myTag .. "~" .. id .. "~" .. e.k .. "~" .. e.t .. "~" .. e.d, "GUILD")
+                if #msgs < 30 and IsMe(e.n) and Alive(def, e, HU.StampNow()) and (not resent[rk] or now - resent[rk] >= RESEND_GAP) then
+                    resent[rk] = now
+                    msgs[#msgs + 1] = ResendText(id, e)
                 end
             end
         end
     end
+    QueueResend(msgs)
 end
 ServeMine = function(id, want)
     local m = Refresh(id)
