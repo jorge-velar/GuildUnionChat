@@ -2489,4 +2489,4 @@ function HU:BuildTrade(host)
     Paint()
 end
 
-HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "Lists", "Net/Packs", "Net/Transport", "Packs/Professions", "Packs/Trade", "Protocol", "UnionConfig" })
+HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "Lists", "Net/Packs", "Net/Transport", "Packs/Members", "Packs/Professions", "Packs/Trade", "Protocol", "UnionConfig" })
