@@ -11,12 +11,18 @@ local SECTION_H = (426 - 28 - 4) - ((23 + 60 - 57) + 2)   -- 366
 ---------------------------------------------------------------------------
 -- El WoW de mentira, con lo que aquí hace falta mirar
 ---------------------------------------------------------------------------
--- (lo que no guarda: textura, transparencia, activado, ancho, alto, los puntos de cada marco, y el tinte y la letra de
--- los botones)
+-- (lo que no guarda: textura, transparencia, activado, ancho, alto, los puntos de cada marco, el tinte y la letra de
+-- los botones, y la capa y subcapa de cada textura: en el juego, ARTWORK y 0 si no se dicen)
 local function Observe(a)
     local meta = a.w.frameMeta
     local base = meta.__index
     local extra = {
+        CreateTexture = function(self, name, layer, _, sub)
+            local t = base(self, "CreateTexture")(self, name)
+            rawset(t, "_layer", layer or "ARTWORK"); rawset(t, "_sub", sub or 0)
+            return t
+        end,
+        SetDrawLayer = function(self, layer, sub) rawset(self, "_layer", layer); rawset(self, "_sub", sub or 0) end,
         SetTexture = function(self, t) rawset(self, "_tex", t) end,
         GetTexture = function(self) return rawget(self, "_tex") end,
         SetTexCoord = function(self, ...) rawset(self, "_tc", { ... }) end,
@@ -227,6 +233,44 @@ local function SlotOf(d, name)
     end
 end
 local function BenchCount(d) return tonumber(d.benchHead:GetText():match("%((%d+)%)")) end
+
+-- (dónde queda una textura de la ventana w, desde su esquina de arriba a la izquierda (y hacia abajo, negativa): por sus
+-- puntos, respecto a w o a otra textura de w, y su ancho y alto. Lo justo para lo que monta DJ.Window y la ficha)
+local AT = { TOPLEFT = { 0, 0 }, TOP = { 0.5, 0 }, TOPRIGHT = { 1, 0 }, LEFT = { 0, 0.5 }, CENTER = { 0.5, 0.5 },
+    RIGHT = { 1, 0.5 }, BOTTOMLEFT = { 0, 1 }, BOTTOM = { 0.5, 1 }, BOTTOMRIGHT = { 1, 1 } }
+local function Rect(r, w)
+    if r == w then return { l = 0, r = w._w, t = 0, b = -w._h } end
+    local box = {}
+    for p, v in pairs(r._pts or {}) do
+        local rel, rp, x, y = w, p, v[1], v[2]
+        if type(v[1]) == "table" then rel, rp, x, y = v[1], v[2] or p, v[3], v[4] end
+        local R = Rect(rel, w)
+        local ax = R.l + (R.r - R.l) * AT[rp][1] + (x or 0)
+        local ay = R.t + (R.b - R.t) * AT[rp][2] + (y or 0)
+        local fx, fy = AT[p][1], AT[p][2]
+        if fx == 0 then box.l = ax elseif fx == 1 then box.r = ax else box.l, box.r = ax - r._w / 2, ax + r._w / 2 end
+        if fy == 0 then box.t = ay elseif fy == 1 then box.b = ay else box.t, box.b = ay + r._h / 2, ay - r._h / 2 end
+    end
+    box.r = box.r or box.l + r._w
+    box.l = box.l or box.r - r._w
+    box.b = box.b or box.t - r._h
+    box.t = box.t or box.b + r._h
+    return box
+end
+-- (las texturas de la ventana w en la misma capa y subcapa que t que pisan a t, con su capa y dónde están: el juego no
+-- fija cuál de las dos va encima)
+local function SameLayerOver(a, w, t)
+    local out, me = {}, Rect(t, w)
+    for _, f in ipairs(a.w.frames) do
+        if f._parent == w and f._kind == "Texture" and f ~= t and f._layer == t._layer and f._sub == t._sub then
+            local o = Rect(f, w)
+            if o.l < me.r and me.l < o.r and o.b < me.t and me.b < o.t then
+                out[#out + 1] = string.format("%s %d, de %g,%g a %g,%g", f._layer, f._sub, o.l, o.t, o.r, o.b)
+            end
+        end
+    end
+    return out
+end
 
 -- (los roles por su icono: «[T] 2   [H] 5   [D] 12» -> { TANK = 2, HEALER = 5, DAMAGER = 12 })
 local TC = { TANK = "0:19:22:41", HEALER = "20:39:1:20", DAMAGER = "20:39:22:41" }
@@ -2242,6 +2286,24 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         local benchH = (480 - 52 - 44) - 64 - 10
         local last = d.bench[#d.bench]
         A.truthy(-last._pts.TOPLEFT[2] + last._h <= benchH - 8 - d.place._h - 4, "la última fila, por encima de «Colocar en raids»")
+        A.same({}, a:Errors())
+    end)
+
+    it("la imagen de arriba a la izquierda no desaparece al filtrar por tanque, sanador o daño (Jorge, 25/11): nada de la ventana en su misma capa y subcapa la pisa (la franja del título la tapaba entera y el juego no fija cuál de las dos va encima: al repintar, a veces, la franja)", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01"
+        A.same({}, SameLayerOver(a, d, d.icon), "al abrir la ficha")
+        for _, b in ipairs({ d.roleBtns[2], d.roleBtns[3], d.roleBtns[4], d.roleBtns[1] }) do
+            Click(b)
+            A.equal(icon, d.icon:GetTexture())
+            A.truthy(d.icon:IsShown())
+            A.same({}, SameLayerOver(a, d, d.icon), "tras filtrar: " .. tostring(b.role))
+        end
+        -- (por debajo del aro, que sí va encima a propósito: OVERLAY)
+        A.equal("ARTWORK", d.icon._layer)
         A.same({}, a:Errors())
     end)
 end)

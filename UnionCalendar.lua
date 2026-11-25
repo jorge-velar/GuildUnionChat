@@ -936,8 +936,10 @@ end
 local function BuildDetail(host)
     local d = DJWindow("GuildUnionCalendarDetail", host, 740, DETAIL_H, function() selected = nil; Paint() end)
     local cf = d.content
-    -- (arriba a la izquierda, la imagen del evento, redonda)
+    -- (arriba a la izquierda, la imagen del evento, redonda; en la subcapa 1, por encima de la franja del título, que la
+    -- tapa entera: en la misma subcapa el juego no fija cuál va encima y a veces desaparecía. Jorge, 25/11) [+ARCHITECTURE.md]
     d.icon = RoundIcon(d, 30)
+    d.icon:SetDrawLayer("ARTWORK", 1)
     d.icon:SetPoint("TOPLEFT", d, "TOPLEFT", 22, -12)
     d.sub = cf:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     d.sub:SetPoint("TOPLEFT", 12, -10); d.sub:SetPoint("RIGHT", cf, "RIGHT", -12, 0)

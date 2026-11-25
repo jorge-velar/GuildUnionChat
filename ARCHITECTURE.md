@@ -4414,6 +4414,14 @@ sin saltos de línea).
 Ventana movible (740 x 480, `DETAIL_H`) que es solo las raids: arriba icono, título, tipo · día y hora · por · cuántos
 van · nivel y los roles; debajo, la descripción (hasta 4 líneas, `DESC_LINES`), que baja la raya y todo lo demás y hace
 crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «Apuntado» (verde, con tic).
+- **La imagen de arriba a la izquierda** (`d.icon`, `DJ.RoundIcon` de 30, de la ventana) va en la subcapa 1 de
+  `ARTWORK`. Jorge, 25/11: «a veces cuando filtras por tank heal o dps la imagen de arriba a la izquierda desaparece».
+  La causa: la franja del título de `DJ.Window` está en `ARTWORK` 0 y la tapa entera (de 12,-10 a 728,-44; la imagen, de
+  22,-12 a 52,-42), y entre dos texturas de la misma capa y subcapa el juego no fija cuál se dibuja encima. Cada clic en
+  un filtro del banquillo repinta la ficha y le vuelve a poner la imagen (`SetTexture`), y a veces quedaba la franja
+  encima: la imagen desaparecía y el aro (`OVERLAY`) seguía. Con la subcapa 1, la imagen va siempre sobre la franja y
+  bajo el aro. La prueba (calendario_spec, «la imagen de arriba a la izquierda no desaparece…») mira que nada de la
+  ventana en la misma capa y subcapa pise la imagen: el WoW de mentira no dibuja, así que comprueba la causa.
 - Apuntarse (`SignUp`): mira el nivel y pide el rol con un menú que solo trae los de la clase (`CAN_ROLE`, vanilla:
   tanque guerrero, druida o paladín; sanador sacerdote, druida, paladín o chamán; daño, todas). Ya apuntado, pregunta
   «¿Seguro que quieres salir del evento?» (`ui.confirm`); salir te quita también de la raid. En uno de verdad, apuntarse
