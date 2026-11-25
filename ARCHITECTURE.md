@@ -2384,20 +2384,28 @@ Lo que usa el calendario (así el formato está solo aquí):
 
 ### Qué hay en el archivo
 
-El conjunto `TR` de propuestas (Net/Packs.lua, «Propuestas (`WU`)»): las solicitudes de Comercio de toda la unión, para que
-el Tablón y Mis encargos lleguen a todas las hermandades y sigan ahí tras /reload. 16 trozos, `keep` de 30 días; su
-`onChange` avisa con `HU:Changed("trade")`, que escucha Trade.lua. Cada uno escribe solo lo suyo:
+El conjunto `TR` de propuestas (Net/Packs.lua, «Propuestas (`WU`)»): los anuncios de Comercio de toda la unión (solicitudes y
+ventas), para que el Tablón y Mis encargos lleguen a todas las hermandades y sigan ahí tras /reload. 16 trozos; vive 30 días
+(`keep`) o, un anuncio del tablón, hasta su hora (`alive`, abajo); su `onChange` avisa con `HU:Changed("trade")`, que escucha
+Trade.lua. Cada uno escribe solo lo suyo:
 
 | Clave | De quién | Datos |
 |---|---|---|
-| `o<id>` | quien la pide | `<estado>,<cant>,<mats>,<propina>,<pública>,<para quién>,<objeto>` |
-| `a<id>` | quien la hace o, en una privada, para quien es | `t` la acepto, `d` hecha, `r` la rechazo; sin datos, la suelto |
+| `o<id>` | quien lo pone | `<estado>,<tipo>,<cant>,<mats>,<propina>,<pública>,<para quién>,<caduca>,<objeto>` |
+| `a<id>` | quien la hace, en una privada para quien es o, en una venta, cada interesado | `t` la acepto o me interesa, `d` hecha, `r` la rechazo; sin datos, la suelto |
 
 - `<id>`: el de `NewId` (Trade.lua); letras y cifras, 20 como mucho.
-- `<estado>`: `o` abierta o `g` cancelada. Cancelar es volver a mandar la misma con `g` (`HU:TradeCancel`, con sus datos tal
-  cual: `data`).
+- **Desde el 25/11** (caducidad y ventas) el formato lleva `<tipo>` y `<caduca>`; el de antes ya no vale. Nadie tenía aún
+  esas copias en el juego: sin compatibilidad vieja.
+- `<estado>`: `o` abierto, `g` cancelado (o eliminado) o `s` vendido (solo una venta). Cancelar o vender es volver a mandar
+  el mismo con `g` o `s` (`HU:TradeCancel`, `HU:TradeSold`, con sus datos tal cual: `data`).
+- `<tipo>`: `p` pedir (una solicitud) o `v` vender (una venta, de un BOE: Trade.lua lo mira al publicar). Una venta va
+  siempre al tablón (`<pública>` 1, sin para quién) y sin materiales (0); su `<propina>` es el precio.
 - `<cant>` de 1 a 999; `<mats>` 1 (los pone quien pide) o 0; `<propina>` en cobre, o `-` (a negociar; 0 es una propina de
   0); `<pública>` 1 o 0; `<para quién>`, el nombre, o `-` en las públicas (una pública no lleva a quién y una privada sí).
+- `<caduca>`: la hora del servidor a la que caduca, en base 36 (`HU.B36`, Net/RosterSync.lua; 7 letras como mucho), o `-`:
+  las privadas y las del tablón ya aceptadas (`HU:TradeKeep` la vuelve a mandar con `-`: que un encargo a medias no se
+  borre). La elige quien lo pone: 5, 12, 24 o 48 h.
 - `<objeto>` va el último y puede llevar comas: `i<objeto>:<nombre>` de un enlace de objeto, `s<hechizo>:<nombre>` de uno de
   hechizo o de encantamiento (`enchant:` también va como `s`) o `t:<texto>`, lo escrito a mano. Sin `~`, `;`, `|` ni
   códigos de control (`Clean`), y recortado (`HU.Utf8Cut`) para que todo quepa en los 180 de una propuesta y, sobre todo,
@@ -2405,7 +2413,12 @@ el Tablón y Mis encargos lleguen a todas las hermandades y sigan ahí tras /rel
   publica y no llega a las otras hermandades (`LINE_MAX`, con mi nombre y el número de la solicitud).
 - **Al leer** (`ItemLink`) se rehace el enlace: el del juego (`C_Item.GetItemInfo`, `C_Spell.GetSpellLink`) si ya lo tiene,
   y entonces se recuerda; si no, uno con su nombre, como los de prueba (`AddTest`). Lo escrito a mano, tal cual.
-- `validate` comprueba todo eso (`ParseOrder`): lo que no tiene su forma ni se propone ni se acepta.
+- `validate` comprueba todo eso (`ParseOrder`): lo que no tiene su forma ni se propone ni se acepta (también una venta
+  privada o un «vendido» que no es una venta).
+- **`alive`**: 30 días desde su hora (lo que antes hacía `keep`) y, un `o<id>` con `<caduca>`, hasta esa hora
+  (`ExpiryOf`). Pasada, Net/Packs.lua no lo da al leer (`HU:Proposals`, también lo de los paquetes de las otras hermandades,
+  aunque sean de antes), no lo publica y lo quita del almacén al limpiarlo: no se ve en ninguna parte. Las respuestas `a<id>`
+  y lo borrado, 30 días.
 
 ### `Resolve`
 
@@ -2420,18 +2433,21 @@ El estado de cada solicitud con sus respuestas, en este orden:
 En las públicas cuentan las respuestas de cualquiera menos quien la pide; en las privadas, solo las de para quien es (nadie
 más puede aceptarla). De cada tipo, la más antigua; a la misma hora, por nombre: igual en todos los ordenadores. Quitarla de
 mi lista (`closed`) no viaja: es de cada personaje (`tradeClosed`, Trade.lua).
+**Una venta**: `g` → `gone` (eliminada), `s` → `sold` (vendida; `soldAt`, la hora de esa propuesta), si no `open`; nadie la
+«coge»: cada `t` de alguien que no es quien vende es un interesado (`buyers`, del más antiguo al más nuevo, y a la misma hora
+por nombre). `d` y `r` no cuentan.
 
 ### `HU:TradeRequests()`
 
 - Lee `HU:Proposals("TR")` (lo de mi hermandad, de mi almacén; lo de las otras, de sus paquetes), junta cada `o<id>` con sus
-  `a<id>` y da la lista de la más antigua a la más nueva: `{ id, who, tag, t, item, qty, mats, tip, pub, to, state, taker,
-  takenAt, data }`. La rehace Trade.lua solo al abrir la sección o con el aviso «trade».
+  `a<id>` y da la lista de la más antigua a la más nueva: `{ id, who, tag, t, item, sale, qty, mats, tip, pub, to, exp,
+  state, taker, takenAt, buyers, soldAt, data }`. La rehace Trade.lua solo al abrir la sección o con el aviso «trade».
 - **Las privadas** solo salen para quien la pide, para quien es y para quien la hace. Sus datos viajan a todos (los guarda
   todo el que tiene el addon, como cualquier propuesta): se esconden al leer.
 - **El mismo número dos veces** (alguien que copia el de una ajena): vale la de quien sale en él (`NewId` empieza por la
   huella de su nombre, `HU.Hash`); si no, la más antigua.
-- `HU:TradeOrder(r)`, `HU:TradeCancel(r)` y `HU:TradeAnswer(id, qué)` proponen lo de Trade.lua; devuelven si han podido (sin
-  la unión, `HU.myTag`, no).
+- `HU:TradeOrder(r)`, `HU:TradeCancel(r)`, `HU:TradeSold(r)` (solo una venta), `HU:TradeKeep(r)` (el mismo, sin caducidad)
+  y `HU:TradeAnswer(id, qué)` proponen lo de Trade.lua; devuelven si han podido (sin la unión, `HU.myTag`, no).
 
 ## Packs/Professions.lua
 
@@ -3538,9 +3554,14 @@ Jorge, 15/11: «pon que pueda moverme a la 0 y los muevo a la 0 y hacemos que el
 ## Trade.lua
 
 La sección Comercio de la lista de miembros (UnionRoster.lua crea `cover.trade` y llama a `HU:BuildTrade(host)`):
-pedir objetos fabricados a la unión, en el Tablón (a todos) o a alguien concreto (Mis encargos), y hablar con cada
-persona. Las vistas se llamaban Público y Privado hasta el 24/11 (Jorge: «Tablón» y «Mis encargos»; en inglés
-«Board» y «My Orders»); por dentro siguen siendo `view = "pub"` y `"priv"`.
+pedir objetos fabricados a la unión, en el Tablón (a todos) o a alguien concreto (Mis encargos), vender BOE en el Tablón,
+hablar con cada persona y buscar quién de la unión fabrica qué (Buscar). Las vistas se llamaban Público y Privado hasta el
+24/11 (Jorge: «Tablón» y «Mis encargos»; en inglés «Board» y «My Orders»); por dentro siguen siendo `view = "pub"` y
+`"priv"`; la pestaña Buscar («Search», 25/11) es `view = "find"`.
+**Anuncios** (Jorge, 25/11: «para cuando posteas en el tablón que tenga fecha de caducidad […] desde 5h-12h-24-48h»,
+«poder vender BOES en el tablón […] cuando es BOE podrán aceptarlo varios», «cambiamos ''new request'' por ''new post''»):
+lo que se pone es un anuncio, de pedir (una solicitud, como hasta ahora) o de vender (una venta, solo BOE). Ver «Nuevo
+anuncio», «Vender BOE» y «Lo que dura en el tablón», abajo.
 **Con la red** (25/11; Jorge, 24/11: «mis orders no se ven entre guild», «¿todas las publicaciones en el board, my orders…
 lo verán todas las guild y se mantendrán ahí?», «¿los chats del my orders se guardan?»): las solicitudes viajan a toda la
 unión como propuestas, el conjunto `TR` (Packs/Trade.lua), y siguen tras /reload; el chat de cada encargo va por susurro a la
@@ -3551,23 +3572,24 @@ oculto»—, eligió entre tres dibujos la «opción 3», la misma para Calendar
 debajo, el buscador y la casilla. En el juego, en la 315, «no pega ni con cola, los botones eran bonitos»: en la 316
 quedan ese sitio y esas dos filas, con los botones, el buscador y la casilla de antes). La sección, con la ventana del
 juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
-- **Fila 1**, en el centro (`TOP`, 0, -4): los botones rojos Tablón · Mis encargos (`ui.switch`, `DJ.Switch` de
-  DJStyle.lua: dos de 150 x 28 con 6 entre ellos). Son `ui.viewBtns.pub` y `.priv` (`:SetSelected`, `:Label`,
-  `:GetText`); «Mis encargos (2)» lleva el número de sin leer. Cambiar borra búsqueda, elegida y marcadas; mientras se
-  busca, ninguno está elegido.
+- **Fila 1**, en el centro (`TOP`, 0, -4): los botones rojos Tablón · Mis encargos · Buscar (`ui.switch`, `DJ.Switch` de
+  DJStyle.lua: tres de 150 x 28 con 6 entre ellos, como los dos de Calendario). Son `ui.viewBtns.pub`, `.priv` y `.find`
+  (`:SetSelected`, `:Label`, `:GetText`); «Mis encargos (2)» lleva el número de sin leer. Cambiar borra búsqueda, elegida
+  y marcadas; mientras se busca, ninguno está elegido.
 - **Fila 2** (de -36 a -64, `ROW2_Y`, `ROW2_H`; en la 316 empezaba en -44 y Jorge pidió «sube un poco más»): a la
   izquierda, el buscador del juego, como hasta la 314: «Buscar
   receta» (23, 200 x 22, `SEARCH_W`, centrado en la fila) con su ayuda en gris claro (`T.muted`) y detrás un marco oscuro
   de borde dorado (`ui.searchBox`, `DJ.Panel`). A la derecha, la casilla del juego «Solo lo que puedo hacer» (22) con
-  su texto detrás, que acaba a 14 del borde derecho (se mide el texto, `GetStringWidth`; sin medida, 130).
+  su texto detrás, que acaba a 14 del borde derecho (se mide el texto, `GetStringWidth`; sin medida, 130). Los tres son
+  `ui.row2`; en Buscar no salen y en su sitio van los filtros (`ui.filters`, ver «Buscar (la pestaña)»).
 - **Qué es un objeto** (Jorge, 24/11: «que aparezca al pasar el ratón lo que es, pero que no moleste»): con un enlace
   escrito en el buscador o en una sugerencia (`Suggest`), al pasar el ratón sale su ficha del juego (`HyperTip`:
   `GameTooltip:SetHyperlink`) a la derecha del buscador o de la lista, sin taparlos. Sin enlace, nada.
 - **El panel** (`bg`) empieza en -70 y las listas (`ui.body`) en -74 (`BODY_Y`; hasta la 319, -80: Jorge, 24/11, «un poco menos» de gris), hasta `BOTTOM_H` (36) por encima del
-  borde de abajo, 4 por encima de «+ Nueva solicitud». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
-  (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más). Hasta la 314 eran 10 y 4: el
-  interruptor y la segunda fila ocupan más.
-- **Abajo**, «+ Nueva solicitud» (`ui.new`; no sale mientras se busca), como hasta la copia 304 (Jorge, 24/11: «como
+  borde de abajo, 4 por encima de «+ Nuevo anuncio». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
+  (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más); en Buscar, los objetos (4, sin título)
+  y quién lo hace (3, con título): 240. Hasta la 314 eran 10 y 4: el interruptor y la segunda fila ocupan más.
+- **Abajo**, «+ Nuevo anuncio» (`ui.new`; hasta el 25/11, «+ Nueva solicitud»; no sale mientras se busca), como hasta la copia 304 (Jorge, 24/11: «como
   antes y abajo centrado»): el botón rojo de 200 x 24 con sus tres piezas teñidas de verde (0,45 · 1 · 0,45) y la letra
   blanca (`GameFontHighlight`), igual que «+ Nuevo evento» del calendario; al pasar el ratón, nada. Va a 8 del borde y es
   hijo del panel para quedar encima de él. En el Tablón, en el centro de la sección; en Mis encargos, en el de la lista
@@ -3586,35 +3608,48 @@ juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
 El «Buscar personaje» de la ventana lo esconde `ShowTab` (UnionRoster.lua, `HU.charSearchOff`) y no Trade.lua, porque
 el `Sync` de BlizzTab.lua lo volvería a sacar.
 
-### Una solicitud
+### Una solicitud (un anuncio)
 
-`{ id, who, item, qty, mats, tip, pub, to, state, taker, takenAt, t, closed, test }` (las de la red, además, `tag`, la
-hermandad de quien la pide, y `data`, sus datos tal cual: Packs/Trade.lua)
+`{ id, who, item, sale, qty, mats, tip, pub, to, exp, state, taker, takenAt, buyers, soldAt, t, closed, test }` (las de
+la red, además, `tag`, la hermandad de quien la pide, y `data`, sus datos tal cual: Packs/Trade.lua)
 - `id` (`NewId`), 16 cifras: huella del nombre de quien la pide (`HU.Hash`, 4), la hora (6), un contador de la sesión
   (2) y azar (4); distinto en toda la unión aunque dos pidan en el mismo segundo.
-- `item`, el enlace (o lo escrito); `qty`, 1 o más; `tip`, la propina en cobre (nil: «A negociar»); `mats`, true si
-  los materiales los pone quien pide («Yo», de entrada), false si quien la hace («Vendedor»).
-- `pub`: pública, o privada para `to`. `state`: `open` (Abierta), `taken` (Aceptada por `taker` a la hora `takenAt`, la
-  del servidor), `done` (Hecha) o `gone` (cancelada o rechazada: ya no sale). `t`: cuándo se pidió (la hora de su
-  propuesta). `closed`: quitada de Mis encargos (solo de mi lista, guardado en el personaje: `tradeClosed`).
-- `test`: del modo prueba. Tope: 5 sin terminar por persona (`MAX_OPEN`, `OpenCount`: abiertas y aceptadas; las
-  quitadas de mi lista no cuentan).
-- Lo mío va en azul (`MINE`; en el Tablón, «Yo») y lo de otros en amarillo (`OTHERS`).
+- `item`, el enlace (o lo escrito); `qty`, 1 o más; `tip`, la propina en cobre (en una venta, el precio; nil: «A
+  negociar»); `mats`, true si los materiales los pone quien pide («Yo», de entrada), false si quien la hace («Vendedor»);
+  en una venta, nil.
+- `sale`: una venta (de un BOE; ver «Vender BOE»); si no, una solicitud. `exp`: la hora (del servidor) a la que caduca un
+  anuncio del tablón; nil, las privadas y las ya aceptadas (ver «Lo que dura en el tablón»).
+- `pub`: pública, o privada para `to` (una venta, siempre pública). `state`: `open` (Abierta; en una venta, «Venta»),
+  `taken` (Aceptada por `taker` a la hora `takenAt`, la del servidor), `done` (Hecha), `sold` (Vendida, a la hora
+  `soldAt`; solo una venta) o `gone` (cancelada, rechazada o eliminada: ya no sale). `buyers`: en una venta, a quiénes
+  les interesa, del primero al último. `t`: cuándo se pidió (la hora de su propuesta). `closed`: quitada de Mis encargos
+  (solo de mi lista, guardado en el personaje: `tradeClosed`).
+- `test`: del modo prueba. Tope: 5 sin terminar por persona (`MAX_OPEN`, `OpenCount`: abiertas, también las ventas, y
+  aceptadas; las quitadas de mi lista y las caducadas no cuentan).
+- Lo mío va en azul (`MINE`; en el Tablón, «Yo») y lo de otros en amarillo (`OTHERS`). Las ventas, de otro color (ver
+  «Vender BOE»).
 
 ### Tablón y Mis encargos (`Visible`, `Layout`)
 
-- **Tablón**, a todo lo ancho: las públicas abiertas y, 10 min más (`PUB_KEEP`), las aceptadas con quien la aceptó,
-  para que se vea que ya está cogida; luego solo en Mis encargos. Quién · Receta / objeto · Cant. · Mats (Sí / No) ·
-  Propina · Estado · Acción: «Aceptar» (de otro y abierta), «Cancelar» (mía sin aceptar) o quién la aceptó. `Accept`
+- **Tablón**, a todo lo ancho: las públicas abiertas (las de venta también) y, 10 min más (`PUB_KEEP`), las aceptadas
+  con quien la aceptó y las vendidas, para que se vea que ya están cogidas (`OnBoard`); luego solo en Mis encargos. Lo
+  caducado no sale (`Expired`). Quién · Receta / objeto · Cant. · Mats (Sí / No; en una venta, «—») · Propina · Estado
+  (con lo que le queda a las abiertas: `TimeLeft`) · Acción: «Aceptar» (de otro y abierta), «Me interesa» (una venta de
+  otro), «Cancelar» (mía sin aceptar; una venta mía, la elimina), quién la aceptó, «Vendida» o «Te interesa» (una venta
+  que ya quiero). `Accept`
   la pasa a `taken` conmigo como `taker` (en la red, mi respuesta `t`) y deja puesto el chat con quien la pidió. Salen las
   de todas las hermandades. «Aceptar» sale apagado si no puedo
   hacerla (`HU:CanCraft`, abajo) y al pasar el ratón dice por qué, en rojo (`WhyTip`, con el porqué en `why`); `Accept`
-  lo vuelve a mirar.
-- **Mis encargos**: las que me tocan (`Involved`: mías, las que me piden y las que hago yo), menos las quitadas y las
-  públicas sin aceptar, que no tienen a nadie al otro lado. Deja la derecha al chat y va sin Mats para que quepa:
-  Con quién (`Other`, con sus líneas sin leer detrás: «(1)» en verde) · Receta / objeto · Cant. · Propina · Estado; en
-  las abiertas, un tic (aceptar la que me piden; apagado y gris si no puedo hacerla, con el porqué) y una X (`Cancel`:
-  cancelar la mía o rechazar la que me piden).
+  lo vuelve a mirar. «Me interesa» no mira las profesiones: una venta no se fabrica.
+- **Mis encargos**: las que me tocan (`Involved`: mías, las que me piden, las que hago yo y las ventas que me interesan),
+  menos las quitadas y las públicas sin aceptar, que no tienen a nadie al otro lado. Una venta mía sale una vez por cada
+  interesado (una fila que lee la venta y lleva `buyer`; sin interesados, solo en el Tablón): así se elige con quién se
+  habla. Cada fila se reconoce por su número y, en esas, el interesado (`EntryKey`): lo elegido y lo marcado. Deja la
+  derecha al chat y va sin Mats para que quepa:
+  Con quién (`Other`: en una venta mía, el interesado; con sus líneas sin leer detrás: «(1)» en verde) · Receta / objeto ·
+  Cant. · Propina · Estado; en las abiertas, un tic (aceptar la que me piden; apagado y gris si no puedo hacerla, con el
+  porqué; en las ventas, no) y una X (`Cancel`: cancelar la mía, también una venta, o rechazar la que me piden; en una
+  venta de otro, no).
 - Con `tipsOff`, ninguna de las dos lleva Propina (`ReqCols`).
 - Sin filtros: clic en un título ordena (otro, al revés; el tercero, lo más nuevo arriba). El orden se quita solo si la
   vista nueva no tiene esa columna (Mats y Acción solo están en el Tablón; sin propinas, no hay Propina).
@@ -3623,14 +3658,20 @@ hermandad de quien la pide, y `data`, sus datos tal cual: Packs/Trade.lua)
 - `Paint` lee una vez mis profesiones (`MyProfessions`) y las solicitudes que se ven (`Visible(profs)`), y se las pasa
   a `Layout` y a cada fila.
 
-### Nueva solicitud (`BuildNewDialog`, `ui.OpenNew`)
+### Nuevo anuncio (`BuildNewDialog`, `ui.OpenNew`)
 
-Objeto (autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco), Cantidad
+Hasta el 25/11, «Nueva solicitud» (Jorge: «cambiamos ''new request'' por ''new post''»; en inglés «New post»), y su
+botón «Pedir», ahora «Publicar» («Post»): con las ventas, «Pedir» no valía. Las filas, de arriba abajo (`d.Relayout`, que
+las coloca según lo elegido y ajusta el alto): Anuncio Pedir · Vender (se excluyen; de entrada, Pedir), Objeto
+(autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco) y Cantidad
 (1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina en oro · plata · cobre (vacías: a
-negociar) y En el tablón Sí · No (de entrada, según la vista; con No, «Personaje»; hasta el 24/11, «Pública»).
-«Pedir» exige el objeto, que no pase del tope y que la que no va al Tablón tenga a quién («Si no va al tablón, pon a
-quién se la pides.»), y salta al Tablón o a Mis encargos. `ui.OpenNew(nombre)` la abre privada para esa
-persona («Pedir una receta a …»). Con el comercio apagado (`tradeOff`) no se pide: `ui.OpenNew` no la abre y «Pedir»
+negociar), En el tablón Sí · No (de entrada, según la vista: en Mis encargos, No; con No, «Personaje»; hasta el 24/11,
+«Pública») y, en el tablón, Dura 5 h · 12 h · 24 h · 48 h (de entrada, 24: ver «Lo que dura en el tablón»). Al vender no
+salen Materiales ni En el tablón (una venta va siempre al tablón) y la propina se llama «Precio:».
+«Publicar» exige el objeto, que no pase del tope y que la que no va al Tablón tenga a quién («Si no va al tablón, pon a
+quién se la pides.»), mira si es BOE (abajo), y salta al Tablón o a Mis encargos. `ui.OpenNew(nombre, objeto)` la abre
+privada para esa persona («Pedir una receta a …») y con el objeto puesto, si se le da (Buscar). Con el comercio apagado
+(`tradeOff`) no se pide: `ui.OpenNew` no la abre y «Publicar»
 la cierra y lo dice. Autorrelleno (`Suggest`): desde 2 letras, todo lo que encaja de mejor a peor (`HU.TextRank`, Core.lua:
 lo exacto y las palabras enteras primero, sin mayúsculas ni acentos; `Better`: en cada grupo, el nombre más corto, que es
 el que más se parece a lo escrito, y luego por nombre), y se ven los 6 primeros (`SUGGEST_N`); clic o Intro (la primera)
@@ -3639,10 +3680,58 @@ se reconoce igual sin acentos ni mayúsculas (`CraftTargets`). Objetos (`ItemMat
 juego lo conoce, los de mis bolsas, los de las solicitudes y los fabricables (CraftItems.lua). Nombres
 (`NameMatches`): mi hermandad, las listas de las otras y los que tienen GuildUnion, con su etiqueta y sin mí.
 
-### Buscar
+### Vender BOE (`BoeOf`, `ItemInfo`)
+
+Jorge, 25/11: «poder vender BOES en el tablón, cuando es BOE podrán aceptarlo varios, cambiará el vendedor el estado a
+vendido cuando se lo venda a alguien o lo eliminará […] serán desde verdes hasta legendarios» y «los BOES solo se podrán
+vender, nunca poner para comprar. En la lista aparecerán de otro color».
+- **Qué es BOE**: que se liga al equipar y es de verde a legendario. Lo dice el juego: `C_Item.GetItemInfo` (en Forever
+  no hay `GetItemInfo` suelto) da la calidad en su 3.º valor y el ligado en el 14.º (2 = al equipar,
+  `Enum.ItemBind.OnEquip`; Blizzard_APIDocumentationGenerated/ItemDocumentation.lua e ItemConstantsDocumentation.lua de
+  Forever). `ItemInfo` lo junta en `{ name, link, q, il, cls, bind }`. El objeto sale del enlace o, lo escrito a mano,
+  del nombre exacto de un fabricable (`ItemIdOf`); lo que no es un objeto (texto suelto, un hechizo, un encantamiento)
+  no es BOE.
+- **Las reglas**, al publicar (`d.Submit`): un BOE solo se vende («Es BOE (se liga al equipar): solo se puede vender, no
+  pedir.»); lo que no es BOE no se vende («Solo se venden objetos BOE: …»). La ventana sigue abierta.
+- **Si el juego aún no conoce el objeto** (`GetItemInfo` da nada): se le pide (`C_Item.RequestLoadItemDataByID`, el que
+  usa AsyncCallbackSystem.lua de Forever), se dice «Comprobando el objeto con el juego…» y se decide al llegar
+  (`ITEM_DATA_LOAD_RESULT` o `GET_ITEM_INFO_RECEIVED` de ese objeto, `ItemArrived`: vuelve a publicar con `final`). Si en
+  5 s (`ITEM_WAIT`) no ha llegado, se decide igual: al pedir vale (no se puede comprobar, como `HU:CanCraft`); al vender,
+  no («No se ha podido comprobar el objeto: prueba otra vez.»). Con la ventana cerrada antes, nada.
+- **Una venta**: va siempre al tablón, con su caducidad y sin materiales; la propina es el precio. La pueden querer
+  varios: «Me interesa» (`Accept`) es mi respuesta `t`; ya dada, «Te interesa». Quien vende tiene en Mis encargos una
+  fila con cada interesado, con un aviso en su chat («Le interesa: objeto», `NotifyNew`, una vez por interesado:
+  `tradeSeen[id:nombre]`), y habla con cada uno por el chat del encargo (`TC`, como siempre; `Between` da la venta y el
+  interesado). La marca vendida con «Vendida» (el botón de «Hecha», arriba del chat) o con «Marcar como vendida» del clic
+  derecho (`MarkSold`, `HU:TradeSold`), o la elimina (Cancelar, la X o Eliminar: `HU:TradeCancel`). Vendida o eliminada,
+  deja de estar abierta para todos: vendida, sigue 10 min en el tablón con «Vendida» y luego solo en Mis encargos, como
+  «Vendida». Quien la quería y la quita de su lista suelta su respuesta (`RemoveReq`): ya no la quiere.
+- **De otro color** (`SALE`, `SALE_RGB`): en el Estado, «Venta» (o «Vendida», en gris) y, detrás de la fila, un fondo
+  suave verde azulado (`row.saleTex`), en el Tablón y en Mis encargos. «Solo lo que puedo hacer» esconde las ventas del
+  Tablón (no se fabrican) y en Mis encargos las deja.
+- **Ojo** (25/11): en Forever casi todo el equipo fabricado (la Cofia de mitril, la Capa de seda carmesí…) se liga al
+  equipar y es verde o mejor: con la regla, eso ya no se puede pedir a un artesano. Solo consumibles, materiales, bolsas,
+  lo que se liga al recogerlo y los encantamientos.
+
+### Lo que dura en el tablón (`exp`, `TimeLeft`, `HU:TradeKeep`)
+
+- Se elige al publicar: 5, 12, 24 (de entrada) o 48 h (`EXPIRY_HOURS`); viaja en los datos de `o<id>`, la hora (del
+  servidor) a la que caduca, en base 36 (Packs/Trade.lua). Las privadas, sin caducidad, como hasta ahora.
+- Pasada esa hora no se ve en ninguna parte: el `alive` del conjunto (Packs/Trade.lua) la deja fuera al leer (las de
+  las otras hermandades también, aunque su paquete sea de antes), al publicar y del almacén al limpiarlo; y `Visible` y
+  `OpenCount`, por si la lista se rehízo antes (`Expired`). Con la sección a la vista se repinta cada minuto («Comercio: al
+  día»), así que se va sola.
+- En el Estado de las abiertas del Tablón, lo que le queda («5h»; la última hora, «<1h»: en minutos, «Abierta 59m» no
+  cabía sin apretar), en gris. Cabe en la casilla (61 de ancho con la ventana a su tamaño; comercio_spec lo mide). En Mis
+  encargos no cabe.
+- **Una mía ya aceptada deja de caducar** (`Rebuild`): al verla aceptada (o hecha), la vuelvo a mandar sin la hora
+  (`HU:TradeKeep`), para que el encargo no se borre a medias de Mis encargos de los dos, con su chat. Si quien la pidió no
+  entra entre que se la aceptan y la hora, caduca igual. Una venta sí caduca aunque alguien la quiera.
+
+### Buscar (el buscador)
 
 Sugiere objetos como al pedir; compara en texto llano (`Query`: de un enlace, su nombre). Mientras se busca no hay
-mitad del interruptor elegida, ni chat, ni «+ Nueva solicitud», y la vista se parte en dos de 3 filas:
+mitad del interruptor elegida, ni chat, ni «+ Nuevo anuncio», y la vista se parte en dos de 3 filas:
 - **Publicadas**: las del Tablón que encajan por quién la pide, el objeto o quién la aceptó (`Matches`), con «Solo lo
   que puedo hacer» si está puesta; si no hay ninguna, se esconde y «Quién lo hace» ocupa todo (8 filas).
 - **Quién lo hace** (`SearchMembers`): los de toda la unión con una profesión cuyo nombre encaja, o que pueden hacer un
@@ -3653,19 +3742,58 @@ mitad del interruptor elegida, ni chat, ni «+ Nueva solicitud», y la vista se 
     también desconectados: con su nivel de verdad y un tic junto al nivel si saben la receta; quien seguro que no la
     sabe no sale. Su circulito, el de `Status`.
   - Después, los de mi hermandad sin línea (sin el addon o sin mandarla aún), con lo que da el juego
-    (`HU:ClubProfessions`): sus dos profesiones, sin recetas y, en Forever, sin el nivel de los demás (la comunidad da
-    1): salen igual si tienen la profesión, con «—» y detrás; el mío, el de mi personaje. Nadie sale dos veces (misma
-    persona y profesión).
+    (`HU:ClubProfessions`, leído una vez por repintado: `ClubRows`): sus dos profesiones, sin recetas y, en Forever, sin
+    el nivel de los demás (la comunidad da 1): salen igual si tienen la profesión, con «—» y detrás; el mío, el de mi
+    personaje. Nadie sale dos veces (misma persona y profesión), y quien ya tiene línea de esa profesión no sale otra vez
+    con lo del juego (`HasLine`, con `HU:UnionProfessionsOf`): si su línea dice que seguro que no sabe la receta, no sale
+    (hasta el 25/11 volvía a salir así, con «—»).
   - Orden: quien sabe la receta, luego los de nivel sabido de más a menos, luego los demás.
   - Al abrir la sección y cada minuto mientras se ve (`NeedAll`), 5 s después de pedir lo de Comercio, se pide `OF` de
-    todas (`HU:NeedUnionProfessions`); lo que llega mientras se busca se repinta 2 s después, una vez.
+    todas (`HU:NeedUnionProfessions`); lo que llega mientras se busca (o con la pestaña Buscar a la vista) se repinta 2 s
+    después, una vez.
+
+### Buscar (la pestaña: `view = "find"`, `FindItems`, `CraftersOf`)
+
+Jorge, 25/11: «Añadimos pestaña al lado de My Orders de search, que tendrá una serie de filtros para buscar entre los
+personajes de la guild, los filtros serán: por profesión, nivel de item, color de item (blanco, verde, azul etc), otro
+desplegable de: consumible, trade goods, containers, armor, weapons, ammo, miscellaneous; se pueden elegir varios».
+- **La fila 2** (`BuildFilters`, `ui.filters`), en vez del buscador y la casilla: Profesión (130) · «Nivel de objeto:» de
+  [ ] a [ ] (dos cajas de 3 cifras) · Color (110) · Tipo (110), de 23 a 585, sin pisarse y también en inglés
+  (comercio_spec). Cada botón abre un menú con casillas (`MenuUtil.CreateContextMenu` + `CreateCheckbox`, como el menú de
+  la pestaña del chat, ChatTabs.lua; las casillas no cierran el menú) y se pueden marcar varias; sin ninguna, todo. El
+  botón dice lo elegido: su nombre, el de lo marcado si es uno, «Color (2)» si son varios (`FilterLabel`).
+  - Profesión: las de CraftItems.lua (`PROF_NAMES`), por su nombre.
+  - Color: la calidad del juego (3.er valor de `GetItemInfo`): Blanco 1, Verde 2, Azul 3, Morado 4, Naranja 5, cada uno
+    escrito de su color.
+  - Tipo: la clase del juego (12.º valor, `Enum.ItemClass` de Forever): Consumible 0, Mercancías 7, Contenedores 1 y 11
+    (los carcajes y las bolsas de munición son su propia clase, Quiver, y son bolsas), Armadura 4, Armas 2, Munición 6
+    (Projectile), Misceláneo 15.
+- **Qué sale** (`FindItems`): los fabricables cuyo nombre ya ha dado el juego (`craft`, ver «Los nombres»: la calidad, el
+  nivel y la clase se guardan al cargarlos, en la misma llamada) que encajan con todos los filtros; de cada uno, la
+  profesión (si hay filtro, la elegida) y el nivel que pide. Los encantamientos no son objetos: salen solo sin filtro de
+  color, tipo ni nivel. De más nivel de objeto a menos (sin nivel, detrás), luego por el nivel de profesión y por nombre.
+  La lista se rehace solo al cambiar un filtro o al llegar nombres nuevos (`findDirty`); con la pestaña a la vista, el
+  cargador repinta al acabar cada vuelta. Sin nada del juego todavía: «Cargando los objetos del juego…».
+- **La lista** (`ui.items`, 4 filas, `FIND_ROWS`): Objeto (el enlace, de su color, con su ficha al pasar el ratón y al
+  pinchar en el nombre) · Nivel · Profesión (su icono, si el juego lo da) · Quién lo hace: el primero, con su circulito,
+  su nivel y el tic si sabe la receta, y cuántos más («+2»), o «Nadie» (`WhoSummary`). Quién lo hace se calcula solo de
+  las filas que se ven, y se guarda hasta el siguiente repintado (`crafters`).
+- **Quién lo hace un objeto** (`CraftersOf`): los de toda la unión con línea de oficios que saben la receta o tienen el
+  nivel (`HU:UnionCrafters` con ese objeto), y los de mi hermandad sin línea que tienen la profesión (`ClubRows`, como
+  en el buscador); conectados primero (`Status`), luego quien sabe la receta y por nivel.
+- **Clic en un objeto**: se elige (raya azul) y debajo sale su «Quién lo hace: objeto» (`ui.found`, 3 filas, como la del
+  buscador: Quién · Hermandad · Profesión · Nivel). Clic derecho en alguien: Susurrar, Invitar al grupo y «Pedir una
+  receta», que abre el anuncio privado para esa persona con el objeto ya puesto. «+ Nuevo anuncio» abre uno del tablón
+  con lo elegido. Si un filtro deja fuera lo elegido, se quita.
+- Nada se repinta por fotograma: la pestaña no usa `OnUpdate`.
 
 ### Chat con cada persona y circulitos
 
 Solo en Mis encargos, a la derecha (`ui.chat`, 200 de ancho, `CHAT_W`), y solo aquí: no sale en el chat normal. Va de
 arriba abajo (Jorge, 24/11): desde debajo del buscador (arriba del cuerpo) hasta 8 del borde de abajo de la sección,
-donde estuvo el modo prueba; la lista, a su izquierda, y «+ Nueva solicitud», centrado debajo de ella. Uno por persona
-(`chats[nombre]`, hasta 200 líneas); elegir una solicitud lo cambia al de la otra persona (`OpenChat(Other(r))`); sin
+donde estuvo el modo prueba; la lista, a su izquierda, y «+ Nuevo anuncio», centrado debajo de ella. Uno por persona
+(`chats[nombre]`, hasta 200 líneas); elegir una solicitud lo cambia al de la otra persona (`OpenChat(Other(r))`; en una
+venta mía, el del interesado de esa fila); sin
 nadie, la caja está apagada. Lo que escribo sale por susurro a la otra persona (`SendChat`, orden `TC`); a un
 desconectado se le escribe igual y le llega al entrar (ver «La red», abajo). A las personas de prueba no se manda nada.
 Todas las líneas entran por `ChatLine` (con `sys`, un aviso del addon, tal cual y sin nombre delante); las que llegan,
@@ -3739,16 +3867,18 @@ para que nunca vayan cada una por su lado.
 
 ### Clic derecho, varias a la vez y «Hecha»
 
-- `RowMenu`: la otra persona, con Susurrar e Invitar al grupo; en «Quién lo hace», «Pedir una receta»; en Mis
-  encargos, «Marcar como hecha» (si se puede: ver abajo) y «Eliminar» («Eliminar (N)» con varias marcadas); y
-  «Cancelar», que cierra el menú.
+- `RowMenu`: la otra persona, con Susurrar e Invitar al grupo; en «Quién lo hace», «Pedir una receta» (en Buscar, con el
+  objeto elegido); en Mis encargos, «Marcar como hecha» (si se puede: ver abajo) y «Eliminar» («Eliminar (N)» con varias
+  marcadas); en una venta mía abierta, en cualquier vista, «Marcar como vendida»; y «Cancelar», que cierra el menú.
 - En Mis encargos, Ctrl+clic suma o quita una fila (la elegida con un clic solo entra también) y Mayús+clic, el tramo desde
-  la última (`picks`); con algo marcado sale «Eliminar (N)» a la derecha de «+ Nueva solicitud». `RemoveReq`: la mía
-  sin aceptar se cancela (para todos); las demás salen de mi lista (`tradeClosed`), y la que hago yo sin hacer, además, se
-  suelta (mi respuesta, vacía): vuelve a estar abierta para quien la pidió, que si no se quedaría esperando.
+  la última (`picks`, por `EntryKey`); con algo marcado sale «Eliminar (N)» a la derecha de «+ Nuevo anuncio»
+  (`RemovePicked`: cada solicitud una vez, aunque una venta mía tenga varias filas). `RemoveReq`: la mía sin aceptar (y la
+  venta mía sin vender) se cancela (para todos); las demás salen de mi lista (`tradeClosed`), y la que hago yo sin hacer,
+  además, se suelta (mi respuesta, vacía): vuelve a estar abierta para quien la pidió, que si no se quedaría esperando. Una
+  venta que me interesaba, igual: ya no me interesa.
 - «Hecha» (arriba a la derecha del chat, para la elegida, si la hago yo) y «Marcar como hecha» la pasan a `done`
   (`MarkDone`, mi respuesta `d`): solo quien la hace y mientras está aceptada (`CanMarkDone`); ya hecha, «Hecha» queda
-  apagado.
+  apagado. En una venta mía, el mismo botón dice «Vendida» (`MarkSold`, mientras está a la venta: `CanMarkSold`).
 
 ### La red: el conjunto TR y el chat de cada encargo (`TC`)
 
@@ -3760,13 +3890,17 @@ se ve; un paquete llega en varios trozos) y si cambia mi hermandad. Lo que las u
 - **Pedir lo que falta** (`NeedAll`): `HU:PackNeed` de mi hermandad (lo que me perdí estando fuera, `SyncMine`) y de las
   otras, al abrir la sección, cada 60 s mientras se ve («Comercio: al día») y cuando llega una línea del chat sin su
   solicitud.
-- **Las acciones** de las de la red pasan por las propuestas (las de prueba cambian en el sitio, como antes): pedir
-  (`HU:TradeOrder`; sin la unión no se puede y se dice), Aceptar y el tic (`t`), «Hecha» (`d`), la X (la mía,
-  `HU:TradeCancel`; la que me piden, `r`) y Eliminar (arriba). Cada una mira antes la de ahora (`Live`): la fila pudo
-  pintarse antes de que llegara un cambio. Se ven al repintar, con lo que ya está en mi almacén.
+- **Las acciones** de las de la red pasan por las propuestas (las de prueba cambian en el sitio, como antes): pedir o
+  vender (`HU:TradeOrder`; sin la unión no se puede y se dice), Aceptar, «Me interesa» y el tic (`t`), «Hecha» (`d`),
+  «Vendida» (`HU:TradeSold`), la X (la mía, `HU:TradeCancel`; la que me piden, `r`) y Eliminar (arriba). Cada una mira
+  antes la de ahora (`Live`): la fila pudo pintarse antes de que llegara un cambio. Se ven al repintar, con lo que ya está
+  en mi almacén.
 - **Los nombres** de la red se comparan sin mayúsculas (`IsMe`, `SameName`): el «para quién» es lo que escribió quien pide.
 - **Una privada nueva para mí** (`NotifyNew`): al rehacer, un aviso gris en el chat con quien la pide («Nueva solicitud:
   objeto x2», `ChatLine` con `sys`), que cuenta como sin leer: así brilla la pestaña. Una vez por solicitud (`tradeSeen`).
+  Igual con cada interesado en una venta mía («Le interesa: objeto»; `tradeSeen[id:nombre]`).
+- **Una mía del tablón aceptada** (`Rebuild`): se vuelve a mandar sin caducidad (`HU:TradeKeep`; ver «Lo que dura en el
+  tablón»).
 
 **El chat de cada encargo**: `TC~texto` (200 letras como mucho, sin códigos de control), por susurro a la otra persona.
 En el registro, «abierta» (vale de cualquiera por susurro), cola `chat`, 60 s.
@@ -3782,7 +3916,8 @@ En el registro, «abierta» (vale de cualquiera por susurro), cola `chat`, 60 s.
 - **El repaso** (cada 30 s, «Comercio: chat pendiente»): lo que espera sale si la otra persona ya se ve conectada (o, si no
   se sabe, pasados los 5 min), y lo que llegó sin su solicitud se vuelve a mirar.
 - **Recibir** (el manejador de `TC`, solo por susurro): entra en el chat de la solicitud entre los dos (`Between`: ni
-  cancelada ni quitada de mi lista, en la que me toca y con esa persona al otro lado; el nombre del chat es `Other`). Si aún
+  cancelada ni quitada de mi lista, en la que me toca y con esa persona al otro lado; el nombre del chat es `Other` o, en
+  una venta mía, ese interesado). Si aún
   no la tengo (el susurro llega antes que su paquete: el enlace de su hermandad publica al minuto), espera hasta 10 min
   (`HOLD_FOR`, 30 líneas como mucho), se pide lo que falte y se vuelve a mirar en cada `Rebuild` y en el repaso. De quien
   no tiene nada conmigo, nunca entra. Quien me escribe está conectado: lo que le esperaba sale ya.
@@ -3795,11 +3930,11 @@ En el registro, «abierta» (vale de cualquiera por susurro), cola `chat`, 60 s.
 
 Desde la copia 324 (Jorge, 24/11: «al hacer /reload se borra todo»), y con la red:
 - **Las solicitudes** van en las propuestas (`HU.db.wuStore`, en la cuenta, y los paquetes de las otras hermandades,
-  `HU.db.packs`): tras /reload están, y caducan a los 30 días (`keep` del conjunto).
+  `HU.db.packs`): tras /reload están, y caducan a los 30 días (`alive` del conjunto) o, las del tablón, a su hora.
 - **En el personaje** (`HU:Saved` char, con `{}` de entrada): los chats con cada persona (`tradeChats`), lo sin leer
-  (`tradeUnread`), las que quité de mi lista (`tradeClosed[id] = hora`), las privadas para mí ya avisadas
-  (`tradeSeen[id] = hora`) y lo que espera a que la otra persona se conecte (`tradePending[persona] = { { m, t } }`, 50
-  como mucho por persona).
+  (`tradeUnread`), las que quité de mi lista (`tradeClosed[id] = hora`), las privadas para mí y los interesados en mis
+  ventas ya avisados (`tradeSeen[id] = hora`, `tradeSeen[id:nombre] = hora`) y lo que espera a que la otra persona se
+  conecte (`tradePending[persona] = { { m, t } }`, 50 como mucho por persona).
 - Al entrar (`HU:OnStart`, que pone `chats` y `unread` a esas tablas) y al salir (`PLAYER_LOGOUT`), `Tidy` quita lo de
   prueba (personas «-Prueba»), lo sin leer sin chat y lo de hace más de `KEEP_DAYS` (30) días de `tradeClosed`,
   `tradeSeen` y `tradePending`.
@@ -3817,10 +3952,10 @@ de verdad si el juego conoce el objeto; `ClearTest` lo quita todo, también sus 
 (`testReqs`), no viajan ni se guardan.
 `tradeOff` y `tipsOff`, en la configuración de la hermandad (`HU:UnionCfg()`, Configuración → Comercio,
 UnionConfig.lua), los cambia el maestro y de momento solo valen en su personaje; sin poner, todo activo. `tradeOff`
-deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, interruptor, buscador y su
-recuadro, «Solo lo que puedo hacer» y «+ Nueva solicitud»), cierra la ventana de pedir y no deja pedir; con él, los
-chats no se ven (lo que llegue, sin leer). `tipsOff` quita la columna Propina y la propina al pedir, y no la guarda. Con
-`HU:Changed("unionCfg")` se repinta.
+deja solo el panel con el aviso (`ui.offMsg`): esconde lo demás (`ui.onlyOn`: cuerpo, interruptor y «+ Nuevo anuncio»;
+`ui.row2`: buscador y su recuadro y «Solo lo que puedo hacer»; y los filtros de Buscar), cierra la ventana de pedir y no
+deja pedir; con él, los chats no se ven (lo que llegue, sin leer). `tipsOff` quita la columna Propina y la propina (o el
+precio) al pedir, y no la guarda. Con `HU:Changed("unionCfg")` se repinta.
 
 ## CraftItems.lua
 
@@ -3842,10 +3977,13 @@ de Wowhead Classic y traía objetos de Season of Discovery que Forever no tiene:
 
 ### Los nombres: `LoadCraftNames` (en Trade.lua)
 
-- Pide cada objeto al juego (`C_Item.GetItemInfo`) y guarda lo que llega en `craft[id] = { key, link, skill, lv }`
-  (`key`, el nombre en minúsculas), solo para la sesión. Lo usan `ItemMatches`, `CraftNeeds(q)` (por profesión, el
-  nivel más bajo entre los fabricables cuyo nombre contiene lo buscado) y `CraftTargets` (lo escrito a mano en una
-  solicitud, por su nombre exacto, para `HU:CanCraft`).
+- Pide cada objeto al juego (`C_Item.GetItemInfo`, con `ItemInfo`: en Forever no hay `GetItemInfo` suelto) y guarda lo
+  que llega en `craft[id] = { key, link, skill, lv, q, il, cls, bind }` (`key`, el nombre en minúsculas; de paso, en la
+  misma llamada, la calidad, el nivel de objeto, la clase y el ligado, para Buscar y para saber si es BOE), solo para la
+  sesión. Lo usan `ItemMatches`, `CraftNeeds(q)` (por profesión, el nivel más bajo entre los fabricables cuyo nombre
+  contiene lo buscado), `CraftTargets` (lo escrito a mano en una solicitud, por su nombre exacto, para `HU:CanCraft`),
+  `ItemIdOf` (lo escrito a mano, para `BoeOf`) y `FindItems` (la pestaña Buscar, que se rehace al llegar nombres
+  nuevos: `findDirty`; con la pestaña a la vista, se repinta al acabar cada vuelta).
 - Poco a poco, para no pedir 1.373 de golpe: 30 cada medio segundo con `HU:Every` («Comercio: nombres», en
   `/gu perf`), en pausa durante el modo combate (`pauseInCombat`).
 - Si el juego no tiene el objeto a mano, devuelve nil y lo pide al servidor; sin esperar su aviso, los que faltan se
@@ -3899,7 +4037,7 @@ Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos d
   dorada. Si ya está así no hace nada (`djPicked`): se llama en cada repintado.
 - Por qué el elegido mantiene la forma: no se esconde ni se añade nada, solo se tiñen las piezas que ya tiene. Sigue
   siendo el mismo botón que sus vecinos (contorno y tamaño), solo que oscuro, y vale para botones de otros archivos.
-- «+ Nueva solicitud» (Trade.lua) y «+ Nuevo evento» (UnionCalendar.lua) son `DJ.Button` con sus tres piezas teñidas
+- «+ Nuevo anuncio» (Trade.lua; hasta el 25/11, «+ Nueva solicitud») y «+ Nuevo evento» (UnionCalendar.lua) son `DJ.Button` con sus tres piezas teñidas
   de verde y la letra blanca; lo hace cada archivo, como hasta la copia 304. Entre medias fueron un «+» solo, verde
   claro (`DJ.Plus`, quitado el 24/11: Jorge los quiso «como antes y abajo centrado»).
 
