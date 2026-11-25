@@ -223,17 +223,18 @@ local function TS(fn, skill)
     if ok and v ~= nil and v ~= "" and not HU.Secret(v) then return v end
     return nil
 end
--- (su nombre y su icono, los del juego, como en su lista de miembros; si no, el nuestro y sin icono)
+-- (su nombre y su icono, los del juego, como en su lista de miembros, y se recuerdan; si no los da, el nuestro y sin
+-- icono, y se vuelve a preguntar la próxima vez)
 local function ProfName(skill)
-    if names[skill] == nil then
+    if not names[skill] then
         local n = TS("GetTradeSkillDisplayName", skill)
-        names[skill] = type(n) == "string" and n or false
+        names[skill] = type(n) == "string" and n or nil
     end
     return names[skill] or L(PROFS[skill])
 end
 local function ProfIcon(skill)
-    if icons[skill] == nil then icons[skill] = TS("GetTradeSkillTexture", skill) or false end
-    return icons[skill] or nil
+    icons[skill] = icons[skill] or TS("GetTradeSkillTexture", skill)
+    return icons[skill]
 end
 
 -- (bySkill[profesión] y byName[clave]: filas { name, key, tag, skill, rank, t, bits }; bits, solo con mi misma lista. Si
