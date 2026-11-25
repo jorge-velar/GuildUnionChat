@@ -191,6 +191,12 @@ function HU:PackedEvents()
     local evs, signs, pins, lists = {}, {}, {}, {}
     for _, p in ipairs(self:Proposals("EV")) do
         local what, id = p.k:match("^([esp])(%w+)$")
+        local l, lid, k = p.k:match("^([iu])(%w+)_(%d)$")
+        if l then
+            local key = lid .. "|" .. p.n
+            lists[key] = lists[key] or { i = {}, u = {} }
+            lists[key][l][tonumber(k)] = p.d
+        end
         local t, kind, lv, icon, title, desc, size, invite = Parse(what == "e" and p.d or "")
         if t then
             evs[#evs + 1] = { id = id, tag = p.tag, who = p.n, pt = p.t, t = t, kind = kind, minLevel = lv > 1 and lv or nil,
@@ -200,12 +206,6 @@ function HU:PackedEvents()
             signs[#signs + 1] = { id = id, tag = p.tag, who = p.n, role = CODE_ROLE[p.d:sub(1, 1)], reserve = p.d:sub(2) == "r" or nil }
         end
         if what == "p" then pins[id .. "|" .. p.n] = true end
-        local l, lid, k = p.k:match("^([iu])(%w+)_(%d)$")
-        if l then
-            local key = lid .. "|" .. p.n
-            lists[key] = lists[key] or { i = {}, u = {} }
-            lists[key][l][tonumber(k)] = p.d
-        end
     end
     for _, e in ipairs(evs) do
         local key = e.id .. "|" .. e.who

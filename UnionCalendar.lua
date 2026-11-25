@@ -443,10 +443,7 @@ local function Rebuild()
     -- (una banda por invitación, solo si me invita; quien se apunta sin estar invitado, no cuenta)
     local saved, me = HU.db.calRaids, Me()
     for _, e in ipairs(evs) do
-        if not byId[e.id] then
-            byId[e.id] = e
-            if Invited(e, me) then list[#list + 1] = e end
-        end
+        if not byId[e.id] then byId[e.id] = e; if Invited(e, me) then list[#list + 1] = e end end
     end
     -- (las raids, con su tabla guardada: lo que se mueve se guarda solo. Las de los míos, guardadas desde el principio)
     for _, e in ipairs(list) do
@@ -470,9 +467,7 @@ local function Rebuild()
     for _, e in ipairs(testEvents) do list[#list + 1] = e end
     -- (en una banda que ha bajado de tamaño, quien se queda en un grupo de más vuelve al banquillo)
     for _, e in ipairs(list) do
-        for _, r in ipairs(Band(e) and e.raids or {}) do
-            for g = GroupsOf(e) + 1, GROUPS do wipe(r.groups[g]) end
-        end
+        for _, r in ipairs(Band(e) and e.raids or {}) do for g = GroupsOf(e) + 1, GROUPS do wipe(r.groups[g]) end end
     end
     events = list
 end
@@ -1986,14 +1981,11 @@ local function AddTest()
         ev.roles, ev.minLevel = {}, 55
         NewRaid(ev, Me())
         ev.signups[Me()], ev.roles[Me()] = "yes", "DAMAGER"
-        local i = 0
-        for n in pairs(mc) do
-            if n ~= Me() then
-                i = i + 1
-                ev.signups[n] = "yes"
-                ev.roles[n] = ROLE_BY[testClass[n] or ""] or "DAMAGER"
-                if i <= 12 then AutoPlace(ev, n) end
-            end
+        local others = {}
+        for n in pairs(mc) do if n ~= Me() then others[#others + 1] = n end end
+        for i, n in ipairs(others) do
+            ev.signups[n], ev.roles[n] = "yes", ROLE_BY[testClass[n] or ""] or "DAMAGER"
+            if i <= 12 then AutoPlace(ev, n) end
         end
         return ev
     end
