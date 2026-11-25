@@ -2871,7 +2871,7 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         A.same({}, a:Errors())
     end)
 
-    it("el banquillo se filtra por rol (Todos, tanque, sanador, daño): solo los de ese rol, y arriba cuántos de cuántos; el elegido, negro", function()
+    it("el banquillo se filtra por rol (Todos, tanque, sanador, daño): solo los de ese rol, y arriba cuántos de cuántos; el elegido, gris", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)

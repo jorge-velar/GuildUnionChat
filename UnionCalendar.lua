@@ -1039,7 +1039,7 @@ local function BuildDetail(host)
     d.descH = 0
     d.rule = Line(cf, 0.45); d.rule:SetPoint("TOPLEFT", 10, -28); d.rule:SetPoint("TOPRIGHT", -10, -28)
     -- (las raids: una pestaña por raid y «+ Añadir raid». Botones rojos del juego con su letra de siempre, que se lea
-    -- «Raid 20 (40)» (Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…»); la elegida, negra (DJ.PickRed). 7 por fila
+    -- «Raid 20 (40)» (Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…»); la elegida, gris (DJ.PickRed). 7 por fila
     -- de 92 + 4: 668 de ancho, cabe en los 704 del panel)
     d.raidTabs = {}
     function d.TabPoint(b, i)
@@ -1154,7 +1154,7 @@ local function BuildDetail(host)
     d.benchHead = C(bench:CreateFontString(nil, "OVERLAY", "GameFontNormal"), T.title)
     d.benchHead:SetPoint("TOPLEFT", 9, -8)
     local bl = Line(bench, 0.45); bl:SetPoint("TOPLEFT", 6, -24); bl:SetPoint("TOPRIGHT", -6, -24)
-    -- (debajo de la raya, el filtro por rol: Todos, tanque, sanador y daño; el elegido, negro. Jorge, 24/11. De 22 de alto,
+    -- (debajo de la raya, el filtro por rol: Todos, tanque, sanador y daño; el elegido, gris. Jorge, 24/11. De 22 de alto,
     -- como los demás botones rojos, y el icono de 14 aparte, centrado: en el texto de uno de 18 se salía del botón. Jorge,
     -- 25/11: «el icono sobresale del botón») [+ARCHITECTURE.md]
     d.roleBtns = {}

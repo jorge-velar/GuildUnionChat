@@ -4549,7 +4549,7 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
   aquí. Quien organiza, en su PC, saca de sus raids a quien sale en cuanto le llega (ver «Lo que se ve»).
 - Raids: `{ name, leader, groups = { {nombres} x 8 } }`, 8 grupos de 5, hasta 20 (`MAX_RAIDS`). Pestañas «Raid N
   (cuántos)»: botones rojos del juego de 92 x 24 (`TAB_W`, `TAB_H`) con su letra de siempre, que se lea «Raid 20 (40)»;
-  la elegida, negra con la letra blanca (`DJ.PickRed`). Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…» (antes,
+  la elegida, gris (`DJ.PickRed`). Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…» (antes,
   de 65 y con letra pequeña, 10 por fila). Van 7 por fila (de 12 a 680 de los 704 del panel) y, para quien organiza,
   «+ Añadir» en el hueco siguiente: con 20, tres filas. Con cada fila de más, la ventana crece 28 (`TAB_ROW_H`, sumados a
   los de la descripción) y lo de debajo baja otro tanto, para que nada se salga ni se monte. «+ Añadir» pregunta quién la lleva
@@ -4571,7 +4571,7 @@ crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «
   como los demás botones rojos): «Todos» (44) y los de tanque, sanador y daño (28; al pasar el ratón, el rol). El icono
   del rol es una textura aparte, de 14 y centrada (`b.icon`: 4 de margen arriba y abajo y 7 a los lados). Hasta el 25/11
   el icono iba en el texto de un botón de 18 y se salía (Jorge: «mejorar los botones de filtrado, el icono sobresale del
-  botón»). El elegido, negro; con un rol (`benchRole`), solo salen los de ese rol y la cabecera dice cuántos de cuántos
+  botón»). El elegido, gris; con un rol (`benchRole`), solo salen los de ese rol y la cabecera dice cuántos de cuántos
   («Sin raid (3/11)»); los que no tienen rol, solo con «Todos». Las filas empiezan 4 por debajo de los botones (-54; antes,
   -50) y siguen cabiendo las 12, 11 por encima de «Colocar en raids». Al abrir otro evento, otra vez «Todos». «Colocar en
   raids» sigue colocando a todos; el botón de invitar, con un rol, invita solo a los de ese rol (ver «A quién invita»).
