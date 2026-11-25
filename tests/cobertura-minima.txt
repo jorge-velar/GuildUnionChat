@@ -17,7 +17,7 @@ Core.lua 86.9 70
 DJStyle.lua 100.0 0
 Domain/Trust.lua 79.0 51
 ErrorShare.lua 29.2 46
-Guard.lua 55.0 216
+Guard.lua 55.1 216
 GuardKeeper.lua 57.8 73
 History.lua 64.4 402
 InviteLog.lua 98.4 5
@@ -30,7 +30,7 @@ Minimap.lua 33.3 12
 Net/Packs.lua 97.0 17
 Net/Relay.lua 85.5 130
 Net/RosterSync.lua 78.2 174
-Net/Security.lua 81.2 33
+Net/Security.lua 81.4 33
 Net/Transport.lua 81.3 33
 NoteConfig.lua 26.9 92
 Orders.lua 79.1 64
@@ -45,9 +45,9 @@ PratBridge.lua 72.2 23
 Presence.lua 33.0 144
 Protocol.lua 88.8 1
 Ranks.lua 68.0 52
-Report.lua 74.8 166
-Roster.lua 87.3 16
-Social.lua 70.8 209
+Report.lua 76.7 167
+Roster.lua 89.1 17
+Social.lua 70.9 209
 TestLog.lua 33.3 60
 Trade.lua 98.5 4
 TradeCraft.lua 93.7 15
