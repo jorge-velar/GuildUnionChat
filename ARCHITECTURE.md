@@ -4650,10 +4650,11 @@ para que quede montado igual según vayan entrando en la raid, con la misma dist
 «+ Nuevo evento»: `HU:CanMakeEvents()` (UnionConfig.lua) o el modo prueba; se pone al día con `CHANGED` «unionCfg».
 Apagado, al pasar el ratón dice quién crea eventos según `calMake` (`NoMakeTip`): «Solo el maestro crea eventos.» o
 «Solo los oficiales crean eventos.»; con «Todos», nada; encendido, nada (su nombre ya se lee). Organizar (`CanManage`:
-añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» (y
-elegir con Ctrl / Mayús a quién) y «Convertir en banda»: el líder de esa raid. «Quitar raid»: quien creó el evento o ese
-líder. Montar la banda de verdad como la raid: quien invitó desde ella, siendo líder o ayudante de la banda. Apuntarse,
-ver la ficha, susurrar e invitar al grupo: cualquiera.
+añadir raid, mover, colocar, hacer líder; en una banda, también subir a alguien de la reserva): quien creó el evento o el
+líder de alguna de sus raids. «Invitar a todos» (y elegir con Ctrl / Mayús a quién) y «Convertir en banda»: el líder de
+esa raid. «Quitar raid»: quien creó el evento o ese líder; en una banda (que elimina entera), solo quien la creó. Montar
+la banda de verdad como la raid: quien invitó desde ella, siendo líder o ayudante de la banda. Apuntarse, ver la ficha,
+susurrar e invitar al grupo: cualquiera; en una banda por invitación, solo quien la creó y sus invitados.
 Editar y eliminar (clic derecho): solo quien lo creó, aunque ya no pueda crear eventos.
 
 ### Lo guardado (`calRaids`, `calEvents`)
