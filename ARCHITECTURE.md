@@ -4727,24 +4727,41 @@ solo publicará el maestro.
 
 ## Report.lua · quién no tiene el addon y la carga de los enlaces
 
-### Quién de los conectados no tiene el addon (`/gu sinaddon`, `HU:WithoutAddon`)
+### Quién de mi hermandad no tiene el addon (`/gu sinaddon`, preguntando a cada uno)
 
-Jorge, 25/11: «saber quién NO tiene el addon (quitando desconectados porque no podemos saberlo si no han
-conectado)». Por hermandad, la mía la primera: cuántos conectados conozco, cuántos de ellos tienen el addon y la
-lista de los demás («Nombre Apellido», ordenada; en la ventana de copiar, de ocho en ocho).
+Jorge, 25/11, tras probar la de la copia 328: «no funciona bien… prefiero que tarde un poco más y solo me saque los de
+mi guild preguntando 1 a 1 (que tarde 5 mins) y que sea seguro los que no tienen addon, porque los echaré de la guild».
+La de antes solo contaba como «con addon» a quien me había saludado por GUILD en los últimos ~16 min
+(`HU.guildPeers`), y no todos saludan tan a menudo: podían salir como «sin addon» compañeros que sí lo tenían. Desde
+la copia 334 se le pregunta a cada uno; solo mi hermandad (de las otras no hay pregunta que contesten todos).
 
-- **Conectados**: de mi hermandad, los `online` de `HU.rosterList`. De las otras, solo lo que veo de sus listas de
-  conectados, sin repetidos: la corta (`HU.remoteRoster`, las RB: maestro, oficiales, enlace y ayudantes) y la de
-  Miembros de la unión (`HU:UnionMemberEntries`, que también trae la del /who). De quien no está conectado no se sabe.
-- **Con addon**: lo mismo que «== POR HERMANDAD ==» de `/gu informe`. De mi hermandad, yo y quien me ha saludado por
-  GUILD (`HU.guildPeers`, que se olvida a los ~16 min sin saludo). De las otras, mis contactos de esa hermandad
-  (`HU.remote`), los ayudantes que ha nombrado su enlace (`HU.helpers`, 15 min) y quien me ha mandado su lista de
-  Miembros (`HU.unionAnswered`).
-- **El límite, en la cabecera de la ventana**: de las otras hermandades casi solo me saludan su enlace y sus
-  ayudantes; los demás que tienen el addon saludan a su hermandad, no a mí. Ahí «sin addon» puede ser «no lo sé» (y
-  con las listas sin confirmar, ni sus ayudantes). Para saberlo bien de una hermandad, que lo mire alguien de ella.
-- `/gu sinaddon` escribe la línea corta en el chat y abre el detalle en la ventana de copiar. `/gu informe` lleva la
-  línea corta (`HU:WithoutAddonLine`) al final de «== POR HERMANDAD ==».
+- **La pregunta**: `PG~Nombre-Apellido` por GUILD («¿eres de la hermandad?», la de la guardia de impostores). El addon
+  de ese contesta solo con `PA` por GUILD, en todas las versiones publicadas desde la 5.4.12 (también la 5.4.43 de
+  CurseForge: lo prueba `medidas_spec` con un compañero en `v5.4.43`). `PA` me lo apunta en `HU.guildPeers`, como un
+  saludo. A los demás oficiales una `PG` solo les quita su pregunta pendiente por esa persona (`ImpostorAsked`), y lo
+  de GUILD no tiene tope por remitente (`Admit`), así que ninguna pregunta se queda sin leer por ir muchas seguidas.
+- **Uno a uno, tres veces** (`Round`, `Ask`): una vuelta pregunta a los conectados de `HU.rosterList` (sin mí) que aún
+  no han contestado, uno detrás de otro, repartidos en 80 s (de 0,5 a 3 s entre dos). Tres vueltas, cada una 100 s
+  después de la anterior; tras la última, 30 s para las respuestas que tardan (en combate dentro de una instancia el
+  addon aplaza las peticiones: Combat.lua). En total, unos 5 minutos; si contestan todos antes, acaba antes. Cada vuelta
+  pide la lista de la hermandad (`HU:RequestRoster`) para ver quién se ha ido.
+- **Con addon**: yo y quien está en `HU.guildPeers` (me ha saludado o contestado). **Sin addon**: solo quien no ha
+  contestado a ninguna de las tres, seguía conectado y no estaba en una instancia ni con el móvil. **No se sabe**, con
+  su porqué: se ha desconectado; con la aplicación del móvil (`e.mobile`, el 14.º dato de `GetGuildRosterInfo`, Roster.lua);
+  en una instancia (en un campo de batalla el juego no deja contestar, y en mazmorras y bandas, en combate, el addon
+  aplaza la pregunta y a los 15 s la tira); o no le he podido preguntar las tres veces (la cola no la admitió).
+- **Las instancias** (`InstanceZone`): por la zona de la lista de la hermandad. Los campos de batalla de Forever por su
+  nombre (en castellano y en inglés) y todas las instancias de vanilla por su número, con el nombre que da el juego
+  (`GetRealZoneText(id)`, como GuildNews.lua de Blizzard). Un nombre que el juego da para varios números no cuenta: es
+  lo que devuelve cuando no conoce el número.
+- **Seguro o nada**: con `GU:v:` en la Información de la hermandad (`HU.guildMin`) no se mira, porque el addon de
+  quien tenga una versión anterior está en pausa (`HU.paused`: no manda nada) y saldría como «sin addon». Tampoco si yo
+  estoy en un campo de batalla (`IsChatLockedDown`), y si entro en uno a mitad, para sin resultado.
+- **Lo que enseña**: al empezar, a cuántos pregunta; otro `/gu sinaddon` mientras tanto dice cuánto falta. Al acabar,
+  la línea corta en el chat (`HU:WithoutAddonLine`: «Sin addon en <UNO> (mirado a las 18:30): 3 de 40 conectados · no se
+  sabe 2») y el detalle en la ventana de copiar: «Nombre Apellido  ·  zona» de los que no lo tienen (la zona, para ver
+  dónde estaba) y los de «no se sabe» con su porqué. `/gu informe` lleva la línea corta de la última al final de «== POR
+  HERMANDAD ==».
 
 ### La carga de los enlaces (`/gu carga`, `UQ` / `UR`)
 

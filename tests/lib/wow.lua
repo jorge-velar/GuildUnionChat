@@ -325,7 +325,12 @@ function wow.New(opts)
         local m = w.guild and w.guild.members and w.guild.members[i]
         if not m then return end
         return m.name, m.rank or "Miembro", m.rankIndex or 4, m.level or 60, m.class or "Guerrero", m.zone or "",
-            m.note or "", m.officerNote or "", m.online ~= false, 0, m.classFile or "WARRIOR"
+            m.note or "", m.officerNote or "", m.online ~= false, 0, m.classFile or "WARRIOR", 0, 0, m.mobile == true
+    end
+    -- (el nombre de una zona o instancia por su número, como lo da el juego; sin él, el de donde estoy)
+    api.GetRealZoneText = function(id)
+        if id == nil then return w.zone or "" end
+        return w.zoneNames and w.zoneNames[id] or ""
     end
     -- (pedir la lista de la hermandad: el servidor contesta un momento después con GUILD_ROSTER_UPDATE;
     -- varias peticiones seguidas, una sola respuesta)

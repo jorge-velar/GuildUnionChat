@@ -1,5 +1,5 @@
 -- Medidas, para encontrar picos y no para crearlos: la CPU del addon según el juego y los FPS, siempre (Perf.lua);
--- quién de los conectados no tiene el addon (/gu sinaddon) y la carga de los enlaces (/gu carga, UQ y UR; Report.lua)
+-- quién de mi hermandad no tiene el addon (/gu sinaddon, preguntando a cada uno) y la carga de los enlaces (/gu carga, UQ y UR; Report.lua)
 local red = require("lib.red")
 local F = require("lib.fixtures")
 local A = assert_
@@ -140,86 +140,150 @@ describe("Medidas: CPU del addon según el juego y FPS (Perf.lua)", function()
     end)
 end)
 
-describe("Medidas: quién no tiene el addon (/gu sinaddon)", function()
-    -- UNO: Ana (oficial) y Alba, Abel (conectado, sin addon) y Aitor (desconectado). DOS: Bea (oficial) y Blas, Bruno
-    -- (conectado, sin addon) y Beto (desconectado)
+describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, preguntando a cada uno)", function()
+    -- UNO: Ana (oficial, la que mira), Alba (con la 5.4.43 de CurseForge) y Aitor (desconectado); conectados sin el
+    -- addon: Abel (en Orgrimmar), Bruno (en un campo de batalla), Carla (se va a mitad), Dani (con el móvil) y Eli (en
+    -- Núcleo de Magma). DOS: Bea, que no cuenta
     local function Union()
         local net = red.New({ step = 0.5 })
         local p = {
             ana = net:Player("Ana", "UNO", { rankIndex = 1 }),
-            alba = net:Player("Alba", "UNO"),
+            alba = net:Player("Alba", "UNO", { ref = "v5.4.43" }),
             aitor = net:Player("Aitor", "UNO"),
             bea = net:Player("Bea", "DOS", { rankIndex = 1 }),
-            blas = net:Player("Blas", "DOS"),
-            beto = net:Player("Beto", "DOS"),
         }
-        -- (conectados sin el addon: salen en la lista de su hermandad, pero no juegan en la red)
-        for _, x in ipairs({ { "UNO", "Abel-Reino" }, { "DOS", "Bruno-Reino" } }) do
-            local g = net.guilds[x[1]]
-            g.members[#g.members + 1] = { name = x[2], rank = "Miembro", rankIndex = 4, online = true }
+        local g, extra = net.guilds.UNO, {}
+        for _, x in ipairs({ { "Abel", "Orgrimmar" }, { "Bruno", "Garganta Grito de Guerra" }, { "Carla", "Durotar" },
+            { "Dani", "", true }, { "Eli", "Núcleo de Magma" } }) do
+            local m = { name = x[1] .. "-Reino", rank = "Miembro", rankIndex = 4, online = true, zone = x[2], mobile = x[3] }
+            g.members[#g.members + 1] = m
+            extra[x[1]] = m
         end
-        for _, n in ipairs({ "ana", "alba", "bea", "blas" }) do net:Login(p[n]) end
+        for _, n in ipairs({ "ana", "alba", "bea" }) do net:Login(p[n]) end
         net:Advance(150)
-        return net, p
+        return net, p, extra
+    end
+    -- (las preguntas que he mandado, por nombre, con su hora)
+    local function Asked(net, from)
+        local out = {}
+        for _, m in ipairs(net.log) do
+            local who = m.from == from and m.dist == "GUILD" and m.text:match("^PG~(.+)$")
+            if who then out[who] = out[who] or {}; table.insert(out[who], m.t) end
+        end
+        return out
     end
 
-    it("de mi hermandad, los conectados sin el addon; de la otra, lo que veo de sus listas; nunca los desconectados", function()
-        local net, p = Union()
+    it("a cada conectado, tres preguntas en unos 5 minutos; «sin addon», solo quien no contesta a ninguna; «no se sabe», quien se va, está en una instancia o con el móvil", function()
+        local net, p, extra = Union()
         local HU = p.ana.HU
-        -- (la lista de todos los conectados de DOS, la de Miembros de la unión: como al mirarla)
-        local function Members() HU:WantUnionMembers("DOS"); return #HU:UnionMemberEntries("DOS") == 3 end
-        A.truthy(net:AdvanceUntil(Members, 120, 2), "no llega la lista de Miembros de DOS")
-        local function ByTag()
-            local list, by = HU:WithoutAddon(), {}
-            for _, r in ipairs(list) do by[r.tag] = r end
-            return by, list
-        end
-        local by, list = ByTag()
-        A.equal("UNO", list[1].tag, "la mía, la primera")
-        A.equal(3, by.UNO.online, "Ana, Alba y Abel; Aitor no está")
-        A.equal(2, by.UNO.with, "Ana (yo) y Alba")
-        A.same({ "Abel Reino" }, by.UNO.without)
-        A.equal(3, by.DOS.online, "Bea, Blas y Bruno; Beto no está")
-        -- (con las listas sin confirmar, de DOS solo sé de Bea, que me saluda: Blas sale como «sin addon o sin saberlo»)
-        A.same({ "Blas Reino", "Bruno Reino" }, by.DOS.without)
-        -- (los oficiales confirman las listas, como al montar la comunidad: el saludo de Bea ya vale y nombra a su ayudante)
-        p.ana.HU:ConfirmRoster("DOS")
-        p.bea.HU:ConfirmRoster("UNO")
-        A.truthy(net:AdvanceUntil(function() Members(); return HU.helpers.DOS ~= nil end, 400, 5), "no llega quién ayuda a Bea")
-        by = ByTag()
-        A.equal(3, by.DOS.online)
-        A.equal(2, by.DOS.with, "su enlace y su ayudante")
-        A.same({ "Bruno Reino" }, by.DOS.without)
-        -- (el comando: la línea corta en el chat y el detalle, con los límites, en la ventana de copiar)
+        -- (el nombre de Núcleo de Magma, el que da el juego por su número)
+        p.ana.w.zoneNames = { [409] = "Núcleo de Magma" }
+        -- (Alba no me ha saludado: lo sé porque contesta a la pregunta, también con la 5.4.43)
+        HU.guildPeers["alba-reino"] = nil
         local c = Capture(HU)
-        Has(p.ana:Gu("sinaddon"), "Sin addon, de los conectados que conozco: <UNO> 1 de 3 · <DOS> 1 de 3")
-        Has(c.text, "Límites:")
-        Has(c.text, "<UNO> (la mía): 3 conectados · con addon 2 · sin addon 1\n  Abel Reino")
-        Has(c.text, "<DOS>: 3 conectados que veo · con addon 2 · sin addon o sin saberlo 1\n  Bruno Reino")
+        A.equal("Sin addon: sin mirar (/gu sinaddon, unos 5 minutos).", HU:WithoutAddonLine())
+        local t0 = net.now
+        Has(p.ana:Gu("sinaddon"), "les pregunto a los 6 conectados, uno a uno y tres veces. Tarda unos 5 minutos; te aviso al acabar.")
+        Has(p.ana:Gu("sinaddon"), "Ya lo estoy mirando: faltan unos 5 minutos.")
+        A.equal("Sin addon: lo estoy mirando (/gu sinaddon).", HU:WithoutAddonLine())
+        -- (a mitad, Carla se va)
+        net:Advance(60)
+        extra.Carla.online = false
+        p.ana.w:Fire("GUILD_ROSTER_UPDATE")
+        local took = net:AdvanceUntil(function() return c.text ~= "" end, 400, 1)
+        A.truthy(took, "no acaba")
+        A.truthy(net.now - t0 >= 200 and net.now - t0 <= 320, "unos 5 minutos: " .. tostring(net.now - t0))
+        -- (Abel, tres preguntas, separadas; Alba contestó a la primera; a Carla, ya ida, no se le pregunta más)
+        local asked = Asked(net, p.ana)
+        A.equal(3, #asked["Abel-Reino"], "Abel, tres veces")
+        local ab = asked["Abel-Reino"]
+        A.truthy(ab[2] - ab[1] >= 90 and ab[3] - ab[2] >= 90, "una vuelta tras otra")
+        A.truthy(#(asked["Alba-Reino"] or {}) <= 1, "Alba contesta a la primera")
+        A.truthy(#asked["Carla-Reino"] < 3, "a Carla, ida, no se le pregunta más")
+        A.is_nil(asked["Aitor-Reino"], "a los desconectados, nada")
+        A.is_nil(asked["Bea-Reino"], "a los de otras hermandades, nada")
+        local all = {}
+        for _, ts in pairs(asked) do for _, t in ipairs(ts) do all[#all + 1] = t end end
+        table.sort(all)
+        for i = 2, #all do A.truthy(all[i] - all[i - 1] >= 0.5, "uno a uno") end
+        local pa = false
+        for _, m in ipairs(net.log) do if m.from == p.alba and m.text:match("^PA$") then pa = true end end
+        A.truthy(pa, "la 5.4.43 de Alba contesta con PA")
+        -- (el resultado: la línea en el chat y el detalle en la ventana de copiar)
+        local now = p.ana.env.date("%H:%M", p.ana.env.time())
+        local line = "Sin addon en <UNO> (mirado a las " .. now .. "): 1 de 6 conectados · no se sabe 4"
+        A.equal(line, HU:WithoutAddonLine())
+        Has(c.text, "<UNO>: 6 conectados · con addon 1 · sin addon 1 · no se sabe 4\n\nSin addon: no han contestado a ninguna de las tres preguntas")
+        Has(c.text, ":\n  Abel Reino  ·  Orgrimmar\n\nNo se sabe (vuelve a mirarlo más tarde):\n"
+            .. "  Bruno Reino: en Garganta Grito de Guerra: ahí no le deja contestar\n"
+            .. "  Carla Reino: se ha desconectado\n"
+            .. "  Dani Reino: con la aplicación del móvil\n"
+            .. "  Eli Reino: en Núcleo de Magma: ahí no le deja contestar")
+        Lacks(c.text, "Alba")
         Lacks(c.text, "Aitor")
-        Lacks(c.text, "Beto")
+        Lacks(c.text, "Bea")
         -- (y en /gu informe, la línea corta en «== POR HERMANDAD ==»)
         HU:FullReport()
         net:Advance(5)
-        Has(c.text:match("== POR HERMANDAD ==(.-)\n==") or "", "Sin addon, de los conectados que conozco: <UNO> 1 de 3 · <DOS> 1 de 3")
+        Has(c.text:match("== POR HERMANDAD ==(.-)\n==") or "", line)
         A.same({}, net:Errors())
     end)
 
-    it("los nombres, ordenados y de ocho en ocho; sin comunidad, lo dice", function()
-        local g = F.Guild()
-        for _, n in ipairs({ "Zoe", "bruno", "Ana", "Mario", "Luz", "Eva", "Iker", "Olga", "Pau", "Raul" }) do
-            g.members[#g.members + 1] = { name = n .. "-Reino", rank = "Miembro", rankIndex = 4 }
-        end
-        local a = F.Community({ guild = g })
-        local c = Capture(a.HU)
-        Has(Gu(a, "sinaddon"), "<UNO> 12 de 13")
-        Has(c.text, "\n  Ana Reino, bruno Reino, Compi Reino, Eva Reino, Iker Reino, Jefa Reino, Luz Reino, Mario Reino\n"
-            .. "  Olga Reino, Pau Reino, Raul Reino, Zoe Reino")
-        -- (sin la ventana de copiar, al chat)
-        a.HU.UI.ShowCopy = nil
-        Has(Gu(a, "sinaddon"), "|r:   Olga Reino, Pau Reino, Raul Reino, Zoe Reino")
-        a.HU.cfg = nil
-        Has(Gu(a, "sinaddon"), "Aún no hay comunidad")
+    -- Lo que escribe en el chat desde i0
+    local function Said(a, i0)
+        local out = {}
+        for i = i0 + 1, #a.w.chat do out[#out + 1] = tostring(a.w.chat[i].msg) end
+        return table.concat(out, "\n")
+    end
+
+    it("seguro o nada: con GU:v puesto, en un campo de batalla o sin hermandad no mira; si a mitad entro en uno, para", function()
+        local a = F.Community()
+        local HU = a.HU
+        HU.guildMin = "5.4.40"
+        Has(Gu(a, "sinaddon"), "Así no es seguro: la Información de la hermandad tiene GU:v:5.4.40 y el addon de quien tenga una versión anterior está en pausa y no contesta.")
+        HU.guildMin = nil
+        a.w.lockdown = true
+        Has(Gu(a, "sinaddon"), "Ahora no se puede: el juego no deja mandar nada (campo de batalla). Prueba al salir.")
+        a.w.lockdown = false
+        Has(Gu(a, "sinaddon"), "les pregunto a los 2 conectados")
+        a.w:Advance(30)
+        local i0 = #a.w.chat
+        a.w.lockdown = true
+        a.w:Advance(120)
+        Has(Said(a, i0), "He parado de mirar quién tiene el addon: ahora el juego no deja mandar nada (campo de batalla).")
+        A.equal("Sin addon: sin mirar (/gu sinaddon, unos 5 minutos).", HU:WithoutAddonLine(), "sin resultado")
+        -- (al salir, otra vez; y si me quedo sin nadie más conectado o sin hermandad, lo dice)
+        a.w.lockdown = false
+        Has(Gu(a, "sinaddon"), "les pregunto a los 2 conectados")
+        for _, m in ipairs(a.w.guild.members) do if m.name ~= "Tester-Reino" then m.online = false end end
+        a.w:Fire("GUILD_ROSTER_UPDATE")
+        a.w:Advance(400)
+        Has(HU:WithoutAddonLine(), "0 de 2 conectados · no se sabe 2")
+        a.w:Fire("GUILD_ROSTER_UPDATE")
+        a.w:Advance(5)
+        Has(Gu(a, "sinaddon"), "No hay nadie más de tu hermandad conectado.")
+        a.w.guild = nil
+        Has(Gu(a, "sinaddon"), "No estás en una hermandad.")
+        A.same({}, a:Errors())
+    end)
+
+    it("sin nadie que conteste, todos «sin addon», con su zona; un nombre que el juego da para cualquier número no es una instancia; sin la ventana de copiar, al chat", function()
+        local a = F.Community()
+        local HU = a.HU
+        for _, m in ipairs(a.w.guild.members) do if m.name == "Compi-Reino" then m.zone = "Orgrimmar" end end
+        a.w:Fire("GUILD_ROSTER_UPDATE")
+        a.w:Advance(5)
+        a.w.zoneNames = setmetatable({}, { __index = function() return "Orgrimmar" end })
+        HU.UI.ShowCopy = nil
+        Has(Gu(a, "sinaddon"), "les pregunto a los 2 conectados")
+        local i0 = #a.w.chat
+        a.w:Advance(400)
+        local out = Said(a, i0)
+        Has(out, "Sin addon en <UNO> (mirado a las ")
+        Has(out, "): 2 de 2 conectados · no se sabe 0")
+        Has(out, "|r:   Compi Reino  ·  Orgrimmar")
+        Has(out, "|r:   Jefa Reino")
+        Lacks(out, "No se sabe (vuelve")
         A.same({}, a:Errors())
     end)
 end)

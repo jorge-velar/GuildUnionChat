@@ -48,7 +48,7 @@ read_globals = {
     "GetCraftDisplaySkillLine", "GetCraftInfo", "GetCraftItemLink", "GetCurrentKeyBoardFocus",
     "GetCursorPosition", "GetFramerate", "GetGuildInfo", "GetGuildInfoText", "GetGuildRosterInfo",
     "GetGuildRosterLastOnline", "GetItemInfo", "GetNetStats", "GetNormalizedRealmName",
-    "GetNumChannelMembers", "GetNumCrafts", "GetNumDisplayChannels", "GetNumGroupMembers",
+    "GetNumChannelMembers", "GetNumCrafts", "GetNumDisplayChannels", "GetNumGroupMembers", "GetRealZoneText",
     "GetNumGuildMembers", "GetNumSkillLines", "GetNumTalentGroups", "GetNumTalentTabs", "GetNumTradeSkills",
     "GetPlayerInfoByGUID", "GetProfessionInfo", "GetProfessions", "GetRealmName", "GetServerTime",
     "GetSkillLineInfo", "GetSpecialization", "GetSpecializationInfo", "GetSpellInfo", "GetTalentTabInfo",

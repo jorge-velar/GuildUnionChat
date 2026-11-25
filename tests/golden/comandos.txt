@@ -522,10 +522,10 @@ dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no
 llama: Trim PerfCommand
 == /gu sinaddon
 llama: Trim ShowWithoutAddon
-dice: |cff33ff99Comunidad de prueba|r: Sin addon, de los conectados que conozco: <UNO> 2 de 3 · <DOS> 0 de 0
+dice: |cff33ff99Comunidad de prueba|r: Miro quién tiene el addon en tu hermandad: les pregunto a los 2 conectados, uno a uno y tres veces. Tarda unos 5 minutos; te aviso al acabar.
 == /gu noaddon
 llama: Trim ShowWithoutAddon
-dice: |cff33ff99Comunidad de prueba|r: Sin addon, de los conectados que conozco: <UNO> 2 de 3 · <DOS> 0 de 0
+dice: |cff33ff99Comunidad de prueba|r: Ya lo estoy mirando: faltan unos 5 minutos.
 == /gu carga
 llama: Trim AskRelayLoad
 dice: |cff33ff99Comunidad de prueba|r: Midiendo la carga de los enlaces: preguntado a 0. El resultado, en 10 s.

@@ -1,6 +1,6 @@
 -- Guild Union - informe completo (/gu todo) y comprobación de los números de canal (/gu ids).
 -- Copia 147. [+ARCHITECTURE.md]
--- También: quién de los conectados no tiene el addon (/gu sinaddon) y la carga de los enlaces (/gu carga).
+-- También: quién de mi hermandad no tiene el addon (/gu sinaddon) y la carga de los enlaces (/gu carga).
 local ADDON, HU = ...
 local L = HU.L
 
@@ -610,100 +610,165 @@ function HU.OnTextProbeMsg(text, sender, localID, chanName)
 end
 
 ---------------------------------------------------------------------------
--- Quién de los conectados no tiene el addon (/gu sinaddon) [+ARCHITECTURE.md]
+-- Quién de mi hermandad no tiene el addon (/gu sinaddon): se le pregunta a cada uno, tres veces [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
-local NAMES_PER_LINE = 8
-local HELPERS_FRESH = 900 -- (los ayudantes que nombra el enlace de otra hermandad valen esto, como en Net/Relay.lua)
+local ASKS = 3            -- veces que se le pregunta a cada uno (Jorge, 25/11: «preguntando 1 a 1 (que tarde 5 mins)»)
+local ROUND_EVERY = 100   -- de una vuelta de preguntas a la siguiente
+local ROUND_SPAN = 80     -- una vuelta reparte sus preguntas en este rato, de STEP_MIN a STEP_MAX s una de otra
+local STEP_MIN, STEP_MAX = 0.5, 3
+local LAST_WAIT = 30      -- tras la última, lo que se espera a las respuestas que tardan (en combate, Combat.lua)
+-- (las instancias de Forever por su número, y el nombre, el del juego: en un campo de batalla el juego no deja
+-- contestar, y en mazmorras y bandas, en combate, el addon aplaza las preguntas. Y los campos de batalla, por su nombre)
+local INSTANCE_IDS = { 30, 489, 529, 33, 34, 36, 43, 47, 48, 70, 90, 109, 129, 189, 209, 229, 230, 289, 329, 349, 389,
+    429, 249, 309, 409, 469, 509, 531, 533 }
+local BATTLEGROUNDS = { "Valle de Alterac", "Garganta Grito de Guerra", "Cuenca de Arathi", "Alterac Valley",
+    "Warsong Gulch", "Arathi Basin" }
+local instanceNames
+local addonRun, addonLast   -- la comprobación en marcha y la última acabada
 
--- (los ayudantes que ha nombrado el enlace de esa hermandad: tienen el addon)
-local function HelperSet(self, tag)
-    local set, h = {}, self.helpers[tag]
-    if h and h.list and h.t and GetTime() - h.t < HELPERS_FRESH then
-        for _, n in ipairs(h.list) do
-            local k = self:Key(n)
-            if k then set[k] = true end
+local function InstanceZone(zone)
+    if type(zone) ~= "string" or zone == "" then return false end
+    if not instanceNames then
+        instanceNames = {}
+        for _, n in ipairs(BATTLEGROUNDS) do instanceNames[n:lower()] = true end
+        -- (un nombre que sale con varios números no es el de una instancia: es lo que da el juego sin saberlo)
+        local seen = {}
+        for _, id in ipairs(INSTANCE_IDS) do
+            local ok, n = pcall(GetRealZoneText, id)
+            if ok and type(n) == "string" and n ~= "" then seen[n:lower()] = (seen[n:lower()] or 0) + 1 end
         end
+        for n, c in pairs(seen) do if c == 1 then instanceNames[n] = true end end
     end
-    return set
+    return instanceNames[zone:lower()] == true
 end
 
--- Por hermandad, la mía la primera: { tag, online = conectados que conozco, with = de ellos, con addon,
--- without = { los demás, «Nombre Apellido» y ordenados } }
-function HU:WithoutAddon()
-    local res = {}
-    if not (self.cfg and self.myTag) then return res end
-    local tags, me = { self.myTag }, self:MeKey()
-    for _, t in ipairs(self:OtherTags()) do tags[#tags + 1] = t end
-    for _, tag in ipairs(tags) do
-        local mine = tag == self.myTag
-        local helpers = not mine and HelperSet(self, tag) or nil
-        local r, seen = { tag = tag, online = 0, with = 0, without = {} }, {}
-        local function Look(name)
-            local k = self:Key(name)
-            if not k or seen[k] then return end
-            seen[k] = true
-            r.online = r.online + 1
-            local has
-            if mine then
-                has = k == me or self.guildPeers[k] ~= nil
-            else
-                local p = self.remote[k]
-                has = (p ~= nil and p.tag == tag) or helpers[k] or self.unionAnswered[k]
-            end
-            if has then r.with = r.with + 1 else r.without[#r.without + 1] = self:Nice(name) end
-        end
-        if mine then
-            for _, e in ipairs(self.rosterList) do if e.online then Look(e.name) end end
+-- (tiene el addon: me ha saludado, o contestado, por la hermandad; HI, HR y PA, Net/Relay.lua)
+local function HasAddon(self, k) return k == self:MeKey() or self.guildPeers[k] ~= nil end
+
+-- (le pregunto a uno «¿eres de la hermandad?» (PG, por GUILD): su addon contesta solo con PA, en cualquier versión
+-- desde la 5.4.12. Y apunto si está en una instancia o con el móvil)
+local function Ask(self, row)
+    if HasAddon(self, row.key) then return end
+    local e = self.roster[row.key]
+    if not (e and e.online) then row.gone = true return end
+    if e.mobile then row.mobile = true end
+    if InstanceZone(e.zone) then row.inst = e.zone end
+    if self:Send("PG~" .. row.name, "GUILD") then row.asked = row.asked + 1 end
+end
+
+local function Stop(self, r)
+    if addonRun ~= r then return end
+    addonRun = nil
+    self:Print(L("He parado de mirar quién tiene el addon: ahora el juego no deja mandar nada (campo de batalla). Vuelve a probar al salir."))
+end
+
+local function Finish(self, r)
+    if addonRun ~= r then return end
+    if self:IsChatLockedDown() then return Stop(self, r) end
+    addonRun = nil
+    local res = { t = time(), tag = r.tag, total = #r.rows, with = 0, without = {}, unknown = {} }
+    for _, row in ipairs(r.rows) do
+        if HasAddon(self, row.key) then
+            res.with = res.with + 1
         else
-            -- (de las otras, sus listas de conectados: la corta, que llega sola, y la de Miembros de la unión)
-            local rr = self.remoteRoster[tag]
-            for _, m in ipairs(rr and rr.members or {}) do Look(m.name) end
-            for _, m in ipairs(self:UnionMemberEntries(tag)) do Look(m.name) end
+            local e, why = self.roster[row.key], nil
+            if row.gone or not (e and e.online) then why = L("se ha desconectado")
+            elseif row.mobile or e.mobile then why = L("con la aplicación del móvil")
+            elseif row.inst or InstanceZone(e.zone) then why = string.format(L("en %s: ahí no le deja contestar"), row.inst or e.zone)
+            elseif row.asked < ASKS then why = L("no le he podido preguntar las tres veces") end
+            local item = { name = self:Nice(row.name), zone = e and e.zone, why = why }
+            if why then res.unknown[#res.unknown + 1] = item else res.without[#res.without + 1] = item end
         end
-        table.sort(r.without, function(a, b) return a:lower() < b:lower() end)
-        res[#res + 1] = r
     end
-    return res
+    local function ByName(a, b) return a.name:lower() < b.name:lower() end
+    table.sort(res.without, ByName)
+    table.sort(res.unknown, ByName)
+    addonLast = res
+    self:ShowAddonCheck()
 end
 
--- La línea corta, para el chat y /gu informe: «<UNO> 3 de 12 · <DOS> 2 de 5»
-function HU:WithoutAddonLine(list)
-    local parts = {}
-    for _, r in ipairs(list or self:WithoutAddon()) do
-        parts[#parts + 1] = string.format(L("<%s> %d de %d"), r.tag, #r.without, r.online)
+-- (una vuelta: a los que aún no han contestado, uno detrás de otro; tras la última, la espera y el resultado)
+local function Round(self, r)
+    if addonRun ~= r then return end
+    r.round = r.round + 1
+    local todo = {}
+    for _, row in ipairs(r.rows) do if not row.gone and not HasAddon(self, row.key) then todo[#todo + 1] = row end end
+    if #todo == 0 then return Finish(self, r) end
+    self:RequestRoster()
+    local step, i = math.max(STEP_MIN, math.min(STEP_MAX, ROUND_SPAN / #todo)), 0
+    local function Next()
+        if addonRun ~= r then return end
+        if self:IsChatLockedDown() then return Stop(self, r) end
+        i = i + 1
+        if not todo[i] then return end
+        Ask(self, todo[i])
+        HU.After(step, Next)
     end
-    return L("Sin addon, de los conectados que conozco: ") .. (#parts > 0 and table.concat(parts, " · ") or "-")
+    Next()
+    if r.round < ASKS then
+        HU.After(math.max(ROUND_EVERY, #todo * step + 20), function() Round(self, r) end)
+    else
+        HU.After(#todo * step + LAST_WAIT, function() Finish(self, r) end)
+    end
 end
 
-local function WithoutAddonText(self, list)
-    local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("quién no tiene el addon") .. " - " .. date("%d/%m/%Y %H:%M") }
+-- La línea corta, para el chat y /gu informe
+function HU:WithoutAddonLine()
+    if addonRun then return L("Sin addon: lo estoy mirando (/gu sinaddon).") end
+    local r = addonLast
+    if not r then return L("Sin addon: sin mirar (/gu sinaddon, unos 5 minutos).") end
+    return string.format(L("Sin addon en <%s> (mirado a las %s): %d de %d conectados · no se sabe %d"), r.tag,
+        date("%H:%M", r.t), #r.without, r.total, #r.unknown)
+end
+
+local function AddonCheckText(self, r)
+    local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("quién no tiene el addon") .. " - " .. date("%d/%m/%Y %H:%M", r.t) }
     local function add(s) lines[#lines + 1] = s end
-    add(L("Límites:"))
-    add(L("- Solo los conectados: de quien no está conectado no se puede saber."))
-    add(L("- De las otras hermandades, solo los conectados que veo en sus listas: la de Miembros de la unión y su lista corta (maestro, oficiales, enlace y ayudantes)."))
-    add(L("- «Con addon» = me ha saludado el addon en esta sesión. De las otras hermandades casi solo me saludan su enlace y sus ayudantes: ahí «sin addon» puede ser también «no lo sé»."))
-    for _, r in ipairs(list) do
+    add(string.format(L("<%s>: %d conectados · con addon %d · sin addon %d · no se sabe %d"), r.tag, r.total, r.with, #r.without, #r.unknown))
+    add("")
+    add(L("Sin addon: no han contestado a ninguna de las tres preguntas (el addon contesta solo, en cualquier versión desde la 5.4.12):"))
+    for _, x in ipairs(r.without) do add("  " .. x.name .. ((x.zone and x.zone ~= "") and ("  ·  " .. x.zone) or "")) end
+    if #r.without == 0 then add("  -") end
+    if #r.unknown > 0 then
         add("")
-        if r.tag == self.myTag then
-            add(string.format(L("<%s> (la mía): %d conectados · con addon %d · sin addon %d"), r.tag, r.online, r.with, #r.without))
-        else
-            add(string.format(L("<%s>: %d conectados que veo · con addon %d · sin addon o sin saberlo %d"), r.tag, r.online, r.with, #r.without))
-        end
-        for i = 1, #r.without, NAMES_PER_LINE do
-            add("  " .. table.concat(r.without, ", ", i, math.min(#r.without, i + NAMES_PER_LINE - 1)))
-        end
+        add(L("No se sabe (vuelve a mirarlo más tarde):"))
+        for _, x in ipairs(r.unknown) do add("  " .. x.name .. ": " .. x.why) end
     end
     return table.concat(lines, "\n")
 end
 
--- /gu sinaddon
-function HU:ShowWithoutAddon()
-    if not (self.cfg and self.myTag) then return self:Print(L("Aún no hay comunidad: no sé qué hermandades mirar.")) end
-    local list = self:WithoutAddon()
-    self:Print(self:WithoutAddonLine(list))
-    local text = WithoutAddonText(self, list)
+-- El resultado de la última: la línea corta en el chat y el detalle en la ventana de copiar
+function HU:ShowAddonCheck()
+    local r = addonLast
+    if not r then return end
+    self:Print(self:WithoutAddonLine())
+    local text = AddonCheckText(self, r)
     if self.UI and self.UI.ShowCopy then self.UI:ShowCopy(L("Quién no tiene el addon (Ctrl+C para copiarlo)"), text)
     else for l in text:gmatch("[^\n]+") do self:Print(l) end end
+end
+
+-- /gu sinaddon: solo mi hermandad, y seguro (Jorge, 25/11: «que sea seguro los que no tienen addon, porque los echaré
+-- de la guild»). Con GU:v puesto no se mira: el addon de quien tenga una versión anterior está en pausa y no contesta
+function HU:ShowWithoutAddon()
+    if addonRun then
+        local left = math.max(1, math.floor((addonRun.t0 + (ASKS - 1) * ROUND_EVERY + ROUND_SPAN + LAST_WAIT - GetTime()) / 60 + 0.5))
+        return self:Print(string.format(L("Ya lo estoy mirando: faltan unos %d minutos."), left))
+    end
+    if not IsInGuild() then return self:Print(L("No estás en una hermandad.")) end
+    if self.guildMin then
+        return self:Print(string.format(L("Así no es seguro: la Información de la hermandad tiene GU:v:%s y el addon de quien tenga una versión anterior está en pausa y no contesta. Quítalo, espera un minuto y vuelve a probar."), tostring(self.guildMin)))
+    end
+    if self:IsChatLockedDown() then return self:Print(L("Ahora no se puede: el juego no deja mandar nada (campo de batalla). Prueba al salir.")) end
+    local me = self:MeKey()
+    local r = { t0 = GetTime(), round = 0, rows = {}, tag = self.myTag or (GetGuildInfo("player")) or "?" }
+    for _, e in ipairs(self.rosterList) do
+        local k = self:Key(e.name)
+        if e.online and k and k ~= me then r.rows[#r.rows + 1] = { name = e.name, key = k, asked = 0 } end
+    end
+    if #r.rows == 0 then return self:Print(L("No hay nadie más de tu hermandad conectado.")) end
+    addonRun = r
+    self:Print(string.format(L("Miro quién tiene el addon en tu hermandad: les pregunto a los %d conectados, uno a uno y tres veces. Tarda unos 5 minutos; te aviso al acabar."), #r.rows))
+    Round(self, r)
 end
 
 ---------------------------------------------------------------------------
@@ -926,4 +991,4 @@ if E then
     E["Midiendo la carga de los enlaces: preguntado a %d. El resultado, en %d s."] = "Measuring the relays' load: asked %d. The result in %d s."
 end
 
-HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Perf", "PratBridge", "Protocol", "Roster", "UnionMembers", "WMPanel" })
+HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Perf", "PratBridge", "Protocol", "Roster", "WMPanel" })
