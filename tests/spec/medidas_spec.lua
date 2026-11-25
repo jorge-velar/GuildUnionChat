@@ -8,7 +8,7 @@ local unpack = table.unpack or unpack
 -- Lo que el addon enseña en la ventana de copiar (la última vez)
 local function Capture(HU)
     local c = { text = "" }
-    HU.UI.ShowCopy = function(_, title, text) c.title, c.text = title, text end
+    HU.UI.ShowCopy = function(_, title, text, opts) c.title, c.text, c.opts = title, text, opts end
     return c
 end
 local function Has(text, s, msg)
@@ -344,6 +344,49 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         Has(c.text, "<UNO>: 2 conectados · con addon 0 · sin addon 1 · no se sabe 1")
         Has(c.text, ":\n  Jefa Reino  ·  Elwynn Forest\n")
         Has(c.text, "  Compi Reino: en Cripta Nueva: ahí no le deja contestar")
+        A.same({}, a:Errors())
+    end)
+
+    it("el botón «Echar (N)»: a los «sin addon» que mi rango deja, nunca a los de «no se sabe», y por tandas con su «Sí»", function()
+        local g = F.Guild()
+        for i = 1, 11 do g.members[#g.members + 1] = { name = "Personaje" .. i .. "-Apellidolargo", rank = "Miembro", rankIndex = 4 } end
+        g.members[#g.members + 1] = { name = "Dani-Reino", rank = "Miembro", rankIndex = 4, mobile = true }
+        local a = F.Community({ guild = g })
+        local HU = a.HU
+        a.env.CanGuildRemove = function() return true end
+        local c = Capture(HU)
+        Gu(a, "sinaddon")
+        a.w:Advance(900)
+        -- (Jefa es la maestra: no la puedo echar; Dani, con el móvil, es «no se sabe»)
+        A.equal("Echar (12)", c.opts and c.opts.button)
+        local jobs = {}
+        HU.RunOrders = function(_, j) jobs[#jobs + 1] = j end
+        local i0 = #a.w.chat
+        c.opts.onClick()
+        A.truthy(#jobs >= 2, "por tandas")
+        local all = {}
+        for _, j in ipairs(jobs) do
+            A.truthy(#table.concat(j.lines, "\n") <= 250, "cada tanda cabe en una macro")
+            A.truthy(j.quiet, "sin el aviso de la cola en cada tanda")
+            for _, l in ipairs(j.lines) do all[#all + 1] = l end
+        end
+        A.equal(12, #all)
+        local text = table.concat(all, "\n")
+        Has(text, "/gremove Compi Reino")
+        Has(text, "/gremove Personaje11 Apellidolargo")
+        Lacks(text, "Jefa")
+        Lacks(text, "Dani")
+        Has(Said(a, i0), "Son 12: te lo pregunto en " .. #jobs .. " tandas; pulsa «Sí» en cada una.")
+        -- (ya echados, el botón no tiene a nadie)
+        for k = #a.w.guild.members, 1, -1 do
+            if a.w.guild.members[k].rankIndex == 4 then table.remove(a.w.guild.members, k) end
+        end
+        a.w:Fire("GUILD_ROSTER_UPDATE")
+        a.w:Advance(60)
+        local i1, n = #a.w.chat, #jobs
+        c.opts.onClick()
+        Has(Said(a, i1), "No queda nadie de la lista que puedas echar.")
+        A.equal(n, #jobs, "ninguna tanda más")
         A.same({}, a:Errors())
     end)
 end)

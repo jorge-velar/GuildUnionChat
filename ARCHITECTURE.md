@@ -4779,6 +4779,13 @@ la copia 334 se le pregunta a cada uno; solo mi hermandad (de las otras no hay p
   sabe 2») y el detalle en la ventana de copiar: «Nombre Apellido  ·  zona» de los que no lo tienen (la zona, para ver
   dónde estaba) y los de «no se sabe» con su porqué. `/gu informe` lleva la línea corta de la última al final de «== POR
   HERMANDAD ==».
+- **Botón «Echar (N)»** (copia 336; Jorge, 25/11: «quiero un botón de mass echar»): en esa ventana (el botón extra de
+  `UI:ShowCopy`), con N = los «sin addon» que siguen en la hermandad y mi rango deja echar (`Kickable`:
+  `HU:CanKickMember`, Social.lua); nunca los de «no se sabe». `HU:KickWithoutAddon` manda `/gremove Nombre Apellido`
+  por la ventana de órdenes (Orders.lua: su pregunta con los nombres y el «Sí», el botón seguro) en tandas de como mucho
+  250 letras (`KICK_MAX`, unas 7 u 8 personas): una macro más larga podría no entrar entera, y con 37 de una vez no está
+  probado. Las tandas esperan su turno en la cola de órdenes sin su aviso (`job.quiet`); si son varias, una línea lo
+  dice. Un segundo clic, ya echados, dice que no queda nadie.
 
 ### La carga de los enlaces (`/gu carga`, `UQ` / `UR`)
 

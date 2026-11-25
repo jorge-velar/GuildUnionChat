@@ -1289,5 +1289,8 @@ E["<%s>: %d conectados · con addon %d · sin addon %d · no se sabe %d"] = "<%s
 E["Sin addon: no han contestado a ninguna de las tres preguntas (el addon contesta solo, en cualquier versión desde la 5.4.12):"] = "Without the addon: did not answer any of the three questions (the addon answers by itself, in any version since 5.4.12):"
 E["No se sabe (vuelve a mirarlo más tarde):"] = "Unknown (check again later):"
 E["Quién no tiene el addon (Ctrl+C para copiarlo)"] = "Who does not have the addon (Ctrl+C to copy)"
+E["Echar (%d)"] = "Remove (%d)"
+E["No queda nadie de la lista que puedas echar."] = "Nobody left on the list that you can remove."
+E["Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."] = "%d people: I'll ask in %d batches; press «Yes» on each one."
 
 HU:Module("LocaleEN", { })

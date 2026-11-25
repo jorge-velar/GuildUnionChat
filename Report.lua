@@ -693,7 +693,7 @@ local function Finish(self, r)
             elseif row.mobile or e.mobile then why = L("con la aplicación del móvil")
             elseif row.inst or InstanceZone(e.zone) then why = string.format(L("en %s: ahí no le deja contestar"), row.inst or e.zone)
             elseif row.asked < ASKS then why = L("no le he podido preguntar las tres veces") end
-            local item = { name = self:Nice(row.name), zone = e and e.zone, why = why }
+            local item = { name = self:Nice(row.name), full = row.name, zone = e and e.zone, why = why }
             if why then res.unknown[#res.unknown + 1] = item else res.without[#res.without + 1] = item end
         end
     end
@@ -762,13 +762,44 @@ local function AddonCheckText(self, r)
     return table.concat(lines, "\n")
 end
 
--- El resultado de la última: la línea corta en el chat y el detalle en la ventana de copiar
+-- (los «sin addon» de la última que aún están en la hermandad y mi rango deja echar; nunca los de «no se sabe»)
+local function Kickable(self, r)
+    local names = {}
+    for _, x in ipairs(r and r.without or {}) do
+        if self.roster[self:Key(x.full) or ""] and self:CanKickMember(x.full) then names[#names + 1] = x.full end
+    end
+    return names
+end
+
+-- Echar a los «sin addon» de la última (Jorge, 25/11: «quiero un botón de mass echar»). Por tandas de KICK_MAX letras:
+-- una macro más larga puede no entrar entera, y cada tanda trae su pregunta con los nombres y su «Sí» (Orders.lua)
+local KICK_MAX = 250
+function HU:KickWithoutAddon()
+    local names = Kickable(self, addonLast)
+    if #names == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
+    local jobs, cur, len = {}, {}, 0
+    for _, n in ipairs(names) do
+        local line = HU.GuildCmd("gremove", n)
+        if #cur > 0 and len + #line + 1 > KICK_MAX then jobs[#jobs + 1], cur, len = cur, {}, 0 end
+        cur[#cur + 1], len = line, len + #line + 1
+    end
+    jobs[#jobs + 1] = cur
+    if #jobs > 1 then self:Print(string.format(L("Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."), #names, #jobs)) end
+    for _, b in ipairs(jobs) do
+        self:RunOrders({ title = L("Echar de la hermandad"), text = b[1] .. (#b > 1 and (" (+" .. (#b - 1) .. ")") or ""),
+            lines = b, quiet = true })
+    end
+end
+
+-- El resultado de la última: la línea corta en el chat y el detalle en la ventana de copiar, con el botón de echar
 function HU:ShowAddonCheck()
     local r = addonLast
     if not r then return end
     self:Print(self:WithoutAddonLine())
     local text = AddonCheckText(self, r)
-    if self.UI and self.UI.ShowCopy then self.UI:ShowCopy(L("Quién no tiene el addon (Ctrl+C para copiarlo)"), text)
+    local n = #Kickable(self, r)
+    local opts = n > 0 and { button = string.format(L("Echar (%d)"), n), onClick = function() HU:KickWithoutAddon() end } or nil
+    if self.UI and self.UI.ShowCopy then self.UI:ShowCopy(L("Quién no tiene el addon (Ctrl+C para copiarlo)"), text, opts)
     else for l in text:gmatch("[^\n]+") do self:Print(l) end end
 end
 
@@ -1022,4 +1053,4 @@ if E then
     E["Midiendo la carga de los enlaces: preguntado a %d. El resultado, en %d s."] = "Measuring the relays' load: asked %d. The result in %d s."
 end
 
-HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Perf", "PratBridge", "Protocol", "Roster", "WMPanel" })
+HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Orders", "Perf", "PratBridge", "Protocol", "Roster", "Social", "WMPanel" })
