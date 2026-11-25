@@ -422,6 +422,11 @@ local FRESH_WAIT = 120
 local freshT = {}     -- [conj] = desde cuándo soy enlace sin haber publicado
 local lastRelay       -- el enlace de mi hermandad en la vuelta anterior
 local ResendAllMine   -- (abajo, con las propuestas)
+-- (¿están vacíos todos sus trozos?)
+local function AllEmpty(hs)
+    for i = 1, #hs do if hs[i] ~= EMPTY then return false end end
+    return true
+end
 -- (¿tengo algo mío en algún conjunto de propuestas?)
 local function HaveMine()
     for id, def in pairs(HU.packSets) do
@@ -448,15 +453,19 @@ local function Tick()
             if relay and m then
                 local pub = published[id]
                 local now = GetTime()
+                -- (uno de propuestas vacío no se anuncia: nada que contar, y cada anuncio es un mensaje a cada hermandad que su
+                -- porteador repite; con un conjunto más, la cola lenta se llenaba. Si estaba anunciado y se vacía, sí, una vez:
+                -- así se vacía en las otras. Lo borrado cuenta como algo hasta que caduca)
+                local quiet = def.proposals and AllEmpty(m.h)
                 if not pub then
                     -- (acabo de ser enlace: lo anuncio ya; lo de propuestas, tras FRESH_WAIT)
                     freshT[id] = freshT[id] or now
-                    if not def.proposals or now - freshT[id] >= FRESH_WAIT then Publish(id, m) end
+                    if (not def.proposals or now - freshT[id] >= FRESH_WAIT) and not quiet then Publish(id, m) end
                 elseif not SameHashes(pub.h, m.h) then
                     pendingT[id] = pendingT[id] or now
                     if now - pendingT[id] >= PUBLISH_WAIT then Publish(id, m) end
                 elseif now - pub.at >= ANNOUNCE_EVERY then
-                    Publish(id, m)
+                    if quiet then pub.at = now else Publish(id, m) end
                 elseif pub.unsent and #pub.unsent > 0 then
                     pub.unsent = ToEachGuild(ManifestText(HU.myTag, id, pub.h), pub.unsent)
                 end

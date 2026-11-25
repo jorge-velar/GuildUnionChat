@@ -2273,6 +2273,15 @@ y la hora, por lo que caduca): el resto de la maquinaria es la de `MB`.
 - **Publicar**: el enlace publica su almacén como cualquier paquete, con lo borrado (así se borra en las otras). Un
   enlace nuevo espera `FRESH_WAIT` (2 min) antes del primer anuncio de un conjunto de propuestas: su almacén puede
   estar a medias y vaciaría el de las otras (visto en las pruebas: al volver a entrar, dos enlaces a la vez un rato).
+- **Vacío, sin anuncio** (copia 327): un conjunto de propuestas con todos sus trozos vacíos no se anuncia, ni al ser
+  enlace ni en el repaso de 10 min (`AllEmpty`). Cada anuncio es un mensaje a cada hermandad que su porteador repite por
+  GUILD, y con cuatro conjuntos la cola lenta se llenaba (la sesión de oficios midió una privada de Comercio en 5 s en
+  vez de 1). Si estaba anunciado y se vacía, sí se anuncia, una vez, para vaciarlo en las otras. Lo borrado cuenta
+  como algo hasta que caduca. Quien lo quiera ver lo pide con el anuncio («m»).
+  - **Pendiente (visto al probarlo):** al pedir un trozo, cada intento va a un porteador del equipo (`Pick` por turno).
+    Si el que toca no se ve a sí mismo en el equipo, porque cada uno conoce a los ayudantes un poco distinto, no
+    contesta. La ventana vuelve a pedir cada minuto y en una o dos vueltas llega; arreglarlo de verdad es que el turno
+    salte a quien sí contesta.
 - **Lo mío otra vez** (`ResendAllMine`): cuando cambia el enlace (y al entrar), cada uno vuelve a mandar lo suyo vivo
   al rato (5–35 s al azar), como mucho una vez cada 10 min (`RESEND_GAP`). Solo lo propio: nadie manda lo de otro.
 

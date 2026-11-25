@@ -201,14 +201,30 @@ describe("Propuestas (WU): que no se pierda nada", function()
     end)
 end)
 
+describe("Propuestas (WU): los anuncios", function()
+    it("vacío, no se anuncia; con algo, sí (la sesión de oficios vio que tanto anuncio llenaba la cola lenta)", function()
+        local net, p = Union()
+        local function WMs()
+            local n = 0
+            for _, m in ipairs(net.log) do if m.text:match("^WM~UNO~ZZ~") and m.from.name == "Ana" then n = n + 1 end end
+            return n
+        end
+        net:Advance(700)
+        A.equal(0, WMs(), "vacío: ni al ser enlace ni en el repaso de 10 min")
+        p.ana.HU:Propose("ZZ", "uno", "algo")
+        A.truthy(Until(net, function() return WMs() > 0 end, 200), "con algo, se anuncia")
+        A.same({}, net:Errors())
+    end)
+end)
+
 describe("Propuestas (WU): las otras hermandades", function()
     it("el enlace lo publica con el paquete: DOS lo ve al mirarlo, y también cuando se borra", function()
         local net, p = Union()
         p.ana.HU:Propose("ZZ", "uno", "para la union")
         p.alba.HU:Propose("ZZ", "dos", "de Alba")
         net:Advance(2)
-        p.bea.HU:PackNeed("UNO", "ZZ")
-        A.truthy(Until(net, function() return #Lines(p.bea) == 2 end, 300), "no llega a DOS")
+        -- (como la ventana, que lo pide cada vez que se pinta: un turno de porteador puede no contestar, ver ARCHITECTURE.md)
+        A.truthy(Until(net, function() p.bea.HU:PackNeed("UNO", "ZZ"); return #Lines(p.bea) == 2 end, 300), "no llega a DOS")
         A.same({ "Alba:dos:de Alba <UNO>", "Ana:uno:para la union <UNO>" }, Lines(p.bea))
         -- (Blas, de DOS, lo tiene sin pedirlo: el porteador lo reparte por GUILD)
         A.equal(2, #Lines(p.blas))
