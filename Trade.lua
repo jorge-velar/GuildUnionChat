@@ -1501,6 +1501,11 @@ local function NameMatches(text)
     for _, e in ipairs(HU.rosterList or {}) do add(e.name, HU.myTag) end
     for tag, rr in pairs(HU.remoteRoster or {}) do for _, m in ipairs(rr.members or {}) do add(m.name, tag) end end
     for _, pr in pairs(HU.remote or {}) do add(pr.name, pr.tag) end
+    -- (y las listas completas de las otras hermandades (MB), también los desconectados: Jorge, 25/11, «el nombre del
+    -- private con auto relleno»)
+    for _, tag in ipairs(HU:OtherTags()) do
+        for _, m in ipairs(HU:PackedMembers(tag)) do add(m.name, tag) end
+    end
     return out
 end
 

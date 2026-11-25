@@ -1817,6 +1817,25 @@ describe("Comercio (Trade.lua): lo del 25/11 por la tarde", function()
         A.same({}, a:Errors())
     end)
 
+    it("encargo personal: el nombre se autorrellena también con las listas completas de las otras hermandades, desconectados incluidos", function()
+        local a = F.Community()
+        Observe(a)
+        local HU = a.HU
+        -- (la lista completa de DOS, ya llegada: «Nombre-Reino,clase,nivel,rango»)
+        HU.db.packs = HU.db.packs or {}
+        HU.db.packs.DOS = { MB = { h = { "h1" }, ok = { "h1" }, t = { { "Zacarías-Reino,1,60,1" } } } }
+        local tr = OpenTrade(a)
+        tr.OpenNew(nil)
+        local d = a.env.GuildUnionTradeNew
+        Toggle(d.personal)
+        d.to:SetText("zaca"); d.to:GetScript("OnTextChanged")(d.to, true)
+        local hit
+        for _, f in ipairs(a.w.frames) do if f.value == "Zacarías-Reino" then hit = f end end
+        A.truthy(hit and hit:IsShown(), "Zacarías, de DOS")
+        A.matches("<DOS>", hit.text:GetText())
+        A.same({}, a:Errors())
+    end)
+
     it("Buscar: mientras el juego da los nombres de los objetos, las flechas de «cargando» giran arriba a la derecha de la lista; al acabar, fuera", function()
         local a = F.Community()
         Observe(a)
