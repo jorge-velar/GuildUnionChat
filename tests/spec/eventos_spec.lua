@@ -267,3 +267,14 @@ describe("Eventos entre hermandades (EV)", function()
         A.same({}, net:Errors())
     end)
 end)
+
+describe("Eventos (EV): cuánto vive cada cosa", function()
+    it("un evento borrado vive 90 días (más que el evento: una copia vieja no lo resucita); lo desapuntado, 45", function()
+        local HU = F.Community().HU
+        local alive, DAY, t0 = HU.packSets.EV.alive, 86400, 1800000000
+        A.truthy(alive("Ana-Reino", "eabc", "", t0, t0 + 89 * DAY), "borrado: a los 89 días, sigue")
+        A.falsy(alive("Ana-Reino", "eabc", "", t0, t0 + 91 * DAY), "a los 91, fuera")
+        A.truthy(alive("Ana-Reino", "sabc", "", t0, t0 + 44 * DAY), "desapuntado: 45 días")
+        A.falsy(alive("Ana-Reino", "sabc", "", t0, t0 + 46 * DAY))
+    end)
+end)

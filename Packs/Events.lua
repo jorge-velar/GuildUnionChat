@@ -6,8 +6,10 @@ local _, HU = ...
 
 local DAY = 86400
 -- (el evento vive en la red hasta 30 días después de su hora: el mes del calendario lo enseña hasta entonces, y las raids
--- de quien organiza se guardan lo mismo, UnionCalendar.lua. Lo apuntado y lo borrado, 45 días desde que se propuso)
-local EVENT_LIVES, SIGNUP_LIVES = 30 * DAY, 45 * DAY
+-- de quien organiza se guardan lo mismo, UnionCalendar.lua. Lo apuntado, 45 días desde que se propuso. Un evento borrado,
+-- 90: tiene que durar más que el evento, o una copia vieja de quien estuvo fuera lo resucitaría al volver; así vale para
+-- eventos puestos hasta 60 días antes)
+local EVENT_LIVES, SIGNUP_LIVES, DELETED_LIVES = 30 * DAY, 45 * DAY, 90 * DAY
 HU.EVENT_LIVES = EVENT_LIVES
 local ID_MAX, TITLE_MAX, DESC_MAX, ICON_MAX = 20, 40, 90, 40
 -- (lo que cabe: los datos de una propuesta y su línea del paquete, «Nombre-Reino,clave,hora,datos»: DATA_MAX y PART de
@@ -35,10 +37,13 @@ HU:RegisterPackSet("EV", {
         if what == "s" then return CODE_ROLE[d] ~= nil end
         return Parse(d) ~= nil
     end,
-    -- (vivo: el evento, hasta 30 días después de su hora; lo apuntado y lo borrado, 45 días desde que se propuso)
+    -- (vivo: el evento, hasta 30 días después de su hora; uno borrado, 90 días desde que se borró; lo apuntado (y lo
+    -- desapuntado), 45 desde que se propuso)
     alive = function(_, key, d, t, now)
-        local at = key:sub(1, 1) == "e" and tonumber(d:match("^(%w+),") or "", 36)
+        local isEvent = key:sub(1, 1) == "e"
+        local at = isEvent and tonumber(d:match("^(%w+),") or "", 36)
         if at then return at + EVENT_LIVES >= now end
+        if isEvent and d == "" then return t + DELETED_LIVES >= now end
         return t + SIGNUP_LIVES >= now
     end,
     onChange = function() HU:Changed("calendar") end,
