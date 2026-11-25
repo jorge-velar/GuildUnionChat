@@ -505,6 +505,8 @@ function HU:OfficersButton(parent, name)
         menu = OpenAbove(s, function(_, root)
             root:CreateButton((WithCount(L("Peticiones de oficiales"))), function() HU:ShowRequests() end)
             root:CreateButton(L("Ver registro"), function() HU:ShowInviteLog() end)
+            -- (Jorge, 25/11: «un botón de mass remove en la parte de oficiales»; Social.lua)
+            root:CreateButton("|cffff4040" .. L("Echar a varios") .. "|r", function() HU:ShowMassKick() end)
         end)
         if menu and menu.SetClosedCallback then menu:SetClosedCallback(function() menu, closedAt = nil, GetTime() end) end
     end)

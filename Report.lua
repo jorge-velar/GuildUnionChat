@@ -771,24 +771,12 @@ local function Kickable(self, r)
     return names
 end
 
--- Echar a los «sin addon» de la última (Jorge, 25/11: «quiero un botón de mass echar»). Por tandas de KICK_MAX letras:
--- una macro más larga puede no entrar entera, y cada tanda trae su pregunta con los nombres y su «Sí» (Orders.lua)
-local KICK_MAX = 250
+-- Echar a los «sin addon» de la última (Jorge, 25/11: «quiero un botón de mass echar»): por tandas, cada una con su
+-- pregunta y su «Sí» (HU:KickNames, Social.lua)
 function HU:KickWithoutAddon()
     local names = Kickable(self, addonLast)
     if #names == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
-    local jobs, cur, len = {}, {}, 0
-    for _, n in ipairs(names) do
-        local line = HU.GuildCmd("gremove", n)
-        if #cur > 0 and len + #line + 1 > KICK_MAX then jobs[#jobs + 1], cur, len = cur, {}, 0 end
-        cur[#cur + 1], len = line, len + #line + 1
-    end
-    jobs[#jobs + 1] = cur
-    if #jobs > 1 then self:Print(string.format(L("Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."), #names, #jobs)) end
-    for _, b in ipairs(jobs) do
-        self:RunOrders({ title = L("Echar de la hermandad"), text = b[1] .. (#b > 1 and (" (+" .. (#b - 1) .. ")") or ""),
-            lines = b, quiet = true })
-    end
+    self:KickNames(names)
 end
 
 -- El resultado de la última: la línea corta en el chat y el detalle en la ventana de copiar, con el botón de echar
@@ -1053,4 +1041,4 @@ if E then
     E["Midiendo la carga de los enlaces: preguntado a %d. El resultado, en %d s."] = "Measuring the relays' load: asked %d. The result in %d s."
 end
 
-HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Orders", "Perf", "PratBridge", "Protocol", "Roster", "Social", "WMPanel" })
+HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Perf", "PratBridge", "Protocol", "Roster", "Social", "WMPanel" })

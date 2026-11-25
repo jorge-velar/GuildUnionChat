@@ -1253,4 +1253,65 @@ function HU:TypeLines(macro, title, ask, list)
         ask = ask, list = list })
 end
 
+-- Echar a varios de mi hermandad: solo los que están en ella y mi rango deja echar, por la ventana de órdenes y por
+-- tandas de como mucho KICK_MAX letras (una macro más larga puede no entrar entera): cada una, su pregunta con los
+-- nombres y su «Sí» (Orders.lua). Devuelve a cuántos [+ARCHITECTURE.md]
+local KICK_MAX = 250
+function HU:KickNames(names)
+    local lines = {}
+    for _, n in ipairs(names or {}) do
+        if self.roster[self:Key(n) or ""] and self:CanKickMember(n) then lines[#lines + 1] = HU.GuildCmd("gremove", n) end
+    end
+    if #lines == 0 then return 0 end
+    local jobs, cur, len = {}, {}, 0
+    for _, line in ipairs(lines) do
+        if #cur > 0 and len + #line + 1 > KICK_MAX then jobs[#jobs + 1], cur, len = cur, {}, 0 end
+        cur[#cur + 1], len = line, len + #line + 1
+    end
+    jobs[#jobs + 1] = cur
+    if #jobs > 1 then self:Print(string.format(L("Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."), #lines, #jobs)) end
+    for _, b in ipairs(jobs) do
+        self:RunOrders({ title = L("Echar de la hermandad"), text = b[1] .. (#b > 1 and (" (+" .. (#b - 1) .. ")") or ""),
+            lines = b, quiet = true })
+    end
+    return #lines
+end
+
+-- «Echar a varios» (en «Oficiales», InviteLog.lua; Jorge, 25/11: «un botón de mass remove en la parte de oficiales»):
+-- los nombres pegados, uno por línea, «Nombre Apellido» o «Nombre-Apellido». De lo que se copia de /gu sinaddon, solo
+-- los «sin addon» («Nombre Apellido  ·  zona»): las líneas con «:», las cabeceras y las de «no se sabe», no cuentan
+function HU:MassKickNames(text)
+    local names, seen = {}, {}
+    for line in tostring(text or ""):gmatch("[^\r\n]+") do
+        if not line:find(":", 1, true) then
+            local n = HU.Trim((line:gsub("·.*$", "")))
+            if n ~= "" and not n:find("-", 1, true) then n = (n:gsub("%s+", "-", 1)) end
+            local k = n ~= "" and self:Key(n)
+            if k and not seen[k] then seen[k] = true; names[#names + 1] = n end
+        end
+    end
+    return names
+end
+function HU:MassKick(text)
+    if not self:CanKickGuild() then return self:Print(L("No tienes permiso para expulsar de la hermandad.")) end
+    local names, outside, rank = self:MassKickNames(text), {}, {}
+    for _, n in ipairs(names) do
+        if not self.roster[self:Key(n) or ""] then outside[#outside + 1] = self:Nice(n)
+        elseif not self:CanKickMember(n) then rank[#rank + 1] = self:Nice(n) end
+    end
+    if #outside > 0 then self:Print(L("No están en la hermandad: ") .. table.concat(outside, ", ")) end
+    if #rank > 0 then self:Print(L("Tu rango no deja echarlos: ") .. table.concat(rank, ", ")) end
+    if self:KickNames(names) == 0 then self:Print(L("No hay nadie que puedas echar en esa lista.")) end
+end
+-- (la ventana: la de copiar, pero se puede escribir en ella, y su botón «Echar»)
+function HU:ShowMassKick()
+    if not (self.UI and self.UI.ShowCopy) then return end
+    self.UI:ShowCopy(L("Echar a varios de la hermandad"), "", {
+        editable = true,
+        hint = L("Pega los nombres, uno por línea (sirve la lista de /gu sinaddon), y pulsa «Echar»"),
+        button = L("Echar"),
+        onClick = function(f) HU:MassKick(f.edit:GetText()) end,
+    })
+end
+
 HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "InviteLog", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })

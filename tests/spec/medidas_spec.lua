@@ -389,6 +389,63 @@ describe("Medidas: quién de mi hermandad no tiene el addon (/gu sinaddon, pregu
         A.equal(n, #jobs, "ninguna tanda más")
         A.same({}, a:Errors())
     end)
+
+    it("«Echar a varios» (Oficiales): los nombres pegados; de lo copiado de /gu sinaddon, solo los «sin addon»; solo los de la hermandad que mi rango deja", function()
+        local g = F.Guild()
+        for _, n in ipairs({ "Abel", "Bruno", "Carla" }) do g.members[#g.members + 1] = { name = n .. "-Reino", rank = "Miembro", rankIndex = 4 } end
+        local a = F.Community({ guild = g })
+        local HU = a.HU
+        a.env.CanGuildRemove = function() return true end
+        local jobs = {}
+        HU.RunOrders = function(_, j) jobs[#jobs + 1] = j end
+        -- (lo que se copia de la ventana de /gu sinaddon, con Jefa (la maestra), Zoe (no está) y Abel dos veces)
+        local pasted = table.concat({
+            "Guild Union 5.4.43.336 - quién no tiene el addon - 25/11/2026 18:29",
+            "<UNO>: 6 conectados · con addon 1 · sin addon 4 · no se sabe 1",
+            "",
+            "Sin addon: no han contestado a ninguna de las tres preguntas (el addon contesta solo):",
+            "  Abel Reino  ·  Orgrimmar",
+            "  Carla-Reino",
+            "  Jefa Reino  ·  Ventormenta",
+            "  Zoe Reino  ·  Durotar",
+            "  Abel Reino",
+            "",
+            "No se sabe (vuelve a mirarlo más tarde):",
+            "  Bruno Reino: se ha desconectado",
+        }, "\r\n")
+        local i0 = #a.w.chat
+        HU:MassKick(pasted)
+        local said = Said(a, i0)
+        A.equal(1, #jobs, "una tanda")
+        A.same({ "/gremove Abel Reino", "/gremove Carla Reino" }, jobs[1].lines)
+        Has(said, "No están en la hermandad: Zoe Reino")
+        Has(said, "Tu rango no deja echarlos: Jefa Reino")
+        Lacks(said, "Bruno")
+        -- (la ventana: se puede escribir en ella y «Echar» lo manda)
+        HU:ShowMassKick()
+        local f = HU.UI.copyFrame
+        A.equal("Echar", f.extra:GetText())
+        f.edit:SetText("Bruno Reino")
+        f.edit:GetScript("OnTextChanged")(f.edit, true)
+        A.equal("Bruno Reino", f.edit:GetText(), "lo escrito se queda")
+        f.onExtra(f)
+        A.same({ "/gremove Bruno Reino" }, jobs[2].lines)
+        -- (la de copiar de siempre no se deja cambiar)
+        HU.UI:ShowCopy("t", "fijo")
+        f.edit:SetText("otro")
+        f.edit:GetScript("OnTextChanged")(f.edit, true)
+        A.equal("fijo", f.edit:GetText())
+        -- (sin nadie que se pueda echar, o sin permiso, lo dice)
+        local i1 = #a.w.chat
+        HU:MassKick("Zoe Reino")
+        Has(Said(a, i1), "No hay nadie que puedas echar en esa lista.")
+        a.env.CanGuildRemove = function() return false end
+        local i2 = #a.w.chat
+        HU:MassKick("Abel Reino")
+        Has(Said(a, i2), "No tienes permiso para expulsar de la hermandad.")
+        A.equal(2, #jobs, "sin permiso, nada")
+        A.same({}, a:Errors())
+    end)
 end)
 
 describe("Medidas: la carga de los enlaces (/gu carga, UQ y UR)", function()

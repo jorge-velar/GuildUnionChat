@@ -1290,6 +1290,12 @@ E["Sin addon: no han contestado a ninguna de las tres preguntas (el addon contes
 E["No se sabe (vuelve a mirarlo más tarde):"] = "Unknown (check again later):"
 E["Quién no tiene el addon (Ctrl+C para copiarlo)"] = "Who does not have the addon (Ctrl+C to copy)"
 E["Echar (%d)"] = "Remove (%d)"
+E["Echar a varios"] = "Remove several"
+E["Echar a varios de la hermandad"] = "Remove several people from the guild"
+E["Pega los nombres, uno por línea (sirve la lista de /gu sinaddon), y pulsa «Echar»"] = "Paste the names, one per line (the /gu sinaddon list works), and press «Kick»"
+E["No están en la hermandad: "] = "Not in the guild: "
+E["Tu rango no deja echarlos: "] = "Your rank cannot remove them: "
+E["No hay nadie que puedas echar en esa lista."] = "Nobody on that list that you can remove."
 E["No queda nadie de la lista que puedas echar."] = "Nobody left on the list that you can remove."
 E["Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."] = "%d people: I'll ask in %d batches; press «Yes» on each one."
 
