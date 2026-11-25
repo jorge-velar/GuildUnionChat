@@ -72,6 +72,8 @@ function HU:StoreChannelMembers(kind, id, list, iAmMod, found, mods, modList, se
         for _, m in ipairs(list) do
             local k = m.name and m.name:lower()
             if k then self.chanSeen[k] = now end
+            -- (y los de mi hermandad, que tienen el addon: Roster.lua)
+            if k and self.roster[k] then self:NoteAddonUser(m.name) end
         end
         HU.After(0, function() HU:ReplayHeld() end)
     end
@@ -121,6 +123,7 @@ function HU:GetChannelMembersAsync(kind, fn)
                     if m.mod then b.mods[k] = true; b.modList[#b.modList + 1] = m end
                     b.seen[#b.seen + 1] = m.name
                     if seenT then seenT[k] = GetTime() end
+                    if seenT and HU.roster[k] then HU:NoteAddonUser(m.name) end
                 end
             end
             i = i + 1

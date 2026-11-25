@@ -1296,6 +1296,13 @@ E["Pega los nombres, uno por línea (sirve la lista de /gu sinaddon), y pulsa «
 E["No están en la hermandad: "] = "Not in the guild: "
 E["Tu rango no deja echarlos: "] = "Your rank cannot remove them: "
 E["No hay nadie que puedas echar en esa lista."] = "Nobody on that list that you can remove."
+E["«Con addon»: quien ha dado alguna señal desde el %s (me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días)."] = "«With the addon»: anyone who has given any sign since %s (answered, their addon talked to me, or they are in the channel; forgotten after 7 days)."
+E["Ya estoy comprobando a otros antes de echarlos: espera a que acabe."] = "Already checking others before removing them: wait until it finishes."
+E["Tienen el addon (han dado señal), no los echo: "] = "They have the addon (they gave a sign), not removing: "
+E["Antes de echarlos, les pregunto otra vez a los %d y miro el canal: unos %d s."] = "Before removing them, I'm asking the %d again and checking the channel: about %d s."
+E["No he echado a nadie: ahora el juego no deja mandar nada (campo de batalla). Vuelve a probar al salir."] = "Nobody removed: the game now blocks sending (battleground). Try again when you leave."
+E["Tienen el addon (han dado señal ahora), no los echo: "] = "They have the addon (they just gave a sign), not removing: "
+E["No les he podido volver a preguntar, no los echo: "] = "Could not ask them again, not removing: "
 E["No queda nadie de la lista que puedas echar."] = "Nobody left on the list that you can remove."
 E["Son %d: te lo pregunto en %d tandas; pulsa «Sí» en cada una."] = "%d people: I'll ask in %d batches; press «Yes» on each one."
 

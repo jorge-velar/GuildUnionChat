@@ -34,6 +34,7 @@ function HU:MarkChannelSeen(sender)
     local k = sender:lower()
     local first = not self.chanSeen[k]
     self.chanSeen[k] = GetTime()
+    self:NoteAddonUser(sender)
     -- (copia 117: me ha llegado algo por el canal, de quien sea: el canal no está muerto; ver
     -- ChannelSendResult en Channel.lua)
     HU.chanInT = GetTime()
@@ -259,6 +260,8 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
         return
     end
     if not sender then return end
+    -- (quien manda algo del addon, lo tiene: lo apunta para /gu sinaddon; Roster.lua)
+    if not (HU.replaying or HU.combatReplay) then HU:NoteAddonUser(sender) end
     local cmd, rest = text:match("^(%u%u?)~?(.*)$")
     if cmd then HU.diagRecv = HU.diagRecv or {}; HU.diagRecv[cmd] = (HU.diagRecv[cmd] or 0) + 1 end
     local h = cmd and HU.comm[cmd]

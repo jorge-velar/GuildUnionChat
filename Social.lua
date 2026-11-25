@@ -1292,16 +1292,19 @@ function HU:MassKickNames(text)
     end
     return names
 end
+-- (a quien tiene el addon no se le echa: antes, la última comprobación, HU:RecheckThenKick en Report.lua)
 function HU:MassKick(text)
     if not self:CanKickGuild() then return self:Print(L("No tienes permiso para expulsar de la hermandad.")) end
-    local names, outside, rank = self:MassKickNames(text), {}, {}
+    local names, outside, rank, ok = self:MassKickNames(text), {}, {}, {}
     for _, n in ipairs(names) do
         if not self.roster[self:Key(n) or ""] then outside[#outside + 1] = self:Nice(n)
-        elseif not self:CanKickMember(n) then rank[#rank + 1] = self:Nice(n) end
+        elseif not self:CanKickMember(n) then rank[#rank + 1] = self:Nice(n)
+        else ok[#ok + 1] = n end
     end
     if #outside > 0 then self:Print(L("No están en la hermandad: ") .. table.concat(outside, ", ")) end
     if #rank > 0 then self:Print(L("Tu rango no deja echarlos: ") .. table.concat(rank, ", ")) end
-    if self:KickNames(names) == 0 then self:Print(L("No hay nadie que puedas echar en esa lista.")) end
+    if #ok == 0 then return self:Print(L("No hay nadie que puedas echar en esa lista.")) end
+    self:RecheckThenKick(ok)
 end
 -- (la ventana: la de copiar, pero se puede escribir en ella, y su botón «Echar»)
 function HU:ShowMassKick()
@@ -1314,4 +1317,4 @@ function HU:ShowMassKick()
     })
 end
 
-HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "InviteLog", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })
+HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "InviteLog", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Report", "Roster" })

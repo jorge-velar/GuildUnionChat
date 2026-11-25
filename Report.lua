@@ -615,7 +615,7 @@ end
 local ASKS = 3            -- veces que se le pregunta a cada uno (Jorge, 25/11: «preguntando 1 a 1 (que tarde 5 mins)»)
 local STEP = 1            -- entre una pregunta que ya ha salido y la siguiente: la cola manda una por segundo
 local SENT_WAIT = 90      -- lo que se espera a que salga una pregunta (con la cola llena); si no sale, no cuenta
-local ROUND_GAP = 60      -- entre una vuelta y la siguiente: a cada uno, sus preguntas separadas al menos esto
+local ROUND_GAP = 120     -- entre una vuelta y la siguiente: a cada uno, sus preguntas separadas al menos esto
 local LAST_WAIT = 30      -- tras la última, lo que se espera a las respuestas que tardan (en combate, Combat.lua)
 local MAP_IDS = 3000      -- los mapas del juego que se miran, por si son mazmorras o bandas
 -- (las instancias de Forever por su número, y el nombre, el del juego: en un campo de batalla el juego no deja
@@ -624,7 +624,11 @@ local MAP_IDS = 3000      -- los mapas del juego que se miran, por si son mazmor
 local INSTANCE_IDS = { 30, 489, 529, 33, 34, 36, 43, 47, 48, 70, 90, 109, 129, 189, 209, 229, 230, 289, 329, 349, 389,
     429, 249, 309, 409, 469, 509, 531, 533 }
 local INSTANCE_NAMES = { "Valle de Alterac", "Garganta Grito de Guerra", "Cuenca de Arathi", "Alterac Valley",
-    "Warsong Gulch", "Arathi Basin", "Alcaz Prison", "The Drowned City" }
+    "Warsong Gulch", "Arathi Basin",
+    -- (las mazmorras nuevas de Forever, como las nombra ForeverDungeonJournal (Data/DungeonEntrances.lua); Jorge, 25/11:
+    -- «Krol'dok Stronghold también es mazmorra, revisa las mazmorras nuevas»)
+    "Alcaz Prison", "The Drowned City", "Krol'dok Stronghold", "Blackmaw Hold", "Shaper's Terrace", "Hall of Thanes",
+    "Excavation Site: Wetlands", "Excavation Site", "Ruins of Lordaeron", "City of Dalaran", "Dalaran" }
 local instanceNames
 local addonRun, addonLast   -- la comprobación en marcha y la última acabada
 
@@ -640,6 +644,15 @@ local function InstanceZone(zone)
             if ok and type(n) == "string" and n ~= "" then seen[n:lower()] = (seen[n:lower()] or 0) + 1 end
         end
         for n, c in pairs(seen) do if c == 1 then instanceNames[n] = true end end
+        -- (los campos de batalla que da el juego, en el idioma del jugador: también el nuevo de Forever; Jorge, 25/11)
+        local getBG = C_PvP and C_PvP.GetBattlegroundInfo
+        local okN, nBG = pcall(GetNumBattlegroundTypes)
+        for i = 1, (getBG and okN and tonumber(nBG)) or 0 do
+            local ok, info = pcall(getBG, i)
+            if ok and type(info) == "table" and type(info.name) == "string" and info.name ~= "" and not HU.Secret(info.name) then
+                instanceNames[info.name:lower()] = true
+            end
+        end
         -- (y las mazmorras y bandas del mapa del juego, también las nuevas de Forever)
         local dungeon = Enum and Enum.UIMapType and Enum.UIMapType.Dungeon or 4
         local get = C_Map and C_Map.GetMapInfo
@@ -652,11 +665,31 @@ local function InstanceZone(zone)
     return instanceNames[zone:lower()] == true
 end
 
--- (tiene el addon: me ha saludado, o contestado, por la hermandad; HI, HR y PA, Net/Relay.lua)
-local function HasAddon(self, k) return k == self:MeKey() or self.guildPeers[k] ~= nil end
+-- (tiene el addon: cualquier señal, ahora o en los últimos días: me ha saludado o contestado, su addon me ha mandado
+-- algo o está en el canal de la comunidad; HU:AddonEvidence, Roster.lua. Jorge, 25/11: «ha echado a algunos con
+-- addon»: en Forever la respuesta a veces no llega, así que la pregunta sola no basta)
+local function HasAddon(self, k) return self:AddonEvidence(k) end
 
--- (le pregunto a uno «¿eres de la hermandad?» (PG, por GUILD): su addon contesta solo con PA, en cualquier versión
--- desde la 5.4.12. Solo cuenta cuando sale de verdad de la cola: en la copia 334 contaba al entrar y, con 200
+-- (una pregunta «¿eres de la hermandad?» (PG, por GUILD) a uno: su addon contesta solo con PA, en cualquier versión
+-- desde la 5.4.12. onSent, cuando sale de verdad de la cola. Devuelve su espera, o nil si no ha entrado)
+local function SendPG(self, full, onSent)
+    local wait = { t = GetTime() }
+    local queued = self:Send("PG~" .. full, "GUILD", nil, nil, nil, nil, function()
+        wait.sent = GetTime()
+        if onSent then onSent() end
+    end)
+    return queued and wait or nil
+end
+-- (lo que queda de esperar a la anterior: hasta que sale, como mucho SENT_WAIT, y luego STEP; nil si ya se puede)
+local function WaitLeft(w)
+    if not w then return nil end
+    local now = GetTime()
+    if not w.sent and now - w.t < SENT_WAIT then return 0.5 end
+    if w.sent and now - w.sent < STEP then return STEP - (now - w.sent) end
+    return nil
+end
+
+-- (le pregunto a uno, y solo cuenta cuando sale de verdad: en la copia 334 contaba al entrar en la cola y, con 200
 -- conectados recién entrado al juego, muchas no llegaron a salir. Y apunto si está en una instancia o con el móvil.
 -- Devuelve la espera de esta pregunta, o nil si no la hay)
 local function Ask(self, r, row)
@@ -665,12 +698,7 @@ local function Ask(self, r, row)
     if not (e and e.online) then row.gone = true return nil end
     if e.mobile then row.mobile = true end
     if InstanceZone(e.zone) then row.inst = e.zone end
-    local wait = { t = GetTime() }
-    local queued = self:Send("PG~" .. row.name, "GUILD", nil, nil, nil, nil, function()
-        row.asked = row.asked + 1
-        wait.sent = GetTime()
-    end)
-    return queued and wait or nil
+    return SendPG(self, row.name, function() row.asked = row.asked + 1 end)
 end
 
 local function Stop(self, r)
@@ -713,14 +741,14 @@ local function Round(self, r)
     for _, row in ipairs(r.rows) do if not row.gone and not HasAddon(self, row.key) then todo[#todo + 1] = row end end
     if #todo == 0 then return Finish(self, r) end
     self:RequestRoster()
+    -- (y la lista del canal: quien está en él tiene el addon, aunque su respuesta no me llegue)
+    self:GetChannelMembersAsync("main", function() end)
     local i = 0
     local function Next()
         if addonRun ~= r then return end
         if self:IsChatLockedDown() then return Stop(self, r) end
-        -- (la anterior: hasta que sale, como mucho SENT_WAIT, y luego STEP más)
-        local w, now = r.waiting, GetTime()
-        if w and not w.sent and now - w.t < SENT_WAIT then return HU.After(0.5, Next) end
-        if w and w.sent and now - w.sent < STEP then return HU.After(STEP - (now - w.sent), Next) end
+        local left = WaitLeft(r.waiting)
+        if left then return HU.After(left, Next) end
         r.waiting = nil
         i = i + 1
         if not todo[i] then
@@ -750,6 +778,10 @@ local function AddonCheckText(self, r)
     local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("quién no tiene el addon") .. " - " .. date("%d/%m/%Y %H:%M", r.t) }
     local function add(s) lines[#lines + 1] = s end
     add(string.format(L("<%s>: %d conectados · con addon %d · sin addon %d · no se sabe %d"), r.tag, r.total, r.with, #r.without, #r.unknown))
+    local since = self:AddonSeenSince()
+    if since then
+        add(string.format(L("«Con addon»: quien ha dado alguna señal desde el %s (me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días)."), date("%d/%m %H:%M", since)))
+    end
     add("")
     add(L("Sin addon: no han contestado a ninguna de las tres preguntas (el addon contesta solo, en cualquier versión desde la 5.4.12):"))
     for _, x in ipairs(r.without) do add("  " .. x.name .. ((x.zone and x.zone ~= "") and ("  ·  " .. x.zone) or "")) end
@@ -762,21 +794,73 @@ local function AddonCheckText(self, r)
     return table.concat(lines, "\n")
 end
 
--- (los «sin addon» de la última que aún están en la hermandad y mi rango deja echar; nunca los de «no se sabe»)
+-- (los «sin addon» de la última que aún están en la hermandad, mi rango deja echar y no han dado señal desde entonces;
+-- nunca los de «no se sabe»)
 local function Kickable(self, r)
     local names = {}
     for _, x in ipairs(r and r.without or {}) do
-        if self.roster[self:Key(x.full) or ""] and self:CanKickMember(x.full) then names[#names + 1] = x.full end
+        if self.roster[self:Key(x.full) or ""] and self:CanKickMember(x.full) and not self:AddonEvidence(x.full) then
+            names[#names + 1] = x.full
+        end
     end
     return names
 end
 
--- Echar a los «sin addon» de la última (Jorge, 25/11: «quiero un botón de mass echar»): por tandas, cada una con su
--- pregunta y su «Sí» (HU:KickNames, Social.lua)
+-- Antes de echar, una vez más (Jorge, 25/11: «ha echado a algunos con addon… tiene que ser fiable de primeras»): a cada
+-- uno, otra pregunta (al ritmo de la cola), y la lista del canal; tras LAST_WAIT, solo los que siguen sin dar señal y
+-- a los que la pregunta les ha salido de verdad van a la ventana de órdenes (HU:KickNames, Social.lua). Lo usan
+-- «Echar (N)» y «Echar a varios» [+ARCHITECTURE.md]
+local recheckRun
+function HU:RecheckThenKick(names)
+    if recheckRun then return self:Print(L("Ya estoy comprobando a otros antes de echarlos: espera a que acabe.")) end
+    if self:IsChatLockedDown() then return self:Print(L("Ahora no se puede: el juego no deja mandar nada (campo de batalla). Prueba al salir.")) end
+    local list, has = {}, {}
+    for _, n in ipairs(names or {}) do
+        if self:AddonEvidence(n) then has[#has + 1] = self:Nice(n) else list[#list + 1] = n end
+    end
+    if #has > 0 then self:Print(L("Tienen el addon (han dado señal), no los echo: ") .. table.concat(has, ", ")) end
+    if #list == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
+    local run, i, sent = {}, 0, {}
+    recheckRun = run
+    self:Print(string.format(L("Antes de echarlos, les pregunto otra vez a los %d y miro el canal: unos %d s."), #list,
+        math.floor(#list * (STEP + 0.5) + LAST_WAIT + 0.5)))
+    self:GetChannelMembersAsync("main", function() end)
+    local function Done()
+        if recheckRun ~= run then return end
+        recheckRun = nil
+        if self:IsChatLockedDown() then return self:Print(L("No he echado a nadie: ahora el juego no deja mandar nada (campo de batalla). Vuelve a probar al salir.")) end
+        local still, answered, unasked = {}, {}, {}
+        for _, n in ipairs(list) do
+            if self:AddonEvidence(n) then answered[#answered + 1] = self:Nice(n)
+            elseif not sent[n] then unasked[#unasked + 1] = self:Nice(n)
+            else still[#still + 1] = n end
+        end
+        if #answered > 0 then self:Print(L("Tienen el addon (han dado señal ahora), no los echo: ") .. table.concat(answered, ", ")) end
+        if #unasked > 0 then self:Print(L("No les he podido volver a preguntar, no los echo: ") .. table.concat(unasked, ", ")) end
+        if #still == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
+        self:KickNames(still)
+    end
+    local function Next()
+        if recheckRun ~= run then return end
+        if self:IsChatLockedDown() then return Done() end
+        local left = WaitLeft(run.waiting)
+        if left then return HU.After(left, Next) end
+        run.waiting = nil
+        i = i + 1
+        local n = list[i]
+        if not n then return HU.After(LAST_WAIT, Done) end
+        if not self:AddonEvidence(n) then run.waiting = SendPG(self, n, function() sent[n] = true end) end
+        HU.After(run.waiting and STEP or 0, Next)
+    end
+    Next()
+end
+
+-- Echar a los «sin addon» de la última (Jorge, 25/11: «quiero un botón de mass echar»): antes, la última comprobación
+-- (HU:RecheckThenKick); luego, por tandas, cada una con su pregunta y su «Sí»
 function HU:KickWithoutAddon()
     local names = Kickable(self, addonLast)
     if #names == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
-    self:KickNames(names)
+    self:RecheckThenKick(names)
 end
 
 -- El resultado de la última: la línea corta en el chat y el detalle en la ventana de copiar, con el botón de echar

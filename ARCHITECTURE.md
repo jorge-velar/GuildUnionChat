@@ -4747,25 +4747,35 @@ la copia 334 se le pregunta a cada uno; solo mi hermandad (de las otras no hay p
 - **Uno a uno, tres veces** (`Round`, `Ask`): una vuelta pregunta a los conectados de `HU.rosterList` (sin mí) que aún
   no han contestado, uno detrás de otro, y **cada pregunta solo cuando ha salido de verdad la anterior** y ha pasado
   1 s (`STEP`): `HU:Send` avisa al salir (`onSent`, Net/Transport.lua), y una pregunta solo cuenta (`row.asked`) cuando
-  sale. Si no sale en 90 s (`SENT_WAIT`, la cola muy llena), no cuenta y se pasa al siguiente. Tres vueltas, con 60 s
-  entre una y otra (`ROUND_GAP`); tras la última, 30 s para las respuestas que tardan (en combate dentro de una
-  instancia el addon aplaza las peticiones: Combat.lua). Al empezar dice cuánto tardará (`Eta`: una pregunta cada
-  ~1,5 s y uno de cada tres otra vez en las dos vueltas siguientes); con 200 conectados recién entrado al juego, unos
-  10 minutos. Cada vuelta pide la lista de la hermandad (`HU:RequestRoster`) para ver quién se ha ido.
+  sale. Si no sale en 90 s (`SENT_WAIT`, la cola muy llena), no cuenta y se pasa al siguiente. Tres vueltas, con 120 s
+  entre una y otra (`ROUND_GAP`; 60 s en la 335-337); tras la última, 30 s para las respuestas que tardan (en combate
+  dentro de una instancia el addon aplaza las peticiones: Combat.lua). Al empezar dice cuánto tardará (`Eta`: una
+  pregunta cada ~1,5 s y uno de cada tres otra vez en las dos vueltas siguientes); con 200 conectados sin que nadie
+  haya dado señal, unos 13 minutos. Cada vuelta pide la lista de la hermandad (`HU:RequestRoster`) y la del canal.
 - **Por qué así (copia 335)**: la cola manda un mensaje por segundo (`QueueTick`, 6 de reserva) y en la 334 las
   preguntas entraban a dos por segundo y contaban al entrar. Jorge pasó dos veces seguidas `/gu sinaddon` con unos 217
   conectados: la primera, nada más entrar al juego (casi nadie en `HU.guildPeers`: unas 200 preguntas por vuelta), dio
   70 «sin addon»; la segunda, 15 min después (los de la primera ya contaban como «con addon»: unas 40 preguntas), 37,
   35 de ellos también en la primera. En la primera las preguntas se amontonaron en la cola y muchas no llegaron a
   salir antes del resultado: unos 34 que sí tenían el addon salieron como «sin addon».
-- **Con addon**: yo y quien está en `HU.guildPeers` (me ha saludado o contestado). **Sin addon**: solo quien no ha
-  contestado a ninguna de las tres, seguía conectado y no estaba en una instancia ni con el móvil. **No se sabe**, con
+- **Con addon** (copia 338): **cualquier señal** de tenerlo (`HU:AddonEvidence`, Roster.lua): me ha saludado o
+  contestado (`HU.guildPeers`), su addon me ha mandado algo por la vía que sea, está en el canal de la comunidad
+  (`HU.chanSeen`: solo entra el addon, con la contraseña; la lista la da el servidor y no depende de que me lleguen
+  sus mensajes) o lo he apuntado así en los últimos 7 días (`db.addonSeen`, se guarda). Por qué: Jorge, 25/11, echó
+  con la 336 a 27 de una lista y «ha echado a algunos con addon»; a las 18:29 esos mismos contestaban. En Forever la
+  respuesta a veces no llega: hay gente que no recibe nada de personas concretas, en un solo sentido y a ratos (fallo
+  del juego, hilo 2401980), y las cuentas de prueba y veteranas reciben pero no mandan mensajes ocultos. La pregunta
+  sola no basta. **Sin addon**: solo quien no ha dado ninguna señal, no ha contestado a ninguna de las tres, seguía
+  conectado y no estaba en una instancia ni con el móvil. **No se sabe**, con
   su porqué: se ha desconectado; con la aplicación del móvil (`e.mobile`, el 14.º dato de `GetGuildRosterInfo`, Roster.lua);
   en una instancia (en un campo de batalla el juego no deja contestar, y en mazmorras y bandas, en combate, el addon
   aplaza la pregunta y a los 15 s la tira); o no le he podido preguntar las tres veces (la cola no la admitió).
-- **Las instancias** (`InstanceZone`): por la zona de la lista de la hermandad. Los campos de batalla de Forever por su
-  nombre (en castellano y en inglés) y las mazmorras nuevas de Forever que dijo Jorge (Alcaz Prison, The Drowned City;
-  25/11, tras ver a dos compañeros en ellas en la lista de «sin addon»); todas las instancias de vanilla por su número,
+- **Las instancias** (`InstanceZone`): por la zona de la lista de la hermandad. Los campos de batalla de vanilla por su
+  nombre (en castellano y en inglés) y todos los que da el juego (`C_PvP.GetBattlegroundInfo`, en el idioma del jugador:
+  también el nuevo de Forever, cuyo nombre no está en ningún archivo). Las mazmorras nuevas de Forever, como las nombra
+  ForeverDungeonJournal (Data/DungeonEntrances.lua): Alcaz Prison, The Drowned City, Krol'dok Stronghold, Blackmaw Hold,
+  Shaper's Terrace, Hall of Thanes, Excavation Site: Wetlands, Ruins of Lordaeron y City of Dalaran (Jorge, 25/11, tras
+  ver a compañeros en ellas en la lista de «sin addon»). Todas las instancias de vanilla por su número,
   con el nombre que da el juego (`GetRealZoneText(id)`, como GuildNews.lua de Blizzard; un nombre que el juego da para
   varios números no cuenta: es lo que devuelve cuando no conoce el número); y los mapas del juego que son mazmorra
   (`C_Map.GetMapInfo`, del 1 al 3000, `mapType` Dungeon), que traen también las nuevas en el idioma del jugador. Se
@@ -4786,6 +4796,22 @@ la copia 334 se le pregunta a cada uno; solo mi hermandad (de las otras no hay p
   250 letras (`KICK_MAX`, unas 7 u 8 personas): una macro más larga podría no entrar entera, y con 37 de una vez no está
   probado. Las tandas esperan su turno en la cola de órdenes sin su aviso (`job.quiet`); si son varias, una línea lo
   dice. Un segundo clic, ya echados, dice que no queda nadie.
+- **Antes de echar, una vez más** (`HU:RecheckThenKick`, copia 338; lo usan «Echar (N)» y «Oficiales» > «Echar a
+  varios», `HU:MassKick` en Social.lua): quien ya ha dado señal no se echa (y se dice); a los demás, otra pregunta,
+  uno a uno al ritmo de la cola, y otra lectura del canal; a los 30 s, solo los que siguen sin señal **y a los que la
+  pregunta les salió de verdad** van a las tandas de `HU:KickNames`. Los que dan señal entonces, o a los que no se
+  pudo volver a preguntar, se nombran y no se echan. Mientras dura, otro «Echar» espera. Las preguntas de cada
+  persona, separadas 2 minutos (`ROUND_GAP`).
+
+### Lo que sé de quién tiene el addon (Roster.lua: `db.addonSeen`, `HU:NoteAddonUser`, `HU:AddonEvidence`)
+
+Para `/gu sinaddon` y para no echar nunca a quien lo tiene. `db.addonSeen[hermandad] = { since, who = { [clave] = hora
+} }`, en lo guardado de la cuenta: `since`, desde cuándo se apunta (la ventana lo dice); `who`, la última vez que cada
+uno de mi hermandad dio señal. Lo apuntan: cualquier mensaje del addon que me llega (`OnAddonMessage`, Net/Security.lua,
+por GUILD, susurro o canal; no lo retenido ni lo de después del combate, que ya se apuntó al llegar), quien entra o
+habla en el canal (`MarkChannelSeen`) y la lista del canal al leerla (Guard.lua, entera o por trozos). Solo los que
+están en mi lista de la hermandad. Vale 7 días (`SEEN_DAYS`); al entrar se borra lo más viejo. `HU:AddonEvidence(n)`:
+yo, `HU.guildPeers`, `HU.chanSeen` o lo guardado de esos 7 días.
 
 ### La carga de los enlaces (`/gu carga`, `UQ` / `UR`)
 
