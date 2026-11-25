@@ -43,6 +43,10 @@ local NEW = {
     -- (el chat de un encargo de Comercio, por susurro a la otra persona; el manejador mira que haya una solicitud entre
     -- los dos, Trade.lua)
     TC = { open = true, queue = "chat", ttl = 60 },
+    -- (la carga de los enlaces, /gu carga, Report.lua: abiertas, el manejador mira que sea de la unión y a quien se
+    -- preguntó; la pregunta, en combate, como las demás peticiones)
+    UQ = { open = true, ttl = 15, combat = "req" },
+    UR = { open = true, ttl = 15 },
 }
 for cmd, marks in pairs(NEW) do
     for key, v in pairs(marks) do

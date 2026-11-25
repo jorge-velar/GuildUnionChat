@@ -520,6 +520,18 @@ llama: Trim PassChannelTo
 dice: |cff33ff99Comunidad de prueba|r: No tienes el canal (o es provisional): no lo puedes pasar.
 == /gu perf
 llama: Trim PerfCommand
+== /gu sinaddon
+llama: Trim ShowWithoutAddon
+dice: |cff33ff99Comunidad de prueba|r: Sin addon, de los conectados que conozco: <UNO> 2 de 3 · <DOS> 0 de 0
+== /gu noaddon
+llama: Trim ShowWithoutAddon
+dice: |cff33ff99Comunidad de prueba|r: Sin addon, de los conectados que conozco: <UNO> 2 de 3 · <DOS> 0 de 0
+== /gu carga
+llama: Trim AskRelayLoad
+dice: |cff33ff99Comunidad de prueba|r: Midiendo la carga de los enlaces: preguntado a 0. El resultado, en 10 s.
+== /gu load
+llama: Trim AskRelayLoad
+dice: |cff33ff99Comunidad de prueba|r: Ya estás midiendo: el resultado sale en unos segundos.
 == /gu language es
 llama: Trim SetLang
 ======== como miembro ========
@@ -561,3 +573,6 @@ dice: |cff33ff99Comunidad de prueba|r: Mensaje fijado para toda la comunidad.
 llama: Trim GuardReview
 dice: |cff33ff99Comunidad de prueba|r: Revisando el canal (por partes, puede tardar unos segundos)...
 dice: |cff33ff99Comunidad de prueba|r: La lista del canal no está disponible (abre Social > Chat una vez)
+== /gu carga
+llama: Trim AskRelayLoad
+dice: |cff33ff99Comunidad de prueba|r: Solo los oficiales pueden medir la carga de los enlaces.

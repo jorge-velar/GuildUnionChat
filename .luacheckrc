@@ -73,4 +73,6 @@ read_globals = {
     "C_FriendList", "C_Map", "C_Texture", "EventRegistry", "FCF_GetChatFrameByID", "GameFontHighlight",
     "GetBattlefieldStatus", "GetCVarBool", "GetGuildEventInfo", "GetLocale", "GetMaxBattlefieldID",
     "GetNumGuildEvents", "Menu", "MenuUtil", "TimeUtil", "UIErrorsFrame",
+    -- (el medidor de addons del juego, para /gu perf y /gu carga: Perf.lua)
+    "C_AddOnProfiler",
 }

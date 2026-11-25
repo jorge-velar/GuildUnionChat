@@ -60,7 +60,8 @@ orden de carga:
 | `Net/RosterSync.lua` | listas de conectados: enteras (`RB`), cambios (`RC`), peticiones (`RF`, `NQ`), huellas |
 | `Net/Security.lua` | `AllowAddonMessage`, `Vouched`, `Hold`/`ReplayHeld`, `Admit`, `PartialAdmit` y la entrada (`HU.OnAddonMessage`) |
 
-Lo que comparten se pasa por `HU`: `HU.netPerf` (las medidas de este ordenador), `HU.VOUCH_TTL`,
+Lo que comparten se pasa por `HU`: `HU.netPerf` (las medidas de este ordenador, y las cuentas de los mensajes
+que salen y llegan, `sentN` / `gotN`, para `/gu carga`: ver Perf.lua), `HU.VOUCH_TTL`,
 `HU.ReshareRoster`, `HU:BulkQueueSize()` y `HU.QueueTick` (el cupo de la cola, que cada segundo llama
 la tarea `cola-cupo`).
 
@@ -386,6 +387,34 @@ todavía las llama.
 Guild Union - medidor de tirones dentro del juego (/gu perf)
 Apagado no cuesta nada: no envuelve nada ni tiene OnUpdate. Encendido (/gu perf on) mide cada
 llamada de HU:SafeCall (eventos, temporizadores, inicio) y cada fotograma.
+
+### `Perf.SAMPLE_EVERY = 5`: la CPU del addon según el juego y los FPS, siempre
+
+Jorge vio GuildUnion «hasta un 5 %» de CPU en el menú del juego, también con la ventana cerrada (25/11). El medidor
+de tirones mide lo nuestro (eventos y temporizadores) y solo encendido; esto mide lo que dice el juego, siempre:
+
+- Una tarea, `cpu-fps` (`HU:Every`, cada 5 s, también en combate), toma una muestra sin crear tablas ni textos: solo
+  números en sitios que ya existen (dos ruedas: 120 FPS con su hora, para los últimos 10 min, y 13 cuentas de
+  mensajes, para «por minuto»).
+- **CPU**: `C_AddOnProfiler`, como el menú del juego (`AddonListMixin:GetAddonMetricPercent`, en
+  Blizzard_AddOnList): el dato `RecentAverageTime` (la media de los últimos 60 fotogramas) del addon,
+  `GetAddOnMetric(ADDON_NAME, …)` con el nombre de la carpeta, frente a `GetApplicationMetric − GetOverallMetric +
+  el del addon` (el juego entero sin los otros addons). Se guarda el de ahora, el más alto de la sesión con su hora
+  y cuántas muestras llegan al 3 % (`Perf.CPU_HIGH`). Sin `C_AddOnProfiler`, sin `Enum.AddOnProfilerMetric` o con
+  `IsEnabled()` falso: «sin medidor del juego». Un dato secreto, NaN o negativo no se usa.
+- En `/gu perf`, también lo que cuenta el juego desde que arrancó: `PeakTime` (el fotograma más lento del addon) y
+  `CountTimeOver5Ms` / `CountTimeOver10Ms`, si existen. Se leen al pedir el informe, no en cada muestra.
+- **FPS**: `GetFramerate()`: los de ahora, los más bajos de los últimos 10 min (`Perf.FpsLow`) y de la sesión, con
+  su hora, y la media.
+- **Mensajes por minuto** (`Perf.MsgRates`, para `/gu carga`): de las cuentas `HU.netPerf.sentN` (lo que sale de la
+  cola: `SendOne`, Net/Transport.lua) y `gotN` (lo que llega de otros a `HU.OnAddonMessage`, Net/Security.lua, antes
+  del tope por remitente; lo retenido y lo repetido tras el combate no se cuenta dos veces). Solo HU20 y HU20B: el
+  historial (HU20H) lleva sus cuentas aparte (`qStats.hist`).
+- Solo en RAM: nada nuevo en lo guardado. Se ve en `/gu perf` (sección «CPU y FPS», con el medidor encendido o
+  apagado), en una línea de «== SESIÓN ==» de `/gu informe` (`HU:PerfSessionLine`) y en la respuesta de
+  `/gu carga` (`HU:PerfNow`).
+- Pruebas: `tests/spec/medidas_spec.lua`. El WoW de mentira trae `C_AddOnProfiler` apagado, salvo que la prueba
+  ponga `w.profiler`, y `GetFramerate` da `w.fps` o 60.
 
 ## Popup.lua
 
@@ -4059,3 +4088,53 @@ solo publicará el maestro.
 - **Hermandad**: el color (muestra + «Elegir color» con el selector del juego: se ve en vivo y Cancelar lo deja como
   estaba). No va en `unionCfg`: va en `HU.db.guildColors[miEtiqueta] = { hex, by, byTag, t }`, la forma del mensaje
   `GC` (Community.lua), y avisa también con `HU:Changed("config")`.
+
+## Report.lua · quién no tiene el addon y la carga de los enlaces
+
+### Quién de los conectados no tiene el addon (`/gu sinaddon`, `HU:WithoutAddon`)
+
+Jorge, 25/11: «saber quién NO tiene el addon (quitando desconectados porque no podemos saberlo si no han
+conectado)». Por hermandad, la mía la primera: cuántos conectados conozco, cuántos de ellos tienen el addon y la
+lista de los demás («Nombre Apellido», ordenada; en la ventana de copiar, de ocho en ocho).
+
+- **Conectados**: de mi hermandad, los `online` de `HU.rosterList`. De las otras, solo lo que veo de sus listas de
+  conectados, sin repetidos: la corta (`HU.remoteRoster`, las RB: maestro, oficiales, enlace y ayudantes) y la de
+  Miembros de la unión (`HU:UnionMemberEntries`, que también trae la del /who). De quien no está conectado no se sabe.
+- **Con addon**: lo mismo que «== POR HERMANDAD ==» de `/gu informe`. De mi hermandad, yo y quien me ha saludado por
+  GUILD (`HU.guildPeers`, que se olvida a los ~16 min sin saludo). De las otras, mis contactos de esa hermandad
+  (`HU.remote`), los ayudantes que ha nombrado su enlace (`HU.helpers`, 15 min) y quien me ha mandado su lista de
+  Miembros (`HU.unionAnswered`).
+- **El límite, en la cabecera de la ventana**: de las otras hermandades casi solo me saludan su enlace y sus
+  ayudantes; los demás que tienen el addon saludan a su hermandad, no a mí. Ahí «sin addon» puede ser «no lo sé» (y
+  con las listas sin confirmar, ni sus ayudantes). Para saberlo bien de una hermandad, que lo mire alguien de ella.
+- `/gu sinaddon` escribe la línea corta en el chat y abre el detalle en la ventana de copiar. `/gu informe` lleva la
+  línea corta (`HU:WithoutAddonLine`) al final de «== POR HERMANDAD ==».
+
+### La carga de los enlaces (`/gu carga`, `UQ` / `UR`)
+
+Para medir los enlaces y su carga sin pedirle a cada uno su `/gu perf`. Un oficial (`HU:CanOfficer()` o rango de
+oficial, como `/gu carril`) pregunta al enlace de cada hermandad, la suya incluida:
+
+- **A quién**: el de mi hermandad, `HU:RelayName()` (si soy yo, mis números, sin mensajes). El de las otras,
+  `HU:KnownRelay(etiqueta)`, el que lo ha dicho él. Con las listas sin confirmar eso aún no se sabe de primera mano:
+  entonces, mi mejor contacto de esa hermandad (`HU:BestPeer`, que pone delante a quien dice ser su enlace); si no
+  contesta, su fila dice que era un contacto. La pregunta, `UQ~miEtiq~id`, va por susurro y delante de su cola.
+- **Quién contesta**: solo el enlace o un ayudante (el equipo de Net/Packs.lua, `HU.PackTeams.Mine()`), solo por
+  susurro y solo a alguien de la unión: la etiqueta, de la configuración, y quien pregunta, en la lista de esa
+  hermandad (`HU:MemberOf`) o, si es de otra, avalado por la comunidad (`HU:Vouched`). Por eso `UQ` y `UR` son
+  abiertas en el registro: lo comprueba su manejador, como `MP`. Topes: a cada uno, una vez cada 30 s; a todos
+  juntos, 20 en 30 s; y el de siempre por remitente (`Admit`, Net/Security.lua). En combate, la pregunta espera como
+  las demás peticiones (`combat = "req"`).
+- **La respuesta**, `UR~etiq~id~versión~papel~min~cpu~cpuPico~fps~fpsMín~cola~salen~entran`: la versión, el papel
+  (`e` enlace, `a` ayudante) y números enteros, sin nombres: minutos conectado (desde que entró al juego; un /reload
+  no los pone a cero), la CPU de GuildUnion según el juego ahora y la más alta de su sesión (Perf.lua, en décimas de
+  %), los FPS de ahora y los más bajos de 10 min, lo que hay en su cola de envío (`HU:QueueSize()`) y los mensajes del
+  addon por minuto que le salen y le entran (`Perf.MsgRates`). `-` si no lo sabe (sin medidor del juego). Quien
+  contesta no pasa de los topes que acepta quien lo recibe (1500 FPS van como 999).
+- **Al recibir**: solo de a quien se le preguntó, con la etiqueta de su hermandad y el id de esta pregunta. Cada
+  número tiene que ser un entero, solo cifras (nada de signos, decimales, `0x…` ni `1e3`), y no pasar de su tope
+  (minutos, cola y mensajes 99999, CPU 1000 décimas, FPS 999). Si uno no vale, no entra la respuesta entera, y la
+  fila dice «ha contestado con números que no valen».
+- **Enseñar**: a los 10 s, la ventana de copiar, con una fila por hermandad: su enlace y sus números, «NO HA
+  CONTESTADO» o que no se sabe quién es su enlace; en el chat, cuántos han contestado. Quien pregunta no repite antes
+  de 30 s: los enlaces no le contestarían.

@@ -244,8 +244,12 @@ end
 function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
     if (prefix ~= HU.PREFIX and prefix ~= HU.PREFIX_B) or type(text) ~= "string" or not HU.db then return end
     sender = HU:FullName(sender)
-    if sender and sender:lower() ~= HU:MeKey() and not Admit(sender, dist) then return end
-    if sender and sender:lower() == HU:MeKey() then
+    local mine = sender ~= nil and sender:lower() == HU:MeKey()
+    -- (lo que llega de otros, para /gu carga; también lo que el tope de abajo no deja pasar. Lo retenido
+    -- y lo de después del combate vuelve a pasar por aquí: ya se contó al llegar)
+    if sender and not mine and not (HU.replaying or HU.combatReplay) then perf.gotN = perf.gotN + 1 end
+    if sender and not mine and not Admit(sender, dist) then return end
+    if mine then
         -- mi propio saludo vuelve por la hermandad: cuánto ha tardado (la conexión real)
         if dist == "GUILD" and text:sub(1, 3) == "HI~" and perf.hiSent then
             local d = GetTime() - perf.hiSent

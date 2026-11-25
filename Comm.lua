@@ -135,7 +135,8 @@ function HU:RestoreRosterCache()
 end
 -- (HU.comm, los manejadores de las órdenes, lo crea Core.lua)
 -- medidas de este ordenador y su conexión (para elegir el enlace): las usan Net/Transport.lua,
--- Net/Relay.lua y Net/Security.lua
-HU.netPerf = {}
+-- Net/Relay.lua y Net/Security.lua. sentN / gotN: mensajes del addon (HU20 y HU20B) que han salido y que
+-- han llegado de otros desde que entré (para /gu carga: Perf.lua los pasa a «por minuto»)
+HU.netPerf = { sentN = 0, gotN = 0 }
 
 HU:Module("Comm", { "Config", "Core", "Net/RosterSync" })

@@ -261,7 +261,7 @@ local function InMyTeam()
     for _, n in ipairs(MyTeam()) do if IsMe(n) then return true end end
     return false
 end
-HU.PackTeams = { Mine = MyTeam, Of = TeamOf } -- (para las pruebas)
+HU.PackTeams = { Mine = MyTeam, Of = TeamOf } -- (para las pruebas y para /gu carga, Report.lua)
 
 ---------------------------------------------------------------------------
 -- Mi hermandad: la leen del juego el enlace y su equipo, solo lo que cambia

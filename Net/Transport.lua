@@ -109,6 +109,7 @@ local function SendOne(prefix, q, m)
         table.insert(q, 1, m)
         return true
     end
+    perf.sentN = perf.sentN + 1
     -- (el destinatario se ha ido: lo mismo que con el aviso «no hay ningún jugador llamado...»)
     if r == OFFLINE and m[2] == "WHISPER" and type(m[3]) == "string" then
         HU.qStats.offline = HU.qStats.offline + 1

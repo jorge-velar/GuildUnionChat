@@ -36,13 +36,14 @@ local INPUTS = {
     "gestor", "gestor Compi-Reino", "manager remove Compi-Reino", "gestores", "managers",
     "quitarhermandad", "removeguild TRES",
     "notacanal", "channelnote", "pasarcanal", "sendchannel Compi-Reino", "perf",
+    "sinaddon", "noaddon", "carga", "load",
     "language es",
 }
 
 -- Y otra vez, ahora como miembro (sin CanOfficer: Tester es oficial), los que tienen una rama para oficiales
 local AS_MEMBER = {
     "errores pedir", "errores pedir clave", "confirmar", "confirm DOS", "confirmar UNO", "confirmar dos",
-    "carril", "carril reiniciar", "carril confirmar", "sonda 5", "fijar Hola", "guardia revisar",
+    "carril", "carril reiniciar", "carril confirmar", "sonda 5", "fijar Hola", "guardia revisar", "carga",
 }
 
 -- Envuelve las funciones de HU (y de HU.UI) para apuntar las que llama el comando directamente
