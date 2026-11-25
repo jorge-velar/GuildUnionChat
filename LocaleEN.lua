@@ -1129,6 +1129,12 @@ E["Reserva"] = "Reserve"
 E["Ir de reserva"] = "Join as reserve"
 E["Zul'Gurub"] = "Zul'Gurub"
 E["Los de la reserva entran si alguien falla."] = "Reserves get in if someone drops out."
+E["Acceso:"] = "Access:"
+E["Pública"] = "Public"
+E["Por invitación"] = "Invite only"
+E["Invitados (%d/%d):"] = "Invited (%d/%d):"
+E["Ese nombre no vale."] = "That name is not valid."
+E["Como mucho %d invitados."] = "At most %d invited."
 
 
 E["(hay %d)"] = "(%d available)"

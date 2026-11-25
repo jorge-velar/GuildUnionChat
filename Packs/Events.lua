@@ -165,6 +165,9 @@ end
 -- De mi banda: quién de la reserva ha subido a la raid (lo decide quien la organiza; Jorge, 25/11: «reserva, decide el
 -- líder»). Devuelve si ha podido
 function HU:ProposeEventPromoted(id, names) return ProposeList(self, "u", id, names) end
+-- De mi banda por invitación: a quién invito (Jorge, 25/11: «opción a hacer público para todos o por invite»; quien no
+-- está invitado no la ve). Vacía, la quita. Devuelve si ha podido
+function HU:ProposeEventInvites(id, names) return ProposeList(self, "i", id, names) end
 
 -- Fijo arriba mi evento para todos, o lo quito (Jorge, 25/11: «para todos»). Devuelve si ha podido
 function HU:ProposeEventPin(id, on)

@@ -2423,6 +2423,8 @@ Lo que usa el calendario (así el formato está solo aquí):
   `reserva`; sin rol, me desapunto.
 - `HU:ProposeEventPromoted(id, nombres)`: de mi banda, quién de la reserva ha subido a la raid (la lista `u`); devuelve si
   ha podido.
+- `HU:ProposeEventInvites(id, nombres)`: de mi banda por invitación, a quién invito (la lista `i`; vacía, la quita);
+  devuelve si ha podido.
 - `HU:ProposeEventPin(id, sí/no)`: fijo arriba mi evento para todos, o lo quito; devuelve si ha podido.
 - `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
   icon, title, desc, pinned, size, invite, invites, promoted }` y quién se apunta `{ id, tag, who, role, reserve }`.
@@ -4417,6 +4419,32 @@ Jorge, 25/11: «cuando esté completo que ponga "completo" pero que aun así la 
 - **Si se va uno que iba, no pasa nada solo**: la banda deja de estar completa («39/40 van») y la reserva sigue donde
   estaba, hasta que quien organiza decida.
 - En el modo prueba, Zul'Gurub (banda de 20 mía, el viernes) está completa: 20 que van, 16 en la raid y 4 de la reserva.
+
+### Por invitación (`Invited`, la lista de invitados de la ventana)
+
+Jorge, 25/11: «en la parte de raid que tenga opción a hacer público para todos o por invite», y eligió que quien no está
+invitado NO la ve (ni en Raids ni en Calendario): la ven quien la creó y sus invitados.
+- **En la ventana** (una banda): «Acceso:» con «Pública» (de entrada) o «Por invitación», a la derecha del tamaño, en su
+  misma fila (los botones del tamaño, de 40, hasta 134; los del acceso, de 146 a 340 de los 344 del panel). Por
+  invitación, bajo la descripción: «Invitados (N/40):», una caja para el nombre con «Añadir» (o Intro) y debajo los
+  invitados, por orden, 5 a la vista con barra; clic en uno lo quita (la «x» roja). La ventana crece 130.
+- **El autorrelleno** (`UnionNames`, dentro de `BuildNewDialog`): como «Encargo personal» de Comercio (TradeOrder.lua, que
+  no se toca): de mi hermandad (`HU.rosterList`), de las listas de las otras (`HU.remoteRoster`), de quien tiene el addon
+  (`HU.remote`) y de las listas completas de las otras (`HU:PackedMembers`, también los desconectados); sin mí, de mejor a
+  peor (`HU.TextRank`), hasta 6 bajo la caja, con la etiqueta de su hermandad. Clic en uno, o Intro (el primero), lo
+  añade; con menos de 2 letras, nada.
+- **Lo que se añade**: el nombre entero (`HU:FullName`: «Nombre Reino» pasa a «Nombre-Reino»; uno sin apellido, si solo
+  hay uno así entre los conocidos), sin repetir y sin mí (ya la veo); con espacios o comas que queden, «Ese nombre no
+  vale.»; más de 40, «Como mucho 40 invitados.».
+- **En la red**: el formato de la banda lleva `i` (`40i`) y la lista va aparte, en las líneas `i<id>_<n>` de quien la creó
+  (`HU:ProposeEventInvites`, Packs/Events.lua: de poco en poco, ver «Las listas de nombres»). Al editar, se manda la
+  lista que queda (solo las líneas que cambian); si pasa a pública, la lista se vacía.
+- **Quién la ve** (`Rebuild`, `Invited`): quien la creó y los que están en su lista (`HU:SameName`: sin mirar mayúsculas;
+  uno de la lista sin apellido vale por el nombre). Si no me invita, la banda no entra en lo que se ve: ni en Raids, ni en
+  el mes, ni se abre su ficha. Quien se apunta sin estar invitado no cuenta, en ningún PC. Si me quita de la lista, en
+  cuanto me llega deja de verse y su ficha, si estaba abierta, se cierra.
+- En la tarjeta, la ficha y el día, «Por invitación» tras el tipo («Banda de 40  Por invitación»). En el modo prueba,
+  Zul'Gurub es por invitación (los 23 de prueba).
 
 ### Cuándo sale cada evento (`Upcoming`, `LASTS`, `CARDS_AFTER`)
 

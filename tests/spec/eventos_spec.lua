@@ -370,6 +370,60 @@ describe("Raids entre hermandades (EV): bandas de 10, 20 o 40", function()
         A.equal("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t 11/10 · Completo", Card(bea, "Banda de diez").going:GetText())
         A.same({}, net:Errors())
     end)
+
+    it("por invitación: Ana invita a 40 (su lista, en 7 líneas que salen de poco en poco), entre ellos a Bea (DOS) y Tere (TRES), las últimas: ellas la ven y Alba, Blas y Toni no; Ana quita a Tere y Tere deja de verla", function()
+        local net, p = Union()
+        local ui = {}
+        for _, n in ipairs({ "ana", "alba", "bea", "blas", "tere", "toni" }) do
+            ui[n] = Open(p[n])
+            Click(ui[n].viewBtns.raids)
+        end
+        -- (38 de nombre largo, que van antes que Bea y Tere: 6 por línea)
+        Click(ui.ana.new)
+        local nd = ui.ana.newDlg
+        Click(nd.accessBtns[2])
+        for k = 1, 38 do nd.invBox:SetText(string.format("Aaaaaaaaaa%02d-Apellidolargo", k)); Click(nd.invAdd) end
+        for _, n in ipairs({ "Bea-Reino", "Tere-Reino" }) do nd.invBox:SetText(n); Click(nd.invAdd) end
+        A.equal("Invitados (40/40):", nd.invLabel:GetText())
+        nd.title:SetText("Solo invitados")
+        Click(nd.dayBtn)
+        local dp = nd.popups[2]
+        local tm = p.ana.env.date("*t", p.ana.env.time() + 86400)
+        if tm.month ~= dp.m then Click(Child(p.ana, dp, ">")) end
+        for _, c in ipairs(dp.cells) do if c:IsShown() and c.day == tm.day then Click(c) end end
+        Click(Child(p.ana, nd, "Crear"))
+        A.falsy(nd:IsShown())
+        local parts = 0
+        for _, e in pairs(p.ana.HU.db.wuStore.UNO.EV) do if e.k:match("^i") then parts = parts + 1 end end
+        A.equal(3, parts, "3 líneas ya")
+        A.truthy(Card(ui.ana, "Solo invitados"), "quien la crea, siempre")
+        A.truthy(Until(net, function() return Card(ui.bea, "Solo invitados") and Card(ui.tere, "Solo invitados") end, 600),
+            "Bea y Tere no la ven")
+        parts = 0
+        for _, e in pairs(p.ana.HU.db.wuStore.UNO.EV) do if e.k:match("^i") then parts = parts + 1 end end
+        A.equal(7, parts, "las 7")
+        net:Advance(120)
+        for _, n in ipairs({ "alba", "blas", "toni" }) do A.is_nil(Card(ui[n], "Solo invitados"), n .. " la ve") end
+        Click(ui.alba.viewBtns.month)
+        for _, c in ipairs(ui.alba.grid.cells) do A.equal("", c.ev:GetText(), "ni en el mes de Alba") end
+        A.matches("Por invitación", Card(ui.bea, "Solo invitados").kind:GetText())
+        -- (Ana quita a Tere)
+        local menus = Menus(p.ana)
+        Click(Card(ui.ana, "Solo invitados"), "RightButton")
+        for _, it in ipairs(menus[#menus].items) do if it.text == "Editar evento" then it.fn() end end
+        A.equal("Invitados (40/40):", nd.invLabel:GetText(), "con sus invitados")
+        -- (Tere, la última: con la barra abajo del todo)
+        local isf = p.ana.env.GuildUnionCalendarInviteScroll
+        p.ana.env.FauxScrollFrame_SetOffset(isf, 35)
+        isf:GetScript("OnVerticalScroll")(isf, 35 * 16)
+        A.equal("Tere-Reino", nd.invRows[5].name)
+        Click(nd.invRows[5])
+        A.equal("Invitados (39/40):", nd.invLabel:GetText())
+        Click(Child(p.ana, nd, "Guardar"))
+        A.truthy(Until(net, function() return Card(ui.tere, "Solo invitados") == nil end, 600), "Tere la sigue viendo")
+        A.truthy(Card(ui.bea, "Solo invitados"), "Bea, sí")
+        A.same({}, net:Errors())
+    end)
 end)
 
 describe("Eventos (EV): cuánto vive cada cosa", function()
