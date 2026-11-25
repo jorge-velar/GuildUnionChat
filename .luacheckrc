@@ -75,4 +75,6 @@ read_globals = {
     "GetNumGuildEvents", "Menu", "MenuUtil", "TimeUtil", "UIErrorsFrame",
     -- (el medidor de addons del juego, para /gu perf y /gu carga: Perf.lua)
     "C_AddOnProfiler",
+    -- (los desplegables de Buscar, debajo de su botón, y su ventana «Quién lo hace»: Trade.lua)
+    "CreateAnchor", "MenuVariants", "CommunitiesFrame",
 }

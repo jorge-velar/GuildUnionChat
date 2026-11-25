@@ -3587,15 +3587,22 @@ juego a su tamaño de siempre, mide 617 x 366 (la cuenta, en comercio_spec):
   `GameTooltip:SetHyperlink`) a la derecha del buscador o de la lista, sin taparlos. Sin enlace, nada.
 - **El panel** (`bg`) empieza en -70 y las listas (`ui.body`) en -74 (`BODY_Y`; hasta la 319, -80: Jorge, 24/11, «un poco menos» de gris), hasta `BOTTOM_H` (36) por encima del
   borde de abajo, 4 por encima de «+ Nuevo anuncio». Caben 9 filas (`ROWS`, 242 de 250); al buscar, dos listas de 3
-  (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más); en Buscar, los objetos (4, sin título)
-  y quién lo hace (3, con título): 240. Hasta la 314 eran 10 y 4: el interruptor y la segunda fila ocupan más.
+  (`SEARCH_ROWS`, 230) y «Quién lo hace» sola, 8 (con su título no cabía una más); en Buscar, los objetos, 9 sin título
+  (hasta la 328 eran 4 y debajo quién lo hace el elegido, 3). Hasta la 314 eran 10 y 4: el interruptor y la segunda fila
+  ocupan más.
+- **Las barras de bajar** (Jorge, 25/11: «cuidado con las barras de bajar que se salen un poco»): la del juego
+  (`FauxScrollFrameTemplate`) va por fuera de su lista, de 5 a 23 a su derecha (6 de hueco, 16 de barra y las flechas, de
+  18). Hasta la 328 las listas acababan a 24 del borde y la barra pisaba el marco del panel y asomaba fuera. Ahora cada
+  lista deja `SIZES.listR` (34 = `SIZES.scroll` 24 + `SIZES.edge` 10): la barra acaba a 11 del borde, dentro del panel.
+  En Mis encargos el chat va a 10 del borde (`SIZES.edge`; antes, 24) y la lista acaba 30 antes del chat (6 + 24), con
+  la barra entre los dos. Lo vigila comercio_spec («las barras de bajar no se salen»).
 - **Abajo**, «+ Nuevo anuncio» (`ui.new`; hasta el 25/11, «+ Nueva solicitud»; no sale mientras se busca), como hasta la copia 304 (Jorge, 24/11: «como
   antes y abajo centrado»): el botón rojo de 200 x 24 con sus tres piezas teñidas de verde (0,45 · 1 · 0,45) y la letra
   blanca (`GameFontHighlight`), igual que «+ Nuevo evento» del calendario; al pasar el ratón, nada. Va a 8 del borde y es
   hijo del panel para quedar encima de él. En el Tablón, en el centro de la sección; en Mis encargos, en el de la lista
-  (`Layout`: -(24 + `CHAT_W`) / 2 = -112 del centro, en 96-296), para no chocar con el chat; a su derecha, «Eliminar (N)»
-  (80 de ancho, 6 después: 302-382, y el chat empieza en 393). Desde la copia 305 había sido un «+» solo arriba a la
-  izquierda (`DJ.Plus`, ya quitado).
+  (`Layout`: -(`SIZES.edge` + `CHAT_W` + `SIZES.scroll`) / 2 = -117 del centro, en 92-292), para no chocar con el chat; a
+  su derecha, «Eliminar (N)» (80 de ancho, 6 después: 298-378, y el chat empieza en 407). Desde la copia 305 había sido
+  un «+» solo arriba a la izquierda (`DJ.Plus`, ya quitado).
 - comercio_spec vigila que nada se pise y que todo quepa, también en inglés, con lo que mide cada texto en la letra
   del juego (Friz Quadrata: el avance de cada letra, sacado de FRIZQT__.TTF, más un 5 %), porque el WoW de mentira no
   mide textos.
@@ -3763,40 +3770,75 @@ mitad del interruptor elegida, ni chat, ni «+ Nuevo anuncio», y la vista se pa
 Jorge, 25/11: «Añadimos pestaña al lado de My Orders de search, que tendrá una serie de filtros para buscar entre los
 personajes de la guild, los filtros serán: por profesión, nivel de item, color de item (blanco, verde, azul etc), otro
 desplegable de: consumible, trade goods, containers, armor, weapons, ammo, miscellaneous; se pueden elegir varios».
-- **La fila 2** (`BuildFilters`, `ui.filters`), en vez del buscador y la casilla: Profesión (130) · «Nivel de objeto:» de
-  [ ] a [ ] (dos cajas de 3 cifras) · Color (110) · Tipo (110), de 23 a 585, sin pisarse y también en inglés
-  (comercio_spec). Cada botón abre un menú con casillas (`MenuUtil.CreateContextMenu` + `CreateCheckbox`, como el menú de
-  la pestaña del chat, ChatTabs.lua; las casillas no cierran el menú) y se pueden marcar varias; sin ninguna, todo. El
-  botón dice lo elegido: su nombre, el de lo marcado si es uno, «Color (2)» si son varios (`FilterLabel`).
-  - Profesión: las de CraftItems.lua (`PROF_NAMES`), por su nombre.
-  - Color: la calidad del juego (3.er valor de `GetItemInfo`): Blanco 1, Verde 2, Azul 3, Morado 4, Naranja 5, cada uno
-    escrito de su color.
+Jorge, 25/11, al verla en el juego (copia 328): «item lvl no, debe ser Level nada más (nivel requerido)», el desplegable
+«siempre en el mismo sitio» y en profesión «el icono después de la casilla», «cambia color por Rareza», «añade buscador
+para el item también, que se pueda linkear ahí con el shift+click», fuera la lista de quién lo hace de debajo y, en su
+columna, «un botón para sacar una pestaña (movible) con todos los que pueden, con botón derecho susurrar o solicitar
+pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las barras de bajar», arriba).
+- **La fila 2** (`BuildFilters`, `ui.filters`), en vez del buscador y la casilla: Profesión (118) · «Nivel:» de [ ] a [ ]
+  (dos cajas de 30, pegadas: la primera, 6 después de «Nivel:», 32) · Rareza (84) · Tipo (104) · el buscador de objetos
+  (116, acaba a 14 del borde derecho), de 23 a 603, sin pisarse y también en inglés («Level:», «Rarity»; comercio_spec).
+  Cada botón abre un menú con casillas (`CreateCheckbox`; las casillas no cierran el menú) y se pueden marcar varias; sin
+  ninguna, todo. El botón dice lo elegido: su nombre, el de lo marcado si es uno, «Rareza (2)» si son varios
+  (`FilterLabel`).
+  - **El menú sale siempre debajo de su botón** (`FilterMenu`), como los desplegables del juego: la descripción del menú
+    con el estilo del de clic derecho (`MenuUtil.CreateRootMenuDescription(MenuVariants.GetDefaultContextMenuMixin())` y
+    `Menu.PopulateDescription`) y `Menu.GetManager():OpenMenu(botón, menú, CreateAnchor("TOPLEFT", botón, "BOTTOMLEFT",
+    0, -2))`, como `DropdownButtonMixin:OpenMenu` (Blizzard_Menu de Forever). Hasta la 328 era
+    `MenuUtil.CreateContextMenu`, que lo abre donde está el ratón. Sin esas funciones, el de clic derecho.
+  - Profesión: las de CraftItems.lua (`PROF_NAMES`), por su nombre, con su icono del juego entre la casilla y el nombre
+    (`ProfLabel`, el de la columna).
+  - Rareza: la calidad del juego (3.er valor de `GetItemInfo`): Blanco 1, Verde 2, Azul 3, Morado 4, Naranja 5, cada uno
+    escrito de su color. Hasta la 328 se llamaba «Color».
   - Tipo: la clase del juego (12.º valor, `Enum.ItemClass` de Forever): Consumible 0, Mercancías 7, Contenedores 1 y 11
     (los carcajes y las bolsas de munición son su propia clase, Quiver, y son bolsas), Armadura 4, Armas 2, Munición 6
     (Projectile), Misceláneo 15.
-- **Qué sale** (`FindItems`): los fabricables cuyo nombre ya ha dado el juego (`craft`, ver «Los nombres»: la calidad, el
-  nivel y la clase se guardan al cargarlos, en la misma llamada) que encajan con todos los filtros; de cada uno, la
-  profesión (si hay filtro, la elegida) y el nivel que pide. Los encantamientos no son objetos: salen solo sin filtro de
-  color, tipo ni nivel. De más nivel de objeto a menos (sin nivel, detrás), luego por el nivel de profesión y por nombre.
-  La lista se rehace solo al cambiar un filtro o al llegar nombres nuevos (`findDirty`); con la pestaña a la vista, el
-  cargador repinta al acabar cada vuelta. Sin nada del juego todavía: «Cargando los objetos del juego…».
-- **La lista** (`ui.items`, 4 filas, `FIND_ROWS`): Objeto (el enlace, de su color, con su ficha al pasar el ratón y al
-  pinchar en el nombre) · Nivel · Profesión (su icono, si el juego lo da) · Quién lo hace: el primero, con su circulito,
-  su nivel y el tic si sabe la receta, y cuántos más («+2»), o «Nadie» (`WhoSummary`). Quién lo hace se calcula solo de
-  las filas que se ven, y se guarda hasta el siguiente repintado (`crafters`).
+  - Nivel: el **requerido**, el que pide el objeto para usarlo (5.º valor de `GetItemInfo`, `rl`); hasta la 328, el nivel
+    de objeto (`il`). Sin nivel requerido (0) vale con cualquier «hasta» y con ningún «desde».
+  - El buscador («Buscar objeto», `GuildUnionTradeFindSearch`, como el del Tablón, con su marco oscuro de borde dorado):
+    un texto deja los fabricables cuyo nombre lo lleva (`HU.TextRank`, sin acentos ni mayúsculas); un enlace (Mayús+clic
+    en un objeto, o pegado) deja solo ese fabricable (`|Hitem:` o `|Hspell:`/`|Henchant:`), y si no se fabrica, nada.
+    Con un enlace, al pasar el ratón, su ficha (`HyperTip`). **Mayús+clic** (en `BuildTrade`): un enganche a
+    `ChatFrameUtil.InsertLink` (al que llama `HandleModifiedItemClick` de Forever) pone el enlace en el buscador que
+    tenga el foco, el de Buscar o el del Tablón; el juego avisa con `OnTextChanged` y la lista se rehace.
+- **Qué sale** (`FindItems`): los fabricables cuyo nombre ya ha dado el juego (`craft`, ver «Los nombres»: la calidad,
+  los niveles y la clase se guardan al cargarlos, en la misma llamada) que encajan con todos los filtros y con el
+  buscador; de cada uno, la profesión (si hay filtro, la elegida) y el nivel que pide. Los encantamientos no son objetos:
+  salen solo sin filtro de rareza, tipo ni nivel. De más nivel requerido a menos (sin nivel, detrás), luego por nivel de
+  objeto, por el nivel de profesión y por nombre. La lista se rehace solo al cambiar un filtro o el buscador o al llegar
+  nombres nuevos (`findDirty`); con la pestaña a la vista, el cargador repinta al acabar cada vuelta. Sin nada del juego
+  todavía: «Cargando los objetos del juego…».
+- **La lista** (`ui.items`, 9 filas, como el Tablón): Objeto (el enlace, de su color, con su ficha al pasar el ratón y al
+  pinchar en el nombre) · Nivel (el requerido; sin él, «—») · Profesión (su icono, si el juego lo da) · Quién lo hace
+  (230): el primero, con su circulito, su nivel y el tic si sabe la receta, y cuántos más («+2»), o «Nadie»
+  (`WhoSummary`), y al final de la columna, si hay alguien, **«Ver todos»** (`row.allBtn`, botón rojo de 64 x 18 con letra
+  pequeña, a 10 del final de la fila; el texto de la columna, a su izquierda, 154). Quién lo hace se calcula solo de las
+  filas que se ven, y se guarda hasta el siguiente repintado (`crafters`).
 - **Quién lo hace un objeto** (`CraftersOf`): los de toda la unión con línea de oficios que saben la receta o tienen el
   nivel (`HU:UnionCrafters` con ese objeto), y los de mi hermandad sin línea que tienen la profesión (`ClubRows`, como
   en el buscador); conectados primero (`Status`), luego quien sabe la receta y por nivel.
-- **Clic en un objeto**: se elige (raya azul) y debajo sale su «Quién lo hace: objeto» (`ui.found`, 3 filas, como la del
-  buscador: Quién · Hermandad · Profesión · Nivel). Clic derecho en alguien: Susurrar, Invitar al grupo y «Pedir una
-  receta», que abre el anuncio privado para esa persona con el objeto ya puesto. «+ Nuevo anuncio» abre uno del tablón
-  con lo elegido. Si un filtro deja fuera lo elegido, se quita.
+- **La ventana «Quién lo hace»** (`BuildWho`, `ui.who`, `GuildUnionTradeWho`): «Ver todos» la abre con ese objeto
+  (`ui.OpenWho(clave)`, `who.key`) y lo elige. Es una `DJ.Window` (460 x 376, la del Dungeon Journal: se arrastra, no se
+  sale de la pantalla, X y Esc), hija de la sección: se cierra con ella y no vuelve sola. La primera vez sale a la derecha
+  de la ventana de hermandad (`CommunitiesFrame`, 4 de hueco); luego, donde la deje el jugador. Dentro, una lista como
+  las de la sección (`MakeList` con su panel de padre: 10 filas, Quién · Hermandad · Profesión · Nivel, `FillWho`) y,
+  debajo, cuántos pueden y la ayuda («Pueden hacerlo: N · clic derecho: susurrar o solicitar pedido»). Título: «Quién lo
+  hace: [objeto]». La pinta `Paint` (`who.Paint`, si está abierta: también desde otra vista, con lo que llega de oficios
+  y cada minuto), con todos los que pueden. Clic derecho en alguien (`WhoMenu`): Susurrar (`HU.WhisperTo`) y
+  «Solicitar pedido», que abre el anuncio privado para esa persona («Pedir una receta a …») con el objeto ya puesto; a
+  mí mismo, ningún menú. Si un filtro deja fuera su objeto, la ventana sigue con él hasta que se pide otro.
+- **Clic en un objeto**: se elige (raya azul); «+ Nuevo anuncio» abre uno del tablón con lo elegido. Si un filtro deja
+  fuera lo elegido, se quita. Hasta la 328, debajo salía su «Quién lo hace: objeto» (`ui.found`, 3 filas) con «Pedir una
+  receta» en el clic derecho: Jorge, 25/11, «la quitas».
 - Nada se repinta por fotograma: la pestaña no usa `OnUpdate`.
+- **Límites de Lua 5.1**: Trade.lua tiene casi 200 variables en el archivo (196 con la 329; Lua 5.1 no deja más) y
+  `HU:BuildTrade` usa 58 de fuera (el tope es 60). Por eso los tamaños nuevos van juntos en `SIZES` y la ventana de quién
+  lo hace se monta aparte (`BuildWho`, que recibe `MakeList`). Lo nuevo, en tablas o en funciones aparte.
 
 ### Chat con cada persona y circulitos
 
-Solo en Mis encargos, a la derecha (`ui.chat`, 200 de ancho, `CHAT_W`), y solo aquí: no sale en el chat normal. Va de
-arriba abajo (Jorge, 24/11): desde debajo del buscador (arriba del cuerpo) hasta 8 del borde de abajo de la sección,
+Solo en Mis encargos, a la derecha (`ui.chat`, 200 de ancho, `CHAT_W`, a 10 del borde: `SIZES.edge`), y solo aquí: no
+sale en el chat normal. Va de arriba abajo (Jorge, 24/11): desde debajo del buscador (arriba del cuerpo) hasta 8 del borde de abajo de la sección,
 donde estuvo el modo prueba; la lista, a su izquierda, y «+ Nuevo anuncio», centrado debajo de ella. Uno por persona
 (`chats[nombre]`, hasta 200 líneas); elegir una solicitud lo cambia al de la otra persona (`OpenChat(Other(r))`; en una
 venta mía, el del interesado de esa fila); sin
@@ -3873,8 +3915,8 @@ para que nunca vayan cada una por su lado.
 
 ### Clic derecho, varias a la vez y «Hecha»
 
-- `RowMenu`: la otra persona, con Susurrar e Invitar al grupo; en «Quién lo hace», «Pedir una receta» (en Buscar, con el
-  objeto elegido); en Mis encargos, «Marcar como hecha» (si se puede: ver abajo) y «Eliminar» («Eliminar (N)» con varias
+- `RowMenu`: la otra persona, con Susurrar e Invitar al grupo; en «Quién lo hace» del buscador, «Pedir una receta»; en
+  la ventana de quién lo hace de Buscar, su propio menú (`WhoMenu`, en `BuildWho`: Susurrar y «Solicitar pedido»); en Mis encargos, «Marcar como hecha» (si se puede: ver abajo) y «Eliminar» («Eliminar (N)» con varias
   marcadas); en una venta mía abierta, en cualquier vista, «Marcar como vendida»; y «Cancelar», que cierra el menú.
 - En Mis encargos, Ctrl+clic suma o quita una fila (la elegida con un clic solo entra también) y Mayús+clic, el tramo desde
   la última (`picks`, por `EntryKey`); con algo marcado sale «Eliminar (N)» a la derecha de «+ Nuevo anuncio»
@@ -3985,7 +4027,7 @@ de Wowhead Classic y traía objetos de Season of Discovery que Forever no tiene:
 
 - Pide cada objeto al juego (`C_Item.GetItemInfo`, con `ItemInfo`: en Forever no hay `GetItemInfo` suelto) y guarda lo
   que llega en `craft[id] = { key, link, skill, lv, q, il, cls, bind }` (`key`, el nombre en minúsculas; de paso, en la
-  misma llamada, la calidad, el nivel de objeto, la clase y el ligado, para Buscar y para saber si es BOE), solo para la
+  misma llamada, la calidad, el nivel de objeto, el requerido, la clase y el ligado, para Buscar y para saber si es BOE), solo para la
   sesión. Lo usan `ItemMatches`, `CraftNeeds(q)` (por profesión, el nivel más bajo entre los fabricables cuyo nombre
   contiene lo buscado), `CraftTargets` (lo escrito a mano en una solicitud, por su nombre exacto, para `HU:CanCraft`),
   `ItemIdOf` (lo escrito a mano, para `BoeOf`) y `FindItems` (la pestaña Buscar, que se rehace al llegar nombres

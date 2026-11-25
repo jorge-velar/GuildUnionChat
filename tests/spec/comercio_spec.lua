@@ -617,14 +617,15 @@ describe("Comercio (Trade.lua): aspecto", function()
         -- por encima)
         A.same({ tr, "BOTTOMRIGHT", -2, 2 }, new:GetParent()._pts.BOTTOMRIGHT)
         A.same({ tr, "BOTTOMRIGHT", 0, 8 + new._h + 4 }, tr.body._pts.BOTTOMRIGHT)
-        -- (Mis encargos: el chat, a la derecha, desde arriba del cuerpo (debajo del buscador) hasta abajo de la sección;
-        -- la lista, a su izquierda, y el botón, centrado debajo de ella)
+        -- (Mis encargos: el chat, a la derecha, desde arriba del cuerpo (debajo del buscador) hasta abajo de la sección, a
+        -- 10 del borde; la lista, a su izquierda, con el sitio de su barra de bajar entre los dos (6 + 24), y el botón,
+        -- centrado debajo de ella)
         Click(tr.viewBtns.priv)
-        A.same({ tr.body, "TOPRIGHT", -24, 0 }, chat._pts.TOPRIGHT)
-        A.same({ tr, "BOTTOMRIGHT", -24, 8 }, chat._pts.BOTTOMRIGHT)
-        A.same({ chat, "LEFT", -6, 0 }, tr.req.list._pts.RIGHT)
-        local chatL = SECTION_W - 24 - chat._w
-        local listMid = (6 + chatL - 6) / 2
+        A.same({ tr.body, "TOPRIGHT", -10, 0 }, chat._pts.TOPRIGHT)
+        A.same({ tr, "BOTTOMRIGHT", -10, 8 }, chat._pts.BOTTOMRIGHT)
+        A.same({ chat, "LEFT", -(6 + 24), 0 }, tr.req.list._pts.RIGHT)
+        local chatL = SECTION_W - 10 - chat._w
+        local listMid = (6 + chatL - 6 - 24) / 2
         A.same({ tr, "BOTTOM", listMid - SECTION_W / 2, 8 }, new._pts.BOTTOM, "centrado debajo de la lista")
         -- («Eliminar (N)», a su derecha, cabe antes del chat, también en inglés)
         A.same({ new, "RIGHT", 6, 0 }, del._pts.LEFT)
@@ -720,6 +721,41 @@ describe("Comercio (Trade.lua): aspecto", function()
         -- (sin nada publicado que encaje, quién lo hace ocupa todo)
         Search(tr, "nada de nada")
         A.truthy(tr.found.list._h <= BODY, "quién lo hace, sola: " .. tostring(tr.found.list._h))
+        -- (en Buscar, los objetos solos, sin título: 9 filas, como el Tablón)
+        Search(tr, "")
+        Click(tr.viewBtns.find)
+        A.equal(9, tr.items.n)
+        A.truthy(tr.items.list._h <= BODY, "los objetos caben: " .. tostring(tr.items.list._h))
+        A.same({}, a:Errors())
+    end)
+
+    it("las barras de bajar no se salen (Jorge, 25/11): cada lista les deja su sitio a su derecha, dentro del panel; con el chat, entre la lista y el chat; también en la ventana de quién lo hace", function()
+        local a = F.Community()
+        Observe(a)
+        local tr = OpenTrade(a)
+        -- (la barra del juego (FauxScrollFrameTemplate) va por fuera de su lista: de 5 a 23 a su derecha (6 de hueco, 16
+        -- de barra y las flechas, de 18). El panel acaba a 2 del borde y su marco ocupa 4 más)
+        local BAR = 23
+        local function BarRight(lst)
+            local p = lst.list._pts.RIGHT
+            if p[1] == tr.body then return SECTION_W + p[3] + BAR end
+            A.equal(tr.chat, p[1], "o el cuerpo o el chat")
+            return (SECTION_W - 10 - tr.chat._w) + p[3] + BAR
+        end
+        a.HU:TradeTest(true)
+        A.truthy(BarRight(tr.req) <= SECTION_W - 2 - 4 - 4, "Tablón: acaba en " .. BarRight(tr.req))
+        Search(tr, "Poción")
+        A.truthy(BarRight(tr.found) <= SECTION_W - 2 - 4 - 4, "quién lo hace: acaba en " .. BarRight(tr.found))
+        Search(tr, "")
+        Click(tr.viewBtns.priv)
+        local chatL = SECTION_W - 10 - tr.chat._w
+        A.truthy(BarRight(tr.req) <= chatL - 4, "Mis encargos: acaba en " .. BarRight(tr.req) .. "; el chat empieza en " .. chatL)
+        Click(tr.viewBtns.find)
+        A.truthy(BarRight(tr.items) <= SECTION_W - 2 - 4 - 4, "Buscar: acaba en " .. BarRight(tr.items))
+        -- (en la ventana: su lista, a 6 del borde de su panel (ancho de la ventana menos 2 × 18), y su barra dentro)
+        local who = a.env.GuildUnionTradeWho
+        local inner = 460 - 2 * 18 - 4
+        A.truthy(6 + who.lst.list._w + BAR <= inner - 2, "la ventana: acaba en " .. (6 + who.lst.list._w + BAR) .. " de " .. inner)
         A.same({}, a:Errors())
     end)
 end)
@@ -847,16 +883,16 @@ end)
 ---------------------------------------------------------------------------
 -- Anuncios (25/11): cuánto duran en el tablón, vender BOE y la pestaña Buscar
 ---------------------------------------------------------------------------
--- (los objetos que conoce el juego: [número] = { nombre, calidad, nivel, clase, ligado }, como los da C_Item.GetItemInfo:
--- nombre, enlace, calidad, nivel, nivel mínimo, tipo, subtipo, pila, hueco, icono, precio, clase, subclase y ligado
--- (2: al equipar). En Forever no hay GetItemInfo suelto)
+-- (los objetos que conoce el juego: [número] = { nombre, calidad, nivel, clase, ligado, nivel requerido (si no, 1) },
+-- como los da C_Item.GetItemInfo: nombre, enlace, calidad, nivel, nivel mínimo, tipo, subtipo, pila, hueco, icono,
+-- precio, clase, subclase y ligado (2: al equipar). En Forever no hay GetItemInfo suelto)
 local QCOLOR = { [0] = "9d9d9d", "ffffff", "1eff00", "0070dd", "a335ee", "ff8000" }
 local function Known(a, items)
     a.env.C_Item.GetItemInfo = function(id)
         local it = items[id]
         if not it then return nil end
         local link = "|cff" .. QCOLOR[it[2]] .. "|Hitem:" .. id .. "::::::::60:::::::|h[" .. it[1] .. "]|h|r"
-        return it[1], link, it[2], it[3], 1, "", "", 1, "", 0, 0, it[4], 0, it[5]
+        return it[1], link, it[2], it[3], it[6] or 1, "", "", 1, "", 0, 0, it[4], 0, it[5]
     end
 end
 -- (una línea de TR u OF de alguien de mi hermandad, como llega por GUILD)
@@ -886,7 +922,21 @@ local function FakeMenu(a)
         CreateButton = function(_, t, fn) m.buttons[t] = fn end,
         CreateCheckbox = function(_, t, is, set) m.checks[#m.checks + 1] = { text = t, is = is, set = set } end,
     }
-    a.env.MenuUtil = { CreateContextMenu = function(owner, gen) gen(owner, root) end }
+    a.env.MenuUtil = { CreateContextMenu = function(owner, gen) m.atCursor = owner; gen(owner, root) end }
+    m.root = root
+    return m
+end
+-- (y el sistema de menús entero, como en Forever (Blizzard_Menu): un menú que se abre atado a un punto (CreateAnchor y
+-- OpenMenu, como los desplegables del juego) apunta dónde, en `anchor`, y con qué estilo)
+local function FakeDrop(a)
+    local m = FakeMenu(a)
+    a.env.MenuVariants = { GetDefaultContextMenuMixin = function() return "contexto" end }
+    a.env.MenuUtil.CreateRootMenuDescription = function(mixin) m.mixin = mixin; return m.root end
+    a.env.CreateAnchor = function(...) return { ... } end
+    a.env.Menu = {
+        PopulateDescription = function(gen, owner, desc) gen(owner, desc) end,
+        GetManager = function() return { OpenMenu = function(_, owner, _, anchor) m.owner, m.anchor = owner, anchor end } end,
+    }
     return m
 end
 -- (poner un anuncio con su ventana: opts = { item, sell, to, hours, gold })
@@ -1312,18 +1362,22 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
         error("no hay casilla " .. text)
     end
 
-    it("al lado de Mis encargos: filtros de profesión, nivel de objeto, color y tipo (varios a la vez) entre los fabricables; de cada uno, quién de la unión lo hace, conectados primero; clic, quién lo hace", function()
+    it("al lado de Mis encargos: filtros de profesión, nivel (el requerido), rareza y tipo (varios a la vez) y un buscador entre los fabricables; de cada uno, quién de la unión lo hace, conectados primero; «Ver todos», su ventana", function()
         local a = F.Community()
         Observe(a)
         local HU = a.HU
         Club(a)
-        -- (tres de Herrería, en el orden de su lista de oficios, una de Sastrería y una de Alquimia)
+        -- (tres de Herrería, en el orden de su lista de oficios, una de Sastrería, una de Alquimia y seis clavos de
+        -- Herrería sin nivel requerido, para que haya más de las 9 filas que se ven)
         local l = HU.ProfessionsForTests.list(164)
         local hoja, botas, espada = l[1].id, l[2].id, l[3].id
         local bolsa, pocion = HU.CRAFT_ITEMS[197][1], HU.CRAFT_ITEMS[171][1]
-        Known(a, { [hoja] = { "Hoja tosca", 1, 6, 2, 0 }, [botas] = { "Botas verdes", 2, 15, 4, 2 },
-            [espada] = { "Espada azul", 3, 30, 2, 2 }, [bolsa] = { "Bolsa de lino", 1, 10, 1, 0 },
-            [pocion] = { "Poción menor", 1, 5, 0, 0 } })
+        -- (nombre, calidad, nivel de objeto, clase, ligado y nivel requerido)
+        local known = { [hoja] = { "Hoja tosca", 1, 6, 2, 0, 1 }, [botas] = { "Botas verdes", 2, 15, 4, 2, 10 },
+            [espada] = { "Espada azul", 3, 30, 2, 2, 25 }, [bolsa] = { "Bolsa de lino", 1, 10, 1, 0, 0 },
+            [pocion] = { "Poción menor", 1, 5, 0, 0, 1 } }
+        for i = 4, 9 do known[l[i].id] = { "Clavo " .. i, 1, 1, 7, 0, 0 } end
+        Known(a, known)
         -- (Compi (UNO) sabe la espada; Bea (DOS, desconectada) también, con más nivel; Blas (DOS), solo la hoja)
         WU(a, "Compi-Reino", "OF", "164", "250," .. l.hash .. ",E")
         PackOf(HU, "DOS", { "Bea-Reino,164,275," .. l.hash .. ",E", "Blas-Reino,164,290," .. l.hash .. ",B" })
@@ -1334,57 +1388,95 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
             if items and not q then asked[#asked + 1] = next(items) end
             return crafters(self, q, items, needs)
         end)
+        a.env.ChatFrameUtil = { InsertLink = function() return false end }
         local tr = OpenTrade(a)
         a.w:Advance(40) -- (los nombres, poco a poco: 30 cada medio segundo)
         A.falsy(tr.filters:IsShown(), "los filtros, solo en Buscar")
         Click(tr.viewBtns.find)
         A.truthy(tr.viewBtns.find.picked, "elegido, negro")
         A.same({ true, false, false, false }, { tr.filters:IsShown(), tr.search:IsShown(), tr.searchBox:IsShown(), tr.onlyCraft:IsShown() })
-        A.same({ true, false, false, true }, { tr.items.list:IsShown(), tr.req.list:IsShown(), tr.chat:IsShown(), tr.found.list:IsShown() })
-        -- (sin filtros, todos los que el juego conoce, de más nivel a menos; se pintan las 4 filas que se ven, y quién lo
-        -- hace solo de esas)
-        A.same({ "Espada azul", "Botas verdes", "Bolsa de lino", "Hoja tosca" }, Found(tr))
-        A.equal(4, tr.items.n)
-        table.sort(asked)
-        local want = { espada, botas, bolsa, hoja }
-        table.sort(want)
-        A.same(want, asked, "quién lo hace, solo de lo que se ve")
+        -- (sin la lista de quién lo hace de debajo: Jorge, 25/11, «la quitas»; los objetos, en las 9 filas)
+        A.same({ true, false, false, false }, { tr.items.list:IsShown(), tr.req.list:IsShown(), tr.chat:IsShown(), tr.found.list:IsShown() })
+        A.equal(9, tr.items.n)
+        A.same({ "Nivel:", "Rareza", "Tipo", "Buscar objeto" }, { tr.filters.lvlLabel:GetText(), tr.filters.qual:GetText(),
+            tr.filters.type:GetText(), tr.filters.search.Instructions:GetText() })
+        -- (sin filtros, todos los que el juego conoce, de más nivel requerido a menos (sin él, detrás); quién lo hace, solo
+        -- de las 9 filas que se ven)
+        local shown = Found(tr)
+        A.equal(9, #shown)
+        A.same({ "Espada azul", "Botas verdes", "Hoja tosca", "Poción menor", "Bolsa de lino" }, { unpack(shown, 1, 5) })
+        A.equal(9, #asked, "quién lo hace, solo de lo que se ve")
         local rows = tr.items.rows
-        A.same({ "30", "Herrería", true }, { rows[1].cells[2]:GetText(), rows[1].cells[3]:GetText():match("Herrería"),
+        A.same({ "25", "Herrería", true }, { rows[1].cells[2]:GetText(), rows[1].cells[3]:GetText():match("Herrería"),
             rows[1].cells[3]:GetText():find("icono164", 1, true) ~= nil })
+        A.same({ "10", "1", "—" }, { rows[2].cells[2]:GetText(), rows[3].cells[2]:GetText(), rows[5].cells[2]:GetText() },
+            "el nivel requerido; sin él, «—»")
         A.matches("Compi.*250 |T.-|t |cff9a8f78%+1", rows[1].cells[4]:GetText(), "el conectado primero, con el tic, y cuántos más")
         A.matches("Nadie", rows[2].cells[4]:GetText())
-        A.matches("Jefa.*—", rows[3].cells[4]:GetText(), "de mi hermandad sin línea: lo que da el juego")
-        A.matches("Blas.*290", rows[4].cells[4]:GetText())
-        A.equal("Elige un objeto para ver quién lo hace.", tr.found.empty:GetText())
-        -- (bajando: la poción, la última)
-        a.env.FauxScrollFrame_SetOffset(tr.items.scroll, 1)
-        tr.items.scroll:GetScript("OnVerticalScroll")(tr.items.scroll, 24)
-        A.same({ "Botas verdes", "Bolsa de lino", "Hoja tosca", "Poción menor" }, Found(tr))
-        -- (profesión: Herrería)
-        local m = FakeMenu(a)
+        A.matches("Blas.*290", rows[3].cells[4]:GetText())
+        A.matches("Jefa.*—", rows[5].cells[4]:GetText(), "de mi hermandad sin línea: lo que da el juego")
+        -- («Ver todos», al final de la columna, solo con alguien; el texto, a su izquierda)
+        A.same({ true, false, true }, { rows[1].allBtn:IsShown(), rows[2].allBtn:IsShown(), rows[3].allBtn:IsShown() })
+        A.same({ rows[1], "RIGHT", -(6 + 4), 0 }, rows[1].allBtn._pts.RIGHT)
+        A.equal(230 - 2 * 4 - 64 - 4, rows[1].cells[4]._w)
+        -- (bajando: lo último)
+        a.env.FauxScrollFrame_SetOffset(tr.items.scroll, 2)
+        tr.items.scroll:GetScript("OnVerticalScroll")(tr.items.scroll, 48)
+        A.equal("Hoja tosca", Found(tr)[1])
+        -- (su buscador: por el nombre, sin acentos ni mayúsculas, y se vuelve arriba)
+        local s = tr.filters.search
+        s:SetText("POCION"); s:GetScript("OnTextChanged")(s, true)
+        A.same({ "Poción menor" }, Found(tr))
+        A.equal(0, a.env.FauxScrollFrame_GetOffset(tr.items.scroll))
+        -- (Mayús+clic en un objeto con el buscador escribiendo: entra su enlace y sale solo ese objeto; sin escribir en él, nada)
+        -- (en el juego, SetText avisa con OnTextChanged; el WoW de mentira, no: se avisa a mano)
+        local function Insert(box, lk) a.env.ChatFrameUtil.InsertLink(lk); box:GetScript("OnTextChanged")(box, false) end
+        local link = select(2, a.env.C_Item.GetItemInfo(espada))
+        s.HasFocus = function() return true end
+        Insert(s, link)
+        A.equal(link, s:GetText())
+        A.same({ "Espada azul" }, Found(tr))
+        s.HasFocus = function() return false end
+        Insert(s, select(2, a.env.C_Item.GetItemInfo(botas)))
+        A.same({ "Espada azul" }, Found(tr))
+        -- (lo que no se fabrica, nada)
+        s:SetText("|cffffffff|Hitem:999999::::::::60:::::::|h[Piedra]|h|r"); s:GetScript("OnTextChanged")(s, false)
+        A.same({}, Found(tr))
+        s:SetText(""); s:GetScript("OnTextChanged")(s, true)
+        -- (los desplegables salen siempre debajo de su botón, como los del juego, y no donde está el ratón (Jorge, 25/11);
+        -- el de profesión, con su icono detrás de la casilla)
+        local m = FakeDrop(a)
         Click(tr.filters.prof)
+        A.same({ "TOPLEFT", tr.filters.prof, "BOTTOMLEFT", 0, -2 }, m.anchor)
+        A.same({ tr.filters.prof, "contexto" }, { m.owner, m.mixin })
+        A.is_nil(m.atCursor, "no en el ratón")
         A.equal("Profesión", m.title)
+        A.equal("|Ticono171:14:14|t Alquimia", m.checks[1].text)
         Check(a, m, "Herrería")
         A.equal("Herrería", tr.filters.prof:GetText())
-        A.same({ "Espada azul", "Botas verdes", "Hoja tosca" }, Found(tr), "y se vuelve arriba")
-        -- (color: verde y azul)
+        A.same({ "Espada azul", "Botas verdes", "Hoja tosca" }, { unpack(Found(tr), 1, 3) })
+        -- (rareza: verde y azul)
         m.checks = {}
         Click(tr.filters.qual)
+        A.same({ "TOPLEFT", tr.filters.qual, "BOTTOMLEFT", 0, -2 }, m.anchor)
+        A.equal("Rareza", m.title)
         A.same({ "|cffffffffBlanco|r", "|cff1eff00Verde|r", "|cff0070ddAzul|r", "|cffa335eeMorado|r", "|cffff8000Naranja|r" },
             { m.checks[1].text, m.checks[2].text, m.checks[3].text, m.checks[4].text, m.checks[5].text })
         m.checks = {}
         Click(tr.filters.qual)
         Check(a, m, "Verde")
         Check(a, m, "Azul")
-        A.equal("Color (2)", tr.filters.qual:GetText())
+        A.equal("Rareza (2)", tr.filters.qual:GetText())
         A.truthy(m.checks[2].is(), "marcada")
         A.same({ "Espada azul", "Botas verdes" }, Found(tr))
-        -- (nivel de objeto, de 20 a…)
+        -- (nivel requerido, de 20 a…; no el de objeto)
         tr.filters.lvlMin:SetText("20")
         tr.filters.lvlMin:GetScript("OnTextChanged")(tr.filters.lvlMin)
         A.same({ "Espada azul" }, Found(tr))
         tr.filters.lvlMax:SetText("25")
+        tr.filters.lvlMax:GetScript("OnTextChanged")(tr.filters.lvlMax)
+        A.same({ "Espada azul" }, Found(tr), "pide 25 (su nivel de objeto es 30)")
+        tr.filters.lvlMax:SetText("24")
         tr.filters.lvlMax:GetScript("OnTextChanged")(tr.filters.lvlMax)
         A.same({}, Found(tr))
         A.equal("Ningún objeto fabricable encaja con los filtros.", tr.items.empty:GetText())
@@ -1392,6 +1484,7 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
         -- (tipo: armadura; y armas)
         m.checks = {}
         Click(tr.filters.type)
+        A.same({ "TOPLEFT", tr.filters.type, "BOTTOMLEFT", 0, -2 }, m.anchor)
         Check(a, m, "Armadura")
         A.same({ "Botas verdes" }, Found(tr))
         m.checks = {}
@@ -1399,49 +1492,84 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
         Check(a, m, "Armas")
         A.equal("Tipo (2)", tr.filters.type:GetText())
         A.same({ "Espada azul", "Botas verdes" }, Found(tr))
-        -- (clic en la espada: debajo, quién lo hace, conectados primero; elegida)
-        Click(tr.items.rows[1], "LeftButton")
+        -- («Ver todos» en la espada: su ventana, a la derecha de la de hermandad, con todos, conectados primero; la
+        -- espada, elegida)
+        local who = a.env.GuildUnionTradeWho
+        A.falsy(who:IsShown())
+        Click(tr.items.rows[1].allBtn)
+        A.truthy(who:IsShown())
+        A.equal(a.env.CommunitiesFrame, who._pts.TOPLEFT[1])
+        A.same({ "TOPRIGHT", 4, 0 }, { who._pts.TOPLEFT[2], who._pts.TOPLEFT[3], who._pts.TOPLEFT[4] })
         A.truthy(tr.items.rows[1].pickTex:IsShown())
-        A.matches("Quién lo hace: .*Espada azul", tr.found.title:GetText())
-        A.same({ "Compi UNO 250 ✓", "Bea DOS 275 ✓" }, Found(tr, tr.found))
-        -- (clic derecho en Compi: pedírsela, con la espada ya puesta)
+        A.matches("Quién lo hace: .*Espada azul", who.titleText:GetText())
+        A.same({ "Compi UNO 250 ✓", "Bea DOS 275 ✓" }, Found(tr, who.lst))
+        A.matches("Pueden hacerlo: 2", who.hint:GetText())
+        A.truthy(a.env.UISpecialFrames[#a.env.UISpecialFrames] == "GuildUnionTradeWho", "se cierra con Esc")
+        -- (se mueve)
+        A.truthy(who._scripts.OnDragStart and who._scripts.OnDragStop, "se arrastra")
+        -- (clic derecho en Compi: susurrar o solicitar pedido, con la espada ya puesta)
         m = FakeMenu(a)
-        Click(tr.found.rows[1], "RightButton")
-        m.buttons["Pedir una receta"]()
+        Click(who.lst.rows[1], "RightButton")
+        A.equal("Compi-Reino", m.title)
+        A.truthy(m.buttons["Susurrar"] and m.buttons["Solicitar pedido"] and m.buttons["Cancelar"])
+        A.is_nil(m.buttons["Invitar al grupo"])
+        local whispered
+        F.Stub(HU, "WhisperTo", function(name) whispered = name end)
+        m.buttons["Susurrar"]()
+        A.equal("Compi-Reino", whispered)
+        m.buttons["Solicitar pedido"]()
         local d = a.env.GuildUnionTradeNew
         A.same({ true, "Pedir una receta a Compi-Reino", "Compi-Reino" }, { d:IsShown(), d.title:GetText(), d.to:GetText() })
         A.matches("Espada azul", d.item:GetText())
         d:Hide()
+        -- (a mí, nada)
+        m = FakeMenu(a)
+        local first = who.lst.rows[1]
+        local saved = first.entry
+        first.entry = { name = HU:Me() }
+        Click(first, "RightButton")
+        A.is_nil(m.title)
+        first.entry = saved
         -- («+ Nuevo anuncio», con lo elegido, al tablón)
         A.truthy(tr.new:IsShown())
         Click(tr.new)
         A.same({ "Nuevo anuncio", true }, { d.title:GetText(), d.expLabel:IsShown() })
         A.matches("Espada azul", d.item:GetText())
         d:Hide()
-        -- (fuera los filtros de color y tipo, solo Sastrería: la bolsa (Jefa, sin línea); ya no está la espada elegida)
+        -- (fuera los filtros de rareza y tipo, solo Sastrería: la bolsa (Jefa, sin línea); la ventana sigue con la espada
+        -- hasta que se pide otra)
         for _, b in ipairs({ tr.filters.qual, tr.filters.type, tr.filters.prof }) do
             m.checks = {}
             Click(b)
             for _, c in ipairs(m.checks) do if c.is() then c.set() end end
         end
-        A.same({ "Profesión", "Color", "Tipo" }, { tr.filters.prof:GetText(), tr.filters.qual:GetText(), tr.filters.type:GetText() })
+        A.same({ "Profesión", "Rareza", "Tipo" }, { tr.filters.prof:GetText(), tr.filters.qual:GetText(), tr.filters.type:GetText() })
         m.checks = {}
         Click(tr.filters.prof)
         Check(a, m, "Sastrería")
         A.same({ "Bolsa de lino" }, Found(tr))
-        A.same({}, Found(tr, tr.found), "lo elegido ya no encaja")
-        A.matches("Quién lo hace$", tr.found.title:GetText())
-        Click(tr.items.rows[1], "LeftButton")
-        A.same({ "Jefa UNO —" }, Found(tr, tr.found))
+        A.matches("Espada azul", who.titleText:GetText())
+        Click(tr.items.rows[1].allBtn)
+        A.matches("Bolsa de lino", who.titleText:GetText())
+        A.same({ "Jefa UNO —" }, Found(tr, who.lst))
         -- (sin repintar por fotograma)
         local function Inside(f)
             while f do if f == tr then return true end f = f._parent end
             return false
         end
         for _, fr in ipairs(a.w.frames) do A.falsy(Inside(fr) and fr._scripts.OnUpdate, "un OnUpdate en Comercio") end
-        -- (de vuelta al Tablón: el buscador y la casilla, sin filtros)
+        -- (de vuelta al Tablón: el buscador y la casilla, sin filtros; Mayús+clic también entra en su buscador. La ventana,
+        -- abierta hasta que se cierra la sección)
         Click(tr.viewBtns.pub)
         A.same({ false, true, true, false }, { tr.filters:IsShown(), tr.search:IsShown(), tr.onlyCraft:IsShown(), tr.items.list:IsShown() })
+        tr.search.HasFocus = function() return true end
+        a.env.ChatFrameUtil.InsertLink(link)
+        A.equal(link, tr.search:GetText())
+        A.truthy(who:IsShown())
+        tr:Hide()
+        A.falsy(who:IsShown())
+        tr:Show()
+        A.falsy(who:IsShown(), "no vuelve sola")
         A.same({}, a:Errors())
     end)
 
@@ -1480,21 +1608,32 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
             local c, t = x[1], x[2]
             if not t then Observe(c); t = OpenTrade(c) end
             local L, f = c.HU.L, t.filters
-            local right = 0
-            for _, w in ipairs({ f.prof, f.lvlLabel, f.lvlMin, f.lvlTo, f.lvlMax, f.qual, f.type }) do
+            local right, typeR = 0, nil
+            for _, w in ipairs({ f.prof, f.lvlLabel, f.lvlMin, f.lvlTo, f.lvlMax, f.qual, f.type, f.search }) do
                 local l, r = Span(t, w)
                 A.truthy(l >= right, "se pisan: " .. l .. " < " .. right)
+                if w == f.search then A.truthy(l - 9 >= typeR, "el marco del buscador no pisa «Tipo»") end
                 right = r
+                if w == f.type then typeR = r end
             end
             A.truthy(right <= SECTION_W - 14, "cabe: acaba en " .. right)
-            A.truthy(TextWidth(L("Nivel de objeto:"), 10) <= f.lvlLabel._w, L("Nivel de objeto:"))
+            -- («Nivel:», con las cajas pegadas: Jorge, 25/11)
+            A.truthy(TextWidth(L("Nivel:"), 10) <= f.lvlLabel._w, L("Nivel:"))
+            local _, labelR = Span(t, f.lvlLabel)
+            local minL = Span(t, f.lvlMin)
+            A.truthy(minL - labelR <= 6, "la caja, pegada a «" .. L("Nivel:") .. "»: " .. (minL - labelR))
             A.truthy(TextWidth(L("a"), 10) <= f.lvlTo._w, L("a"))
             -- (lo más largo que puede decir cada botón)
             for _, y in ipairs({ { f.prof, { L("Primeros auxilios"), L("Encantamiento"), L("Peletería"), L("Profesión") .. " (9)" } },
-                { f.qual, { L("Naranja"), L("Morado"), L("Color") .. " (5)" } },
+                { f.qual, { L("Naranja"), L("Morado"), L("Rareza") .. " (5)" } },
                 { f.type, { L("Contenedores"), L("Misceláneo"), L("Mercancías"), L("Consumible"), L("Tipo") .. " (7)" } } }) do
                 for _, text in ipairs(y[2]) do A.truthy(TextWidth(text, 12) + 16 <= y[1]._w, "«" .. text .. "» cabe en su botón") end
             end
+            -- (la ayuda del buscador, entre su lupa y su X; «Ver todos», en letra pequeña, en su botón)
+            A.truthy(TextWidth(L("Buscar objeto"), 10) + 20 + 14 <= f.search._w, L("Buscar objeto"))
+            local all = t.items.rows[1].allBtn
+            A.truthy(TextWidth(L("Ver todos"), 10) + 12 <= all._w, L("Ver todos"))
+            A.equal("GameFontNormalSmall", all._font)
             A.same({}, c:Errors())
         end
         A.same({}, a:Errors())

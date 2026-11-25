@@ -23,7 +23,11 @@ local ROW2_Y, ROW2_H = -36, 28   -- (más pegada a los botones: Jorge, 24/11, «
 local BODY_Y, BOTTOM_H = -74, 36   -- (la lista, 6 por debajo del buscador: Jorge, 24/11, «un poco menos» de gris)
 local SEARCH_W = 200
 local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba, quién lo hace abajo)
-local FIND_ROWS, FIND_WHO_ROWS = 4, 3 -- en Buscar: los objetos arriba y quién lo hace el elegido, abajo
+-- (la barra de bajar va a la derecha de su lista, por fuera; cada lista le deja su sitio (scroll) y el borde del panel
+-- (edge), para que no se salga: listR en total. Jorge, 25/11: «cuidado con las barras de bajar que se salen un poco». Y la
+-- ventana de quién lo hace un objeto de Buscar (who*) y su botón «Ver todos» (allW). En una tabla: el archivo ya tiene
+-- casi 200 variables, lo más que deja Lua 5.1) [+ARCHITECTURE.md]
+local SIZES = { edge = 10, scroll = 24, listR = 34, whoW = 460, whoH = 376, whoRows = 10, allW = 64 }
 local MAX_OPEN = 5          -- anuncios abiertos por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
 local GREY = "|cff9a8f78"
@@ -60,7 +64,7 @@ local COLS = {
         { "act", "Acción", ACT_W + 6 } },
     priv = { { "who", "Con quién", 86 }, { "item", "Receta / objeto", 120 }, { "qty", "Cant.", 36 }, { "tip", "Propina", 56 }, { "state", "Estado", 0 } },
     search = { { "who", "Quién", 110 }, { "guild", "Hermandad", 80 }, { "prof", "Profesión", 130 }, { "lvl", "Nivel", 0 } },
-    find = { { "item", "Objeto", 0 }, { "lvl", "Nivel", 44 }, { "prof", "Profesión", 120 }, { "who", "Quién lo hace", 190 } },
+    find = { { "item", "Objeto", 0 }, { "lvl", "Nivel", 44 }, { "prof", "Profesión", 120 }, { "who", "Quién lo hace", 230 } },
 }
 
 -- (lo que se ve: las de prueba y las de la red, juntas; se rehace con Merge)
@@ -413,21 +417,22 @@ end
 ---------------------------------------------------------------------------
 local function Pack(...) return { n = select("#", ...), ... } end
 local function Num(v) return (type(v) == "number" and not HU.Secret(v)) and v or nil end
--- (de un objeto (número, nombre o enlace): { name, link, q (calidad), il (nivel), cls (clase), bind (ligado) }; nil si
--- el juego aún no lo tiene)
+-- (de un objeto (número, nombre o enlace): { name, link, q (calidad), il (nivel de objeto), rl (nivel requerido: el que
+-- pide para usarlo; 0, ninguno), cls (clase), bind (ligado) }; nil si el juego aún no lo tiene)
 local function ItemInfo(item)
     local get = C_Item and C_Item.GetItemInfo
     if type(get) ~= "function" then return nil end
     local res = Pack(pcall(get, item))
     local name, link = res[2], res[3]
     if not (res[1] and type(name) == "string" and type(link) == "string") or HU.Secret(name) or HU.Secret(link) then return nil end
-    return { name = name, link = link, q = Num(res[4]), il = Num(res[5]), cls = Num(res[13]), bind = Num(res[15]) }
+    return { name = name, link = link, q = Num(res[4]), il = Num(res[5]), rl = Num(res[6]), cls = Num(res[13]),
+        bind = Num(res[15]) }
 end
 
 -- Fabricables (CraftItems.lua): el juego da su nombre y enlace en tu idioma; se piden poco a poco (30 cada
 -- medio segundo) desde que se monta la sección (al cargar la ventana de hermandad del juego), y los que tarda se
--- reintentan dos vueltas más. De paso se guardan su calidad, su nivel y su clase, para Buscar [+ARCHITECTURE.md]
-local craft = {}            -- [objeto] (o ["s" .. hechizo]) = { key = nombre en minúsculas, link, skill, lv, q, il, cls, bind }
+-- reintentan dos vueltas más. De paso se guardan su calidad, sus niveles y su clase, para Buscar [+ARCHITECTURE.md]
+local craft = {}            -- [objeto] (o ["s" .. hechizo]) = { key = nombre en minúsculas, link, skill, lv, q, il, rl, cls, bind }
 local craftLoader
 local findDirty = true      -- Buscar: la lista de objetos que encajan, por rehacer (cambia un filtro o llegan objetos)
 -- (los encantamientos son hechizos, no objetos: el juego da su nombre y su enlace al momento, sin pedirlos)
@@ -472,7 +477,7 @@ local function LoadCraftNames()
             local it = ItemInfo(id)
             if it then
                 craft[id] = { key = HU.Fold(it.name), link = it.link, skill = info[id].skill, lv = info[id].lv, q = it.q,
-                    il = it.il, cls = it.cls, bind = it.bind }
+                    il = it.il, rl = it.rl, cls = it.cls, bind = it.bind }
                 findDirty = true
             else
                 missing[#missing + 1] = id
@@ -588,13 +593,14 @@ local function SearchMembers(q)
 end
 
 ---------------------------------------------------------------------------
--- Buscar (la pestaña): los fabricables que encajan con los filtros (profesión, nivel de objeto, color y tipo; de varios,
--- cualquiera) y, de cada uno, quién de la unión lo hace, conectados primero. La lista, solo al cambiar un filtro o al
--- llegar objetos; quién lo hace, solo de las filas que se ven [+ARCHITECTURE.md]
+-- Buscar (la pestaña): los fabricables que encajan con los filtros (profesión, nivel requerido, rareza y tipo; de
+-- varios, cualquiera) y con su buscador (nombre o enlace) y, de cada uno, quién de la unión lo hace, conectados primero.
+-- La lista, solo al cambiar un filtro o al llegar objetos; quién lo hace, solo de las filas que se ven y de la ventana
+-- de «Ver todos» [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local findProf, findQual, findType = {}, {}, {}   -- [profesión] / [calidad] / [tipo] = true
-local findMin, findMax                             -- nivel de objeto, de… a…
-local findList                                     -- lo que encaja: { key, item, il, skill, lv, name }
+local findMin, findMax                             -- nivel requerido (el que pide el objeto para usarlo), de… a…
+local findList                                     -- lo que encaja: { key, item, rl, il, skill, lv, name }
 local findSel                                      -- el elegido (su clave)
 local crafters = {}                                -- [clave] = quién lo hace (se vacía en cada repintado)
 local function FindItems(idx)
@@ -603,8 +609,18 @@ local function FindItems(idx)
     local classes = {}
     for _, t in ipairs(TYPES) do if findType[t[1]] then for _, c in ipairs(t[3]) do classes[c] = true end end end
     local anyP, anyQ, anyT = next(findProf) ~= nil, next(findQual) ~= nil, next(findType) ~= nil
-    -- (un encantamiento no es un objeto: no tiene color, tipo ni nivel; con uno de esos filtros, fuera)
+    -- (un encantamiento no es un objeto: no tiene rareza, tipo ni nivel; con uno de esos filtros, fuera)
     local itemOnly = anyQ or anyT or findMin ~= nil or findMax ~= nil
+    -- (su buscador: un enlace (Mayús+clic) es ese fabricable y nada más (`only`, su clave); un texto, los que lo llevan
+    -- en el nombre (`q`), como el buscador del Tablón (HU.TextRank))
+    local text = ui.filters.search:GetText() or ""
+    local q, only = nil, tonumber(text:match("|Hitem:(%d+)") or "")
+    local sp = text:match("|Hspell:(%d+)") or text:match("|Henchant:(%d+)")
+    if sp then only = "s" .. sp end
+    if not only then
+        q = HU.Trim((Plain(text):gsub("^%s*%[", ""):gsub("%]%s*$", "")))
+        if q == "" then q = nil end
+    end
     local out = {}
     for k, c in pairs(craft) do
         local spell = type(k) ~= "number"
@@ -612,15 +628,23 @@ local function FindItems(idx)
         for _, t in ipairs(idx[k] or {}) do
             if (not anyP or findProf[t.skill]) and (lv == nil or t.lv < lv) then skill, lv = t.skill, t.lv end
         end
-        local ok = skill ~= nil and not (spell and itemOnly)
+        local ok = skill ~= nil and not (spell and itemOnly) and (only == nil or k == only)
+            and (q == nil or HU.TextRank(c.key, q) ~= nil)
+        -- (sin nivel requerido, 0: vale con cualquier «hasta»)
         if ok and not spell then
             ok = (not anyQ or findQual[c.q] == true) and (not anyT or classes[c.cls] == true)
-                and (not findMin or (c.il or -1) >= findMin) and (not findMax or (c.il or math.huge) <= findMax)
+                and (not findMin or (c.rl or -1) >= findMin) and (not findMax or (c.rl or math.huge) <= findMax)
         end
-        if ok then out[#out + 1] = { key = k, item = c.link, il = (not spell) and c.il or nil, skill = skill, lv = lv, name = c.key } end
+        if ok then
+            out[#out + 1] = { key = k, item = c.link, rl = (not spell) and c.rl or nil, il = (not spell) and c.il or nil,
+                skill = skill, lv = lv, name = c.key }
+        end
     end
-    -- (de más nivel a menos; sin nivel, detrás; luego por el que pide la profesión y por nombre)
+    -- (de más nivel requerido a menos; sin él, detrás; luego por nivel de objeto, por el que pide la profesión y por
+    -- nombre)
     table.sort(out, function(a, b)
+        local ra, rb = a.rl or -1, b.rl or -1
+        if ra ~= rb then return ra > rb end
         local ia, ib = a.il or -1, b.il or -1
         if ia ~= ib then return ia > ib end
         if a.lv ~= b.lv then return a.lv > b.lv end
@@ -1072,7 +1096,7 @@ local function RowMenu(owner, r)
     end)
 end
 
--- Coloca columnas, títulos y filas según lo que toca
+-- Coloca columnas, títulos y filas según lo que toca (la flecha de orden, solo en las listas que se ordenan)
 local function Columns(lst, cols, width)
     local total = lst.list:GetWidth()
     if type(total) ~= "number" or total <= 0 then total = 560 end
@@ -1087,7 +1111,7 @@ local function Columns(lst, cols, width)
             h:ClearAllPoints(); h:SetPoint("BOTTOMLEFT", lst.hdr, "BOTTOMLEFT", x, 0); h:SetWidth(w + 2)
             h.key = col[1]
             -- (la columna por la que se ordena, con una flecha)
-            local arrow = (sortKey == col[1]) and (sortDesc and " v" or " ^") or ""
+            local arrow = (lst.sortable and sortKey == col[1]) and (sortDesc and " v" or " ^") or ""
             h:SetText(col[2] ~= "" and (L(col[2]) .. arrow) or "")
             for _, row in ipairs(lst.rows) do
                 local c = row.cells[i]
@@ -1119,23 +1143,20 @@ local function ReqCols()
     return out
 end
 
--- (Buscar: arriba los objetos que encajan; debajo, quién lo hace el elegido, con su nombre en el título)
+-- (Buscar: los objetos que encajan, en toda la altura; quién lo hace cada uno, en su columna y, con «Ver todos», en su
+-- ventana. Hasta el 25/11 iba debajo una lista de quién lo hace el elegido: Jorge, «la quitas»)
 local function LayoutFind()
-    local items, found = ui.items, ui.found
-    ui.chat:Hide(); ui.req.list:Hide()
+    local items = ui.items
+    ui.chat:Hide(); ui.req.list:Hide(); ui.found.list:Hide()
     items.list:ClearAllPoints()
-    items.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0); items.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0)
-    items.n = FIND_ROWS
+    items.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0); items.list:SetPoint("RIGHT", ui.body, "RIGHT", -SIZES.listR, 0)
+    items.n = ROWS
     Titled(items, nil)
     items.list:Show()
-    found.n = FIND_WHO_ROWS
-    found.list:ClearAllPoints()
-    found.list:SetPoint("TOPLEFT", items.list, "BOTTOMLEFT", 0, -6); found.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0)
-    local link = FindLink()
-    Titled(found, link and (L("Quién lo hace") .. ": " .. link) or L("Quién lo hace"))
-    found.list:Show()
     Columns(items, COLS.find, 4)
-    Columns(found, COLS.search, 4)
+    -- (el texto de quién lo hace, a la izquierda de «Ver todos», que va al final de su columna)
+    local w = COLS.find[#COLS.find][3] - 2 * CELL_PAD - SIZES.allW - 4
+    for _, row in ipairs(items.rows) do row.cells[4]:SetWidth(w) end
     ui.new:ClearAllPoints()
     ui.new:SetPoint("BOTTOM", ui, "BOTTOM", 0, 8)
     ui.new:Show()
@@ -1153,8 +1174,9 @@ local function Layout(cols, list)
     ui.chat:SetShown(withChat)
     req.list:ClearAllPoints()
     req.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0)
-    if withChat then req.list:SetPoint("RIGHT", ui.chat, "LEFT", -6, 0)
-    else req.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0) end
+    -- (con el chat, su barra de bajar va entre la lista y el chat, sin pisarlo)
+    if withChat then req.list:SetPoint("RIGHT", ui.chat, "LEFT", -(6 + SIZES.scroll), 0)
+    else req.list:SetPoint("RIGHT", ui.body, "RIGHT", -SIZES.listR, 0) end
     local noPub = searching and #list == 0
     req.list:SetShown(not noPub)
     req.n = searching and SEARCH_ROWS or ROWS
@@ -1164,7 +1186,7 @@ local function Layout(cols, list)
     found.list:ClearAllPoints()
     if noPub then found.list:SetPoint("TOPLEFT", ui.body, "TOPLEFT", 6, 0)
     else found.list:SetPoint("TOPLEFT", req.list, "BOTTOMLEFT", 0, -6) end
-    found.list:SetPoint("RIGHT", ui.body, "RIGHT", -24, 0)
+    found.list:SetPoint("RIGHT", ui.body, "RIGHT", -SIZES.listR, 0)
     Titled(found, L("Quién lo hace"))
     found.list:SetShown(searching)
     Columns(req, cols, priv and 44 or 4)
@@ -1172,7 +1194,7 @@ local function Layout(cols, list)
     -- («+ Nuevo anuncio», en el centro de la sección; en Mis encargos, en el de la lista, que deja la derecha al chat:
     -- así no choca con él. Jorge, 24/11)
     ui.new:ClearAllPoints()
-    ui.new:SetPoint("BOTTOM", ui, "BOTTOM", withChat and -(24 + CHAT_W) / 2 or 0, 8)
+    ui.new:SetPoint("BOTTOM", ui, "BOTTOM", withChat and -(SIZES.edge + CHAT_W + SIZES.scroll) / 2 or 0, 8)
     ui.new:SetShown(not searching)
 end
 
@@ -1206,7 +1228,7 @@ local function FillWho(row, e)
     c[4]:SetText((e.rank and tostring(e.rank) or "—") .. (e.knows and (" |T" .. TICK .. ":12:12|t") or ""))
 end
 
--- Buscar: los objetos que encajan (quién lo hace, solo de los que se ven) y quién lo hace el elegido
+-- Buscar: los objetos que encajan (quién lo hace, solo de los que se ven; con alguien, «Ver todos»)
 local function PaintFind()
     local items = FindItems(CraftIndex())
     local still = false
@@ -1216,14 +1238,14 @@ local function PaintFind()
     ui.items.empty:SetText(next(craft) and L("Ningún objeto fabricable encaja con los filtros.") or L("Cargando los objetos del juego…"))
     PaintRows(ui.items, items, function(row, e)
         local c = row.cells
+        local who = CraftersOf(e.key)
         row.pickTex:SetShown(e.key == findSel)
         c[1]:SetText(e.item)
-        c[2]:SetText(e.il and tostring(e.il) or "—")
+        c[2]:SetText((e.rl and e.rl > 0) and tostring(e.rl) or "—")
         c[3]:SetText(ProfLabel(e.skill))
-        c[4]:SetText(WhoSummary(CraftersOf(e.key)))
+        c[4]:SetText(WhoSummary(who))
+        row.allBtn:SetShown(#who > 0)
     end)
-    ui.found.empty:SetText(findSel and L("Nadie de la unión lo hace.") or L("Elige un objeto para ver quién lo hace."))
-    PaintRows(ui.found, findSel and CraftersOf(findSel) or {}, FillWho)
 end
 
 function Paint()
@@ -1236,10 +1258,11 @@ function Paint()
     -- (la fila 2: el buscador y la casilla; en Buscar, los filtros)
     for _, w in ipairs(ui.row2) do w:SetShown(not off and not find) end
     ui.filters:SetShown(not off and find)
-    if off then ui.newDlg:Hide(); return end
+    if off then ui.newDlg:Hide(); ui.who:Hide(); return end
     Fresh()
     BuildOnline()
     clubRows, crafters = nil, {}
+    ui.who.Paint()
     local searching = Searching()
     -- (el chat que queda en pantalla, leído; antes de pintar las filas, que llevan lo de cada uno)
     if ChatOnScreen(chatKey) then MarkRead(chatKey) end
@@ -1749,7 +1772,8 @@ HU:Listen("CHANGED", function(what)
     elseif what == "config" then
         Migrate()
         if builtTag ~= HU.myTag then MarkDirty() end
-    elseif what == "professions" and not foundQueued and ui and ui:IsVisible() and (Searching() or view == "find") then
+    elseif what == "professions" and not foundQueued and ui and ui:IsVisible()
+        and (Searching() or view == "find" or ui.who:IsShown()) then
         foundQueued = true
         HU.After(2, function()
             foundQueued = nil
@@ -1797,13 +1821,25 @@ local function FilterLabel(base, set, opts)
     if n == 1 then return L(one[2]) end
     return string.format("%s (%d)", L(base), n)
 end
--- (el menú de un filtro: casillas, varias a la vez; con su color, si lo tiene)
+-- (el menú de un filtro: casillas, varias a la vez; con su color o, las profesiones, con su icono detrás de la casilla.
+-- Sale siempre debajo de su botón, como los desplegables del juego: con el de clic derecho salía donde estaba el ratón.
+-- Jorge, 25/11: «cada vez que salga este desplegable, debe salir siempre en el mismo sitio». Sin el sistema de menús
+-- del juego, el de clic derecho) [+ARCHITECTURE.md]
 local function FilterMenu(owner, base, set, opts)
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
-    MenuUtil.CreateContextMenu(owner, function(_, root)
+    local M, V, U = Menu, MenuVariants, MenuUtil
+    local function Open(gen)
+        if M and M.GetManager and M.PopulateDescription and V and V.GetDefaultContextMenuMixin and CreateAnchor
+            and U and U.CreateRootMenuDescription then
+            local desc = U.CreateRootMenuDescription(V.GetDefaultContextMenuMixin())
+            M.PopulateDescription(gen, owner, desc)
+            return M.GetManager():OpenMenu(owner, desc, CreateAnchor("TOPLEFT", owner, "BOTTOMLEFT", 0, -2))
+        end
+        if U and U.CreateContextMenu then return U.CreateContextMenu(owner, gen) end
+    end
+    Open(function(_, root)
         root:CreateTitle(L(base))
         for _, o in ipairs(opts) do
-            local text = o.color and ("|cff" .. o.color .. L(o[2]) .. "|r") or L(o[2])
+            local text = (o.skill and ProfLabel(o.skill)) or (o.color and ("|cff" .. o.color .. L(o[2]) .. "|r")) or L(o[2])
             root:CreateCheckbox(text, function() return set[o[1]] == true end, function()
                 set[o[1]] = (not set[o[1]]) or nil
                 owner:SetText(FilterLabel(base, set, opts))
@@ -1813,30 +1849,32 @@ local function FilterMenu(owner, base, set, opts)
     end)
 end
 
--- La fila 2 de Buscar: profesión · nivel de objeto de… a… · color · tipo, en vez del buscador y la casilla. Los menús, con
--- casillas (MenuUtil, como el resto del addon) [+ARCHITECTURE.md]
+-- La fila 2 de Buscar: profesión · nivel (el requerido) de… a… · rareza · tipo · buscador, en vez del buscador y la
+-- casilla. Los menús, con casillas, salen debajo de su botón (FilterMenu) [+ARCHITECTURE.md]
 local function BuildFilters(host)
     local f = CreateFrame("Frame", nil, host)
     f:SetAllPoints(host)
     local y = ROW2_Y - ROW2_H / 2
     local profs = {}
-    for skill, name in pairs(PROF_NAMES) do profs[#profs + 1] = { skill, name } end
+    for skill, name in pairs(PROF_NAMES) do profs[#profs + 1] = { skill, name, skill = skill } end
     table.sort(profs, function(a, b) return L(a[2]) < L(b[2]) end)
     local quals, types = {}, {}
     for i, q in ipairs(QUALITIES) do quals[i] = { q[1], q[2], color = q[3] } end
     for i, t in ipairs(TYPES) do types[i] = { t[1], t[2] } end
-    local function Menu(base, set, opts, x, w)
+    local function FilterBtn(base, set, opts, x, w)
         local b = Flat(f, L(base), w, 22)
         b:SetPoint("LEFT", host, "TOPLEFT", x, y)
         b:SetScript("OnClick", function(s) FilterMenu(s, base, set, opts) end)
         return b
     end
-    f.prof = Menu("Profesión", findProf, profs, 23, 130)
+    f.prof = FilterBtn("Profesión", findProf, profs, 23, 118)
+    -- («Nivel:», el que pide el objeto para usarlo, con las dos cajas pegadas. Jorge, 25/11: «item lvl no, debe ser Level
+    -- nada más (nivel requerido), los 2 campos más pegados a donde pone level»)
     f.lvlLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    f.lvlLabel:SetPoint("LEFT", host, "TOPLEFT", 163, y); f.lvlLabel:SetWidth(86); f.lvlLabel:SetJustifyH("LEFT")
-    f.lvlLabel:SetText(L("Nivel de objeto:"))
+    f.lvlLabel:SetPoint("LEFT", host, "TOPLEFT", 149, y); f.lvlLabel:SetWidth(32); f.lvlLabel:SetJustifyH("LEFT")
+    f.lvlLabel:SetText(L("Nivel:"))
     local function Level(x, set)
-        local box = HU.NewEditBox(f, 34)
+        local box = HU.NewEditBox(f, 30)
         box:SetPoint("LEFT", host, "TOPLEFT", x, y); box:SetNumeric(true); box:SetMaxLetters(3); box:SetJustifyH("CENTER")
         box:HookScript("OnTextChanged", function(s)
             set(tonumber(s:GetText() or ""))
@@ -1844,13 +1882,101 @@ local function BuildFilters(host)
         end)
         return box
     end
-    f.lvlMin = Level(255, function(v) findMin = v end)
+    f.lvlMin = Level(187, function(v) findMin = v end)
     f.lvlTo = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    f.lvlTo:SetPoint("LEFT", host, "TOPLEFT", 295, y); f.lvlTo:SetWidth(12); f.lvlTo:SetText(L("a"))
-    f.lvlMax = Level(313, function(v) findMax = v end)
-    f.qual = Menu("Color", findQual, quals, 357, 110)
-    f.type = Menu("Tipo", findType, types, 475, 110)
+    f.lvlTo:SetPoint("LEFT", host, "TOPLEFT", 221, y); f.lvlTo:SetWidth(14); f.lvlTo:SetJustifyH("CENTER")
+    f.lvlTo:SetText(L("a"))
+    f.lvlMax = Level(241, function(v) findMax = v end)
+    f.qual = FilterBtn("Rareza", findQual, quals, 281, 84)
+    f.type = FilterBtn("Tipo", findType, types, 373, 104)
+    -- (al final, su buscador, como el del Tablón: un nombre, o el enlace de un objeto con Mayús+clic (BuildTrade), que
+    -- deja solo ese objeto; con un enlace, al pasar el ratón, su ficha. Jorge, 25/11: «añade buscador para el item también,
+    -- que se pueda linkear ahí con el shift+click»)
+    local search = CreateFrame("EditBox", "GuildUnionTradeFindSearch", f, "SearchBoxTemplate")
+    search:SetSize(116, 22)
+    search:SetPoint("RIGHT", host, "TOPRIGHT", -14, y)
+    if search.Instructions then
+        search.Instructions:SetText(L("Buscar objeto")); DJ.C(search.Instructions, DJ.T.muted)
+    end
+    local box = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    box:SetPoint("TOPLEFT", search, "TOPLEFT", -9, 3); box:SetPoint("BOTTOMRIGHT", search, "BOTTOMRIGHT", 3, -3)
+    DJ.Panel(box, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
+    box:SetFrameLevel(search:GetFrameLevel())
+    search:SetFrameLevel(box:GetFrameLevel() + 2)
+    search:HookScript("OnTextChanged", FilterChanged)
+    search:HookScript("OnEnter", function(s) HyperTip(s, s:GetText()) end)
+    search:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    f.search = search
     return f
+end
+
+-- «Quién lo hace» un objeto de Buscar (`who.key`), en su ventana, que se mueve: todos los que pueden, como en la columna;
+-- clic derecho en alguien, susurrarle o solicitar pedido (un anuncio privado para esa persona con el objeto ya puesto; a
+-- mí, nada). Se abre con «Ver todos», al final de quién lo hace en cada fila de Buscar. Jorge, 25/11: «un botón para sacar
+-- una pestaña (movible) con todos los que pueden, con botón derecho susurrar o solicitar pedido». Va aparte de
+-- BuildTrade, que ya usa casi todo lo que deja Lua 5.1 (60 variables de fuera) [+ARCHITECTURE.md]
+local function BuildWho(host, MakeList)
+    local S = SIZES
+    for _, row in ipairs(ui.items.rows) do
+        local all = Flat(row, L("Ver todos"), S.allW, 18)
+        all:SetNormalFontObject("GameFontNormalSmall"); all:SetHighlightFontObject("GameFontHighlightSmall")
+        all:SetPoint("RIGHT", row, "RIGHT", -(6 + CELL_PAD), 0)
+        all:SetScript("OnClick", function() if row.entry then ui.OpenWho(row.entry.key) end end)
+        all:Hide()
+        row.allBtn = all
+    end
+    local who = DJ.Window("GuildUnionTradeWho", host, S.whoW, S.whoH)
+    tinsert(UISpecialFrames, "GuildUnionTradeWho")
+    who.titleText:SetWidth(S.whoW - 70); who.titleText:SetWordWrap(false)
+    local wl = MakeList(S.whoRows, false, "GuildUnionTradeWhoScroll", who.content)
+    wl.list:SetPoint("TOPLEFT", who.content, "TOPLEFT", 6, -6)
+    wl.list:SetWidth(S.whoW - 36 - 12 - S.scroll)
+    Titled(wl, nil)
+    wl.empty:SetText(L("Nadie de la unión lo hace."))
+    local function WhoMenu(owner, r)
+        local c = who.key and craft[who.key]
+        if not (c and MenuUtil and MenuUtil.CreateContextMenu) or IsMe(r.name) then return end
+        MenuUtil.CreateContextMenu(owner, function(_, root)
+            root:CreateTitle(HU:Short(r.name))
+            root:CreateButton(L("Susurrar"), function() HU.WhisperTo(r.name) end)
+            root:CreateButton(L("Solicitar pedido"), function() ui.OpenNew(r.name, c.link) end)
+            root:CreateButton(L("Cancelar"), function() end)
+        end)
+    end
+    for _, row in ipairs(wl.rows) do
+        row:SetScript("OnClick", function(s, button)
+            if button == "RightButton" and s.entry then WhoMenu(s, s.entry) end
+        end)
+    end
+    who.lst = wl
+    who.hint = DJ.C(who:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), DJ.T.muted)
+    who.hint:SetPoint("BOTTOM", who, "BOTTOM", 0, 20)
+    ui.who = who
+    -- (lo pinta Paint, si está abierta: con lo de ahora, como la columna)
+    function who.Paint()
+        if not who:IsShown() then return end
+        local c = who.key and craft[who.key]
+        if not c then who:Hide(); return end
+        local list = CraftersOf(who.key)
+        who.titleText:SetText(L("Quién lo hace") .. ": " .. c.link)
+        who.hint:SetText(string.format(L("Pueden hacerlo: %d · clic derecho: susurrar o solicitar pedido"), #list))
+        Columns(wl, COLS.search, 4)
+        PaintRows(wl, list, FillWho)
+    end
+    function ui.OpenWho(key)
+        if key ~= who.key then FauxScrollFrame_SetOffset(wl.scroll, 0) end
+        who.key, findSel = key, key
+        -- (la primera vez, a la derecha de la ventana de hermandad; luego, donde la deje el jugador)
+        if not who.placed then
+            who.placed = true
+            who:ClearAllPoints()
+            who:SetPoint("TOPLEFT", CommunitiesFrame or host, "TOPRIGHT", 4, 0)
+        end
+        who:Show(); who:Raise()
+        Paint()
+    end
+    -- (es de la sección: se cierra con ella)
+    host:HookScript("OnHide", function() who:Hide() end)
 end
 
 function HU:BuildTrade(host)
@@ -1918,6 +2044,15 @@ function HU:BuildTrade(host)
     ui.onlyCraft = only
     -- (en Buscar, en la misma fila, los filtros)
     ui.filters = BuildFilters(host)
+    -- (Mayús+clic en un objeto con uno de los dos buscadores escribiendo: entra su enlace)
+    if ChatFrameUtil and ChatFrameUtil.InsertLink then
+        hooksecurefunc(ChatFrameUtil, "InsertLink", function(text)
+            if type(text) ~= "string" then return end
+            for _, box in ipairs({ search, ui.filters.search }) do
+                if box:HasFocus() then box:SetText(text) end
+            end
+        end)
+    end
 
     -- (detrás de todo, el panel de la sección, justo debajo de las dos filas: color «content» y borde, como el calendario)
     local bg = CreateFrame("Frame", nil, host, "BackdropTemplate")
@@ -1938,7 +2073,7 @@ function HU:BuildTrade(host)
     -- Derecha (solo en Mis encargos): el chat de la persona del comercio que eliges, de arriba abajo: desde debajo del
     -- buscador hasta el borde de abajo de la sección (Jorge, 24/11)
     local chat = CreateFrame("Frame", nil, body, "BackdropTemplate")
-    chat:SetPoint("TOPRIGHT", body, "TOPRIGHT", -24, 0); chat:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -24, 8)
+    chat:SetPoint("TOPRIGHT", body, "TOPRIGHT", -SIZES.edge, 0); chat:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -SIZES.edge, 8)
     chat:SetWidth(CHAT_W)
     DJ.Panel(chat, DJ.T.panel, DJ.T.border, 12, 3)
     DJ.Parchment(chat, 0.13)
@@ -1980,10 +2115,11 @@ function HU:BuildTrade(host)
     ui.chatHint = chat:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ui.chatHint:SetPoint("LEFT", input, "LEFT", 2, 0); ui.chatHint:SetText(L("Elige un comercio con alguien para escribir"))
 
-    -- Las listas: las solicitudes y, al buscar, debajo, quién lo hace; en Buscar, los objetos
-    local function MakeList(n, sortable, sfName)
-        local lst = { n = n, rows = {}, hdrCells = {} }
-        local list = CreateFrame("Frame", nil, body)
+    -- Las listas: las solicitudes y, al buscar, debajo, quién lo hace; en Buscar, los objetos (y quién lo hace uno, en su
+    -- ventana: `parent`)
+    local function MakeList(n, sortable, sfName, parent)
+        local lst = { n = n, rows = {}, hdrCells = {}, sortable = sortable }
+        local list = CreateFrame("Frame", nil, parent or body)
         lst.list = list
         lst.title = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         lst.title:SetPoint("TOPLEFT", list, "TOPLEFT", 4, 0); lst.title:Hide()
@@ -2127,7 +2263,8 @@ function HU:BuildTrade(host)
     ui.req = MakeList(ROWS, true, "GuildUnionTradeScroll")
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
-    -- (Buscar: los objetos, con su enlace en la primera columna; clic, se elige y debajo sale quién lo hace)
+    -- (Buscar: los objetos, con su enlace en la primera columna; clic, se elige (lo que pide «+ Nuevo anuncio»); al final
+    -- de quién lo hace, «Ver todos» abre su ventana)
     ui.items = MakeList(ROWS, false, "GuildUnionTradeScroll3")
     ui.items.itemCol = 1
     for _, row in ipairs(ui.items.rows) do
@@ -2135,11 +2272,11 @@ function HU:BuildTrade(host)
         row:SetScript("OnClick", function(s)
             if not s.entry then return end
             findSel = s.entry.key
-            FauxScrollFrame_SetOffset(ui.found.scroll, 0)
             Paint()
         end)
     end
     ui.items.list:Hide()
+    BuildWho(host, MakeList)
 
     -- Abajo: «+ Nuevo anuncio», como hasta la copia 304 (teñido de verde, letra blanca), centrado debajo de la lista
     -- (Layout); va en el panel, para quedar encima de él [+ARCHITECTURE.md]
