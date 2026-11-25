@@ -124,13 +124,6 @@ local function LongDay(t)
     return string.format(L("%s %d de %s"), L(DAYS[WeekDay(t)]), d.day, L(MONTHS[d.month]))
 end
 local function Find(id) for _, e in ipairs(events) do if e.id == id then return e end end end
-local function Count(e)
-    local n = 0
-    for _, v in pairs(e.signups) do if v == "yes" then n = n + 1 end end
-    return n
-end
--- (lo que va tras cuántos van: « van» o, en una banda, de cuántos: «/40 van»)
-local function Tail(e) return (Band(e) and ("/" .. (e.size or 40)) or "") .. " " .. L("van") end
 local function WhoText(e)
     local tag = e.tag and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. e.tag .. ">|r") or ""
     return (e.who == Me() and MINE or OTHERS) .. HU:Short(e.who) .. "|r" .. tag
@@ -239,19 +232,46 @@ end
 local function InAnyRaid(e, name)
     for _, r in ipairs(e.raids or {}) do if FindPos(r, name) then return r end end
 end
-local function Unassigned(e)
+-- De la reserva: se apuntó a una banda completa y quien la organiza no lo ha subido a la raid (Jorge, 25/11: «reserva,
+-- decide el líder»). Donde están sus raids (el PC de quien la creó, o uno de prueba), lo dice la raid; en los demás, la
+-- lista que publica (u<id>, Packs/Events.lua) [+ARCHITECTURE.md]
+local function Reserve(e, n)
+    if not (e.reserve and e.reserve[n]) then return false end
+    if e.test or e.who == Me() then return not InAnyRaid(e, n) end
+    return not (e.up and e.up[n:lower()])
+end
+-- (quiénes van y cuántos, sin la reserva; una banda está completa con tantos como su tamaño)
+local function Going(e)
     local out = {}
-    for n, v in pairs(e.signups) do if v == "yes" and not InAnyRaid(e, n) then out[#out + 1] = n end end
+    for n, v in pairs(e.signups) do if v == "yes" and not Reserve(e, n) then out[#out + 1] = n end end
+    return out
+end
+local function Count(e) return #Going(e) end
+local function Full(e) return Band(e) and Count(e) >= (e.size or 40) end
+-- (lo que va tras cuántos van: « van» o, en una banda, de cuántos: «/40 van» o, llena, «/40 · Completo». Jorge, 25/11:
+-- «cuando esté completo que ponga "completo"»)
+local function Tail(e)
+    if not Band(e) then return " " .. L("van") end
+    return "/" .. (e.size or 40) .. (Full(e) and (" · " .. L("Completo")) or (" " .. L("van")))
+end
+-- (los que van sin raid; con reserves, los de la reserva sin raid)
+local function Unassigned(e, reserves)
+    local out = {}
+    for n, v in pairs(e.signups) do
+        if v == "yes" and not InAnyRaid(e, n) and Reserve(e, n) == (reserves == true) then out[#out + 1] = n end
+    end
     table.sort(out)
     return out
 end
--- (el banquillo que se ve: con un rol elegido arriba, solo los de ese rol; y, aparte, todos los que no tienen raid)
+-- (el banquillo que se ve: los que van sin raid y, al final, la reserva; con un rol elegido arriba, solo los de ese rol.
+-- Da eso, los que van sin raid (todos), cuántos de lo que se ve son de la reserva y cuántos hay en ella)
 local function BenchShown(e)
-    local free = Unassigned(e)
-    if not benchRole then return free, free end
-    local shown = {}
-    for _, n in ipairs(free) do if RoleOf(e, n) == benchRole then shown[#shown + 1] = n end end
-    return shown, free
+    local shown, free, res, nres = {}, Unassigned(e), Unassigned(e, true), 0
+    for _, n in ipairs(free) do if not benchRole or RoleOf(e, n) == benchRole then shown[#shown + 1] = n end end
+    for _, n in ipairs(res) do
+        if not benchRole or RoleOf(e, n) == benchRole then shown[#shown + 1] = n; nres = nres + 1 end
+    end
+    return shown, free, nres, #res
 end
 -- (lo que se ve en la ficha, en orden: el banquillo de arriba abajo y luego la raid, grupo a grupo. Mayús elige un tramo)
 local function PickOrder(shown, r)
@@ -391,6 +411,17 @@ local function Prune(e)
         for _, n in ipairs(Members(r)) do if e.signups[n] ~= "yes" then TakeOut(r, n) end end
     end
 end
+-- (mi banda de verdad: quién de la reserva está en su raid, a la red (u<id>), para que en los demás PC se vea subido)
+local function SyncUp(e)
+    if e.test or e.who ~= Me() or not Band(e) then return end
+    local want, have = {}, e.promoted or {}
+    for n in pairs(e.reserve) do if e.signups[n] == "yes" and InAnyRaid(e, n) then want[#want + 1] = n end end
+    table.sort(want, function(a, b) return a:lower() < b:lower() end)
+    local same = #want == #have
+    for i = 1, #want do if same and want[i]:lower() ~= have[i]:lower() then same = false end end
+    -- (lo mandado ya es lo que hay, aunque Rebuild aún no lo haya leído: si se cambia otra vez enseguida, se compara con esto)
+    if not same and HU:ProposeEventPromoted(e.id, want) then e.promoted = want end
+end
 local function Rebuild()
     dirty = false
     local list, byId = {}, {}
@@ -407,7 +438,8 @@ local function Rebuild()
     -- (las raids, con su tabla guardada: lo que se mueve se guarda solo. Las de los míos, guardadas desde el principio)
     local saved, me = HU.db.calRaids, Me()
     for _, e in ipairs(list) do
-        e.signups, e.roles = {}, {}
+        e.signups, e.roles, e.reserve, e.up = {}, {}, {}, {}
+        for _, n in ipairs(e.promoted) do e.up[n:lower()] = true end
         local raids = saved[e.id]
         if not raids and e.who == me then raids = {}; saved[e.id] = raids end
         if raids then raids.t = e.t end
@@ -415,14 +447,14 @@ local function Rebuild()
     end
     for _, s in ipairs(signs) do
         local e = byId[s.id]
-        if e then e.signups[s.who], e.roles[s.who] = "yes", s.role end
+        if e then e.signups[s.who], e.roles[s.who], e.reserve[s.who] = "yes", s.role, s.reserve end
     end
     -- (una banda mía es una sola raid: si aún no la tiene, se crea, y la lleva quien la creó si va)
     for _, e in ipairs(list) do
         if Band(e) and e.who == me and #e.raids == 0 then NewRaid(e, e.signups[me] == "yes" and me or nil) end
     end
-    -- (quien ya no va sale de mis raids)
-    if Whole() then for _, e in ipairs(list) do Prune(e) end end
+    -- (quien ya no va sale de mis raids; y quién de la reserva está en ellas, a la red)
+    if Whole() then for _, e in ipairs(list) do Prune(e); SyncUp(e) end end
     for _, e in ipairs(testEvents) do list[#list + 1] = e end
     -- (en una banda que ha bajado de tamaño, quien se queda en un grupo de más vuelve al banquillo)
     for _, e in ipairs(list) do
@@ -627,24 +659,33 @@ local function Status(name)
     return st.s == "ok" and ST_OK or st.s == "no" and ST_NO or ST_WAIT
 end
 
--- Apuntarse (con un rol) o desapuntarse; al apuntarse se entra en una raid con sitio. Yo, en uno de verdad: primero a la
--- red (s<id>) y luego lo de mis raids
-local function SetSignup(e, name, role)
+-- Apuntarse (con un rol; de reserva, si reserve) o desapuntarse; al apuntarse se entra en una raid con sitio, salvo de
+-- reserva: de ahí solo sube quien organiza. Yo, en uno de verdad: primero a la red (s<id>) y luego lo de mis raids
+local function SetSignup(e, name, role, reserve)
     if not e.test and name == Me() then
-        if not HU:ProposeSignup(e.id, role) then return end
+        if not HU:ProposeSignup(e.id, role, reserve) then return end
         Rebuild()
         e = Find(e.id) or e
     end
-    e.roles = e.roles or {}
+    e.roles, e.reserve = e.roles or {}, e.reserve or {}
     if role then
-        e.signups[name], e.roles[name] = "yes", role
-        AutoPlace(e, name)
+        e.signups[name], e.roles[name], e.reserve[name] = "yes", role, reserve or nil
+        if not reserve then AutoPlace(e, name) end
     else
-        e.signups[name], e.roles[name] = nil, nil
+        e.signups[name], e.roles[name], e.reserve[name] = nil, nil, nil
         for _, r in ipairs(e.raids or {}) do TakeOut(r, name) end
     end
 end
--- (el botón: si ya voy, me quita; si no, pregunta el rol)
+-- (lo que dice el botón: «Apuntarme» o, con la banda completa, «Ir de reserva»; apuntado, con el tic, «Apuntado» o, de la
+-- reserva, «Reserva»)
+local function JoinLabel(e)
+    local me = Me()
+    if e.signups[me] ~= "yes" then return Full(e) and L("Ir de reserva") or L("Apuntarme") end
+    return "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " .. (Reserve(e, me) and ("|cffffb040" .. L("Reserva"))
+        or ("|cff40ff40" .. L("Apuntado"))) .. "|r"
+end
+-- (el botón: si ya voy, me quita; si no, pregunta el rol. Con la banda completa, se va de reserva: Jorge, 25/11, «que aun
+-- así la gente pueda apuntarse como reserva»)
 local function SignUp(e, owner)
     if e.signups[Me()] == "yes" then
         ui.confirm(L("¿Seguro que quieres salir del evento?"), function() SetSignup(e, Me(), nil); Paint() end)
@@ -654,7 +695,8 @@ local function SignUp(e, owner)
     if e.minLevel and type(myLv) == "number" and myLv < e.minLevel then
         return HU:Print(string.format(L("Este evento pide nivel %d o más."), e.minLevel))
     end
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then SetSignup(e, Me(), lastRole or "DAMAGER"); Paint(); return end
+    local reserve = Full(e)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then SetSignup(e, Me(), lastRole or "DAMAGER", reserve); Paint(); return end
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(L("¿Con qué rol vas?"))
         local _, myClass = UnitClass("player")
@@ -662,7 +704,7 @@ local function SignUp(e, owner)
             if CanRole(myClass, role) then
                 root:CreateButton(RoleIcon(role, 16) .. "  " .. L(ROLE_NAME[role]), function()
                     lastRole = role
-                    SetSignup(e, Me(), role)
+                    SetSignup(e, Me(), role, reserve)
                     Paint()
                 end)
             end
@@ -743,7 +785,7 @@ local function PaintDetail()
     d.sub:SetText(KindText(e) .. "   |cffe6e6ea" .. LongDay(e.t) .. ", " .. date("%H:%M", e.t) .. "|r   |cffa0a4ad"
         .. L("por") .. "|r " .. WhoText(e) .. "   |cff40ff40" .. Count(e) .. "|r|cffe6e6ea" .. Tail(e) .. "|r"
         .. (e.minLevel and ("   |cffa0a4ad" .. string.format(L("Nv. %d+"), e.minLevel) .. "|r") or ""))
-    d.roles:SetText(RoleCounts(e, (function() local t = {} for n, v in pairs(e.signups) do if v == "yes" then t[#t + 1] = n end end return t end)()))
+    d.roles:SetText(RoleCounts(e, Going(e)))
     -- (la descripción, debajo de esa línea: lo que ocupa baja la raya y todo lo de debajo; sin descripción, nada)
     local desc = e.desc or ""
     d.desc:SetText(desc)
@@ -754,7 +796,7 @@ local function PaintDetail()
     local classes = ClassMap()
     local manage = CanManage(e)
     local mine = e.signups[Me()] == "yes"
-    d.join:Label(mine and ("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff40" .. L("Apuntado") .. "|r") or L("Apuntarme"))
+    d.join:Label(JoinLabel(e))
     d.join:Pick(mine)
 
     if raidPick > #e.raids then raidPick = #e.raids end
@@ -798,7 +840,7 @@ local function PaintDetail()
     d.convert:SetShown(amLeader)
     d.convert:SetEnabled(inGroup and not inRaid and UnitIsGroupLeader("player") and true or false)
     -- (con un rol elegido arriba del banquillo, solo los de ese rol; en la cabecera, cuántos de cuántos)
-    local shown, free = BenchShown(e)
+    local shown, free, nres, allRes = BenchShown(e)
     -- (lo elegido con Ctrl / Mayús, solo de lo que se ve; quien no lleva esta raid no invita, y no elige)
     if amLeader then
         local seen = {}
@@ -818,20 +860,30 @@ local function PaintDetail()
     end
     local levels = LevelMap()
     for _, b in ipairs(d.roleBtns) do b:Pick(b.role == benchRole) end
-    d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. (benchRole and (#shown .. "/") or "") .. #free .. ")|r")
-    -- (con más de los que caben, la barra: las filas se estrechan para dejarle sitio)
-    FauxScrollFrame_Update(d.benchScroll, #shown, BENCH_N, 18)
+    d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. (benchRole and ((#shown - nres) .. "/") or "") .. #free .. ")|r")
+    -- (las filas: los que van sin raid y, si hay reserva, su cabecera y ella, aparte (Jorge, 25/11: «la reserva aparte en
+    -- el banquillo»); con más de los que caben, la barra: las filas se estrechan para dejarle sitio)
+    local rows = {}
+    for i, n in ipairs(shown) do
+        if i == #shown - nres + 1 then rows[#rows + 1] = false end
+        rows[#rows + 1] = n
+    end
+    if allRes > 0 and nres == 0 then rows[#rows + 1] = false end
+    FauxScrollFrame_Update(d.benchScroll, #rows, BENCH_N, 18)
     local off = FauxScrollFrame_GetOffset(d.benchScroll)
-    local w = #shown > BENCH_N and 122 or 142
+    local w = #rows > BENCH_N and 122 or 142
     for i, b in ipairs(d.bench) do
-        local n = shown[off + i]
-        b.name = n
+        local n = rows[off + i]
+        b.name = n or nil
         b:SetWidth(w)
-        b.fill:SetAlpha(1)
-        b.pick:SetShown(n ~= nil and picks[n] == true)
+        b.fill:SetAlpha(n == false and 0 or 1)
+        b.pick:SetShown(n and picks[n] == true or false)
         if n then
             local lv = levels[(HU:FullName(n) or n):lower()] or levels[n:lower()]
             b.text:SetText((lv and ("|cffa0a4ad" .. lv .. "|r ") or "") .. ColorName(n, classes, RoleOf(e, n)))
+            b:Show()
+        elseif n == false then
+            b.text:SetText("|cffffb040" .. L("Reserva") .. "|r  |cffa0a4ad(" .. (benchRole and (nres .. "/") or "") .. allRes .. ")|r")
             b:Show()
         else
             b:Hide()
@@ -868,8 +920,9 @@ local function PaintDetail()
         d.hint:SetText(manage and L("Arrastra los nombres a otro grupo, a otra raid (su pestaña) o al banquillo. Clic derecho: más opciones.") or "")
     end
     d:Show()
-    -- (lo que se cambia aquí, con la banda montándose, también se lleva a la banda)
+    -- (lo que se cambia aquí, con la banda montándose, también se lleva a la banda; y quién de la reserva ha subido, a la red)
     ArrangeSoon()
+    if Whole() then SyncUp(e) end
 end
 
 -- Clic derecho en un nombre: hacer líder, pasar a otra raid, sacar (al líder, nada de eso: no se mueve), susurrar
@@ -1289,17 +1342,14 @@ local function PaintCards()
             card.who:SetText("|cffa0a4ad" .. L("por") .. "|r " .. WhoText(e))
             card.going:SetText((e.signups[Me()] == "yes" and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " or "")
                 .. Count(e) .. Tail(e))
-            local goingNames = {}
-            for n, v in pairs(e.signups) do if v == "yes" then goingNames[#goingNames + 1] = n end end
-            card.roles:SetText(RoleCounts(e, goingNames))
+            card.roles:SetText(RoleCounts(e, Going(e)))
             -- (el título acaba antes de los roles, que van en su franja; quién y tipo · hora, antes de cuántos van)
             local rw, gw = tonumber(card.roles:GetStringWidth()) or 0, tonumber(card.going:GetStringWidth()) or 0
             card.title:SetPoint("TOPRIGHT", -132 - rw - 8, -8)
             card.who:SetPoint("TOPRIGHT", -132 - gw - 8, -29)
             card.kind:SetPoint("TOPRIGHT", -132 - gw - 8, -43)
-            local mine = e.signups[Me()] == "yes"
-            card.join:Label(mine and ("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff40" .. L("Apuntado") .. "|r") or L("Apuntarme"))
-            card.join:Pick(mine)
+            card.join:Label(JoinLabel(e))
+            card.join:Pick(e.signups[Me()] == "yes")
             card:Show()
         else
             card:Hide()
@@ -1703,7 +1753,7 @@ local function BuildNewDialog(host)
             if not HU:ProposeEvent(old.id, e) then return HU:Print(L("No se ha podido guardar el evento.")) end
             Rebuild()
         elseif ui.testOn and not HU:CanMakeEvents() then
-            e.test, e.signups, e.roles, e.raids = true, { [Me()] = "yes" }, { [Me()] = MyRole() }, {}
+            e.test, e.signups, e.roles, e.raids, e.reserve = true, { [Me()] = "yes" }, { [Me()] = MyRole() }, {}, {}
             if Band(e) then NewRaid(e, Me()) end
             testEvents[#testEvents + 1] = e
             dirty = true
@@ -1761,7 +1811,7 @@ local function AddTest()
     end
     local function E(title, kind, t, who, tag, desc, su)
         testEvents[#testEvents + 1] = { id = NewId() .. #testEvents, title = title, kind = kind, t = t, who = who, tag = tag,
-            desc = desc, signups = su or {}, raids = {}, test = true }
+            desc = desc, signups = su or {}, raids = {}, reserve = {}, test = true }
         return testEvents[#testEvents]
     end
     local CLASSES = { "WARRIOR", "PRIEST", "MAGE", "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN" }
@@ -1808,6 +1858,19 @@ local function AddTest()
         { [Me()] = "yes" })
     local ony = E(L("Guarida de Onyxia"), "raid", At(8, 21), "Bea-Prueba", other, L("Para los que tengáis la misión."), { ["Bea-Prueba"] = "yes" })
     ony.minLevel, ony.size = 60, 40
+    -- (Zul'Gurub, una banda de 20 mía y completa: 20 que van, 16 ya en la raid, y 4 de la reserva)
+    local zg = E(L("Zul'Gurub"), "raid", At(4, 20), Me(), HU.myTag, L("Los de la reserva entran si alguien falla."), {})
+    zg.size, zg.roles, zg.minLevel = 20, {}, 58
+    NewRaid(zg, Me())
+    zg.signups[Me()], zg.roles[Me()] = "yes", "DAMAGER"
+    for k, n in ipairs(NAMES) do
+        local full = n .. "-Prueba"
+        zg.signups[full], zg.roles[full] = "yes", ROLE_BY[testClass[full]] or "DAMAGER"
+        if k > 19 then zg.reserve[full] = true elseif k <= 15 then AutoPlace(zg, full) end
+    end
+    for _, n in ipairs({ "Jandra-Prueba", "Pepe-Prueba", "Bea-Prueba" }) do
+        zg.signups[n], zg.roles[n], zg.reserve[n] = "yes", ROLE_BY[testClass[n]] or "DAMAGER", true
+    end
     ui.testOn = true
     dirty = true
     Paint()

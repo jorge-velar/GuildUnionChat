@@ -1124,6 +1124,11 @@ E["No hay raids próximas."] = "No upcoming raids."
 E["La raid la monta quien la organiza."] = "The organizer sets up the raid."
 E["Valle de Alterac"] = "Alterac Valley"
 E["Premade de la unión: cuantas raids hagan falta."] = "Union premade: as many raids as needed."
+E["Completo"] = "Full"
+E["Reserva"] = "Reserve"
+E["Ir de reserva"] = "Join as reserve"
+E["Zul'Gurub"] = "Zul'Gurub"
+E["Los de la reserva entran si alguien falla."] = "Reserves get in if someone drops out."
 
 
 E["(hay %d)"] = "(%d available)"

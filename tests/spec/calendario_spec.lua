@@ -436,7 +436,7 @@ describe("Calendario: la sección", function()
         A.falsy(ui.viewBtns.list.picked)
         A.truthy(ui.list:IsShown(), "también en tarjetas")
         A.falsy(ui.month:IsShown())
-        A.same({ "Núcleo de Magma", "Guarida de Onyxia" }, Titles(ui), "Raids: las bandas")
+        A.same({ "Núcleo de Magma", "Zul'Gurub", "Guarida de Onyxia" }, Titles(ui), "Raids: las bandas")
         Click(ui.viewBtns.month)
         A.truthy(ui.viewBtns.month.picked)
         A.falsy(ui.viewBtns.list.picked)
@@ -458,7 +458,7 @@ describe("Calendario: la sección", function()
         Section(a, 3)
         A.truthy(ui:IsShown())
         A.falsy(ui.detail:IsShown(), "al volver, sin ficha abierta")
-        A.equal(2, #Titles(ui), "en Raids, donde estaba")
+        A.equal(3, #Titles(ui), "en Raids, donde estaba")
         -- (sin bandas, en Raids: «No hay raids próximas.»; sin lo demás, en Eventos, lo de siempre)
         TestMode(a, ui)
         A.truthy(ui.empty:IsShown())
@@ -1820,7 +1820,7 @@ describe("Calendario: modo prueba", function()
             A.equal(11, BenchCount(d), "los demás, sin raid")
             A.equal("Tester-Reino", d.groups[1].slots[1].name, "la llevo yo")
         end
-        A.same({ "Núcleo de Magma", "Guarida de Onyxia" }, Titles(ui), "en Raids, las dos bandas")
+        A.same({ "Núcleo de Magma", "Zul'Gurub", "Guarida de Onyxia" }, Titles(ui), "en Raids, las bandas")
         A.matches("^|cffff8040Banda de 40|r", Card(ui, "Guarida de Onyxia").kind:GetText())
         Click(btn)
         A.falsy(btn.picked)
@@ -2225,6 +2225,174 @@ describe("Calendario: las raids de un evento", function()
         -- (yo no creé el evento y ya no llevo la raid: ni invitar ni organizar)
         A.falsy(d.invite:IsShown())
         A.falsy(d.addRaid:IsShown())
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Calendario: banda completa y reserva (Jorge, 25/11: «cuando esté completo que ponga completo pero que aun así la gente pueda apuntarse como reserva»; «reserva, decide el líder»)", function()
+    local TICK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t "
+    -- (alguien de mi hermandad propone por GUILD, como lo manda su addon)
+    local function FromGuild(a, who, key, data)
+        a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. a.HU.StampNow() .. "~" .. data, "GUILD", who)
+    end
+    local function Data(a, key)
+        local e = a.HU.db.wuStore.UNO.EV["tester-reino," .. key]
+        return e and e.d
+    end
+    local function BenchRow(d, name)
+        for _, b in ipairs(d.bench) do if b:IsShown() and b.name == name then return b end end
+    end
+    -- (la cabecera de la reserva en el banquillo, si la hay: la fila que no es nadie)
+    local function Header(d)
+        for _, b in ipairs(d.bench) do if b:IsShown() and not b.name then return b.text:GetText() end end
+    end
+    -- (mi banda de 10, desde Raids, con 9 de mi hermandad que van, de daño: completa)
+    local function MyTen(a, ui)
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        Click(ui.newDlg.sizeBtns[1])
+        ui.newDlg.title:SetText("Diez")
+        Click(Child(a, ui.newDlg, "Crear"))
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        for k = 1, 9 do FromGuild(a, "Uno" .. string.char(96 + k) .. "-Reino", "s" .. id, "D") end
+        a.w:Advance(0.5)
+        return id
+    end
+
+    it("en el modo prueba, Zul'Gurub (mía, de 20): «20/20 · Completo» en la tarjeta y en la ficha; la reserva, aparte en el banquillo, bajo su cabecera; «Colocar en raids» no la coloca", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local c = Card(ui, "Zul'Gurub")
+        A.equal(TICK .. "20/20 · Completo", c.going:GetText())
+        A.matches("Apuntado", c.join:GetText(), "yo voy")
+        A.same({ TANK = 3, HEALER = 8, DAMAGER = 9 }, Roles(c.roles:GetText()), "los roles, de los 20 que van")
+        local d = Detail(ui, "Zul'Gurub")
+        A.matches("|cff40ff4020|r|cffe6e6ea/20 · Completo|r", d.sub:GetText())
+        A.same(Roles(c.roles:GetText()), Roles(d.roles:GetText()))
+        A.equal("Raid 1 (16)", d.raidTabs[1]:GetText())
+        A.equal("Sin raid  |cffa0a4ad(4)|r", d.benchHead:GetText(), "los 4 que van sin raid; la reserva, aparte")
+        A.same({ "Pim", "Quin", "Rhea", "Sol", "Bea", "Jandra", "Pepe", "Tamsin" }, Bench(d))
+        A.is_nil(d.bench[5].name, "tras los 4, la cabecera, que no es nadie")
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(4)|r", d.bench[5].text:GetText())
+        A.equal(0, d.bench[5].fill:GetAlpha(), "sin fondo de fila")
+        -- (la cabecera no se elige, no se arrastra ni abre menú)
+        local menus = Menus(a)
+        Click(d.bench[5], "RightButton")
+        A.equal(0, #menus)
+        Drag(d.bench[5], d.groups[4])
+        A.equal("Raid 1 (16)", d.raidTabs[1]:GetText())
+        A.equal("Colocar en raids (4)", d.place:GetText())
+        Click(d.place)
+        A.equal("Raid 1 (20)", d.raidTabs[1]:GetText())
+        A.same({ "Bea", "Jandra", "Pepe", "Tamsin" }, Bench(d), "la reserva, sin colocar")
+        A.falsy(d.place:IsShown())
+        -- (con el filtro por rol, también la reserva; la cabecera dice cuántos de cuántos, y sigue aunque no se vea nadie)
+        Click(d.roleBtns[3]) -- (sanador: Bea, Jandra y Tamsin)
+        A.same({ "Bea", "Jandra", "Tamsin" }, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(3/4)|r", Header(d))
+        Click(d.roleBtns[2]) -- (tanque: Pepe)
+        A.same({ "Pepe" }, Bench(d))
+        Click(d.roleBtns[4]) -- (daño: nadie)
+        A.same({}, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(0/4)|r", Header(d))
+        local en = Community({ locale = "enUS" })
+        local enUi = Open(en)
+        TestMode(en, enUi)
+        A.equal(TICK .. "20/20 · Full", Card(enUi, "Zul'Gurub").going:GetText())
+        A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("mi banda de 10, completa: quien se apunta después va de reserva, aparte; quien organiza la sube a la raid cuando hay hueco y se publica (u<id>), y al bajarla se quita; si se va uno que iba, nadie sube solo", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        local id = MyTen(a, ui)
+        local c = Card(ui, "Diez")
+        A.equal(TICK .. "10/10 · Completo", c.going:GetText())
+        -- (dos más, de reserva: así lo mandan sus addons con la banda completa)
+        FromGuild(a, "Reserva1-Reino", "s" .. id, "Hr")
+        FromGuild(a, "Reserva2-Reino", "s" .. id, "Dr")
+        a.w:Advance(0.5)
+        A.equal(TICK .. "10/10 · Completo", c.going:GetText(), "la reserva no cuenta")
+        local d = Detail(ui, "Diez")
+        A.matches("|cff40ff4010|r|cffe6e6ea/10 · Completo|r", d.sub:GetText())
+        A.equal("Sin raid  |cffa0a4ad(9)|r", d.benchHead:GetText())
+        A.same({ "Unoa", "Unob", "Unoc", "Unod", "Unoe", "Unof", "Unog", "Unoh", "Unoi", "Reserva1", "Reserva2" }, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(2)|r", Header(d))
+        A.is_nil(d.bench[10].name, "tras los 9")
+        Click(d.place)
+        A.truthy(Said(a, "Colocados 9 en raids; 0 se quedan sin raid."))
+        A.equal("Raid 1 (10)", d.raidTabs[1]:GetText())
+        A.same({ "Reserva1", "Reserva2" }, Bench(d), "la reserva, sin colocar")
+        A.is_nil(Data(a, "u" .. id .. "_1"), "nadie ha subido")
+        -- (saco a uno de la raid y subo a Reserva1: deja de ser reserva y se publica)
+        Click((SlotOf(d, "Unoa-Reino")), "RightButton")
+        Item(menus[#menus], "Sacar de la raid").fn()
+        Drag(BenchRow(d, "Reserva1-Reino"), d.groups[1])
+        A.truthy(SlotOf(d, "Reserva1-Reino"))
+        A.equal("Reserva1-Reino", Data(a, "u" .. id .. "_1"), "a la red")
+        A.same({ "Unoa", "Reserva2" }, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(1)|r", Header(d))
+        a.w:Advance(1)
+        A.matches("|cff40ff4011|r|cffe6e6ea/10 · Completo|r", d.sub:GetText(), "ahora va")
+        -- (la bajo al banquillo: vuelve a la reserva, y se quita de la red)
+        Drag((SlotOf(d, "Reserva1-Reino")), d.benchF)
+        A.equal("", Data(a, "u" .. id .. "_1"))
+        A.same({ "Unoa", "Reserva1", "Reserva2" }, Bench(d))
+        -- (se va uno de los que van: 9 de 10, sin «Completo»; nadie de la reserva sube solo)
+        a.w:Advance(1)
+        FromGuild(a, "Unob-Reino", "s" .. id, "")
+        a.w:Advance(0.5)
+        A.matches("|cff40ff409|r|cffe6e6ea/10 van|r", d.sub:GetText())
+        A.equal(TICK .. "9/10 van", c.going:GetText())
+        A.same({ "Unoa", "Reserva1", "Reserva2" }, Bench(d), "la reserva, donde estaba")
+        A.falsy(SlotOf(d, "Unob-Reino"), "fuera de la raid")
+        A.same({}, a:Errors())
+    end)
+
+    it("en la banda de otro, completa: el botón dice «Ir de reserva» y me apunto de reserva («Dr»); cuando quien la organiza me sube (su lista u<id>), voy; la lista de otro no cuenta", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        local t36 = a.HU.B36(MONDAY + 86400)
+        FromGuild(a, "Compi-Reino", "ex1", t36 .. ",raid,10,0,,Banda de Compi,")
+        for k = 1, 10 do FromGuild(a, "Uno" .. string.char(96 + k) .. "-Reino", "sx1", "T") end
+        a.w:Advance(0.5)
+        local c = Card(ui, "Banda de Compi")
+        A.equal("10/10 · Completo", c.going:GetText())
+        A.equal("Ir de reserva", c.join:GetText())
+        a.env.UnitClass = function() return "Mago", "MAGE" end
+        Click(c.join)
+        Item(menus[#menus], "Daño").fn()
+        A.equal("Dr", Data(a, "sx1"), "de reserva, a la red")
+        A.equal(TICK .. "|cffffb040Reserva|r", c.join:GetText())
+        A.equal(TICK .. "10/10 · Completo", c.going:GetText(), "la reserva no cuenta")
+        local d = Detail(ui, "Banda de Compi")
+        A.equal(TICK .. "|cffffb040Reserva|r", d.join:GetText())
+        A.truthy(OnBench(d, "Tester-Reino"))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(1)|r", d.bench[11].text:GetText(), "aparte, tras los 10")
+        A.equal("Tester-Reino", d.bench[12].name)
+        -- (la lista de otro que no la creó: nada)
+        FromGuild(a, "Unoa-Reino", "ux1_1", "Tester-Reino")
+        a.w:Advance(0.5)
+        A.equal(TICK .. "|cffffb040Reserva|r", c.join:GetText())
+        -- (Compi me sube)
+        a.w:Advance(1)
+        FromGuild(a, "Compi-Reino", "ux1_1", "Tester-Reino")
+        a.w:Advance(0.5)
+        A.equal(TICK .. "|cff40ff40Apuntado|r", c.join:GetText())
+        A.equal(TICK .. "11/10 · Completo", c.going:GetText())
+        A.is_nil(Header(d), "sin reserva")
+        -- (salgo y vuelvo a apuntarme: completa, otra vez de reserva)
+        Click(c.join)
+        Click(Child(a, a.env.GuildUnionCalendarConfirm, "Sí"))
+        A.equal("", Data(a, "sx1"))
+        a.w:Advance(1)
+        Click(c.join)
+        Item(menus[#menus], "Daño").fn()
+        A.equal("Dr", Data(a, "sx1"))
         A.same({}, a:Errors())
     end)
 end)
@@ -3397,6 +3565,105 @@ describe("Calendario: la red (propuestas EV, Packs/Events.lua)", function()
         A.is_nil(Card(ui, "Repetido"))
         A.equal(1, Going(Card(ui, "Bien")))
         A.matches("Compi%-Reino", Card(ui, "Bien").who:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("las listas de nombres de una banda (u<id>_<n>, quién sube de la reserva): limpias, sin repetir y por orden, en las líneas que hagan falta; solo lo que cambia; 3 ya y el resto cada 7 s (quien las recibe no pasa de 5 seguidas); si cambia otra vez, lo que esperaba ya no sale", function()
+        local a = Community()
+        local HU = a.HU
+        local function Parts()
+            local out = {}
+            for k = 1, 8 do
+                local e = HU.db.wuStore.UNO.EV["tester-reino,uabc_" .. k]
+                out[k] = e and e.d or false
+            end
+            return out
+        end
+        local function Count(p) local n = 0 for _, d in ipairs(p) do if d and d ~= "" then n = n + 1 end end return n end
+        local function Promoted()
+            for _, e in ipairs(HU:PackedEvents()) do if e.id == "abc" then return e.promoted end end
+        end
+        A.truthy(HU:ProposeEvent("abc", { t = MONDAY + 86400, kind = "raid", title = "Banda" }))
+        -- (40 nombres de 20 letras: caben 8 por línea (con «Tester-Reino,uabc_1,hora,» quedan 173); y uno repetido con otras
+        -- mayúsculas, uno con espacio y otro con coma, que no son nombres)
+        local names = {}
+        for k = 40, 1, -1 do names[#names + 1] = string.format("Jugador%02d-Apellidoxx", k) end
+        names[#names + 1] = "jugador07-apellidoxx"
+        names[#names + 1] = "Con espacio"
+        names[#names + 1] = "Con,coma"
+        A.truthy(HU:ProposeEventPromoted("abc", names))
+        A.equal(3, Count(Parts()), "3 ya")
+        local p = Parts()
+        A.equal("Jugador01-Apellidoxx,Jugador02-Apellidoxx,Jugador03-Apellidoxx,Jugador04-Apellidoxx,Jugador05-Apellidoxx,"
+            .. "Jugador06-Apellidoxx,Jugador07-Apellidoxx,Jugador08-Apellidoxx", p[1], "por orden, 8 en la primera")
+        local line = "Tester-Reino,uabc_1," .. HU.B36(HU.StampNow()) .. "," .. p[1]
+        A.truthy(#line <= 200 and #line + 21 > 200, "la línea cabe en 200, y con uno más no cabría: " .. #line)
+        a.w:Advance(7)
+        A.equal(4, Count(Parts()), "y una cada 7 s")
+        a.w:Advance(7)
+        A.equal(5, Count(Parts()), "40 nombres, 5 líneas")
+        a.w:Advance(30)
+        A.equal(5, Count(Parts()))
+        local got = Promoted()
+        A.equal(40, #got)
+        A.same({ "Jugador01-Apellidoxx", "Jugador40-Apellidoxx" }, { got[1], got[40] })
+        -- (otra vez lo mismo: nada sale)
+        local function Sent()
+            local n = 0
+            for _, m in ipairs(a.w.sent) do if m.text:find("^WU~UNO~EV~uabc_") then n = n + 1 end end
+            return n
+        end
+        A.equal(5, Sent(), "por GUILD, las 5")
+        A.truthy(HU:ProposeEventPromoted("abc", names))
+        a.w:Advance(30)
+        A.equal(5, Sent(), "lo que no cambia no se manda")
+        -- (dos: la primera línea cambia y las otras 4 se vacían, 3 ya (la 1, la 2 y la 3) y 2 después; antes de que salgan,
+        -- otra lista de 22 (de 21 letras: 7 por línea): sus 4 líneas salen y las que esperaban de la de antes, no)
+        A.truthy(HU:ProposeEventPromoted("abc", { "Zeta-Reino", "Alfa-Reino" }))
+        p = Parts()
+        A.same({ "Alfa-Reino,Zeta-Reino", "", "" }, { p[1], p[2], p[3] })
+        A.matches("^Jugador25", p[4], "la 4, todavía la de antes")
+        local more = {}
+        for k = 1, 22 do more[k] = string.format("Otro%02d-Apellidoxxxxxx", k) end
+        A.truthy(HU:ProposeEventPromoted("abc", more))
+        a.w:Advance(60)
+        p = Parts()
+        A.equal(4, Count(p), "22 nombres, 4 líneas")
+        A.equal("Otro22-Apellidoxxxxxx", p[4], "la 4, de la nueva: la que esperaba de la de antes no ha salido")
+        A.same({ "", false }, { p[5], p[6] })
+        A.equal(22, #Promoted())
+        -- (vacía: todas sus líneas, vacías)
+        A.truthy(HU:ProposeEventPromoted("abc", {}))
+        a.w:Advance(60)
+        A.equal(0, Count(Parts()))
+        A.same({}, Promoted())
+        -- (lo que no se puede: un id que no vale, sin comunidad o más de 8 líneas de nombres)
+        A.falsy(HU:ProposeEventPromoted("con-guion", { "Uno-Reino" }))
+        A.falsy(HU:ProposeEventPromoted(string.rep("x", 21), { "Uno-Reino" }))
+        local many = {}
+        for k = 1, 70 do many[k] = string.format("Jugador%02d-Apellidoxx", k) end
+        A.falsy(HU:ProposeEventPromoted("abc", many), "70 no caben en 8 líneas (64 sí)")
+        HU.myTag = nil
+        A.falsy(HU:ProposeEventPromoted("abc", { "Uno-Reino" }))
+        HU.myTag = "UNO"
+        -- (de mi hermandad, por GUILD: una lista vale de líneas 1 a 8, con nombres sin espacios ni huecos y de 48 como mucho)
+        local t36 = HU.B36(MONDAY + 86400)
+        for _, m in ipairs({ "ex1~" .. t36 .. ",raid,10,0,,Suya,", "ux1_1~Bien-Reino,Otro-Reino", "ux1_9~Nueve-Reino",
+            "ux1_0~Cero-Reino", "ux1_2~Con espacio", "ux1_3~Uno-Reino,,Dos-Reino", "ux1_4~" .. string.rep("n", 49),
+            "u" .. string.rep("x", 21) .. "_1~Largo-Reino", "ix1_1~Invitado-Reino", "sx1~Tr", "sy1~Tx", "sy2~Trr" }) do
+            local key, data = m:match("^([^~]+)~(.*)$")
+            a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. HU.StampNow() .. "~" .. data, "GUILD", "Compi-Reino")
+            a.w:Advance(7)
+        end
+        local stored = {}
+        for _, e in pairs(HU.db.wuStore.UNO.EV) do if e.n == "Compi-Reino" then stored[#stored + 1] = e.k end end
+        table.sort(stored)
+        A.same({ "ex1", "ix1_1", "sx1", "ux1_1" }, stored, "solo las buenas")
+        for _, e in ipairs(HU:PackedEvents()) do
+            if e.id == "x1" then A.same({ { "Bien-Reino", "Otro-Reino" }, { "Invitado-Reino" } }, { e.promoted, e.invites }) end
+        end
+        local _, signs = HU:PackedEvents()
+        for _, s in ipairs(signs) do if s.id == "x1" then A.same({ "TANK", true }, { s.role, s.reserve }) end end
         A.same({}, a:Errors())
     end)
 

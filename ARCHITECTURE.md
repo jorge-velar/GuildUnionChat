@@ -2363,8 +2363,10 @@ organiza (UnionCalendar.lua, `calRaids`).
 | Clave | De quién | Datos |
 |---|---|---|
 | `e<id>` | el creador | `<hora36>,<tipo>,<formato>,<nivelMin>,<icono>,<título>,<descripción>`; editarlo, otra vez con el mismo id; eliminarlo, datos vacíos |
-| `s<id>` | quien se apunta | su rol: `T`, `H` o `D`; desapuntarse, datos vacíos |
+| `s<id>` | quien se apunta | su rol: `T`, `H` o `D`, y `r` detrás si va de reserva (`Dr`); desapuntarse, datos vacíos |
 | `p<id>` | el creador | `1`: fijado arriba en Eventos para todos (copia 331); quitarlo, datos vacíos. De otro, no cuenta |
+| `u<id>_<n>` | el creador de una banda | quién de la reserva ha subido a la raid: `Nombre-Reino,Nombre-Reino,…`, línea `n` de 1 a 8. De otro, no cuenta |
+| `i<id>_<n>` | el creador de una banda por invitación | a quién invita, igual (ver «Por invitación») |
 
 - `<id>`: letras y cifras, 20 como mucho (el de `NewId` del calendario: 8 cifras hexadecimales).
 - `<hora36>`: la hora del evento en base 36 (`HU.B36`; se lee con `tonumber(x, 36)`). `<tipo>`: raid, dungeon, pvp,
@@ -2382,10 +2384,22 @@ organiza (UnionCalendar.lua, `calRaids`).
 - **Lo que cabe.** La línea del paquete («Nombre-Reino,clave,hora,datos») no puede pasar de 200 (`PART` de
   Net/Packs.lua): una más larga no se publicaría a las otras hermandades. `HU:ProposeEvent` mide lo que queda con mi
   nombre y la clave, y corta la descripción (y, si hiciera falta, el título) para que quepa; los datos, además, en 180.
-- **`validate`** comprueba la forma de las tres claves. **`alive`**: el evento vive hasta 30 días después de su hora
+- **Las listas de nombres** (`u<id>_<n>`, `i<id>_<n>`; 25/11, con las bandas de Raids): hasta 40 nombres con su reino no
+  caben en una línea (200 con nombre, clave y hora; los datos, 180), así que van en hasta 8 (`LIST_PARTS`), cada una con
+  los que quepan, por orden y sin repetir (`ProposeList`: se limpian, sin mayúsculas repetidas ni nombres con espacios o
+  comas, de 48 como mucho, `NAME_MAX`). Solo se mandan las líneas que cambian, y las que sobran, vacías. **Sin pasarse del
+  tope de quien las recibe**: cada uno acepta como mucho 5 seguidas de alguien en un conjunto y 10 por minuto (`WU_BURST`,
+  `WU_RATE` de Net/Packs.lua); lo demás lo tira. Crear una banda por invitación manda el evento, el apuntado y su lista:
+  por eso de la lista salen 3 ya (`SEND_NOW`) y las demás de una en una cada 7 s (`SEND_STEP`). Si mientras tanto la
+  lista cambia otra vez, las que esperaban ya no salen (`listGen`): la nueva compara con lo que hay en mi almacén y manda
+  lo que falte. Si me voy del juego antes de que salgan, esas líneas no salen (no estaban en el almacén); al editar otra
+  vez la banda, se mandan. `HU:PackedEvents` junta las líneas que haya (`Names`) en `invites` y `promoted`, solo de quien
+  creó el evento.
+- **`validate`** comprueba la forma de cada clave. **`alive`**: el evento vive hasta 30 días después de su hora
   (`EVENT_LIVES`, también en `HU.EVENT_LIVES`; antes del 25/11, 7 días): hasta entonces se ve en el mes del calendario, y
-  las raids de quien organiza se guardan lo mismo. Lo apuntado, el fijado y lo borrado, 45 días desde que se propuso
-  (`SIGNUP_LIVES`). **`onChange`** → `HU:Changed("calendar")`.
+  las raids de quien organiza se guardan lo mismo. Lo apuntado, el fijado, las listas y lo borrado, 45 días desde que se
+  propuso (`SIGNUP_LIVES`; una lista que no cambia no se vuelve a proponer: en una banda puesta con más de 45 días de
+  antelación, su lista caduca antes que ella, como lo apuntado). **`onChange`** → `HU:Changed("calendar")`.
 - **Editar** es proponer otra vez `e<id>` con los datos nuevos: la línea es la del creador y gana la más nueva. Lo
   apuntado va en sus `s<id>`, de cada uno, y no se toca: quien estaba apuntado sigue.
 - **Eliminar** (`HU:ProposeEventDelete`) es `e<id>` con datos vacíos: borrada con su hora, no vuelve con una más vieja, y
@@ -2405,10 +2419,13 @@ Lo que usa el calendario (así el formato está solo aquí):
 - `HU:ProposeEvent(id, e)`: mi evento `{ t, kind, minLevel, icon (ruta entera), title, desc, size, invite }` (nuevo o
   editado, con el mismo id; `size` e `invite`, solo en una banda); devuelve si ha podido.
 - `HU:ProposeEventDelete(id)`: elimino mi evento; devuelve si ha podido.
-- `HU:ProposeSignup(id, rol)`: me apunto con `TANK`, `HEALER` o `DAMAGER` (otro rol, como daño); sin rol, me desapunto.
+- `HU:ProposeSignup(id, rol, reserva)`: me apunto con `TANK`, `HEALER` o `DAMAGER` (otro rol, como daño), de reserva si
+  `reserva`; sin rol, me desapunto.
+- `HU:ProposeEventPromoted(id, nombres)`: de mi banda, quién de la reserva ha subido a la raid (la lista `u`); devuelve si
+  ha podido.
 - `HU:ProposeEventPin(id, sí/no)`: fijo arriba mi evento para todos, o lo quito; devuelve si ha podido.
 - `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
-  icon, title, desc, pinned, size, invite }` y quién se apunta `{ id, tag, who, role }`.
+  icon, title, desc, pinned, size, invite, invites, promoted }` y quién se apunta `{ id, tag, who, role, reserve }`.
 
 ## Packs/Trade.lua
 
@@ -4375,6 +4392,31 @@ forever, revisarlo)» y «que no se puedan "añadir raids"». En Forever hay ban
   raid es la banda: no puede dejarla sin raid, así que la elimina entera, solo quien la creó, con la misma pregunta que
   «Eliminar» del clic derecho («¿Seguro que quieres eliminar el evento?», `DeleteEvent`). «Convertir en banda» pasa a la
   derecha de invitar.
+
+### Banda completa y reserva (`Reserve`, `Full`, `SyncUp`)
+
+Jorge, 25/11: «cuando esté completo que ponga "completo" pero que aun así la gente pueda apuntarse como reserva», y eligió
+«reserva, decide el líder»: nadie sube solo de la reserva; quien organiza decide.
+- **Completa** (`Full`): con tantos que van como su tamaño. La tarjeta, la ficha y el día dicen «40/40 · Completo» en vez
+  de «40/40 van» (`Tail`). Los que van (`Going`, `Count`) no cuentan la reserva; los roles de la tarjeta y de la ficha,
+  tampoco.
+- **Apuntarse de reserva**: con la banda completa, el botón dice «Ir de reserva» y el apuntado lleva la marca
+  (`s<id>` = `Dr`, Packs/Events.lua; `SetSignup(e, yo, rol, reserva)`). Lo decide el PC de quien se apunta, al apuntarse;
+  quien va de reserva no entra solo en la raid (`AutoPlace`, no). Apuntado, su botón dice «Reserva» (naranja) en vez de
+  «Apuntado». Si dos se apuntan a la vez a la última plaza, pueden quedar 41 de 40: «41/40 · Completo».
+- **La reserva, aparte en el banquillo** (`BenchShown`): bajo los que van sin raid, una cabecera «Reserva (N)» (la fila que
+  no es nadie: no se elige, no se arrastra ni abre menú) y la reserva, por nombre; con el filtro por rol, también ella,
+  y la cabecera dice cuántos de cuántos. «Colocar en raids» no la coloca (`Unassigned(e)` son los que van; los de la
+  reserva, `Unassigned(e, true)`).
+- **Quien organiza la sube** cuando hay hueco: arrastrándola a un grupo o con «Hacer líder» (lo de siempre). Quién es de
+  la reserva (`Reserve`): en el PC con la raid (el de quien la creó, o uno de prueba), quien lleva la marca y no está en
+  ella; al bajarla al banquillo, vuelve a serlo. Para que se vea en todos los PC, quien la creó publica quién de la
+  reserva está en la raid (`SyncUp`, la lista `u<id>`, Packs/Events.lua) al pintar la ficha y al rehacer, con los paquetes
+  enteros (`Whole`); en los demás PC, de la reserva es quien lleva la marca y no está en esa lista. Lo mandado se apunta
+  ya en el evento (`e.promoted`), por si se cambia otra vez antes de que `Rebuild` lo lea.
+- **Si se va uno que iba, no pasa nada solo**: la banda deja de estar completa («39/40 van») y la reserva sigue donde
+  estaba, hasta que quien organiza decida.
+- En el modo prueba, Zul'Gurub (banda de 20 mía, el viernes) está completa: 20 que van, 16 en la raid y 4 de la reserva.
 
 ### Cuándo sale cada evento (`Upcoming`, `LASTS`, `CARDS_AFTER`)
 

@@ -300,6 +300,78 @@ describe("Eventos entre hermandades (EV)", function()
     end)
 end)
 
+describe("Raids entre hermandades (EV): bandas de 10, 20 o 40", function()
+    -- (una banda nueva de Ana, de `size`, desde Raids, mañana a las 20:00)
+    local function NewBand(p, ui, title, size)
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        local nd = ui.newDlg
+        for _, b in ipairs(nd.sizeBtns) do if b.size == size then Click(b) end end
+        nd.title:SetText(title)
+        Click(nd.dayBtn)
+        local dp = nd.popups[2]
+        local tm = p.env.date("*t", p.env.time() + 86400)
+        if tm.month ~= dp.m then Click(Child(p, dp, ">")) end
+        for _, c in ipairs(dp.cells) do if c:IsShown() and c.day == tm.day then Click(c) end end
+        Click(Child(p, nd, "Crear"))
+        A.falsy(nd:IsShown(), "no se ha creado: " .. title)
+    end
+    -- (alguien de UNO que no se conecta: lo que manda su addon por GUILD les llega a los de UNO conectados)
+    local function FromUno(net, p, name, key, data)
+        for _, q in ipairs(net:Guildmates(p)) do
+            q.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. q.HU.StampNow() .. "~" .. data, "GUILD", name)
+        end
+    end
+
+    it("la banda de 10 de Ana se llena con su hermandad: en DOS sale «10/10 · Completo» y Bea se apunta de reserva; Ana la ve en la reserva, la sube a la raid y en DOS Bea ya va", function()
+        local net, p = Union()
+        local ana, bea = Open(p.ana), Open(p.bea)
+        NewBand(p.ana, ana, "Banda de diez", 10)
+        local id
+        for _, e in pairs(p.ana.HU.db.wuStore.UNO.EV) do if e.k:sub(1, 1) == "e" then id = e.k:sub(2) end end
+        for k = 1, 9 do FromUno(net, p.ana, "Uno" .. string.char(96 + k) .. "-Reino", "s" .. id, "D") end
+        net:Advance(1)
+        Click(bea.viewBtns.raids)
+        A.truthy(Until(net, function()
+            local c = Card(bea, "Banda de diez")
+            return c and c.going:GetText() == "10/10 · Completo"
+        end, 400), "a DOS no le llega completa")
+        local c = Card(bea, "Banda de diez")
+        A.equal("Ir de reserva", c.join:GetText())
+        A.matches("Banda de 10", c.kind:GetText())
+        local menus = Menus(p.bea)
+        Click(c.join)
+        for _, it in ipairs(menus[#menus].items) do if it.text:find("Daño", 1, true) then it.fn() end end
+        A.matches("Reserva", c.join:GetText())
+        A.equal("Dr", p.bea.HU.db.wuStore.DOS.EV["bea-reino,s" .. id].d, "de reserva, a la red")
+        -- (Ana, en su ficha: Bea en la reserva, aparte)
+        local d
+        A.truthy(Until(net, function()
+            local ac = Card(ana, "Banda de diez")
+            if not ac then return false end
+            Click(ac.info)
+            d = ana.detail
+            for _, b in ipairs(d.bench) do if b:IsShown() and b.name == "Bea-Reino" then return true end end
+            return false
+        end, 400), "Ana no ve a Bea")
+        local header
+        for _, b in ipairs(d.bench) do if b:IsShown() and not b.name then header = b.text:GetText() end end
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(1)|r", header)
+        -- (Ana la sube a la raid: en DOS, Bea ya va)
+        local row
+        for _, b in ipairs(d.bench) do if b:IsShown() and b.name == "Bea-Reino" then row = b end end
+        row:GetScript("OnDragStart")(row)
+        d.groups[1].IsMouseOver = function() return true end
+        row:GetScript("OnDragStop")(row)
+        d.groups[1].IsMouseOver = nil
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText())
+        A.truthy(Until(net, function() return Card(bea, "Banda de diez").join:GetText():find("Apuntado", 1, true) ~= nil end, 400),
+            "en DOS, Bea sigue de reserva")
+        A.equal("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t 11/10 · Completo", Card(bea, "Banda de diez").going:GetText())
+        A.same({}, net:Errors())
+    end)
+end)
+
 describe("Eventos (EV): cuánto vive cada cosa", function()
     it("un evento borrado vive 90 días (más que el evento: una copia vieja no lo resucita); lo desapuntado, 45", function()
         local HU = F.Community().HU
