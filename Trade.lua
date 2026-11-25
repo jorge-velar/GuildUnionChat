@@ -173,6 +173,13 @@ function HU:TradeUnread()
     for _, c in pairs(unread) do n = n + c end
     return n
 end
+-- Cuántos chats (personas) tienen algo sin leer: el número de la pestaña de Comercio, del botón de hermandad del juego
+-- y de «Mis encargos» (Jorge, 25/11: «con el número de chats sin leer»). Avisa con HU:Changed("tradeUnread")
+function HU:TradeUnreadChats()
+    local n = 0
+    for _, c in pairs(unread) do if c > 0 then n = n + 1 end end
+    return n
+end
 -- (la pestaña Mis encargos, con el número: «Mis encargos (2)»)
 local function PaintUnread()
     local b = ui and ui.viewBtns and ui.viewBtns.priv
