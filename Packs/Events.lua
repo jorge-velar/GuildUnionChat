@@ -1,5 +1,6 @@
 -- Guild Union - Paquete EV: los eventos de la sección Eventos (UnionCalendar.lua) y quién se apunta, de todas las hermandades [+ARCHITECTURE.md]
---   e<id>  del creador: «hora en base 36,tipo,nivel mínimo,icono,título,descripción» (editarlo: otra vez; eliminarlo: vacío)
+--   e<id>  del creador: «hora en base 36,tipo,formato,nivel mínimo,icono,título,descripción»; formato, en una banda (tipo
+--          raid), su tamaño (10, 20 o 40) y «i» si es por invitación; en los demás, vacío (editarlo: otra vez; eliminarlo: vacío)
 --   s<id>  de quien se apunta: su rol, «T», «H» o «D» (desapuntarse: datos vacíos)
 --   p<id>  del creador: «1», fijado arriba en Eventos para todos (quitarlo: vacío). De otro que no sea el creador, no cuenta
 -- Son propuestas (Net/Packs.lua): cada uno manda lo suyo y lo de las otras hermandades llega con su paquete
@@ -17,16 +18,21 @@ local ID_MAX, TITLE_MAX, DESC_MAX, ICON_MAX = 20, 40, 90, 40
 -- Net/Packs.lua. Una línea más larga no se publicaría a las otras hermandades)
 local DATA_MAX, LINE_MAX = 180, 200
 local KINDS = { raid = true, dungeon = true, pvp = true, social = true, other = true }
+-- (los tamaños de banda de Forever: DifficultyUtil.ID.RaidClassic10Normal, RaidClassic20Normal y Raid40)
+local SIZES = { [10] = true, [20] = true, [40] = true }
 local ROLE_CODE = { TANK = "T", HEALER = "H", DAMAGER = "D" }
 local CODE_ROLE = { T = "TANK", H = "HEALER", D = "DAMAGER" }
 local ICONS = "Interface\\Icons\\"
 
--- (los datos de un evento con su forma: hora, tipo, nivel, icono, título y descripción; nil si no la tienen)
+-- (los datos de un evento con su forma: hora, tipo, nivel, icono, título, descripción y, en una banda, su tamaño y si es
+-- por invitación; nil si no la tienen)
 local function Parse(d)
-    local t36, kind, lv, icon, title, desc = d:match("^([0-9a-z]+),(%l+),(%d%d?),([%w_]*),([^,]+),(.*)$")
-    local t, level = t36 and #t36 <= 8 and tonumber(t36, 36), tonumber(lv)
-    if not (t and KINDS[kind] and level <= 60 and #icon <= ICON_MAX and #title <= TITLE_MAX and #desc <= DESC_MAX) then return nil end
-    return t, kind, level, icon, title, desc
+    local t36, kind, size, inv, lv, icon, title, desc = d:match("^([0-9a-z]+),(%l+),(%d*)(i?),(%d%d?),([%w_]*),([^,]+),(.*)$")
+    local t, level, n = t36 and #t36 <= 8 and tonumber(t36, 36), tonumber(lv), tonumber(size)
+    local band = kind == "raid"
+    if not (t and KINDS[kind] and level <= 60 and #icon <= ICON_MAX and #title <= TITLE_MAX and #desc <= DESC_MAX
+        and (band and SIZES[n] or (not band and size == "" and inv == ""))) then return nil end
+    return t, kind, level, icon, title, desc, band and n or nil, inv == "i"
 end
 
 HU:RegisterPackSet("EV", {
@@ -59,8 +65,9 @@ local function Clean(s, commas)
 end
 local function Cut(s, n) return HU.Trim(HU.Utf8Cut(s, math.max(0, n))) end
 
--- Mi evento, a la red: { t, kind, minLevel, icon (la ruta entera), title, desc }. Lo que no cabe de la descripción (y, si
--- hiciera falta, del título) se corta. Editarlo es proponerlo otra vez con el mismo id. Devuelve si ha podido
+-- Mi evento, a la red: { t, kind, minLevel, icon (la ruta entera), title, desc } y, en una banda, size (10, 20 o 40; si
+-- no, 40) e invite (por invitación). Lo que no cabe de la descripción (y, si hiciera falta, del título) se corta. Editarlo
+-- es proponerlo otra vez con el mismo id. Devuelve si ha podido
 function HU:ProposeEvent(id, e)
     id = tostring(id or "")
     local key, me = "e" .. id, self:Me()
@@ -69,7 +76,9 @@ function HU:ProposeEvent(id, e)
     icon = icon:sub(1, #ICONS):lower() == ICONS:lower() and icon:sub(#ICONS + 1) or ""
     if #icon > ICON_MAX or icon:find("[^%w_]") then icon = "" end
     local lv = math.max(0, math.min(60, math.floor(tonumber(e.minLevel) or 0)))
-    local head = HU.B36(e.t) .. "," .. (KINDS[e.kind] and e.kind or "other") .. "," .. lv .. "," .. icon .. ","
+    local kind = KINDS[e.kind] and e.kind or "other"
+    local fmt = kind == "raid" and ((SIZES[e.size] and e.size or 40) .. (e.invite and "i" or "")) or ""
+    local head = HU.B36(e.t) .. "," .. kind .. "," .. fmt .. "," .. lv .. "," .. icon .. ","
     local room = math.min(DATA_MAX, LINE_MAX - #me - #key - #HU.B36(HU.StampNow()) - 3) - #head - 1
     local title = Cut(Clean(e.title), math.min(TITLE_MAX, room))
     local desc = Cut(Clean(e.desc, true), math.min(DESC_MAX, room - #title))
@@ -95,15 +104,15 @@ function HU:ProposeEventPin(id, on)
 end
 
 -- Lo que hay en la red, de todas las hermandades: los eventos { id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
--- icon, title, desc, pinned } y quién se apunta { id, tag, who, role }. Fijado: solo si lo fijó su creador
+-- icon, title, desc, pinned, size, invite } y quién se apunta { id, tag, who, role }. Fijado: solo si lo fijó su creador
 function HU:PackedEvents()
     local evs, signs, pins = {}, {}, {}
     for _, p in ipairs(self:Proposals("EV")) do
         local what, id = p.k:match("^([esp])(%w+)$")
-        local t, kind, lv, icon, title, desc = Parse(what == "e" and p.d or "")
+        local t, kind, lv, icon, title, desc, size, invite = Parse(what == "e" and p.d or "")
         if t then
             evs[#evs + 1] = { id = id, tag = p.tag, who = p.n, pt = p.t, t = t, kind = kind, minLevel = lv > 1 and lv or nil,
-                icon = icon ~= "" and (ICONS .. icon) or nil, title = title, desc = desc }
+                icon = icon ~= "" and (ICONS .. icon) or nil, title = title, desc = desc, size = size, invite = invite or nil }
         end
         if what == "s" then signs[#signs + 1] = { id = id, tag = p.tag, who = p.n, role = CODE_ROLE[p.d] } end
         if what == "p" then pins[id .. "|" .. p.n] = true end

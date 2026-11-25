@@ -2362,7 +2362,7 @@ organiza (UnionCalendar.lua, `calRaids`).
 
 | Clave | De quién | Datos |
 |---|---|---|
-| `e<id>` | el creador | `<hora36>,<tipo>,<nivelMin>,<icono>,<título>,<descripción>`; editarlo, otra vez con el mismo id; eliminarlo, datos vacíos |
+| `e<id>` | el creador | `<hora36>,<tipo>,<formato>,<nivelMin>,<icono>,<título>,<descripción>`; editarlo, otra vez con el mismo id; eliminarlo, datos vacíos |
 | `s<id>` | quien se apunta | su rol: `T`, `H` o `D`; desapuntarse, datos vacíos |
 | `p<id>` | el creador | `1`: fijado arriba en Eventos para todos (copia 331); quitarlo, datos vacíos. De otro, no cuenta |
 
@@ -2370,6 +2370,12 @@ organiza (UnionCalendar.lua, `calRaids`).
 - `<hora36>`: la hora del evento en base 36 (`HU.B36`; se lee con `tonumber(x, 36)`). `<tipo>`: raid, dungeon, pvp,
   social u other. `<nivelMin>`: de 0 a 60 (0 o 1, ninguno). `<icono>`: el nombre del archivo tras `Interface\Icons\`,
   o vacío si la imagen no es de ahí (entonces se ve la del tipo).
+- `<formato>` (25/11, con las bandas de Raids): en una banda (tipo `raid`), su tamaño, `10`, `20` o `40` (los de Forever:
+  `SIZES`), y una `i` detrás si es por invitación (`40i`); en los demás tipos, vacío. Una banda sin tamaño, un tamaño que
+  no es de esos o un tipo que no es banda con algo en el formato no valen. Es un campo nuevo (antes había 6): las líneas
+  de antes no se leen y las copias de antes no leen estas, sin compatibilidad (nadie tenía la red de eventos publicada;
+  regla de Jorge). `HU:ProposeEvent` lo escribe con `e.size` (40 si no lo trae) y `e.invite`, y `HU:PackedEvents` lo da
+  como `size` e `invite`.
 - `<título>`: 40 bytes como mucho (una letra con tilde ocupa 2), sin comas (se cambian por espacios). `<descripción>`: 90
   como mucho; puede llevar comas y va la última. Fuera `~`, `;`, `|` y los saltos de línea (pasan a espacio) y los
   espacios repetidos.
@@ -2396,13 +2402,13 @@ organiza (UnionCalendar.lua, `calRaids`).
   está) o de que lo borrado de `EV` viva más.
 
 Lo que usa el calendario (así el formato está solo aquí):
-- `HU:ProposeEvent(id, e)`: mi evento `{ t, kind, minLevel, icon (ruta entera), title, desc }` (nuevo o editado, con el
-  mismo id); devuelve si ha podido.
+- `HU:ProposeEvent(id, e)`: mi evento `{ t, kind, minLevel, icon (ruta entera), title, desc, size, invite }` (nuevo o
+  editado, con el mismo id; `size` e `invite`, solo en una banda); devuelve si ha podido.
 - `HU:ProposeEventDelete(id)`: elimino mi evento; devuelve si ha podido.
 - `HU:ProposeSignup(id, rol)`: me apunto con `TANK`, `HEALER` o `DAMAGER` (otro rol, como daño); sin rol, me desapunto.
 - `HU:ProposeEventPin(id, sí/no)`: fijo arriba mi evento para todos, o lo quito; devuelve si ha podido.
 - `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
-  icon, title, desc, pinned }` y quién se apunta `{ id, tag, who, role }`.
+  icon, title, desc, pinned, size, invite }` y quién se apunta `{ id, tag, who, role }`.
 
 ## Packs/Trade.lua
 
@@ -4293,21 +4299,27 @@ Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos d
 La sección **Eventos** de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
 Hasta el 25/11 se llamaba Calendario (Jorge: «cambiar el nombre de calendario a "eventos"»): su pestaña de la derecha
 (`TABS` de UnionRoster.lua) y la pestaña de su configuración (UnionConfig.lua) dicen «Eventos» («Events» en inglés). El
-código la sigue llamando `calendar` (archivo, marcos `GuildUnionCalendar…`, `HU:Changed("calendar")`); dentro siguen sus
-dos vistas, Eventos (las tarjetas) y Calendario (el mes).
-Arriba, en el centro (`TOP`, 0, -4), los botones rojos Eventos · Calendario (`ui.switch`, `DJ.Switch`: los mismos de
-Comercio y en el mismo sitio; Jorge, 24/11: «usa ese formato también para eventos»); son `ui.viewBtns.list` y `.month`
-(`:Pick`). «Modo prueba» sigue arriba a la derecha: a 8 del borde y a la altura de los botones (de 505 a 609; los botones
-acaban en 461). El panel de
-la sección empieza 6 por debajo de los botones (-38; antes, -58, debajo de la segunda fila). Abajo, en el centro del
-panel y en las dos vistas, «+ Nuevo evento» (`ui.new`), como hasta la copia 304 (Jorge, 24/11: «como antes y abajo
-centrado»): el botón rojo de 200 x 24 con sus piezas teñidas de verde y la letra blanca, igual que «+ Nueva solicitud»
-de Comercio. Va a 6 del borde de abajo del panel y es hijo de él; las tarjetas, el mes y el panel del día acaban
-`BOTTOM_H` (34) por encima, 4 por encima del botón. Con la ventana del juego a su alto de siempre (la sección, 366)
-caben las 4 tarjetas (282 de 284) y las 5 filas del día (calendario_spec). Piezas de DJStyle.lua (`HU.DJ`).
+código la sigue llamando `calendar` (archivo, marcos `GuildUnionCalendar…`, `HU:Changed("calendar")`); dentro van sus
+tres vistas, Eventos y Raids (tarjetas) y Calendario (el mes).
+Arriba, en el centro (`TOP`, 0, -4), los botones rojos Eventos · Raids · Calendario (`ui.switch`, `DJ.Switch`: los mismos
+de Comercio y en el mismo sitio, tres de 150 como Tablón · Mis encargos · Buscar; Jorge, 24/11: «usa ese formato también
+para eventos», y 25/11: «añadiría un "raids" Events / raid / calendar»); son `ui.viewBtns.list`, `.raids` y `.month`
+(`:Pick`). Cambiar de vista de tarjetas vuelve la lista arriba. Hasta el 25/11 eran dos y «Modo prueba» iba a su derecha;
+con tres (de 77,5 a 539,5) ya no cabe (mide 104 y quedan 77,5), y para que los botones sigan en el mismo sitio que los de
+Comercio (lo mira comercio_spec), **«Modo prueba» baja a la esquina de abajo a la derecha** del panel (`ui.testBtn`, a 8
+del borde y a 6 de abajo, a la altura de «+ Nuevo evento»). El panel de la sección empieza 6 por debajo de los botones
+(-38; antes, -58, debajo de la segunda fila). Abajo, en el centro del panel y en las tres vistas, «+ Nuevo evento»
+(`ui.new`), como hasta la copia 304 (Jorge, 24/11: «como antes y abajo centrado»): el botón rojo de 200 x 24 con sus
+piezas teñidas de verde y la letra blanca, igual que «+ Nueva solicitud» de Comercio. Va a 6 del borde de abajo del panel
+y es hijo de él; las tarjetas, el mes y el panel del día acaban `BOTTOM_H` (34) por encima, 4 por encima del botón. Con
+la ventana del juego a su alto de siempre (la sección, 366) caben las 4 tarjetas (282 de 284) y las 5 filas del día
+(calendario_spec). Piezas de DJStyle.lua (`HU.DJ`).
 Solo eventos de la unión: el calendario del juego no se toca.
-- **Eventos** (`PaintCards`): los que no han terminado y los que terminaron hace menos de 2 días (`Upcoming`, ver «Cuándo
-  sale cada evento»), por fecha, **una tarjeta por línea, a todo lo ancho** (Jorge, 24/11; antes, de 2 en 2): 62 de alto
+- **Eventos** y **Raids** (`PaintCards`, `Upcoming(bandas)`): en Eventos, lo que no es banda; en Raids, las bandas (tipo
+  `raid`, ver «Raids: las bandas»); en Calendario, todo junto (Jorge, 25/11). Sin nada que enseñar, «No hay eventos
+  próximos.» o «No hay raids próximas.». En las dos, los que no han terminado y los que terminaron hace menos de 2 días
+  (`Upcoming`, ver «Cuándo sale cada evento»), por fecha, **una tarjeta por línea, a todo lo ancho** (Jorge, 24/11;
+  antes, de 2 en 2): 62 de alto
   (`CARD_H`), 6 entre ellas (`CARD_GAP`) y 4 a la vista
   (`CARD_N`). Lo de siempre, repartido de izquierda a derecha: el día grande con el día de la semana y el mes (desde 12),
   una raya dorada vertical que lo separa del resto (`c.sep`, en 120, 42 de alto), la imagen redonda (130), tres líneas
@@ -4340,6 +4352,29 @@ Solo eventos de la unión: el calendario del juego no se toca.
   se ven 5, `DAY_N`, y con más sale la barra y las filas se estrechan; al cambiar de día vuelve arriba). «+ Nuevo
   evento» crea para el día elegido (sin elegir, y en Eventos, para hoy). Hasta el 24/11 el panel del día tenía su propio
   «+ Nuevo evento» abajo: con el de abajo en el centro sobraba (y no cabía con las 5 filas), y se quitó.
+
+### Raids: las bandas de 10, 20 o 40 (`Band`, `GroupsOf`)
+
+Jorge, 25/11, tras probar la 332: «que cuando se escoja evento salga si es de 10, 20 o 40 (los formatos que haya en
+forever, revisarlo)» y «que no se puedan "añadir raids"». En Forever hay bandas de 10, 20 y 40
+(`DifficultyUtil.ID.RaidClassic10Normal`, `RaidClassic20Normal` y `Raid40`, en DifficultyUtil_Base.lua de su interfaz).
+- **Una banda** es un evento de tipo `raid` (`Band(e)`), con su tamaño (`e.size`: 10, 20 o 40; en la red, el formato de
+  `e<id>`, Packs/Events.lua). Se crea desde Raids (o desde Calendario, eligiendo Banda); desde Eventos ya no se ofrece
+  Banda. Su tamaño sale en la tarjeta, en la ficha y en el día del mes: «Banda de 40» y «12/40 van» (`KindText`, `Tail`).
+- **Es UNA sola raid** de ese tamaño: `GroupsOf(e)` grupos (tamaño / 5: 2, 4 u 8), sin «+ Añadir» ni más pestañas. En el
+  PC de quien la crea, `Rebuild` le pone su raid si aún no la tiene, llevada por él si va (`NewRaid`); en los demás PC,
+  como cualquier evento de otro, no hay raids y la ficha dice «La raid la monta quien la organiza.». Colocar, arrastrar,
+  `AutoPlace` y `BestRaid` solo usan sus grupos (una raid de 10 está llena con 10: «La raid está llena (10).»); a un grupo
+  que no se ve no se suelta a nadie (`DragStop`), y la ficha solo enseña sus grupos, con el botón de invitar justo debajo.
+  Si baja de tamaño al editarla, quien queda en un grupo de más vuelve al banquillo (`Rebuild`).
+- **Lo demás** (Eventos: JcJ, Social, Mazmorra…) sigue como antes: 8 grupos y hasta 20 raids con «+ Añadir». En el modo
+  prueba, Valle de Alterac es ese caso (un JcJ con 24 apuntados y una raid mía) y Núcleo de Magma, la banda de 40.
+- **«Quitar raid»** (`d.delRaid`) va arriba a la derecha de la ficha (Jorge, 25/11: «el delete raid ponerlo arriba a la
+  derecha»): en la franja del título, a 40 del borde (a la izquierda de la X) y centrado en ella (de -15 a -39; la franja,
+  de -10 a -44). En lo de Eventos, quita la raid que se ve, como antes (quien creó el evento o su líder). En una banda, su
+  raid es la banda: no puede dejarla sin raid, así que la elimina entera, solo quien la creó, con la misma pregunta que
+  «Eliminar» del clic derecho («¿Seguro que quieres eliminar el evento?», `DeleteEvent`). «Convertir en banda» pasa a la
+  derecha de invitar.
 
 ### Cuándo sale cada evento (`Upcoming`, `LASTS`, `CARDS_AFTER`)
 
@@ -4376,8 +4411,9 @@ Los eventos y quién va viajan como propuestas, conjunto `EV` (Packs/Events.lua)
 siguen tras /reload. `events` es lo que se ve: lo rehace `Rebuild` con `HU:PackedEvents()` y le añade los de prueba, que
 van aparte (`testEvents`, solo en este PC). Evento: `{ id, title, kind, t, who, tag, desc, minLevel, icon, signups = {
 [nombre] = "yes" }, roles = { [nombre] = rol }, raids, test }`; `signups` y `roles` salen de las líneas `s<id>` de
-cualquier hermandad. Tipos (`KINDS`, con color e icono): Banda, Mazmorra, JcJ, Social y Otro; al crear se ofrecen Banda,
-JcJ y Social (Mazmorra solo sale en el modo prueba; Otro es el de reserva).
+cualquier hermandad. Tipos (`KINDS`, con color e icono): Banda, Mazmorra, JcJ, Social y Otro; al crear se ofrecen, desde
+Eventos, JcJ y Social; desde Raids, la banda; desde Calendario, Banda, JcJ y Social (Mazmorra solo sale en el modo
+prueba; Otro es el de reserva).
 - **Cuándo se rehace** (procesador barato): solo cuando cambia algo de la red (`HU:Changed("calendar")`, el `onChange`
   del conjunto) o al abrir la sección. El aviso solo marca `dirty` y `Paint` rehace antes de pintar. Con la sección a la
   vista (`open`: entre su OnShow y su OnHide, que también salta al cerrar la ventana del juego) se pinta 0,3 s después, una
@@ -4400,6 +4436,11 @@ JcJ y Social (Mazmorra solo sale en el modo prueba; Otro es el de reserva).
 
 Ventana movible: título (40 letras), tipo, imagen, día, hora, nivel mínimo y descripción (varias líneas, 90 → `desc`; viaja
 sin saltos de línea).
+- **El tipo o el tamaño, según desde dónde se abre** (`d.mode`, `d.Relayout`; Jorge, 25/11): desde Eventos (`event`), JcJ
+  y Social (Banda ya no: va en Raids) y, de entrada, JcJ; desde Raids (`band`), en vez de los tipos, el tamaño 10 · 20 ·
+  40 (`d.sizeBtns`, 40 de entrada) en la misma fila; desde Calendario (`all`), los tres tipos y, con Banda, el tamaño en
+  la fila de debajo: lo de abajo baja 46 (`d.lower`, lo que se coloca bajo esa fila) y la ventana crece otro tanto.
+  Editar sigue lo que es el evento: una banda, con su tamaño y sin tipos; lo demás, sin Banda (no se cambia de uno a otro).
 - Imagen: vista previa + «Elegir imagen», que abre una rejilla de 64 iconos de vanilla (`EVENT_ICONS`, 8 x 4 y barra).
   Siempre hay una: la del tipo, que sigue al tipo hasta que se elige otra (`iconCustom`).
 - Día y hora se eligen, no se escriben (sin errores de formato): «Día», un calendario pequeño (hoy en dorado, el
@@ -4567,12 +4608,13 @@ quedan hasta que entre él: `calEvents` es de la cuenta y vaciarla entera perder
 
 ### Modo prueba
 
-Se enciende y se apaga (encendido, el botón oscuro). Lo de prueba va aparte (`testEvents`): no sale a la red ni se
-guarda. `AddTest` pone cinco eventos de mi hermandad y de otra
-(`HU:OtherTags()`, o «OTRA»): hoy a las 21:00, una banda (nivel 55) de otra persona con 23 apuntados de mentira
-(`-Prueba`, clase y nivel en `testClass` / `testLevel`) y una raid que llevo yo (así se puede organizar) con 12
-colocados, el resto en el banquillo y las tres marcas de invitación; además, una mazmorra, un JcJ, un social mío y otra
-banda (nivel 60). `ClearTest` quita sus eventos, marcas, clases y niveles, y cierra la ficha solo si era de un
+Se enciende y se apaga (encendido, el botón oscuro; desde el 25/11, abajo a la derecha). Lo de prueba va aparte
+(`testEvents`): no sale a la red ni se guarda. `AddTest` pone seis eventos de mi hermandad y de otra
+(`HU:OtherTags()`, o «OTRA»): hoy a las 21:00, Núcleo de Magma, una banda de 40 (nivel 55) de otra persona con 23
+apuntados de mentira (`-Prueba`, clase y nivel en `testClass` / `testLevel`) y su raid, que llevo yo (así se puede
+organizar), con 12 colocados, el resto en el banquillo y las tres marcas de invitación; el domingo, Valle de Alterac, un
+JcJ de Eventos con lo mismo (`Crowd`: ahí se prueban las varias raids, que una banda no tiene); además, una mazmorra, un
+JcJ, un social mío y otra banda de 40 (nivel 60), de la otra hermandad. `ClearTest` quita sus eventos, marcas, clases y niveles, y cierra la ficha solo si era de un
 evento de prueba. Los de prueba míos (el social) se editan y se eliminan con el clic derecho como los de verdad, pero solo
 aquí: al apagar y encender el modo prueba vuelven como eran.
 

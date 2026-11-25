@@ -1062,7 +1062,7 @@ E["Sin raid"] = "No raid"
 
 E["Ese grupo está lleno."] = "That group is full."
 E["Grupo %d"] = "Group %d"
-E["La raid está llena (40)."] = "The raid is full (40)."
+E["La raid está llena (%d)."] = "The raid is full (%d)."
 E["Todavía no hay raids. Quien organiza las crea con «+ Añadir raid»."] = "No raids yet. The organizer creates them with “+ Add raid”."
 E["nadie (clic derecho en alguien: «Hacer líder»)"] = "nobody (right-click someone: “Make raid leader”)"
 
@@ -1115,6 +1115,15 @@ E["Elegir imagen"] = "Select image"
 
 E["Día:"] = "Day:"
 E["Hora:"] = "Time:"
+
+-- (Eventos · Raids · Calendario: las bandas de 10, 20 o 40, 25/11)
+E["Raids"] = "Raids"
+E["Banda de %d"] = "%d-player raid"
+E["Tamaño:"] = "Size:"
+E["No hay raids próximas."] = "No upcoming raids."
+E["La raid la monta quien la organiza."] = "The organizer sets up the raid."
+E["Valle de Alterac"] = "Alterac Valley"
+E["Premade de la unión: cuantas raids hagan falta."] = "Union premade: as many raids as needed."
 
 
 E["(hay %d)"] = "(%d available)"
