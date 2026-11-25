@@ -932,7 +932,7 @@ E["Acción"] = "Action"
 E["Elige un comercio con alguien para escribir"] = "Pick a trade with someone to write"
 E["Te dejo el encargo; mañana me conecto."] = "Leaving you the order; I'll log in tomorrow."
 
-E["Nadie de tu hermandad lo hace (profesión u objeto fabricable). Otras hermandades, con la red."] = "Nobody in your guild makes it (profession or craftable item). Other guilds: with the network."
+E["Nadie de la unión lo hace (profesión u objeto fabricable)."] = "Nobody in the union makes it (profession or craftable item)."
 
 E["Cantidad:"] = "Quantity:"
 

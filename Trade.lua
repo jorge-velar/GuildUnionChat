@@ -274,6 +274,9 @@ local function NeedAll()
     if not HU.myTag then return end
     HU:PackNeed(HU.myTag, "TR")
     for _, tag in ipairs(HU:OtherTags()) do HU:PackNeed(tag, "TR") end
+    -- (y, un momento después, para que salga antes lo de Comercio, las profesiones y recetas de toda la unión, para
+    -- «Quién lo hace»)
+    HU.After(5, function() HU:NeedUnionProfessions() end)
 end
 
 -- Mandar: por susurro, a la otra persona. Si no está conectada, la línea espera (guardada por personaje) y sale cuando se
@@ -411,46 +414,59 @@ local function LoadCraftNames()
     end, { pauseInCombat = true })
 end
 
--- (las profesiones y el nivel que hacen falta para algo que encaje con q, por su nombre. Solo cuenta lo que mejor encaja:
--- con «bolsa», lo que lleva esa palabra entera y no «Bolsas» ni «Embolsar», si lo hay. Jorge, 24/11: «más al grano»)
+-- (las profesiones y el nivel que hacen falta para algo que encaje con q, por su nombre, y lo que encaja ([clave] = true).
+-- Solo cuenta lo que mejor encaja: con «bolsa», lo que lleva esa palabra entera y no «Bolsas» ni «Embolsar», si lo hay.
+-- Jorge, 24/11: «más al grano»)
 local function CraftNeeds(q)
-    local needs, best = {}, nil
-    for _, c in pairs(craft) do
+    local needs, keys, best = {}, {}, nil
+    for k, c in pairs(craft) do
         local r = HU.TextRank(c.key, q)
         if r then
             local tier = (r <= 2 and 1) or (r <= 4 and 2) or 3
-            if not best or tier < best then best, needs = tier, {} end
-            if tier == best and (needs[c.skill] == nil or c.lv < needs[c.skill]) then needs[c.skill] = c.lv end
+            if not best or tier < best then best, needs, keys = tier, {}, {} end
+            if tier == best then
+                keys[k] = true
+                if needs[c.skill] == nil or c.lv < needs[c.skill] then needs[c.skill] = c.lv end
+            end
         end
     end
-    return best and needs or nil
+    if not best then return nil, nil end
+    return needs, keys
 end
 
+-- «Quién lo hace»: los de toda la unión con su línea de oficios (Packs/Professions.lua: nivel de verdad y si saben la
+-- receta, también desconectados) y los de mi hermandad que no la tienen, con lo que da el juego [+ARCHITECTURE.md]
 local function SearchMembers(q)
     q = q:lower()
-    local out = {}
-    local needs = CraftNeeds(q)
+    local out, have = {}, {}
+    local needs, keys = CraftNeeds(q)
+    for _, r in ipairs(HU:UnionCrafters(q, keys, needs)) do
+        r.online = Status(r.name)
+        out[#out + 1] = r
+        have[(HU:Key(r.name) or r.name) .. "|" .. r.skill] = true
+    end
     local cid = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
-    if not cid or HU.Secret(cid) then return out end
-    local ok, ids = pcall(C_Club.GetClubMembers, cid)
-    if not ok or type(ids) ~= "table" then return out end
-    for _, id in ipairs(ids) do
+    local ok, ids = false, nil
+    if cid and not HU.Secret(cid) then ok, ids = pcall(C_Club.GetClubMembers, cid) end
+    for _, id in ipairs((ok and type(ids) == "table") and ids or {}) do
         local ok2, info = pcall(C_Club.GetMemberInfo, cid, id)
         local n = ok2 and info and info.name
         if type(n) == "string" and not HU.Secret(n) then
             local off = Enum and Enum.ClubMemberPresence and info.presence == Enum.ClubMemberPresence.Offline
+            local full = HU:FullName(n) or n
             for _, p in ipairs(HU:ClubProfessions(info)) do
                 local need = needs and type(p.id) == "number" and needs[p.id]
                 -- (sin nivel —el de los demás, que la comunidad no da—: sale si tiene la profesión)
-                if HU.TextRank(p.name, q) or (need and (p.rank == nil or p.rank >= need)) then
-                    out[#out + 1] = { name = HU:FullName(n) or n, tag = HU.myTag, prof = p.name, icon = p.icon, online = not off,
-                        rank = p.rank }
+                if not have[full:lower() .. "|" .. tostring(p.id)]
+                    and (HU.TextRank(p.name, q) or (need and (p.rank == nil or p.rank >= need))) then
+                    out[#out + 1] = { name = full, tag = HU.myTag, prof = p.name, icon = p.icon, online = not off, rank = p.rank }
                 end
             end
         end
     end
-    -- (los de nivel sabido primero, de más a menos; los demás, detrás)
+    -- (primero quien sabe la receta; luego los de nivel sabido, de más a menos; los demás, detrás)
     table.sort(out, function(a, b)
+        if (a.knows == true) ~= (b.knows == true) then return a.knows == true end
         local ra, rb = a.rank or -1, b.rank or -1
         if ra ~= rb then return ra > rb end
         return a.name < b.name
@@ -925,13 +941,14 @@ function Paint()
     local only = OnlyCraft()
     ui.onlyCraft:SetChecked(only)
     if searching then
-        ui.found.empty:SetText(L("Nadie de tu hermandad lo hace (profesión u objeto fabricable). Otras hermandades, con la red."))
+        ui.found.empty:SetText(L("Nadie de la unión lo hace (profesión u objeto fabricable)."))
         PaintRows(ui.found, SearchMembers(Query()), function(row, e)
             local c = row.cells
-            -- (con su color de siempre y el circulito; clic derecho: pedir una receta)
+            -- (con su color de siempre y el circulito; clic derecho: pedir una receta. El tic: sabe la receta)
             c[1]:SetText((e.name == Me() and MINE or OTHERS) .. HU:Short(e.name) .. "|r " .. (e.online and DOT_ON or DOT_OFF))
             c[2]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
-            c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof); c[4]:SetText(e.rank and tostring(e.rank) or "—")
+            c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof)
+            c[4]:SetText((e.rank and tostring(e.rank) or "—") .. (e.knows and (" |T" .. TICK .. ":12:12|t") or ""))
         end)
     end
     ui.req.empty:SetText(searching and L("Ninguna solicitud publicada encaja.")
@@ -1298,12 +1315,20 @@ local function Migrate()
     end
     for i = #old, 1, -1 do old[i] = nil end
 end
--- (con el aviso «trade» se rehacen las de la red; si cambia mi hermandad, también, y se mira lo de la copia 324)
+-- (con el aviso «trade» se rehacen las de la red; si cambia mi hermandad, también, y se mira lo de la copia 324. Con
+-- «professions», lo de oficios que llega mientras se busca: se repinta un momento después, una vez)
+local foundQueued
 HU:Listen("CHANGED", function(what)
     if what == "trade" then MarkDirty()
     elseif what == "config" then
         Migrate()
         if builtTag ~= HU.myTag then MarkDirty() end
+    elseif what == "professions" and not foundQueued and ui and ui:IsVisible() and Searching() then
+        foundQueued = true
+        HU.After(2, function()
+            foundQueued = nil
+            if ui:IsVisible() then Paint() end
+        end)
     end
 end)
 HU:OnStart(function()
@@ -1637,4 +1662,4 @@ function HU:BuildTrade(host)
     Paint()
 end
 
-HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "Lists", "Net/Packs", "Net/Transport", "Packs/Trade", "Protocol", "UnionConfig" })
+HU:Module("Trade", { "BlizzTab", "Config", "Core", "ListWindow", "Lists", "Net/Packs", "Net/Transport", "Packs/Professions", "Packs/Trade", "Protocol", "UnionConfig" })

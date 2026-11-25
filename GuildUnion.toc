@@ -50,6 +50,7 @@ UnionMembers.lua
 Packs\Members.lua
 Packs\Events.lua
 Packs\Trade.lua
+Packs\Professions.lua
 History.lua
 Channels.lua
 Community.lua

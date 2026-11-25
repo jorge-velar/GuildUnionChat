@@ -485,8 +485,8 @@ local function HasRecipes(id)
     return type(id) == "number" and ((HU.CRAFT_ITEMS and HU.CRAFT_ITEMS[id] ~= nil) or (HU.CRAFT_SPELLS and HU.CRAFT_SPELLS[id] ~= nil))
 end
 
--- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; de las otras
--- hermandades no llegan todavía)
+-- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; las de las otras
+-- hermandades, con su nivel, llegan con OF: CardProfessions)
 local function OwnProfessions(name)
     local cid = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
     if not cid or HU.Secret(cid) then return nil end
@@ -625,6 +625,22 @@ local function BuildCard(f)
     end)
 end
 
+-- (las de la ficha: de mi hermandad, las del juego, con el nivel de su línea de oficios (Packs/Professions.lua) si el
+-- juego no lo da; de otra, las de sus líneas de oficios, que se piden a su hermandad al abrirla)
+local function CardProfessions(e)
+    local union = HU:UnionProfessionsOf(e.name) or {}
+    if not e.own then
+        if e.tag then HU:NeedUnionProfessions(e.tag) end
+        return union
+    end
+    local own = OwnProfessions(e.name)
+    if not own then return union end
+    for _, p in ipairs(own) do
+        for _, u in ipairs(union) do if u.id == p.id then p.rank = p.rank or u.rank end end
+    end
+    return own
+end
+
 -- force: siempre abrirla (desde la lista del juego); sin él, otro clic en la misma persona la cierra
 local function ShowCard(e, force)
     local f = Win()
@@ -641,14 +657,15 @@ local function ShowCard(e, force)
     v[3]:SetText((not e.noRank and e.rank ~= "" and e.rank) or "—")
     v[4]:SetText(e.online and ("|cff40ff40" .. L("Conectado") .. "|r") or Ago(e.offSecs))
     -- (profesiones: una línea cada una, su icono con el nivel y «Ver recetas»)
-    local profs = e.own and OwnProfessions(e.name) or {}
+    local profs = CardProfessions(e)
     local rows = card.recipes
     for k = 1, 2 do
         local p = profs[k]
         rows.btns[k].prof = p
         rows.icons[k]:SetShown(p ~= nil); rows.levels[k]:SetShown(p ~= nil)
-        -- («Ver recetas», solo en las que fabrican; apagado si no se puede pedir: ni mía ni con GUID)
-        rows.btns[k]:SetShown(p ~= nil and HasRecipes(p.id))
+        -- («Ver recetas», solo en las que fabrican y de mi hermandad (el juego no da las de otra); apagado si no se puede
+        -- pedir: ni mía ni con GUID)
+        rows.btns[k]:SetShown(p ~= nil and e.own == true and HasRecipes(p.id))
         if p then
             rows.icons[k]:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             rows.levels[k]:SetText(p.rank and tostring(p.rank) or "")
@@ -663,6 +680,16 @@ local function ShowCard(e, force)
     v[7]:SetText((e.offNote and e.offNote ~= "") and e.offNote or "")
     card:Show()
 end
+-- (lo de oficios que llega con la ficha abierta: se repinta un momento después, una vez)
+local cardQueued
+HU:Listen("CHANGED", function(what)
+    if what ~= "professions" or cardQueued or not (card and card:IsShown()) then return end
+    cardQueued = true
+    HU.After(2, function()
+        cardQueued = nil
+        if card:IsShown() and card.entry then ShowCard(card.entry, true) end
+    end)
+end)
 
 -- Varios a la vez: Ctrl suma o quita uno, Mayús elige del último al de ahora; un clic solo, uno y su
 -- ficha. Clic derecho: cambiar rango o echar a los de mi hermandad, por la ventana de órdenes (el juego
@@ -1435,4 +1462,4 @@ HU:OnStart(function()
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_Communities") then Setup() end
 end)
 
-HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Net/Packs", "Packs/Members", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })
+HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Net/Packs", "Packs/Members", "Packs/Professions", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })
