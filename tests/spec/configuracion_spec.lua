@@ -112,15 +112,17 @@ describe("Configuración de la hermandad (UnionConfig.lua): pestañas y quién l
     it("cuatro pestañas en dos filas; cada una enseña su página y solo esa (de entrada, Comercio)", function()
         local a = F.Community()
         local c = Config(a)
-        -- (tres arriba y una debajo)
-        local where = { { "Comercio", 8, -32 }, { "Lista negra", 95, -32 }, { "Calendario", 182, -32 },
+        -- (tres arriba y una debajo; la de los eventos se llama como su sección, Eventos: hasta el 25/11, Calendario)
+        local where = { { "Comercio", 8, -32 }, { "Lista negra", 95, -32 }, { "Eventos", 182, -32 },
             { "Hermandad", 8, -56 } }
         A.is_nil(c.tab["Banco"], "sin Banco")
+        A.is_nil(c.tab["Calendario"], "ya no se llama Calendario")
         for _, w in ipairs(where) do
             local p = c.tab[w[1]]._points[1]
             A.same({ "TOPLEFT", w[2], w[3] }, { p[1], p[2], p[3] }, w[1])
         end
-        local pages = { Comercio = c.trade, ["Lista negra"] = c.black, Calendario = c.calendar, Hermandad = c.guild }
+        A.truthy(Config(F.Community({ locale = "enUS" })).tab["Events"], "en inglés, Events")
+        local pages = { Comercio = c.trade, ["Lista negra"] = c.black, Eventos = c.calendar, Hermandad = c.guild }
         local function Only(name)
             for n, page in pairs(pages) do
                 A.equal(n == name, page:IsShown(), "página " .. n)
@@ -203,12 +205,12 @@ describe("Configuración: Comercio", function()
 end)
 
 ---------------------------------------------------------------------------
-describe("Configuración: Calendario (quién crea eventos y permisos por un tiempo)", function()
+describe("Configuración: Eventos (quién crea eventos y permisos por un tiempo)", function()
     it("quién crea eventos: el maestro, los oficiales (de entrada) o todos; HU:CanMakeEvents lo sigue", function()
         local a = F.Community({ guild = GuildAs(0) })
         local HU = a.HU
         local c = Config(a)
-        Click(c.tab["Calendario"])
+        Click(c.tab["Eventos"])
         local b = Kids(a, c.calendar, "Button")
         A.same({ "Maestro", "Oficiales", "Todos", "Dar" }, { b[1]:GetText(), b[2]:GetText(), b[3]:GetText(), b[4]:GetText() })
         A.truthy(b[2].picked, "de entrada, los oficiales")
@@ -243,7 +245,7 @@ describe("Configuración: Calendario (quién crea eventos y permisos por un tiem
         local HU = a.HU
         HU.db.unionCfg = { testGM = true } -- (probándola como maestro)
         local c = Config(a)
-        Click(c.tab["Calendario"])
+        Click(c.tab["Eventos"])
         local boxes = Kids(a, c.calendar, "EditBox")
         local name, hours = boxes[1], boxes[2]
         local give = WithText(a, c.calendar, "Dar")
@@ -289,7 +291,7 @@ describe("Configuración: Calendario (quién crea eventos y permisos por un tiem
             HU.db.unionCfg.calAllow[n:lower() .. "-reino"] = { name = n .. "-Reino", untilT = now + i * 60, by = "Tester-Reino" }
         end
         local c = Config(a)
-        Click(c.tab["Calendario"])
+        Click(c.tab["Eventos"])
         local rows = Kids(a, c.calendar, "Frame")
         local function Shown()
             local out = {}
@@ -336,7 +338,7 @@ describe("Configuración: Calendario (quién crea eventos y permisos por un tiem
             HU.db.unionCfg.calAllow[n:lower() .. "-reino"] = { name = n .. "-Reino", untilT = now + i * 60, by = "Tester-Reino" }
         end
         local c = Config(a)
-        Click(c.tab["Calendario"])
+        Click(c.tab["Eventos"])
         c.calendar.GetHeight = function() return 400 end
         Reopen(c)
         local rows = Kids(a, c.calendar, "Frame")

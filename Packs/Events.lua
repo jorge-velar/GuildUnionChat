@@ -1,11 +1,14 @@
--- Guild Union - Paquete EV: los eventos del Calendario (UnionCalendar.lua) y quién se apunta, de todas las hermandades [+ARCHITECTURE.md]
---   e<id>  del creador: «hora en base 36,tipo,nivel mínimo,icono,título,descripción»
+-- Guild Union - Paquete EV: los eventos de la sección Eventos (UnionCalendar.lua) y quién se apunta, de todas las hermandades [+ARCHITECTURE.md]
+--   e<id>  del creador: «hora en base 36,tipo,nivel mínimo,icono,título,descripción» (editarlo: otra vez; eliminarlo: vacío)
 --   s<id>  de quien se apunta: su rol, «T», «H» o «D» (desapuntarse: datos vacíos)
 -- Son propuestas (Net/Packs.lua): cada uno manda lo suyo y lo de las otras hermandades llega con su paquete
 local _, HU = ...
 
 local DAY = 86400
-local EVENT_LIVES, SIGNUP_LIVES = 7 * DAY, 45 * DAY
+-- (el evento vive en la red hasta 30 días después de su hora: el mes del calendario lo enseña hasta entonces, y las raids
+-- de quien organiza se guardan lo mismo, UnionCalendar.lua. Lo apuntado y lo borrado, 45 días desde que se propuso)
+local EVENT_LIVES, SIGNUP_LIVES = 30 * DAY, 45 * DAY
+HU.EVENT_LIVES = EVENT_LIVES
 local ID_MAX, TITLE_MAX, DESC_MAX, ICON_MAX = 20, 40, 90, 40
 -- (lo que cabe: los datos de una propuesta y su línea del paquete, «Nombre-Reino,clave,hora,datos»: DATA_MAX y PART de
 -- Net/Packs.lua. Una línea más larga no se publicaría a las otras hermandades)
@@ -32,7 +35,7 @@ HU:RegisterPackSet("EV", {
         if what == "s" then return CODE_ROLE[d] ~= nil end
         return Parse(d) ~= nil
     end,
-    -- (vivo: el evento, hasta 7 días después de su hora; lo apuntado y lo borrado, 45 días desde que se propuso)
+    -- (vivo: el evento, hasta 30 días después de su hora; lo apuntado y lo borrado, 45 días desde que se propuso)
     alive = function(_, key, d, t, now)
         local at = key:sub(1, 1) == "e" and tonumber(d:match("^(%w+),") or "", 36)
         if at then return at + EVENT_LIVES >= now end
@@ -50,7 +53,7 @@ end
 local function Cut(s, n) return HU.Trim(HU.Utf8Cut(s, math.max(0, n))) end
 
 -- Mi evento, a la red: { t, kind, minLevel, icon (la ruta entera), title, desc }. Lo que no cabe de la descripción (y, si
--- hiciera falta, del título) se corta. Devuelve si ha podido
+-- hiciera falta, del título) se corta. Editarlo es proponerlo otra vez con el mismo id. Devuelve si ha podido
 function HU:ProposeEvent(id, e)
     id = tostring(id or "")
     local key, me = "e" .. id, self:Me()
@@ -64,6 +67,13 @@ function HU:ProposeEvent(id, e)
     local title = Cut(Clean(e.title), math.min(TITLE_MAX, room))
     local desc = Cut(Clean(e.desc, true), math.min(DESC_MAX, room - #title))
     return self:Propose("EV", key, head .. title .. "," .. desc)
+end
+
+-- Elimino mi evento: su línea, vacía (borrada con su hora: no vuelve con una más vieja). Lo apuntado se queda hasta que
+-- caduca: sin el evento no se ve. Devuelve si ha podido
+function HU:ProposeEventDelete(id)
+    id = tostring(id or "")
+    return id:match("^%w+$") ~= nil and #id <= ID_MAX and self:Propose("EV", "e" .. id, "")
 end
 
 -- Me apunto a un evento con mi rol (TANK, HEALER o DAMAGER) o, sin rol, me desapunto. Devuelve si ha podido

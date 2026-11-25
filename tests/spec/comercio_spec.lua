@@ -555,7 +555,7 @@ describe("Comercio (Trade.lua): aspecto", function()
         A.same({}, a:Errors())
     end)
 
-    it("arriba, los botones Tablón · Mis encargos en el centro, igual que los de Calendario; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha, sin pisarse (también en inglés)", function()
+    it("arriba, los botones Tablón · Mis encargos en el centro, igual que los de Eventos; debajo, el buscador a la izquierda y «Solo lo que puedo hacer» a la derecha, sin pisarse (también en inglés)", function()
         for _, locale in ipairs({ "esES", "enUS" }) do
             local a = F.Community({ locale = locale })
             Observe(a)
@@ -569,7 +569,7 @@ describe("Comercio (Trade.lua): aspecto", function()
             A.equal(sw.btns.priv, tr.viewBtns.priv)
             local l, r = Span(tr, sw)
             A.truthy(l >= 2 and r <= SECTION_W - 2, locale .. ": los botones caben: de " .. l .. " a " .. r)
-            A.same({ cal, "TOP", 0, -4 }, cal.switch._pts.TOP, "los de Calendario, en el mismo sitio")
+            A.same({ cal, "TOP", 0, -4 }, cal.switch._pts.TOP, "los de Eventos, en el mismo sitio")
             A.same({ sw._w, sw._h }, { cal.switch._w, cal.switch._h }, "y del mismo tamaño")
             -- (los textos caben, también con dos cifras de sin leer)
             for _, t in ipairs({ { tr.viewBtns.pub, L("Tablón") }, { tr.viewBtns.priv, string.format(L("Mis encargos (%d)"), 99) } }) do

@@ -482,7 +482,7 @@ local function GuildWindow(a, withChat, setup)
     return f
 end
 
--- Abrir una sección como el jugador: Comercio y Calendario, con su pestaña de la derecha (el botón seguro pulsa la
+-- Abrir una sección como el jugador: Comercio y Eventos, con su pestaña de la derecha (el botón seguro pulsa la
 -- pestaña de miembros del juego: aquí, ya en esa vista, la abre su PostClick); Miembros, con la pestaña de miembros del
 -- juego
 local function Section(a, i)
@@ -546,8 +546,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.truthy(mine and mine:IsShown(), "«Solo mi hermandad», en Miembros")
         A.truthy(cover:IsShown(), "al principio, Miembros")
         A.equal(1, cover.tabs.selectedTab)
-        A.same({ "Profesiones y comercio", "Calendario" }, { cover.side.tabs[1].tooltip, cover.side.tabs[2].tooltip },
-            "Comercio y Calendario, pestañas de la derecha")
+        A.same({ "Profesiones y comercio", "Eventos" }, { cover.side.tabs[1].tooltip, cover.side.tabs[2].tooltip },
+            "Comercio y Eventos (hasta el 25/11, Calendario), pestañas de la derecha")
         A.same({ a.env.GuildUnionTradeTab, a.env.GuildUnionCalendarTab }, cover.side.tabs)
         cover:GetScript("OnEvent")(cover, "GUILD_ROSTER_UPDATE")
         A.matches("Jefa", cover.rows[1].cells.name:GetText())
@@ -776,7 +776,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("en la vista de chat: solo la franja de arriba; Comercio y Calendario, desde su pestaña, pasan a la vista de miembros con esa sección", function()
+    it("en la vista de chat: solo la franja de arriba; Comercio y Eventos, desde su pestaña, pasan a la vista de miembros con esa sección", function()
         local a = F.Community()
         local f = GuildWindow(a, true)
         local cover = a.env.GuildUnionUnionRoster
@@ -1049,7 +1049,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         end
     end)
 
-    it("Comercio y Calendario: cada uno su sección, sin la lista de miembros; a Miembros, con la pestaña del juego", function()
+    it("Comercio y Eventos: cada uno su sección, sin la lista de miembros; a Miembros, con la pestaña del juego", function()
         local a = F.Community()
         GuildWindow(a)
         local cover = a.env.GuildUnionUnionRoster
@@ -1200,7 +1200,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
-    it("la casilla «Mostrar desconectados» solo en Miembros: en Comercio y Calendario no se ve ni se pulsa", function()
+    it("la casilla «Mostrar desconectados» solo en Miembros: en Comercio y Eventos no se ve ni se pulsa", function()
         local a = F.Community()
         local box, label
         local f = GuildWindow(a, false, function(w)
@@ -1214,7 +1214,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         Section(a, 2)
         A.same({ 0, 0, false }, { box._alpha, label._alpha, chk._mouse }, "en Comercio")
         Section(a, 3)
-        A.same({ 0, 0, false }, { box._alpha, label._alpha, chk._mouse }, "en Calendario")
+        A.same({ 0, 0, false }, { box._alpha, label._alpha, chk._mouse }, "en Eventos")
         Section(a, 1)
         A.same({ 1, 1, true }, { box._alpha, label._alpha, chk._mouse }, "en Miembros")
         A.same({}, a:Errors())
@@ -1268,7 +1268,7 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.equal("Buscar personaje", box.Instructions:GetText())
     end)
 
-    it("Comercio y Calendario, pestañas de la derecha: justo debajo de la de miembros, con las del juego debajo; desde ellas, la hermandad vuelve al chat", function()
+    it("Comercio y Eventos, pestañas de la derecha: justo debajo de la de miembros, con las del juego debajo; desde ellas, la hermandad vuelve al chat", function()
         local a = F.Community()
         -- (lo que trae la plantilla de las pestañas del juego: su icono. La de GuildUnion, BlizzTab.lua, la usa)
         local create = a.env.CreateFrame

@@ -1,6 +1,6 @@
--- Eventos del Calendario entre hermandades (Packs/Events.lua, conjunto EV, y UnionCalendar.lua): lo que crea uno lo ve su
--- hermandad al momento y las otras al abrir el calendario; quién se apunta viaja igual, y todo sigue tras /reload.
--- Todo por la ventana, como lo hace cada jugador
+-- Eventos entre hermandades (Packs/Events.lua, conjunto EV, y UnionCalendar.lua, la sección Eventos): lo que crea uno lo ve
+-- su hermandad al momento y las otras al abrir la sección; quién se apunta viaja igual, y todo sigue tras /reload. Lo que
+-- su creador edita o elimina, igual. Todo por la ventana, como lo hace cada jugador
 local red = require("lib.red")
 local F = require("lib.fixtures")
 local A = assert_
@@ -45,7 +45,7 @@ local function Child(p, parent, text)
     end
 end
 
--- La sección Calendario abierta como lo hace el jugador: la ventana de hermandad del juego (lo justo) y su pestaña. Al
+-- La sección Eventos abierta como lo hace el jugador: la ventana de hermandad del juego (lo justo) y su pestaña. Al
 -- abrirla se lanza su OnShow, como en el juego
 local function Open(p)
     local env = p.env
@@ -62,7 +62,7 @@ local function Open(p)
     local cover = env.GuildUnionUnionRoster
     local ui = cover.calendar
     -- (las listas con barra del juego traen su barra; esta solo recuerda dónde está)
-    for _, sf in ipairs({ ui.scroll, env.GuildUnionCalendarBenchScroll, env.GuildUnionCalendarDayScroll }) do
+    for _, sf in ipairs({ ui.scroll, env.GuildUnionCalendarBenchScroll, env.GuildUnionCalendarDayScroll, env.GuildUnionCalendarTimeScroll }) do
         local bar = env.CreateFrame("Slider", nil, sf)
         bar.value = 0
         bar.GetValue = function(self) return self.value end
@@ -97,6 +97,30 @@ local function Bench(d)
     local out = {}
     for _, b in ipairs(d.bench) do if b:IsShown() then out[#out + 1] = b.name end end
     return out
+end
+-- (el menú del clic derecho del juego, de mentira: recuerda los que se abren, con sus botones)
+local function Menus(p)
+    local opened = {}
+    local function Menu()
+        local m = { items = {} }
+        function m:CreateTitle(t) self.title = t end
+        function m:CreateButton(text, fn)
+            local sub = Menu()
+            sub.text, sub.fn = text, fn
+            self.items[#self.items + 1] = sub
+            return sub
+        end
+        return m
+    end
+    p.env.MenuUtil = { CreateContextMenu = function(owner, gen)
+        local root = Menu()
+        gen(owner, root)
+        opened[#opened + 1] = root
+    end }
+    return opened
+end
+local function Item(menu, text)
+    for _, it in ipairs(menu.items) do if it.text == text then return it end end
 end
 
 -- Un evento nuevo con la ventana, mañana a las 20:00
@@ -190,6 +214,56 @@ describe("Eventos entre hermandades (EV)", function()
         A.truthy(Until(net, function() return d.raidTabs[1]:GetText() == "Raid 1 (1)" end, 400), "Bea sigue en la raid de Ana")
         A.equal(1, Going(Card(ana, "Banda")))
         A.same({}, Bench(d))
+        A.same({}, net:Errors())
+    end)
+
+    it("Ana edita su evento y luego lo elimina (clic derecho): Alba (UNO) lo ve al momento y Bea (DOS), cambiado y con las dos apuntadas, y luego borrado; a Bea, el de Ana no le da menú", function()
+        local net, p = Union()
+        local ana, alba, bea = Open(p.ana), Open(p.alba), Open(p.bea)
+        Create(p.ana, ana, "Noche de Onyxia")
+        A.truthy(Until(net, function() return Card(bea, "Noche de Onyxia") end, 300), "no llega a DOS")
+        Click(Card(bea, "Noche de Onyxia").join)
+        A.truthy(Until(net, function() return Going(Card(ana, "Noche de Onyxia")) == 2 end, 400), "Ana no ve a Bea")
+        -- (Bea, en el de Ana: el clic derecho no le saca nada)
+        local beaMenus = Menus(p.bea)
+        Click(Card(bea, "Noche de Onyxia"), "RightButton")
+        A.equal(0, #beaMenus, "no es suyo")
+        -- (Ana lo edita: otro título y otra hora)
+        local menus = Menus(p.ana)
+        Click(Card(ana, "Noche de Onyxia"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        local nd = ana.newDlg
+        A.equal("Editar evento", nd.titleText:GetText())
+        A.equal("Noche de Onyxia", nd.title:GetText())
+        nd.title:SetText("Noche de Ragnaros")
+        -- (la hora, en su lista de 15 en 15: bajando hasta las 21:30)
+        Click(nd.hourBtn)
+        local tsf = p.ana.env.GuildUnionCalendarTimeScroll
+        p.ana.env.FauxScrollFrame_SetOffset(tsf, 21 * 4 + 2)
+        tsf:GetScript("OnVerticalScroll")(tsf, 0)
+        Click(nd.popups[3].rows[1])
+        A.equal("21:30", nd.hourBtn:GetText())
+        Click(Child(p.ana, nd, "Guardar"))
+        A.falsy(nd:IsShown())
+        A.same({ "Noche de Ragnaros" }, Titles(ana))
+        A.equal(2, Going(Card(ana, "Noche de Ragnaros")))
+        net:Advance(2)
+        A.same({ "Noche de Ragnaros" }, Titles(alba), "Alba, al momento")
+        A.truthy(Until(net, function() return Card(bea, "Noche de Ragnaros") ~= nil end, 400), "a Bea no le llega cambiado")
+        A.same({ "Noche de Ragnaros" }, Titles(bea), "el mismo evento, no otro")
+        local c = Card(bea, "Noche de Ragnaros")
+        A.matches("21:30", c.kind:GetText())
+        A.equal(2, Going(c), "Ana y Bea, apuntadas")
+        A.matches("Apuntado", c.join:GetText())
+        -- (Ana lo elimina)
+        Click(Card(ana, "Noche de Ragnaros"), "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        Click(Child(p.ana, p.ana.env.GuildUnionCalendarConfirm, "Sí"))
+        A.same({}, Titles(ana))
+        net:Advance(2)
+        A.same({}, Titles(alba), "Alba, al momento")
+        A.truthy(Until(net, function() return #Titles(bea) == 0 end, 400), "a Bea no le llega borrado")
+        A.truthy(bea.empty:IsShown(), "«No hay eventos próximos»")
         A.same({}, net:Errors())
     end)
 end)

@@ -1,8 +1,9 @@
--- Guild Union - Calendario de la unión (la sección Calendar de la lista de miembros) [+ARCHITECTURE.md]
+-- Guild Union - Eventos de la unión (la sección Eventos de la lista de miembros; hasta el 25/11, Calendario) [+ARCHITECTURE.md]
 -- Los eventos y quién va viajan como propuestas (Packs/Events.lua, conjunto EV); las raids se quedan en el PC de quien
 -- organiza. Con el estilo compartido (DJStyle.lua): fondos lisos casi negros con borde de tooltip gris, títulos y rayas
 -- doradas, tarjetas con sombra arriba y brillo dorado.
--- Pestañas Eventos (tarjetas) y Calendario (el mes); la ficha de cada evento son sus raids.
+-- Pestañas Eventos (tarjetas) y Calendario (el mes); la ficha de cada evento son sus raids. Clic derecho en uno mío:
+-- editarlo o eliminarlo.
 local _, HU = ...
 local L = HU.L
 
@@ -124,10 +125,12 @@ local function WhoText(e)
     local tag = e.tag and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. e.tag .. ">|r") or ""
     return (e.who == Me() and MINE or OTHERS) .. HU:Short(e.who) .. "|r" .. tag
 end
--- (próximos primero; los ya pasados, fuera de la lista: siguen en el calendario)
+-- (un evento no tiene hora de fin: acaba LASTS (3 h) después de su hora. En Eventos, por fecha, hasta CARDS_AFTER (2 días)
+-- después de acabar; luego solo en el mes, hasta que caduca su línea en la red (Packs/Events.lua)) [+ARCHITECTURE.md]
+local LASTS, CARDS_AFTER = 3 * 3600, 2 * 86400
 local function Upcoming()
-    local out, now = {}, time() - 3 * 3600
-    for _, e in ipairs(events) do if e.t >= now then out[#out + 1] = e end end
+    local out, now = {}, time()
+    for _, e in ipairs(events) do if now < e.t + LASTS + CARDS_AFTER then out[#out + 1] = e end end
     table.sort(out, function(a, b) return a.t < b.t end)
     return out
 end
@@ -513,6 +516,36 @@ local function OpenDetail(id)
     selected = id
     if other then raidPick, benchRole = 1, nil; ScrollTop(ui.detail.benchScroll) end
     Paint()
+end
+
+---------------------------------------------------------------------------
+-- Clic derecho en un evento mío, en su tarjeta o en su fila del día: editarlo o eliminarlo. En los de otros, nada [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (eliminar: uno de verdad, su línea vacía a la red (Packs/Events.lua); uno de prueba, solo aquí. Fuera sus raids y su ficha)
+local function DeleteEvent(id)
+    local e = Find(id)
+    if not (e and e.who == Me()) then return end
+    if e.test then
+        for k = #testEvents, 1, -1 do if testEvents[k].id == id then table.remove(testEvents, k) end end
+    elseif not HU:ProposeEventDelete(id) then
+        return HU:Print(L("No se ha podido eliminar el evento."))
+    end
+    HU.db.calRaids[id] = nil
+    if selected == id then selected = nil end
+    Rebuild()
+    Paint()
+end
+local function EventMenu(owner, id)
+    local e = id and Find(id)
+    if not (e and e.who == Me() and MenuUtil and MenuUtil.CreateContextMenu) then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(e.title)
+        root:CreateButton(L("Editar evento"), function() local x = Find(id); if x then ui.newDlg.Open(nil, x) end end)
+        root:CreateButton(L("Eliminar"), function()
+            ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
+        end)
+        root:CreateButton(L("Cancelar"), function() end)
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -1105,7 +1138,8 @@ function Paint()
 end
 
 ---------------------------------------------------------------------------
--- Nuevo evento: título, tipo, imagen, día, hora, nivel mínimo y descripción
+-- Nuevo evento: título, tipo, imagen, día, hora, nivel mínimo y descripción. La misma ventana edita uno mío
+-- (d.Open(nil, evento)): «Editar evento», todo puesto y «Guardar» [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local function BuildNewDialog(host)
     local d = DJWindow("GuildUnionCalendarNew", host, 380, 420)
@@ -1338,19 +1372,33 @@ local function BuildNewDialog(host)
     box:SetScript("OnMouseDown", function() d.desc:SetFocus() end)
 
     local ok = DJButton(d, L("Crear"), 120, 24); ok:SetPoint("BOTTOMLEFT", d, "BOTTOMLEFT", 18, 14)
+    d.ok = ok
     local no = DJButton(d, L("Cancelar"), 120, 24); no:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -18, 14)
     no:SetScript("OnClick", function() d:Hide() end)
     ok:SetScript("OnClick", function()
         local t = HU.Trim(d.title:GetText() or "")
         if t == "" then return HU:Print(L("Pon un título al evento.")) end
+        -- (al editar, el de antes, con lo último que ha llegado; si ya no está, no hay nada que guardar)
+        if dirty then Rebuild() end
+        local old = d.editing and Find(d.editing)
+        if d.editing and not old then return HU:Print(L("No se ha podido guardar el evento.")) end
         local when = time({ year = d.y, month = d.m, day = d.dd, hour = d.hh, min = d.mi })
-        if when < time() then return HU:Print(L("Elige un día y una hora que no hayan pasado.")) end
+        -- (al editar, el día y la hora de antes valen aunque ya hayan pasado)
+        local same = old and date("%Y%m%d%H%M", when) == date("%Y%m%d%H%M", old.t)
+        if same then when = old.t end
+        if when < time() and not same then return HU:Print(L("Elige un día y una hora que no hayan pasado.")) end
         local minLv = tonumber(d.minLv:GetText() or "")
-        local e = { id = NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
+        local e = { id = old and old.id or NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
             desc = HU.Trim(d.desc:GetText() or ""), minLevel = (minLv and minLv > 1) and minLv or nil, icon = d.icon }
         -- (a la red, y quien lo crea va, con su rol: como al apuntarse. En el modo prueba sin permiso para crear, solo en este
-        -- PC, como los de prueba)
-        if ui.testOn and not HU:CanMakeEvents() then
+        -- PC, como los de prueba. Editar uno de prueba, aquí; uno de verdad, el mismo id otra vez a la red: lo apuntado va
+        -- aparte (s<id>) y sigue)
+        if old and old.test then
+            old.title, old.kind, old.t, old.desc, old.minLevel, old.icon = e.title, e.kind, e.t, e.desc, e.minLevel, e.icon
+        elseif old then
+            if not HU:ProposeEvent(old.id, e) then return HU:Print(L("No se ha podido guardar el evento.")) end
+            Rebuild()
+        elseif ui.testOn and not HU:CanMakeEvents() then
             e.test, e.signups, e.roles, e.raids = true, { [Me()] = "yes" }, { [Me()] = MyRole() }, {}
             testEvents[#testEvents + 1] = e
             dirty = true
@@ -1363,14 +1411,20 @@ local function BuildNewDialog(host)
         d:Hide()
         Paint()
     end)
-    function d.Open(dayT)
-        local t = dayT or time()
-        d.title:SetText(""); d.desc:SetText(""); d.minLv:SetText("")
-        local td = date("*t", t)
-        d.y, d.m, d.dd, d.hh, d.mi = td.year, td.month, td.day, 20, 0
+    -- (sin evento, uno nuevo para ese día (o para hoy) a las 20:00; con uno mío, para editarlo: todo como está)
+    function d.Open(dayT, e)
+        d.editing = e and e.id or nil
+        d.titleText:SetText(e and L("Editar evento") or L("Nuevo evento"))
+        d.ok:Label(e and L("Guardar") or L("Crear"))
+        d.title:SetText(e and e.title or ""); d.desc:SetText(e and e.desc or "")
+        d.minLv:SetText(e and e.minLevel and tostring(e.minLevel) or "")
+        local td = date("*t", e and e.t or dayT or time())
+        d.y, d.m, d.dd = td.year, td.month, td.day
+        d.hh, d.mi = e and td.hour or 20, e and td.min or 0
         d.PaintWhen()
-        d.kind = "raid"; d.PaintKinds()
-        d.icon, d.iconCustom = KindIcon(d.kind), false; d.PaintIcons()
+        d.kind = e and e.kind or "raid"; d.PaintKinds()
+        d.icon = e and EventIcon(e) or KindIcon(d.kind)
+        d.iconCustom = d.icon ~= KindIcon(d.kind); d.PaintIcons()
         d:Show(); d.title:SetFocus()
     end
     return d
@@ -1445,10 +1499,10 @@ local function AddTest()
 end
 
 -- Lo guardado, en la cuenta: los eventos y quién va, en la red (Packs/Events.lua, tras /reload siguen); aquí, las raids de
--- los míos (calRaids) y lo que queda de la copia 324 (calEvents). Lo de prueba no se guarda [+ARCHITECTURE.md]
-local KEEP_DAYS = 7
+-- los míos (calRaids) y lo que queda de la copia 324 (calEvents), lo que vive un evento en la red (HU.EVENT_LIVES, 30 días
+-- desde su hora): mientras se ve en el mes, su ficha sigue con sus raids. Lo de prueba no se guarda [+ARCHITECTURE.md]
 local function Tidy()
-    local old = time() - KEEP_DAYS * 86400
+    local old = time() - HU.EVENT_LIVES
     local kept = HU.db.calEvents
     for k = #kept, 1, -1 do
         local e = kept[k]
@@ -1467,7 +1521,7 @@ local function Migrate()
         local e = kept[k]
         if type(e) == "table" and e.who == me and not e.test and type(e.t) == "number" and type(e.signups) == "table" then
             table.remove(kept, k)
-            if e.t >= time() - KEEP_DAYS * 86400 and HU:ProposeEvent(e.id, e) then
+            if e.t >= time() - HU.EVENT_LIVES and HU:ProposeEvent(e.id, e) then
                 if e.signups[me] == "yes" then HU:ProposeSignup(e.id, type(e.roles) == "table" and e.roles[me] or MyRole()) end
                 if type(e.raids) == "table" and #e.raids > 0 then e.raids.t = e.t; HU.db.calRaids[e.id] = e.raids end
             end
@@ -1497,7 +1551,7 @@ local function NoMakeTip(s)
 end
 
 ---------------------------------------------------------------------------
--- Montar la sección (UnionRoster.lua la pone en la pestaña Calendar)
+-- Montar la sección (UnionRoster.lua la pone en la pestaña Eventos)
 ---------------------------------------------------------------------------
 function HU:BuildCalendar(host)
     ui = host
@@ -1599,7 +1653,12 @@ function HU:BuildCalendar(host)
         -- (al pasar el ratón, borde dorado)
         c:SetScript("OnEnter", function(s) s:SetBackdropBorderColor(T.hover[1], T.hover[2], T.hover[3], 1) end)
         c:SetScript("OnLeave", function(s) s:SetBackdropBorderColor(0.34, 0.34, 0.34, 1) end)
-        c:SetScript("OnClick", function(s) if s.id then OpenDetail(s.id) end end)
+        -- (clic: la ficha; clic derecho, en uno mío: editar o eliminar)
+        c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        c:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then return EventMenu(s, s.id) end
+            if s.id then OpenDetail(s.id) end
+        end)
         ui.cards[i] = c
     end
     -- (la rueda del ratón mueve la barra de una tarjeta en una: poco a poco, y la barra con ella. Jorge, 24/11: antes
@@ -1644,7 +1703,11 @@ function HU:BuildCalendar(host)
         b.text:SetPoint("TOPLEFT", 42, -6); b.text:SetPoint("RIGHT", -4, 0); b.text:SetJustifyH("LEFT"); b.text:SetWordWrap(false)
         b.sub = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         b.sub:SetPoint("TOPLEFT", b.text, "BOTTOMLEFT", 0, -3); b.sub:SetPoint("RIGHT", -4, 0); b.sub:SetJustifyH("LEFT")
-        b:SetScript("OnClick", function(s) OpenDetail(s.id) end)
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then return EventMenu(s, s.id) end
+            OpenDetail(s.id)
+        end)
         b:Hide()
         side.dayBtns[i] = b
     end

@@ -1,4 +1,4 @@
--- Guild Union - secciones de la lista de miembros del juego: Miembros (todos los de la unión), Comercio y Calendario (pestañas de la derecha) [+ARCHITECTURE.md]
+-- Guild Union - secciones de la lista de miembros del juego: Miembros (todos los de la unión), Comercio y Eventos (pestañas de la derecha) [+ARCHITECTURE.md]
 local ADDON_NAME, HU = ...
 local L = HU.L
 local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\"
@@ -17,7 +17,7 @@ local ROW_UP, DROP = 31, 0
 -- lista empiezan justo debajo, y sus bordes empiezan 7 y 3 por encima de ellos) [+ARCHITECTURE.md]
 local INSET_EDGE = 3
 local CHAT_EDGE, LIST_EDGE = 7, 3
--- (Comercio y Calendario, pestañas de la derecha como las del juego (RightSideTabTemplate): de su tamaño y a su distancia)
+-- (Comercio y Eventos, pestañas de la derecha como las del juego (RightSideTabTemplate): de su tamaño y a su distancia)
 local SIDE_TAB, SIDE_TAB_GAP = 32, 20
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
@@ -40,14 +40,15 @@ local COLS = {
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
--- Calendario, la nuestra (Media))
+-- Eventos, la nuestra del calendario (Media))
 local TABS = {
     { title = "Miembros", icon = "Interface/Icons/achievement_guildperk_everybodysfriend" },
     -- (side: su nombre en la pestaña de la derecha, si no es el mismo. Jorge, 24/11: «se llama professions & trade»)
     { title = "Comercio", side = "Profesiones y comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
-    { title = "Calendario", calendar = true, icon = MEDIA .. "boton-calendario" },
+    -- (Jorge, 25/11: «cambiar el nombre de calendario a eventos»; dentro siguen las vistas Eventos y Calendario)
+    { title = "Eventos", calendar = true, icon = MEDIA .. "boton-calendario" },
 }
-local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
+local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Eventos y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
 local wantTab          -- la sección pulsada desde la vista de chat: se abre al llegar a la de miembros
 local sortKey, sortDesc   -- nil: rango y luego nivel
@@ -928,7 +929,7 @@ local function Build(f)
     cover.tabs = tabs
     tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
 
-    -- Comercio y Calendario, pestañas de la derecha como las del juego (Jorge, 24/11: «intentamos con botones
+    -- Comercio y Eventos, pestañas de la derecha como las del juego (Jorge, 24/11: «intentamos con botones
     -- laterales»; antes fueron una fila de botones redondos arriba y luego entradas de la columna de comunidades): justo
     -- debajo de la de miembros del juego («justo después de raid») y las demás del juego, debajo; luego irán Wanted y LFG.
     -- Botones seguros que pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve esa vista,
@@ -1050,7 +1051,7 @@ local function Build(f)
     cover.trade:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.trade:Hide()
     HU:BuildTrade(cover.trade)
-    -- (la sección Calendario, UnionCalendar.lua: igual)
+    -- (la sección Eventos, UnionCalendar.lua: igual)
     cover.calendar = CreateFrame("Frame", nil, cover)
     cover.calendar:SetPoint("TOPLEFT", cover, "TOPLEFT", 0, -2)
     cover.calendar:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)

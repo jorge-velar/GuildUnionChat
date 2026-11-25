@@ -1045,6 +1045,11 @@ E["eventos"] = "events"
 E["¿Seguro que quieres salir del evento?"] = "Are you sure you want to leave this event?"
 E["No se ha podido crear el evento."] = "The event could not be created."
 
+E["Editar evento"] = "Edit event"
+E["¿Seguro que quieres eliminar el evento?"] = "Are you sure you want to delete this event?"
+E["No se ha podido guardar el evento."] = "The event could not be saved."
+E["No se ha podido eliminar el evento."] = "The event could not be deleted."
+
 E["Convertir en banda"] = "Convert to raid"
 E["Estás en grupo, no en banda: pulsa «Convertir en banda» antes de «Invitar a todos»."] = "You're in a party, not a raid: press “Convert to raid” before “Invite all”."
 E["No estás en banda: invita a alguien, pulsa «Convertir en banda» y luego «Invitar a todos»."] = "You're not in a raid: invite someone, press “Convert to raid” and then “Invite all”."

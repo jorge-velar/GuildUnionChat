@@ -2335,15 +2335,16 @@ no, no se sabe y su zona dice «?». Abajo, mientras llega, «lista completa 5/1
 
 ### Qué hay en el archivo
 
-El conjunto **`EV`** (16 trozos, de propuestas): los eventos del Calendario (UnionCalendar.lua) y quién se apunta, de
-todas las hermandades. Jorge, 24/11: «los eventos no se ven entre los de su propia guild ni entre los de otras guild, se
-tiene que poder ver y apuntar» y «al hacer /reload se borra todo de eventos». Cada uno manda lo suyo (`HU:Propose`): su
-hermandad lo oye por GUILD al momento, las otras lo reciben con el paquete de su enlace y, tras /reload, sigue en el
-almacén (`wuStore`). Las raids no viajan: se quedan en el PC de quien organiza (UnionCalendar.lua, `calRaids`).
+El conjunto **`EV`** (16 trozos, de propuestas): los eventos de la sección Eventos (UnionCalendar.lua; hasta el 25/11 se
+llamaba Calendario) y quién se apunta, de todas las hermandades. Jorge, 24/11: «los eventos no se ven entre los de su
+propia guild ni entre los de otras guild, se tiene que poder ver y apuntar» y «al hacer /reload se borra todo de
+eventos». Cada uno manda lo suyo (`HU:Propose`): su hermandad lo oye por GUILD al momento, las otras lo reciben con el
+paquete de su enlace y, tras /reload, sigue en el almacén (`wuStore`). Las raids no viajan: se quedan en el PC de quien
+organiza (UnionCalendar.lua, `calRaids`).
 
 | Clave | De quién | Datos |
 |---|---|---|
-| `e<id>` | el creador | `<hora36>,<tipo>,<nivelMin>,<icono>,<título>,<descripción>` |
+| `e<id>` | el creador | `<hora36>,<tipo>,<nivelMin>,<icono>,<título>,<descripción>`; editarlo, otra vez con el mismo id; eliminarlo, datos vacíos |
 | `s<id>` | quien se apunta | su rol: `T`, `H` o `D`; desapuntarse, datos vacíos |
 
 - `<id>`: letras y cifras, 20 como mucho (el de `NewId` del calendario: 8 cifras hexadecimales).
@@ -2356,11 +2357,25 @@ almacén (`wuStore`). Las raids no viajan: se quedan en el PC de quien organiza 
 - **Lo que cabe.** La línea del paquete («Nombre-Reino,clave,hora,datos») no puede pasar de 200 (`PART` de
   Net/Packs.lua): una más larga no se publicaría a las otras hermandades. `HU:ProposeEvent` mide lo que queda con mi
   nombre y la clave, y corta la descripción (y, si hiciera falta, el título) para que quepa; los datos, además, en 180.
-- **`validate`** comprueba la forma de las dos claves. **`alive`**: el evento vive hasta 7 días después de su hora; lo
-  apuntado y lo borrado, 45 días desde que se propuso. **`onChange`** → `HU:Changed("calendar")`.
+- **`validate`** comprueba la forma de las dos claves. **`alive`**: el evento vive hasta 30 días después de su hora
+  (`EVENT_LIVES`, también en `HU.EVENT_LIVES`; antes del 25/11, 7 días): hasta entonces se ve en el mes del calendario, y
+  las raids de quien organiza se guardan lo mismo. Lo apuntado y lo borrado, 45 días desde que se propuso
+  (`SIGNUP_LIVES`). **`onChange`** → `HU:Changed("calendar")`.
+- **Editar** es proponer otra vez `e<id>` con los datos nuevos: la línea es la del creador y gana la más nueva. Lo
+  apuntado va en sus `s<id>`, de cada uno, y no se toca: quien estaba apuntado sigue.
+- **Eliminar** (`HU:ProposeEventDelete`) es `e<id>` con datos vacíos: borrada con su hora, no vuelve con una más vieja, y
+  el enlace la publica para que se borre en las otras hermandades (Net/Packs.lua, «Propuestas (`WU`)»). Los `s<id>` se
+  quedan hasta que caducan: sin su evento no se ven.
+- **Pendiente (visto al hacerlo, 25/11):** lo borrado vive 45 días desde que se borra y el evento, 30 días desde su hora.
+  Un evento eliminado más de 15 días antes de su hora puede volver en el PC de alguien de mi hermandad que estuvo fuera
+  todo ese tiempo: al juntar los trozos del equipo (`OwnChunk`), Net/Packs.lua no quita lo que falta en ellos, y si luego
+  fuera enlace lo publicaría. Arreglarlo es cosa de Net/Packs.lua (que al juntar un trozo comprobado quite lo que no
+  está) o de que lo borrado de `EV` viva más.
 
 Lo que usa el calendario (así el formato está solo aquí):
-- `HU:ProposeEvent(id, e)`: mi evento `{ t, kind, minLevel, icon (ruta entera), title, desc }`; devuelve si ha podido.
+- `HU:ProposeEvent(id, e)`: mi evento `{ t, kind, minLevel, icon (ruta entera), title, desc }` (nuevo o editado, con el
+  mismo id); devuelve si ha podido.
+- `HU:ProposeEventDelete(id)`: elimino mi evento; devuelve si ha podido.
 - `HU:ProposeSignup(id, rol)`: me apunto con `TANK`, `HEALER` o `DAMAGER` (otro rol, como daño); sin rol, me desapunto.
 - `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
   icon, title, desc }` y quién se apunta `{ id, tag, who, role }`.
@@ -2834,11 +2849,11 @@ al marcarla se marca a la persona)
 ### Qué hay en el archivo
 
 Las secciones de la vista de miembros de la ventana de hermandad (`CommunitiesFrame`; se monta al cargar
-`Blizzard_Communities`): **Miembros**, la lista de toda la unión; **Comercio** y **Calendario**, marcos hijos de `cover`
-que llenan `HU:BuildTrade` y `HU:BuildCalendar`, y que se abren con dos pestañas de la derecha como las del juego (ver
-«Comercio y Calendario, pestañas de la derecha»). En la vista de chat, solo la franja de arriba. El buscador de
-personajes solo sale en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 = Miembros, 2-3 = las otras) y
-`mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no enseñaba los bancos
+`Blizzard_Communities`): **Miembros**, la lista de toda la unión; **Comercio** y **Eventos** (hasta el 25/11,
+Calendario), marcos hijos de `cover` que llenan `HU:BuildTrade` y `HU:BuildCalendar`, y que se abren con dos pestañas de
+la derecha como las del juego (ver «Comercio y Eventos, pestañas de la derecha»). En la vista de chat, solo la franja de
+arriba. El buscador de personajes solo sale en Chat y Miembros (`HU.charSearchOff`). Estado: `tab` (0 = Chat, 1 =
+Miembros, 2-3 = las otras) y `mode` («roster», «chat» o nil). El Banco (UnionBank.lua) se quitó el 24/11: sin la parte de red no enseñaba los bancos
 de las otras hermandades y las peticiones no le llegaban a nadie; está en el historial de Git.
 
 **Cómo se llegó aquí** (24/11, todo con Jorge mirando capturas): hasta la 304, una fila de botones redondos arriba (Chat
@@ -2988,14 +3003,14 @@ queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porqu
   (BlizzTab.lua) baja: en `ChatAnchors` se ata al chat con los mismos 15 y 1 que le da el juego, y queda a la altura de
   la de su lista. La de la lista de la derecha, como está. Solo se cambia la esquina de arriba de cada barra.
 
-### Comercio y Calendario, pestañas de la derecha
+### Comercio y Eventos, pestañas de la derecha
 
 Dos pestañas como las del juego (Chat, Miembros, Información…), justo debajo de la de miembros, separadas
 `SIDE_TAB_GAP` (20) como las suyas (Jorge, 24/11: «intentamos con botones laterales»; en la 310 iban debajo de la
 última del juego y, al verlas, pidió «justo después de raid», que es la de miembros; luego irán Wanted y LFG). Solo con
 la hermandad elegida, como la de Información (`PlaceTabs`). El nombre sale al pasar el ratón: «Profesiones y comercio»
-(`side` en `TABS`; en inglés «Professions & Trade») y «Calendario». Iconos: el martillo de herrería y nuestra imagen del
-calendario.
+(`side` en `TABS`; en inglés «Professions & Trade») y «Eventos» («Events»; hasta el 25/11, «Calendario»: Jorge, «cambiar
+el nombre de calendario a "eventos"»). Iconos: el martillo de herrería y nuestra imagen del calendario.
 - **Las del juego, debajo** (`MoveGameTabs`): la que iba justo debajo de la de miembros —Beneficios, si está; si no,
   Información; las demás van atadas a ella— se ata debajo de las nuestras. El juego vuelve a atar Información a la de
   miembros cada vez que pone al día sus pestañas (`UpdateCommunitiesTabs`, al cambiar de vista o de comunidad, sin
@@ -3892,7 +3907,11 @@ Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos d
 
 ### Qué hay en el archivo
 
-La sección Calendario de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
+La sección **Eventos** de la lista de miembros (UnionRoster.lua la monta en `cover.calendar` con `HU:BuildCalendar`).
+Hasta el 25/11 se llamaba Calendario (Jorge: «cambiar el nombre de calendario a "eventos"»): su pestaña de la derecha
+(`TABS` de UnionRoster.lua) y la pestaña de su configuración (UnionConfig.lua) dicen «Eventos» («Events» en inglés). El
+código la sigue llamando `calendar` (archivo, marcos `GuildUnionCalendar…`, `HU:Changed("calendar")`); dentro siguen sus
+dos vistas, Eventos (las tarjetas) y Calendario (el mes).
 Arriba, en el centro (`TOP`, 0, -4), los botones rojos Eventos · Calendario (`ui.switch`, `DJ.Switch`: los mismos de
 Comercio y en el mismo sitio; Jorge, 24/11: «usa ese formato también para eventos»); son `ui.viewBtns.list` y `.month`
 (`:Pick`). «Modo prueba» sigue arriba a la derecha: a 8 del borde y a la altura de los botones (de 505 a 609; los botones
@@ -3904,8 +3923,9 @@ de Comercio. Va a 6 del borde de abajo del panel y es hijo de él; las tarjetas,
 `BOTTOM_H` (34) por encima, 4 por encima del botón. Con la ventana del juego a su alto de siempre (la sección, 366)
 caben las 4 tarjetas (282 de 284) y las 5 filas del día (calendario_spec). Piezas de DJStyle.lua (`HU.DJ`).
 Solo eventos de la unión: el calendario del juego no se toca.
-- **Eventos** (`PaintCards`): los próximos (desde hace 3 h, `Upcoming`), por fecha, **una tarjeta por línea, a todo lo
-  ancho** (Jorge, 24/11; antes, de 2 en 2): 62 de alto (`CARD_H`), 6 entre ellas (`CARD_GAP`) y 4 a la vista
+- **Eventos** (`PaintCards`): los que no han terminado y los que terminaron hace menos de 2 días (`Upcoming`, ver «Cuándo
+  sale cada evento»), por fecha, **una tarjeta por línea, a todo lo ancho** (Jorge, 24/11; antes, de 2 en 2): 62 de alto
+  (`CARD_H`), 6 entre ellas (`CARD_GAP`) y 4 a la vista
   (`CARD_N`). Lo de siempre, repartido de izquierda a derecha: el día grande con el día de la semana y el mes (desde 12),
   la imagen redonda (112), tres líneas desde 150 —el título dorado (hasta 132 del borde derecho), tipo · hora · «Nv. N+»
   y «por» quién (yo en azul, los demás en amarillo, con su hermandad a color)—, a su derecha los roles y «N van» (tic si
@@ -3921,6 +3941,34 @@ Solo eventos de la unión: el calendario del juego no se toca.
   evento» crea para el día elegido (sin elegir, y en Eventos, para hoy). Hasta el 24/11 el panel del día tenía su propio
   «+ Nuevo evento» abajo: con el de abajo en el centro sobraba (y no cabía con las 5 filas), y se quitó.
 
+### Cuándo sale cada evento (`Upcoming`, `LASTS`, `CARDS_AFTER`)
+
+Jorge, 25/11: «eliminado a los 2 días de que el evento termine automático, solo quedará en la parte de calendario». Un
+evento no tiene hora de fin: acaba 3 h después de su hora (`LASTS`, lo mismo que usaba antes `Upcoming`).
+- **En Eventos** (las tarjetas) está hasta 2 días después de acabar (`CARDS_AFTER`): sale a las `t + 3 h + 2 días`. Antes
+  salía a las 3 h de su hora («lo que empezó hace más de 3 horas sale de la lista»). Se mira al pintar, con la hora de ese
+  momento: nada por fotograma.
+- **En el mes** (Calendario) está mientras viva su línea en la red: 30 días después de su hora (`alive` de
+  Packs/Events.lua, `HU.EVENT_LIVES`). Luego `HU:Proposals` ya no lo da, el almacén lo quita al entrar y cada hora, y sus
+  raids (`calRaids`) salen al entrar o al salir del juego (`Tidy`). Su ficha se abre igual desde el día.
+- Lo apuntado sigue con su regla: 45 días desde que cada uno se apuntó. En un evento puesto con más de 15 días de
+  antelación, al final de esos 30 días el mes puede enseñarlo con menos apuntados.
+
+### Clic derecho en un evento mío: editar y eliminar (`EventMenu`, `DeleteEvent`)
+
+Jorge, 25/11: «poner botón derecho - editar evento y botón derecho - eliminar». En la tarjeta y en la fila del día del mes
+(`RegisterForClicks` con el botón derecho; el izquierdo sigue abriendo la ficha), solo en los que creé yo (`who == Me()`):
+un menú del juego (`MenuUtil.CreateContextMenu`, como el de los nombres de la ficha) con el título del evento, «Editar
+evento», «Eliminar» y «Cancelar». En los de otros, el clic derecho no hace nada; sin el menú del juego, tampoco. No hace
+falta poder crear eventos (`HU:CanMakeEvents`): lo mío lo edito y lo elimino siempre.
+- **Editar evento**: la ventana de nuevo evento con todo puesto (ver «Nuevo evento»); al guardar, el mismo id otra vez a
+  la red (`HU:ProposeEvent(id, e)`). Lo apuntado va en las líneas de cada uno (`s<id>`) y no se toca, y las raids, en
+  `calRaids[id]`, siguen (con la hora nueva en su `t`).
+- **Eliminar**: pregunta «¿Seguro que quieres eliminar el evento?» (`ui.confirm`, la de salir del evento). Con «Sí», su
+  línea vacía a la red (`HU:ProposeEventDelete`); si no se puede (sin comunidad leída), «No se ha podido eliminar el
+  evento.» y sigue. Salen sus raids (`calRaids[id]`) y, si su ficha estaba abierta, se cierra; la de otro evento sigue.
+- **Lo de prueba**, solo aquí: editar cambia el evento de `testEvents` y eliminar lo quita de ahí; nada va a la red.
+
 ### Lo que se ve: los eventos de la red (`Rebuild`)
 
 Los eventos y quién va viajan como propuestas, conjunto `EV` (Packs/Events.lua): los ve y se apunta toda la unión, y
@@ -3933,7 +3981,7 @@ JcJ y Social (Mazmorra solo sale en el modo prueba; Otro es el de reserva).
   del conjunto) o al abrir la sección. El aviso solo marca `dirty` y `Paint` rehace antes de pintar. Con la sección a la
   vista (`open`: entre su OnShow y su OnHide, que también salta al cerrar la ventana del juego) se pinta 0,3 s después, una
   vez para todo lo que llega seguido (`paintSoon`: p. ej. los trozos de un paquete, uno tras otro); escondida, nada hasta
-  abrirla. Lo que hago yo (crear, apuntarme, salir) se rehace y se pinta en el momento.
+  abrirla. Lo que hago yo (crear, editar, eliminar, apuntarme, salir) se rehace y se pinta en el momento.
 - **Pedir** (`Need`): al abrir y cada minuto mientras se ve (`HU:Every(60, "calendario-pedir")`), `HU:PackNeed` de mi
   hermandad (lo que me perdí estando fuera) y de cada una de las otras (`HU:OtherTags()`).
 - **Una clave de dos creadores** (dos `e<id>` iguales): vale la que se propuso antes (`pt`; luego nombre e id).
@@ -3963,6 +4011,11 @@ sin saltos de línea).
   Los dos van a la red (`HU:ProposeEvent`, `HU:ProposeSignup`); si no se puede (sin comunidad leída), «No se ha podido
   crear el evento.» y la ventana sigue abierta. En el modo prueba sin permiso para crear, el evento es de prueba: solo en
   este PC y se va al apagarlo (si no, el modo prueba dejaría crear eventos de verdad a quien no puede).
+- **Para editar** (`d.Open(nil, evento)`, desde el clic derecho): el título de la ventana dice «Editar evento» y el botón,
+  «Guardar»; trae puesto todo lo del evento (título, tipo, imagen, día, hora, nivel y descripción; `d.editing` es su id).
+  La imagen sigue al tipo solo si era la del tipo. El día y la hora de antes valen aunque ya hayan pasado (para cambiar la
+  descripción de uno empezado); otros que hayan pasado, no. Si al guardar el evento ya no está, «No se ha podido guardar
+  el evento.»; si no se puede mandar, lo mismo y la ventana sigue abierta. «+ Nuevo evento» la vuelve a dejar para crear.
 
 ### La ficha del evento (`BuildDetail`, `PaintDetail`)
 
@@ -4022,6 +4075,7 @@ Apagado, al pasar el ratón dice quién crea eventos según `calMake` (`NoMakeTi
 «Solo los oficiales crean eventos.»; con «Todos», nada; encendido, nada (su nombre ya se lee). Organizar (`CanManage`:
 añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» y «Convertir en banda»: el líder de esa
 raid. «Quitar raid»: quien creó el evento o ese líder. Apuntarse, ver la ficha, susurrar e invitar al grupo: cualquiera.
+Editar y eliminar (clic derecho): solo quien lo creó, aunque ya no pueda crear eventos.
 
 ### Lo guardado (`calRaids`, `calEvents`)
 
@@ -4031,13 +4085,15 @@ Jorge, 24/11: «al hacer /reload se borra todo». Los eventos y quién va, con s
 - `calRaids[id] = { raid, …, t = hora del evento }`: las raids de los eventos que organizo, en este PC.
 - `calEvents`: lo que queda de la copia 324, donde los eventos solo se guardaban aquí.
 
-`Tidy`, al entrar y al salir (`PLAYER_LOGOUT`), quita de `calRaids` las de eventos que pasaron hace más de `KEEP_DAYS`
-(7) días (o sin `t`), y de `calEvents` lo de prueba (`test`), lo que no tiene forma de evento y lo viejo.
+`Tidy`, al entrar y al salir (`PLAYER_LOGOUT`), quita de `calRaids` las de eventos que pasaron hace más de lo que vive un
+evento en la red (`HU.EVENT_LIVES`, 30 días desde su hora, Packs/Events.lua; hasta el 25/11, `KEEP_DAYS`, 7) o sin `t`, y
+de `calEvents` lo de prueba (`test`), lo que no tiene forma de evento y lo viejo: mientras un evento se ve en el mes, su
+ficha sigue con sus raids. Al eliminar un evento, sus raids salen enseguida.
 
 **Migración de la copia 324** (`Migrate`, en cuanto se lee la comunidad: `CHANGED` «config»). Los eventos míos de
 `calEvents` (`who == Me()`) se proponen una vez, con mi apuntado (con el rol que tenía) y sus raids (pasan a `calRaids`), y
-salen de `calEvents`. Los de otro personaje de la cuenta se quedan hasta que entre él: `calEvents` es de la cuenta y
-vaciarla entera perdería los suyos. `calEvents` sigue declarada.
+salen de `calEvents`; los de hace más de 30 días (`HU.EVENT_LIVES`), solo salen. Los de otro personaje de la cuenta se
+quedan hasta que entre él: `calEvents` es de la cuenta y vaciarla entera perdería los suyos. `calEvents` sigue declarada.
 
 ### Modo prueba
 
@@ -4047,7 +4103,8 @@ guarda. `AddTest` pone cinco eventos de mi hermandad y de otra
 (`-Prueba`, clase y nivel en `testClass` / `testLevel`) y una raid que llevo yo (así se puede organizar) con 12
 colocados, el resto en el banquillo y las tres marcas de invitación; además, una mazmorra, un JcJ, un social mío y otra
 banda (nivel 60). `ClearTest` quita sus eventos, marcas, clases y niveles, y cierra la ficha solo si era de un
-evento de prueba.
+evento de prueba. Los de prueba míos (el social) se editan y se eliminan con el clic derecho como los de verdad, pero solo
+aquí: al apagar y encender el modo prueba vuelven como eran.
 
 ## UnionConfig.lua
 
@@ -4056,8 +4113,8 @@ evento de prueba.
 La configuración de la hermandad, en la mitad derecha de la pestaña GuildUnion (BlizzTab.lua llama a
 `HU:BuildUnionConfig`; Oficiales y Miembros siguen allí, escondidos en `stash`). Título «Configuración» con «Puedes
 cambiarla» o «Solo el maestro la cambia» al lado. Cuatro pestañas en dos filas (3 + 1, de 84, con la letra normal del
-botón: la pequeña cambiaba de tamaño al pasar el ratón): Comercio, Lista negra, Calendario y Hermandad; se abre en
-Comercio. La cambia el maestro (`HU:IsUnionGM()`: `HU:IsMaster()`, el maestro de la hermandad o quien tiene el
+botón: la pequeña cambiaba de tamaño al pasar el ratón): Comercio, Lista negra, Eventos (hasta el 25/11, Calendario, como
+su sección) y Hermandad; se abre en Comercio. La cambia el maestro (`HU:IsUnionGM()`: `HU:IsMaster()`, el maestro de la hermandad o quien tiene el
 rango 0, o la casilla «Probar como maestro (solo en este PC)», `testGM`, para probar la ventana); los controles del
 maestro (`controls`) se apagan para los demás, que la ven igual.
 
@@ -4080,7 +4137,7 @@ solo publicará el maestro.
   Nombre + «Quitar» (`HU:Unban`), motivo + «Añadir» (`HU:SetBan`, que pide motivo) y «Comprobar ahora»
   (`HU:BlacklistCheck(true)`) solo los ven los oficiales (`HU:CanPin`), no solo el maestro; en la ventana de
   `/gu listanegra`, igual.
-- **Calendario**: quién crea eventos (`calMake`: «gm», «officers» por defecto o «all») y «Permiso por un tiempo»:
+- **Eventos** (la página `calendar`): quién crea eventos (`calMake`: «gm», «officers» por defecto o «all») y «Permiso por un tiempo»:
   nombre (con sugerencias, `HU:NameSuggest`), horas (24 por defecto, de 1 a 999) y «Dar» → `calAllow[clave] = { name,
   untilT, by }`. Debajo, quién lo tiene y hasta cuándo, el que caduca primero arriba (lista con barra: las filas
   que quepan, hasta 5); la X para quitarlo, solo el maestro. Los caducados se borran al repintar. `HU:CanMakeEvents()`

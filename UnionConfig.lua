@@ -1,7 +1,7 @@
 -- Guild Union - Configuración de la hermandad (mitad derecha de la pestaña GuildUnion) [+ARCHITECTURE.md]
--- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio y Calendario.
--- Pestañas: Comercio (activo, propinas), Lista negra (la de la comunidad), Calendario (quién crea eventos y permisos
--- por un tiempo) y Hermandad (el color).
+-- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio y Eventos.
+-- Pestañas: Comercio (activo, propinas), Lista negra (la de la comunidad), Eventos (quién crea eventos y permisos
+-- por un tiempo; hasta el 25/11, Calendario, como la sección) y Hermandad (el color).
 -- Lo cambia el maestro de la hermandad (la lista negra, también los oficiales); los demás lo ven sin poder tocarlo.
 local _, HU = ...
 local L = HU.L
@@ -20,7 +20,7 @@ local function Cfg() return HU:UnionCfg() end
 local function IsGM() return HU:IsUnionGM() end
 local function Changed() HU:Changed("unionCfg") end
 
--- (¿puedo crear eventos? Según la configuración del calendario, o con un permiso por un tiempo)
+-- (¿puedo crear eventos? Según la configuración de Eventos, o con un permiso por un tiempo)
 function HU:CanMakeEvents()
     local c = Cfg()
     local who = c.calMake or "officers"
@@ -47,7 +47,7 @@ function HU:BuildUnionConfig(panel)
     -- Pestañas
     local pages, tabs = {}, {}
     local current = "trade"
-    local TABS = { { "trade", L("Comercio") }, { "black", L("Lista negra") }, { "calendar", L("Calendario") },
+    local TABS = { { "trade", L("Comercio") }, { "black", L("Lista negra") }, { "calendar", L("Eventos") },
         { "guild", L("Hermandad") } }
     for i, t in ipairs(TABS) do
         local b = DJ.Button(box, t[2], 84, 22)
@@ -136,7 +136,7 @@ function HU:BuildUnionConfig(panel)
     tNote:SetPoint("TOPLEFT", 4, -82); tNote:SetWidth(250); tNote:SetJustifyH("LEFT")
     tNote:SetText(L("Sin propinas, las solicitudes no llevan oro. Con el comercio apagado, la sección Comercio no deja pedir."))
 
-    -- Calendario: quién crea eventos y permisos de un rato (a alguien que no es oficial, por ejemplo)
+    -- Eventos: quién crea eventos y permisos de un rato (a alguien que no es oficial, por ejemplo)
     local pc = pages.calendar
     Head(pc, L("Quién puede crear eventos"), -4)
     refresh[#refresh + 1] = Choice(pc, -24, { { "gm", L("Maestro"), 80 }, { "officers", L("Oficiales"), 80 }, { "all", L("Todos"), 80 } },
