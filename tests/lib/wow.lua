@@ -62,10 +62,31 @@ local function FrameMethods(w)
     function M:IsEventRegistered(ev) return self._events[ev] == true end
     function M:RegisterAllEvents() self._allEvents = true end
     function M:UnregisterAllEvents() self._events, self._allEvents = {}, nil end
-    function M:Show() self._shown = true end
-    function M:Hide() self._shown = false end
-    function M:SetShown(v) self._shown = v and true or false end
+    -- (como en el juego: OnShow / OnHide cuando el marco pasa a verse o deja de verse, mirando sus padres;
+    -- p. ej. Hide() nada más crearlo, que nace visible, ya llama a su OnHide)
+    local function Visible(f)
+        while f do
+            if f._shown == false then return false end
+            f = f._parent
+        end
+        return true
+    end
+    local function SetShownState(self, v)
+        local was = Visible(self)
+        self._shown = v
+        local now = Visible(self)
+        if was ~= now then
+            local s = self._scripts[now and "OnShow" or "OnHide"]
+            if s then s(self) end
+        end
+    end
+    function M:Show() SetShownState(self, true) end
+    function M:Hide() SetShownState(self, false) end
+    function M:SetShown(v) SetShownState(self, v and true or false) end
     function M:IsShown() return self._shown end
+    -- (el nivel de marco se recuerda: qué queda encima de qué)
+    function M:SetFrameLevel(v) self._level = v end
+    function M:GetFrameLevel() return self._level or 1 end
     function M:GetName() return self._name end
     function M:GetParent() return self._parent end
     function M:GetObjectType() return self._kind end
@@ -228,6 +249,18 @@ function wow.New(opts)
         local f = NewFrame(w, kind, name, parent)
         -- (las piezas que traen las plantillas del juego y que el addon toca: el fondo de InsetFrameTemplate)
         if type(template) == "string" and template:find("InsetFrameTemplate", 1, true) then f.Bg = NewFrame(w, "Texture", nil, f) end
+        -- (y las tres piezas del botón rojo, UIPanelButtonTemplate: DJStyle.lua las oscurece al elegirlo)
+        if type(template) == "string" and template:find("UIPanelButtonTemplate", 1, true) then
+            for _, k in ipairs({ "Left", "Middle", "Right" }) do f[k] = NewFrame(w, "Texture", nil, f) end
+        end
+        -- (el texto gris de ayuda de los buscadores, SearchBoxTemplate)
+        if type(template) == "string" and template:find("SearchBoxTemplate", 1, true) then
+            f.Instructions = NewFrame(w, "FontString", nil, f)
+        end
+        -- (el texto de al lado de las casillas, UICheckButtonTemplate)
+        if type(template) == "string" and template:find("UICheckButtonTemplate", 1, true) then
+            f.Text = NewFrame(w, "FontString", nil, f)
+        end
         return f
     end
     -- (las listas con barra de la interfaz del juego: solo recuerdan por dónde van)
@@ -235,6 +268,10 @@ function wow.New(opts)
     api.FauxScrollFrame_GetOffset = function(f) return f and f._offset or 0 end
     api.FauxScrollFrame_SetOffset = function(f, n) if f then f._offset = n end end
     api.FauxScrollFrame_OnVerticalScroll = function(_, _, _, fn) if fn then fn() end end
+    -- (las pestañas de la interfaz del juego: solo recuerdan cuál está elegida)
+    api.PanelTemplates_SetNumTabs = function(f, n) if f then f.numTabs = n end end
+    api.PanelTemplates_SetTab = function(f, id) if f then f.selectedTab = id end end
+    api.PanelTemplates_TabResize = function() end
     api.CreateFont = function(name) return NewFrame(w, "Font", name) end
     api.UIParent = NewFrame(w, "Frame", "UIParent")
     api.DEFAULT_CHAT_FRAME = NewFrame(w, "ScrollingMessageFrame", "ChatFrame1")
@@ -381,6 +418,19 @@ function wow.New(opts)
         for _, f in ipairs(w.frames) do if f._events[ev] then out[#out + 1] = f end end
         return unpack(out)
     end
+    -- (los mapas del juego, en el idioma de este jugador: la prueba pone w.maps = { { mapID = 1429, name = "…" } };
+    -- sin ellos, ninguno)
+    api.C_Map = {
+        GetFallbackWorldMapID = function() return 947 end,
+        GetMapChildrenInfo = function()
+            local out = {}
+            for i, m in ipairs(w.maps or {}) do out[i] = m end
+            return out
+        end,
+        GetMapInfo = function(id)
+            for _, m in ipairs(w.maps or {}) do if m.mapID == id then return m end end
+        end,
+    }
     -- (/who: se apunta lo buscado y la respuesta la pone la prueba en w.who, con w:Fire("WHO_LIST_UPDATE"))
     api.C_FriendList = {
         SendWho = function(filter) w.whoSent[#w.whoSent + 1] = filter end,
@@ -407,7 +457,9 @@ function wow.New(opts)
     api.SOUNDKIT = setmetatable({}, { __index = function() return 0 end })
     api.SendChatMessage = function(msg, kind, lang, target) w.said[#w.said + 1] = { msg = msg, kind = kind, target = target } end
     api.Enum = { SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, ChannelThrottle = 8,
-        GeneralError = 9, AddOnMessageLockdown = 11, TargetOffline = 12 } }
+        GeneralError = 9, AddOnMessageLockdown = 11, TargetOffline = 12 },
+        ClubStreamType = { General = 0, Guild = 1, Officer = 2, Other = 3 },
+        ClubType = { BattleNet = 0, Character = 1, Guild = 2, Other = 3 } }
 
     local function SendAddon(prefix, text, dist, target, logged)
         if w.failSend then

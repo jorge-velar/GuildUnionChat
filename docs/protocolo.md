@@ -42,6 +42,7 @@ colas `b…` (datos grandes), que salen por `HU20B`.
 | `GD` | `GD~id`: petición de echar ya atendida | Social.lua | normal |  |  |  |
 | `GK` | `GK~id~tag~objetivo~solicitante~etiqSol`: pide echar a alguien de otra hermandad | Social.lua | chat | 600 s |  |  |
 | `GL` | `GL~id~parte~partes~datos`: la configuración de la comunidad, tras aceptar la invitación | Community.lua | normal |  | abierta |  |
+| `GP` | `GP~id~tag~objetivo~rango~solicitante~etiqSol`: pide cambiar el rango a alguien de otra hermandad | Ranks.lua | chat | 600 s |  |  |
 | `GR` | `GR~id~ok\|no~quién~objetivo~motivo`: respuesta a quien pidió echar | Social.lua | normal |  |  |  |
 | `GV` | `GV~id~ETIQ~título~hermandad`: invitación a la comunidad (al contacto de la hermandad nueva) | Community.lua | normal |  | abierta |  |
 | `HI` | `HI~ver~etiq~mod~enlace…`: saludo (por GUILD a la hermandad, o por susurro a otra) | Net/Relay.lua | normal (la última, se tira con el chat bloqueado) | 60 s | etiq. 2, arranque |  |

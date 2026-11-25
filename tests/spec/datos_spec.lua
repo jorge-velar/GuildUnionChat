@@ -101,10 +101,18 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
     local OLD_CHAR = { "history", "pinned", "myRole", "lastSeen", "pvpSince", "netChan", "chatShow", "netCfg",
         "infoBackup", "noteChanSeen", "joinedChans", "extraChans", "chatTab", "chanLane", "netGuilds", "proposals",
         "guildColors", "customEmotes", "lists", "rankCache", "offline", "offlineT", "peers", "chatTabsMade",
-        "rosterCache", "remoteRanks", "quickCfg", "managers", "officerRanks", "myOfficerRanks", "laneLock", "laneMig", "wmRows" }
+        "rosterCache", "remoteRanks", "quickCfg", "managers", "officerRanks", "myOfficerRanks", "laneLock", "laneMig", "wmRows",
+        -- (nuevo: la configuración de la unión, de cada personaje)
+        "unionCfg",
+        -- (nuevo: Comercio, las recetas leídas de cada profesión y la casilla «Solo lo que puedo hacer»)
+        "tradeRecipes", "tradeOnlyCraft",
+        -- (nuevo, copia 324: Comercio guarda sus solicitudes, los chats con cada persona y lo sin leer)
+        "tradeReqs", "tradeChats", "tradeUnread" }
     local OLD_DEFAULTS = { showTag = true, chatMark = "dot", chatGuildColor = false, ownPaint = true, autoGuard = false,
         bans = {}, grace = 120, debug = false, showChannel = false, audit = {}, history = {}, log = {}, profiles = {},
-        offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {} }
+        offline = {}, mutes = {}, extraChans = {}, rankCache = {}, theme = "default", loginHistory = false, peers = {},
+        -- (nuevo, copia 324: lo guardado de Comercio y Calendario, que empieza vacío)
+        tradeReqs = {}, tradeChats = {}, tradeUnread = {}, calEvents = {} }
 
     it("da exactamente lo de antes: qué va en el personaje y los valores por defecto", function()
         local HU = F.Community().HU

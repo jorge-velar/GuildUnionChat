@@ -88,6 +88,16 @@ end
 ---------------------------------------------------------------------------
 HU.ready = false  -- (medio segundo tras entrar: ver el OnStart de abajo)
 
+-- Lo que le pasa al canal de la comunidad, para /gu informe: cada aviso del servidor y cuándo intento entrar o salgo yo, [+ARCHITECTURE.md]
+-- y por qué (las últimas 20)
+HU.chanEvents = {}
+function HU:ChanEvent(kind, what)
+    if kind ~= "main" then return end
+    local l = self.chanEvents
+    l[#l + 1] = { t = time(), what = tostring(what) }
+    if #l > 20 then table.remove(l, 1) end
+end
+
 function HU:ApplyChannels()
     if not self.ready then return end
     if self:ChannelApiBlocked() then
@@ -131,6 +141,7 @@ function HU:ApplyChannels()
         self.chan[kind] = self.chan[kind] or {}
         local cur, w = self.chan[kind], want[kind]
         if cur.name and (not w or w.name:lower() ~= cur.name:lower()) then
+            self:ChanEvent(kind, w and "salgo: cambia de nombre" or "salgo: ya no toca")
             if LeaveChannelByName then pcall(LeaveChannelByName, cur.name) end
             self:Debug("Has salido del canal", HU.MaskChannel(cur.name))
             self.chan[kind] = (kind == "main" or kind == "off") and {} or nil
@@ -296,6 +307,7 @@ function HU:EnsureJoined(kind)
     pcall(join, c.name, c.pass)
     HU.expectBlock = nil
     if HU.joinBlockedNow then c.blockedT = now end
+    self:ChanEvent(kind, HU.joinBlockedNow and "intento entrar (bloqueado)" or "intento entrar")
 end
 
 -- Al cambiar de zona (salir de la partida): se vuelve a mirar enseguida, sin esperar al ciclo
@@ -350,6 +362,7 @@ function HU:RejoinChannel(kind, why)
         return
     end
     c.rejoinN, c.rejoinT, c.ghostN = (c.rejoinN or 0) + 1, now, 0
+    self:ChanEvent(kind, "salgo y vuelvo (" .. tostring(why) .. ")")
     self:Debug("Canal fantasma (" .. tostring(why) .. "): salgo y vuelvo a entrar", HU.MaskChannel(c.name), kind, c.rejoinN)
     if LeaveChannelByName then pcall(LeaveChannelByName, c.name) end
     c.joined, c.lastTry, c.backoff, c.blockedT = false, nil, nil, nil
@@ -537,6 +550,7 @@ end)
 HU:On("CHAT_MSG_CHANNEL_NOTICE", function(notice, _, _, fullName, _, _, _, _, baseName)
     local kind = HU:KindOf(baseName, fullName)
     if not kind then return end
+    HU:ChanEvent(kind, notice)
     local c = HU.chan[kind]
     if notice == "NOT_ALLOWED_IN_CHANNEL" then
         -- (copia 162: no se sale por el aviso solo, que también llega con el canal bien; lo decide
@@ -1653,7 +1667,15 @@ function HU:NamePrefix(tag, author, mark, has)
         end
     end
     local rTag, rIdx = self:RankInfoOf(author)
-    return s .. self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
+    return s .. self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx)) .. self:LevelText(author)
+end
+
+-- (el nivel de quien escribe, en gris, delante de su nombre: si el jugador lo ha elegido (db.chatLevel, panel de
+-- GuildUnion → Ajustes) y se sabe, HU:LevelOf)
+function HU:LevelText(author)
+    if not self.db.chatLevel then return "" end
+    local lv = self:LevelOf(author)
+    return lv and ("|cffaaaaaa" .. lv .. "|r ") or ""
 end
 
 -- El trozo «[Hermandad]» en el color de la hermandad, si el jugador lo ha elegido (db.chatGuildColor)
@@ -1678,8 +1700,14 @@ function HU:FormatLineParts(kind, tag, author, msg, guid, compact, showKind, mar
         local name = self:Nice(author)
         local rTag, rIdx = self:RankInfoOf(author)
         local icon = self:RoleIcon(self:RoleOf(author, rTag or tag, rIdx))
-        local nameLink = icon .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
-        local tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
+        local nameLink = icon .. self:LevelText(author) .. "|Hplayer:" .. author .. "|h[" .. ClassColored(name, guid, tag, author) .. "]|h"
+        local tagText
+        if compact == "blizz" then
+            -- (el chat de la ventana de hermandad del juego: punto o etiqueta, como diga Ajustes, db.chatMark)
+            tagText = mark .. (tag and (self.db.chatMark == "tag" and self:TagText(tag) or self:DotText(tag)) or "")
+        else
+            tagText = mark .. ((self.db.showTag and tag) and self:TagText(tag) or "")
+        end
         local label = ""
         if showKind then
             local s = KIND_SHORT[kind] or (HU.IsExtra(kind) and HU.Utf8Cut(HU.ExtraName(kind) or "?", 4)) or "?"

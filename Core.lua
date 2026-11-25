@@ -390,7 +390,9 @@ HU.MAYBE_NIL = {
     -- el canal
     chanRosterKeys = true, chanRosterKeysT = true, chanIAmMod = true, chanLeftT = true, laneMoves = true,
     applyPending = true, joinBlockedNow = true, chatBlockedNow = true, alsoChan = true, alsoChanN = true,
+    expectBlock = true, -- (un bloqueo que el canal espera mientras entra o escribe: Channel.lua)
     offCfg = true, chatServerUpT = true, -- (cuándo volvió el servidor de chat: Channel.lua)
+    chatServerDownT = true, -- (cuándo se cayó: Channel.lua; lo lee /gu informe, Report.lua)
     hlHeard = true, -- (cuántas respuestas de «mientras no estabas» han llegado: Social.lua)
     chanMembersSeen = true, -- (la lista del canal, la primera vez que se lee: Guard.lua)
     -- la configuración de la comunidad
@@ -661,6 +663,32 @@ end
 function HU.Fold(s)
     if not s then return "" end
     return (s:gsub("[\195][\128-\191]", FOLD):lower())
+end
+
+-- ¿Cómo encaja lo escrito con un nombre? De mejor a peor, sin mayúsculas ni acentos; nil si no encaja [+ARCHITECTURE.md]
+-- 0 el nombre entero · 1 empieza así, palabra entera («bolsa»: «Bolsa de lino») · 2 una palabra entera de dentro
+-- («Gran bolsa») · 3 empieza así, palabra a medias («Bolsas») · 4 una palabra de dentro empieza así · 5 dentro de una
+-- palabra («Embolsar») · 6 varias palabras, cada una al principio de alguna, en cualquier orden
+function HU.TextRank(name, q)
+    local n, s = HU.Fold(name), HU.Trim((HU.Fold(q):gsub("%s+", " ")))
+    if s == "" then return nil end
+    if n == s then return 0 end
+    local best, at = nil, n:find(s, 1, true)
+    while at do
+        local whole = not n:sub(at + #s, at + #s):find("[%w\128-\255]")
+        local r
+        if at == 1 then r = whole and 1 or 3
+        elseif n:sub(at - 1, at - 1):find("[%s%p]") then r = whole and 2 or 4
+        else r = 5 end
+        if not best or r < best then best = r end
+        at = n:find(s, at + 1, true)
+    end
+    if best then return best end
+    if not s:find(" ", 1, true) then return nil end
+    for w in s:gmatch("%S+") do
+        if n:sub(1, #w) ~= w and not n:find(" " .. w, 1, true) then return nil end
+    end
+    return 6
 end
 
 -- Recorta un texto a n bytes sin partir caracteres UTF-8

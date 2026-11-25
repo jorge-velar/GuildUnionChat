@@ -22,6 +22,7 @@ M.DESC = {
     GD = "`GD~id`: petición de echar ya atendida",
     GK = "`GK~id~tag~objetivo~solicitante~etiqSol`: pide echar a alguien de otra hermandad",
     GL = "`GL~id~parte~partes~datos`: la configuración de la comunidad, tras aceptar la invitación",
+    GP = "`GP~id~tag~objetivo~rango~solicitante~etiqSol`: pide cambiar el rango a alguien de otra hermandad",
     GR = "`GR~id~ok|no~quién~objetivo~motivo`: respuesta a quien pidió echar",
     GV = "`GV~id~ETIQ~título~hermandad`: invitación a la comunidad (al contacto de la hermandad nueva)",
     HI = "`HI~ver~etiq~mod~enlace…`: saludo (por GUILD a la hermandad, o por susurro a otra)",

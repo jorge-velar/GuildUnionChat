@@ -51,9 +51,9 @@ function HU:BlacklistCheck(again)
             found = found + 1
             local by = b.by and (self:Short(b.by) .. ((b.tag and b.tag ~= "") and (" <" .. b.tag .. ">") or "")) or "?"
             local name, tail = self:Short(b.name or k), L(" Lo vetó ") .. by .. "." .. (b.why and (L(" Motivo: ") .. b.why) or "")
-            -- (y quién lo metió en la hermandad, si consta en el registro de invitaciones)
+            -- (y quién lo metió en la hermandad, si consta en el registro de invitaciones; tras el motivo, su punto)
             local inviter = self:InvitedBy(k)
-            if inviter then tail = tail .. L(" Lo invitó ") .. self:Short(inviter) .. "." end
+            if inviter then tail = tail .. (b.why and "." or "") .. L(" Lo invitó ") .. self:Short(inviter) .. "." end
             local function Mine()
                 self:Print("|cffff4444" .. L("Lista negra") .. ":|r |cffffffff" .. name .. "|r " .. L("está en tu hermandad.") .. tail)
             end
@@ -96,7 +96,7 @@ local function OnGuildInvite(name)
     end
     if PlaySound then pcall(PlaySound, (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959) end
     HU:Print("|cffff4444" .. L("Lista negra") .. ":|r |cffffffff" .. who .. "|r " .. L("está en la lista negra de la comunidad.")
-        .. L(" Lo vetó ") .. by .. "." .. (b.why and (L(" Motivo: ") .. b.why) or "")
+        .. L(" Lo vetó ") .. by .. "." .. (b.why and (L(" Motivo: ") .. b.why .. ".") or "")
         .. " " .. L("La invitación ya ha salido: si entra, habla con un oficial."))
 end
 HU:OnStart(function()
@@ -181,14 +181,19 @@ local function Build()
     bDel:SetScript("OnClick", function()
         local name = HU.Trim(win.nameBox:GetText() or "")
         if name == "" or not HU:IsBanned(name) then return end
-        HU:SetBan(name, false)
-        local k = HU:Key(name) or ""
-        warned[k] = nil
-        if HU.db.blackSaid then HU.db.blackSaid[k] = nil end
+        HU:Unban(name)
         win.nameBox:SetText("")
         Refresh()
     end)
-    win.editParts = { lName, win.nameBox, lWhy, whyBox, bAdd, bDel }
+    -- (y «Comprobar ahora»: el repaso, HU:BlacklistCheck, solo lo hacen el maestro y los oficiales)
+    win.editParts = { lName, win.nameBox, lWhy, whyBox, bAdd, bDel, bCheck }
+end
+
+function HU:Unban(name)
+    self:SetBan(name, false)
+    local k = self:Key(name) or ""
+    warned[k] = nil
+    if self.db.blackSaid then self.db.blackSaid[k] = nil end
 end
 
 function HU:ShowBlacklist()

@@ -721,9 +721,23 @@ HU.comm.GK = function(self, sender, f, dist, raw)
     seenKicks[id] = true
     if dist == "WHISPER" then self:Send(raw, "GUILD") end
     if not self:CanKickGuild() or not self:InMyGuild(target) then return end
-    local text = string.format("|cff33ff99" .. HU:Title() .. L("|r\n\n%s <%s> pide |cffff4444echar de la hermandad|r a |cffffd100%s|r.\n¿Aceptar?"),
-        self:Short(requester), reqTag or "?", target)
-    HU:ShowDialog("WELOVEPVP_GKICK", text, nil, { id = id, target = target, requester = requester, reqTag = reqTag })
+    -- (va a «Peticiones de oficiales» de la ventana de hermandad, sin ventana emergente: Jorge, 23/11. InviteLog.lua)
+    self:AddKickRequest({ id = id, target = target, requester = requester, reqTag = reqTag, t = time() })
+end
+
+-- Pedir a otra hermandad que eche a alguien suyo: lo recibe quien tenga su addon y lo reparte por su
+-- hermandad; a sus oficiales les sale en «Peticiones de oficiales» (copia 205) [+ARCHITECTURE.md]
+function HU:AskGuildKick(name, tag)
+    if not (name and tag) or tag == self.myTag then return end
+    if not self:CanOfficer() then return self:Print(L("Solo los oficiales pueden pedir echar a alguien de otra hermandad.")) end
+    local peer = self:BestPeer(tag)
+    if not peer then
+        return self:Print(string.format(L("Ahora no hay nadie de <%s> con el addon conectado: prueba más tarde."), tag))
+    end
+    local id = string.format("%x%x", math.random(0, 0xffff), time() % 0xffff)
+    myKicks[id] = { name = self:FullName(name) or name, tag = tag }
+    self:Whisper(peer.name, table.concat({ "GK", id, tag, self:FullName(name) or name, self:Me(), self.myTag or "" }, "~"), true)
+    self:Print(string.format(L("Pedido a <%s> que eche a %s: lo verán sus oficiales en «Peticiones de oficiales»."), tag, self:Short(name)))
 end
 
 function HU:AnswerKick(data, accept)
@@ -753,6 +767,8 @@ HU.comm.GD = function(self, _, f)
     if not id then return end
     seenKicks[id] = true
     HU:HideDialogs("WELOVEPVP_GKICK", function(d) return d and d.id == id end)
+    -- (otro oficial ya la ha contestado: fuera de «Peticiones de oficiales»)
+    HU:RemoveKickRequest(id)
 end
 
 HU:RegisterMessage("GR")
@@ -1226,14 +1242,15 @@ HU:On("SKILL_LINES_CHANGED", function() HU.After(2, function() HU:UpdateMyProfil
 -- Órdenes que escribes tú
 ---------------------------------------------------------------------------
 -- Comandos (de una o varias líneas: echar, ascender, degradar) que tienes que escribir tú en el [+ARCHITECTURE.md]
-function HU:TypeLines(macro, title)
+function HU:TypeLines(macro, title, ask, list)
     local lines = {}
     for line in tostring(macro or ""):gmatch("[^\r\n]+") do
         line = HU.Trim(line)
         if line ~= "" then lines[#lines + 1] = line end
     end
     if #lines == 0 then return end
-    self:RunOrders({ title = title or L("Órdenes de hermandad"), text = lines[1] .. (#lines > 1 and (" (+" .. (#lines - 1) .. ")") or ""), lines = lines })
+    self:RunOrders({ title = title or L("Órdenes de hermandad"), text = lines[1] .. (#lines > 1 and (" (+" .. (#lines - 1) .. ")") or ""), lines = lines,
+        ask = ask, list = list })
 end
 
-HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })
+HU:Module("Social", { "Audit", "Channel", "ChatTabs", "Config", "Core", "Domain/Trust", "Guard", "InviteLog", "Lists", "Net/Relay", "Net/RosterSync", "Net/Transport", "Orders", "Pinned", "Popup", "Protocol", "Ranks", "Roster" })

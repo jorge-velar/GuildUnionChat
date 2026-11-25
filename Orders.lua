@@ -1,5 +1,6 @@
--- Guild Union - ventana de órdenes (/ginvite, /gpromote, /gdemote, /gremove) [+ARCHITECTURE.md]
-local _, HU = ...
+-- Guild Union - órdenes de hermandad (/ginvite, /gpromote, /gdemote, /gremove): con un botón seguro y tu clic; si el
+-- juego no lo deja, la ventana para copiarlas y pegarlas en el chat [+ARCHITECTURE.md]
+local ADDON, HU = ...
 local L = HU.L
 
 local dialog, job
@@ -133,7 +134,8 @@ end
 local lastSentAt = -100   -- cuándo se pasó de orden por tu Intro en el chat
 
 HU:On("CHAT_MSG_SYSTEM", function(text)
-    if not job or #job.lines == 0 or type(text) ~= "string" or HU.Secret(text) then return end
+    -- (solo con la ventana de copiar y pegar: con el botón, las respuestas no mandan)
+    if not (job and dialog and dialog:IsShown()) or #job.lines == 0 or type(text) ~= "string" or HU.Secret(text) then return end
     -- (si ya se pasó con tu Intro, esta es la respuesta a la orden anterior: no se pasa otra vez)
     if GetTime() - lastSentAt < 5 then return end
     local target = job.lines[1]:match("^/%S+%s+(.+)$")
@@ -163,7 +165,8 @@ local function WatchChatBox(box)
     box:HookScript("OnEnterPressed", function(self)
         local sent, at = self.guLast, self.guLastAt or 0
         self.guLast = nil
-        if job and #job.lines > 0 and sent and GetTime() - at < 120 and Norm(sent) == Norm(job.lines[1]) then
+        if job and dialog and dialog:IsShown() and #job.lines > 0 and sent and GetTime() - at < 120
+            and Norm(sent) == Norm(job.lines[1]) then
             lastSentAt = GetTime()
             -- (un instante después, cuando el chat ya se ha cerrado)
             HU.After(0.1, Next)
@@ -180,6 +183,8 @@ end)
 ---------------------------------------------------------------------------
 local function Build()
     local f = CreateFrame("Frame", "GuildUnionOrders", UIParent, "BackdropTemplate")
+    -- (escondida antes de poner su OnHide: si no, al esconderla cerraría la lista que acaba de llegar)
+    f:Hide()
     f:SetSize(400, 240)
     f:SetPoint("CENTER", 0, 120)
     f:SetFrameStrata("DIALOG")
@@ -276,11 +281,207 @@ local function Build()
     -- (Escape: igual que Cerrar)
     f:SetScript("OnHide", function() if job then Close() end end)
     tinsert(UISpecialFrames, "GuildUnionOrders")
-    f:Hide()
     return f
 end
 
--- job = { title, text, lines = {...}, onDone(sent), onLine(line) }
+---------------------------------------------------------------------------
+-- Con un botón seguro: en Forever /gremove, /gpromote y /gdemote son órdenes seguras (como /cast) y un botón [+ARCHITECTURE.md]
+-- seguro las lanza con tu clic, tras confirmar; /ginvite no (copiar y pegar). Si el juego lo bloquea, copiar y pegar
+---------------------------------------------------------------------------
+local SECURE = { ["/gremove"] = true, ["/gpromote"] = true, ["/gdemote"] = true }
+local BLOCK_WAIT = 1.5      -- tras el clic, cuánto se espera a ver si el juego lo ha bloqueado
+local secureOff = false     -- el juego lo ha bloqueado en esta sesión: copiar y pegar hasta /reload
+local confirm, waiting      -- la ventanita de confirmar; waiting = { blocked } entre el clic y la comprobación
+local Present
+
+local function AllSecure(lines)
+    for _, line in ipairs(lines) do
+        local cmd = line:match("^(/%S+)")
+        if not (cmd and SECURE[cmd:lower()]) then return false end
+    end
+    return true
+end
+
+-- (el juego avisa así cuando no deja hacer algo: a una macro, o a un addon por su nombre)
+for _, ev in ipairs({ "MACRO_ACTION_BLOCKED", "MACRO_ACTION_FORBIDDEN" }) do
+    HU:On(ev, function() if waiting then waiting.blocked = true end end)
+end
+for _, ev in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
+    HU:On(ev, function(addon) if waiting and addon == ADDON then waiting.blocked = true end end)
+end
+
+-- (combate: la ventanita, con su botón seguro, no se puede mover ni cerrar; se esconde justo antes y vuelve al
+-- salir, con las mismas órdenes)
+HU:On("PLAYER_REGEN_DISABLED", function()
+    if confirm and confirm:IsShown() and job and not waiting then
+        job.afterCombat = true
+        confirm.acting = true
+        confirm:Hide()
+        confirm.acting = nil
+    end
+end)
+HU:On("PLAYER_REGEN_ENABLED", function()
+    if job and job.afterCombat and not waiting then
+        job.afterCombat = nil
+        Present()
+    end
+end)
+
+local function ShowCopyPaste()
+    dialog = dialog or Build()
+    dialog:Show()
+    dialog:Raise()
+    Refresh()
+end
+
+-- (tras el clic: si el juego no ha dicho nada, hechas todas; si lo ha bloqueado, a copiar y pegar)
+local function AfterClick()
+    local w = waiting
+    waiting = nil
+    if not (w and job) then return end
+    if w.blocked then
+        secureOff = true
+        HU:Print(L("El juego no ha dejado hacerlo con el botón: cópialas y pégalas en el chat."))
+        ShowCopyPaste()
+        return
+    end
+    Consume(#job.lines)
+    Finish()
+end
+
+local function BuildConfirm()
+    local f = CreateFrame("Frame", "GuildUnionOrdersConfirm", UIParent, "BackdropTemplate")
+    -- (escondida antes de poner su OnHide: si no, al esconderla cancelaría la orden que acaba de llegar)
+    f:Hide()
+    f:SetSize(380, 200)
+    f:SetPoint("CENTER", 0, 120)
+    f:SetFrameStrata("DIALOG")
+    f:SetToplevel(true)
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    -- (como las preguntas del juego: la pregunta arriba, debajo los nombres si son varios, y Sí / No)
+    f.body = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.body:SetPoint("TOPLEFT", 24, -24)
+    f.body:SetPoint("TOPRIGHT", -24, -24)
+    f.body:SetJustifyH("CENTER")
+    f.cmds = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    f.cmds:SetPoint("TOPLEFT", f.body, "BOTTOMLEFT", 0, -10)
+    f.cmds:SetPoint("RIGHT", -24, 0)
+    f.cmds:SetJustifyH("CENTER")
+    f.cmds:SetMaxLines(8)
+    -- «Sí»: el botón seguro, que lanza al soltar (useOnKeyDown); también al pulsar, por si el juego usa el otro
+    local yes = CreateFrame("Button", "GuildUnionOrdersYes", f, "SecureActionButtonTemplate,UIPanelButtonTemplate")
+    yes:SetSize(110, 24)
+    yes:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 18)
+    yes:SetText(L("Sí"))
+    yes:RegisterForClicks("AnyUp", "AnyDown")
+    yes:SetAttribute("type", "macro")
+    yes:SetAttribute("useOnKeyDown", false)
+    -- (al soltar, cuando el juego ya la ha lanzado: se cierra y se mira si la ha bloqueado)
+    yes:HookScript("PostClick", function(_, _, down)
+        if down or waiting or not job then return end
+        waiting = {}
+        f.acting = true
+        f:Hide()
+        f.acting = nil
+        HU.After(BLOCK_WAIT, AfterClick)
+    end)
+    f.yes = yes
+    local no = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    no:SetSize(110, 24)
+    no:SetPoint("BOTTOMLEFT", f, "BOTTOM", 6, 18)
+    no:SetText(L("No"))
+    local function Cancel()
+        if waiting then return end
+        local done = job
+        job = nil
+        f:Hide()
+        if done and done.onDone then done.onDone(0) end
+        StartQueued()
+    end
+    no:SetScript("OnClick", Cancel)
+    -- (Escape o cerrar: igual que Cancelar, salvo al cerrarse tras el clic)
+    f:SetScript("OnHide", function() if job and not f.acting and not waiting then Cancel() end end)
+    tinsert(UISpecialFrames, "GuildUnionOrdersConfirm")
+    return f
+end
+
+-- (lo que se va a hacer, en palabras y por persona: «echar a Ana de la hermandad», «subir a Ana 2 rangos»)
+local function Phrases(lines)
+    local order, count = {}, {}
+    for _, line in ipairs(lines) do
+        local cmd, who = line:match("^(/%S+)%s+(.+)$")
+        cmd = cmd and cmd:lower()
+        if cmd and SECURE[cmd] then
+            local k = cmd .. " " .. who
+            if not count[k] then order[#order + 1] = { cmd = cmd, who = who, k = k }; count[k] = 0 end
+            count[k] = count[k] + 1
+        end
+    end
+    local out = {}
+    for _, o in ipairs(order) do
+        local n = count[o.k]
+        if o.cmd == "/gremove" then out[#out + 1] = string.format(L("echar a %s de la hermandad"), o.who)
+        elseif o.cmd == "/gpromote" then
+            out[#out + 1] = n > 1 and string.format(L("subir a %s %d rangos"), o.who, n) or string.format(L("subir a %s un rango"), o.who)
+        else
+            out[#out + 1] = n > 1 and string.format(L("bajar a %s %d rangos"), o.who, n) or string.format(L("bajar a %s un rango"), o.who)
+        end
+    end
+    return out, order
+end
+
+-- (la pregunta, como las del juego, sin enseñar las órdenes; con varias personas, la lista debajo. Quien pide
+-- las órdenes puede traer la suya: job.ask y job.list)
+local function Question(j)
+    if j.ask then return j.ask, j.list or "" end
+    local phrases, order = Phrases(j.lines)
+    if #phrases == 1 then return string.format(L("¿Seguro que quieres %s?"), phrases[1]), "" end
+    local names, allRemove = {}, true
+    for _, o in ipairs(order) do
+        names[#names + 1] = o.who
+        if o.cmd ~= "/gremove" then allRemove = false end
+    end
+    if allRemove then
+        return string.format(L("¿Seguro que quieres echar de la hermandad a estas %d personas?"), #names), table.concat(names, "\n")
+    end
+    for i, p in ipairs(phrases) do phrases[i] = (p:gsub("^%l", string.upper)) end
+    return L("¿Seguro que quieres hacer esto?"), table.concat(phrases, "\n")
+end
+
+local function ShowConfirm()
+    confirm = confirm or BuildConfirm()
+    local ask, list = Question(job)
+    confirm.body:SetText(ask)
+    confirm.cmds:SetText(list)
+    confirm:SetHeight(76 + confirm.body:GetStringHeight() + (list ~= "" and confirm.cmds:GetStringHeight() + 10 or 0))
+    confirm.yes:SetAttribute("macrotext", table.concat(job.lines, "\n"))
+    confirm:Show()
+    confirm:Raise()
+end
+
+-- (órdenes de hermandad: con el botón, salvo que el juego ya lo bloqueara; en combate, al salir. Lo demás, a
+-- copiar y pegar)
+Present = function()
+    if secureOff or not AllSecure(job.lines) then return ShowCopyPaste() end
+    if InCombatLockdown() then
+        job.afterCombat = true
+        HU:Print(L("En combate no se puede: te lo pregunto al salir."))
+        return
+    end
+    ShowConfirm()
+end
+
+-- job = { title, text, lines = {...}, onDone(sent), onLine(line), ask, list }
 function HU:RunOrders(newJob)
     if not newJob or not newJob.lines or #newJob.lines == 0 then return false end
     newJob.sent = 0
@@ -289,11 +490,8 @@ function HU:RunOrders(newJob)
         self:Print(L("Hay otra lista de órdenes a medias: esta va después (") .. #queue .. L(" en espera)."))
         return true
     end
-    dialog = dialog or Build()
     job = newJob
-    dialog:Show()
-    dialog:Raise()
-    Refresh()
+    Present()
     return true
 end
 

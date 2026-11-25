@@ -40,6 +40,8 @@ function HU.NewListWindow(o)
     for c, col in ipairs(o.columns) do
         local fs = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         fs:SetPoint("LEFT", x, 0); fs:SetText(col[1])
+        win.hdrCells = win.hdrCells or {}
+        win.hdrCells[c] = fs
         starts[c] = x
         x = x + (col[2] or 0)
     end

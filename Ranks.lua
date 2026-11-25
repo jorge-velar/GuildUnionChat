@@ -163,6 +163,39 @@ HU.comm.RD = function(self, _, f)
     local id = f[1]
     if not id then return end
     HU:HideDialogs("HERMANDADUNIDA_RANK", function(d) return d and d.id == id end)
+    -- (otro oficial ya la ha contestado: fuera de «Peticiones de oficiales»)
+    HU:RemoveKickRequest(id)
+end
+
+-- Pedir a otra hermandad que cambie el rango a alguien suyo (copia 207). Como GK (Social.lua): lo recibe
+-- quien tenga su addon, lo reparte por su hermandad y a sus oficiales les sale en «Peticiones de oficiales»
+-- [+ARCHITECTURE.md]
+local seenRank = {}
+HU:RegisterMessage("GP", { queue = "chat", ttl = 600 })
+HU.comm.GP = function(self, sender, f, dist, raw)
+    local id, tag, target, rank, requester, reqTag = f[1], f[2], f[3], tonumber(f[4]), f[5], f[6]
+    if not (id and tag and target and rank and requester) then return end
+    if tag ~= self.myTag or seenRank[id] then return end
+    if not self:InAnyGuild(requester) then return end
+    if not self:MayCarry(requester, sender, dist, reqTag) or not HU.RequestRate(requester) then return end
+    reqTag = (self:RankInfoOf(requester)) or reqTag
+    seenRank[id] = true
+    if dist == "WHISPER" then self:Send(raw, "GUILD") end
+    if not (self:CanPromote() or self:CanDemote()) or not self:InMyGuild(target) then return end
+    self:AddKickRequest({ id = id, kind = "rank", target = target, rank = rank, requester = requester, reqTag = reqTag, t = time() })
+end
+
+function HU:AskGuildRank(name, tag, rank)
+    if not (name and tag and rank) or tag == self.myTag then return end
+    if not self:CanOfficer() then return self:Print(L("Solo los oficiales pueden pedir cambios de rango a otra hermandad.")) end
+    local peer = self:BestPeer(tag)
+    if not peer then
+        return self:Print(string.format(L("Ahora no hay nadie de <%s> con el addon conectado: prueba más tarde."), tag))
+    end
+    local id = string.format("%x%x", math.random(0, 0xffff), time() % 0xffff)
+    myRequests[id] = { tag = tag, rank = rank }
+    self:Whisper(peer.name, table.concat({ "GP", id, tag, self:FullName(name) or name, rank, self:Me(), self.myTag or "" }, "~"), true)
+    self:Print(string.format(L("Pedido a <%s> que %s pase a %s: lo verán sus oficiales en «Peticiones de oficiales»."), tag, self:Short(name), self:RankName(tag, rank) or "?"))
 end
 
 HU:RegisterMessage("RR")
@@ -309,4 +342,4 @@ HU:OnStart(function()
     end)
 end)
 
-HU:Module("Ranks", { "Audit", "Config", "Core", "Lists", "Net/Transport", "Popup", "Protocol", "Roster", "Social" })
+HU:Module("Ranks", { "Audit", "Config", "Core", "Domain/Trust", "InviteLog", "Lists", "Net/Transport", "Popup", "Protocol", "Roster", "Social" })

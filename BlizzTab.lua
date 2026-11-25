@@ -4,66 +4,75 @@ local L = HU.L
 
 -- Formato de texto del chat (botones de Ajustes): delante del nombre, "dot" (punto del color de la
 -- hermandad) o "tag" (<ETIQUETA>)
-HU:Saved({ account = { chatMark = "dot" } })
+HU:Saved({ account = { chatMark = "dot", "chatLevel" } })
 
 local tab, panel
 local KEEP = 60                 -- últimas líneas de otras hermandades que se repintan al volver al chat
-local recent = {}
+local recent = { main = {}, off = {} }   -- (las del chat general y las del de oficiales, cada una con el suyo)
 
 local function Win() return _G.CommunitiesFrame end
 
--- ¿Está la ventana enseñando el chat general de mi hermandad?
-local function GuildChatShown()
+-- ¿Qué chat de mi hermandad enseña la ventana? «main» (el general), «off» (el de oficiales) o nil
+local function ShownKind()
     local f = Win()
-    if not (f and f:IsShown() and f.Chat and f.Chat:IsShown() and f.Chat.MessageFrame) then return false end
+    if not (f and f:IsShown() and f.Chat and f.Chat:IsShown() and f.Chat.MessageFrame) then return nil end
     local clubId = f.GetSelectedClubId and f:GetSelectedClubId()
     local streamId = f.GetSelectedStreamId and f:GetSelectedStreamId()
-    if not (clubId and streamId and C_Club) then return false end
+    if not (clubId and streamId and C_Club) then return nil end
     local ok, info = pcall(C_Club.GetClubInfo, clubId)
-    if not ok or not info or info.clubType ~= Enum.ClubType.Guild then return false end
+    if not ok or not info or info.clubType ~= Enum.ClubType.Guild then return nil end
     local ok2, s = pcall(C_Club.GetStreamInfo, clubId, streamId)
-    return ok2 and s and s.streamType == Enum.ClubStreamType.Guild or false
+    if not (ok2 and type(s) == "table") then return nil end
+    if s.streamType == Enum.ClubStreamType.Guild then return "main" end
+    if s.streamType == Enum.ClubStreamType.Officer then return "off" end
+    return nil
 end
+-- ¿Está la ventana enseñando el chat general de mi hermandad?
+local function GuildChatShown() return ShownKind() == "main" end
 
 ---------------------------------------------------------------------------
--- El chat de las otras hermandades en el chat de la ventana
+-- El chat de las otras hermandades en el chat de la ventana: el general con el general y el de oficiales con el de
+-- oficiales (Jorge, 24/11: «el chat de oficiales es solo de los de tu guild, tiene que ser de todos») [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
-local function AddToWindow(line, r, g, b)
-    if not GuildChatShown() then return end
+local function AddToWindow(kind, line, r, g, b)
+    if ShownKind() ~= kind then return end
     pcall(Win().Chat.MessageFrame.AddMessage, Win().Chat.MessageFrame, line, r, g, b)
 end
 
 local origDisplay = HU.Display
 function HU:Display(kind, tag, author, msg, guid)
     origDisplay(self, kind, tag, author, msg, guid)
-    if kind ~= "main" or not tag or tag == self.myTag then return end
+    if (kind ~= "main" and kind ~= "off") or not tag or tag == self.myTag then return end
     -- (sin «[Guild]» delante: en esta ventana las líneas de Blizzard tampoco lo llevan)
     local mentioned = author and author:lower() ~= (self:MeKey() or "") and self:MentionsMe(msg, author, tag)
-    local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, true, nil, HU.MENTION_MARK[mentioned])
+    local head, body = self:FormatLineParts(kind, tag, author, self:HighlightMentions(msg, author, tag), guid, "blizz", nil, HU.MENTION_MARK[mentioned])
     local line = head .. body
     local r, g, b = self:KindColor(kind)
-    recent[#recent + 1] = { line, r, g, b, t = (GetServerTime and GetServerTime()) or time() }
-    if #recent > KEEP then table.remove(recent, 1) end
-    AddToWindow(line, r, g, b)
+    local list = recent[kind]
+    list[#list + 1] = { line, r, g, b, t = (GetServerTime and GetServerTime()) or time() }
+    if #list > KEEP then table.remove(list, 1) end
+    AddToWindow(kind, line, r, g, b)
 end
 
 -- Cuando Blizzard rehace su chat (al abrir la ventana o cambiar de canal), borra lo nuestro. Para [+ARCHITECTURE.md]
 local rebuild   -- { epochs = {...}, k = 0, ptr = 1 } mientras Blizzard repinta
 local function PutOurs(mf, upto)
-    while rebuild.ptr <= #recent and recent[rebuild.ptr].t * 1000000 < upto do
-        local e = recent[rebuild.ptr]
+    local list = recent[rebuild.kind]
+    while rebuild.ptr <= #list and list[rebuild.ptr].t * 1000000 < upto do
+        local e = list[rebuild.ptr]
         pcall(mf.AddMessage, mf, e[1], e[2], e[3], e[4])
         rebuild.ptr = rebuild.ptr + 1
     end
 end
 local function OnClear()
     rebuild = nil
-    if not GuildChatShown() or #recent == 0 then return end
+    local kind = ShownKind()
+    if not kind or #recent[kind] == 0 then return end
     local chat = Win().Chat
     local ok, msgs = pcall(chat.GetMessagesToDisplay, chat)
     local epochs = {}
     for i, m in ipairs(ok and msgs or {}) do epochs[i] = m.messageId and m.messageId.epoch or 0 end
-    rebuild = { epochs = epochs, k = 0, ptr = 1 }
+    rebuild = { kind = kind, epochs = epochs, k = 0, ptr = 1 }
     -- (lo nuestro más viejo que su primer mensaje, arriba del todo)
     PutOurs(chat.MessageFrame, epochs[1] or math.huge)
 end
@@ -151,7 +160,8 @@ end
 
 -- Menú del clic derecho sobre un jugador (con el menú de Blizzard, MenuUtil): susurrar, invitar al
 -- grupo, añadir amigo, ignorar y, para oficiales, silenciar. Son llamadas que el juego deja a los addons
-local function PlayerMenu(owner, e)
+-- (extra: una función que añade más opciones al final, como cambiar rango o echar en UnionRoster.lua)
+local function PlayerMenu(owner, e, extra)
     if not (e and MenuUtil and MenuUtil.CreateContextMenu) then return Whisper(e and e.name) end
     local target = HU:FullName(e.name) or e.name
     MenuUtil.CreateContextMenu(owner, function(_, root)
@@ -173,12 +183,13 @@ local function PlayerMenu(owner, e)
             root:CreateButton(L("Quitar silencio"), function() HU:SetMute(e.name, -1) end)
             root:CreateButton(L("Buscar lo que ha dicho"), function() HU:HistSearch(e.name, nil) end)
         end
+        if extra then root:CreateDivider(); extra(root) end
     end)
 end
 
 -- (también los usa «Unión» en la lista de miembros, UnionRoster.lua)
 function HU.WhisperTo(name) return Whisper(name) end
-function HU.PlayerMenu(owner, e) return PlayerMenu(owner, e) end
+function HU.PlayerMenu(owner, e, extra) return PlayerMenu(owner, e, extra) end
 
 -- Clic derecho en la lista de miembros de Blizzard: las opciones de oficial de GuildUnion, al final
 local function AddToGuildMemberMenu(_, root, ctx)
@@ -374,16 +385,33 @@ local function AttachBlizz()
     if main then main:Hide() end
 end
 
+-- (con el panel abierto encima de la ventana del juego, solo nuestra pestaña se ve marcada (Jorge, 24/11: «el otro que
+-- tenía pulsado se queda también en amarillo»): las demás —las del juego y las de Comercio y Calendario— siguen marcadas
+-- por dentro, como las deja el juego, pero sin su brillo de marcada; al cerrarlo, vuelve) [+ARCHITECTURE.md]
+local GAME_TABS = { "ChatTab", "RosterTab", "GuildBenefitsTab", "GuildInfoTab", "GuildPreferredPlaySettingsTab" }
+local function OtherChecks(show)
+    local f = Win()
+    local list = {}
+    for _, key in ipairs(GAME_TABS) do if f and type(f[key]) == "table" then list[#list + 1] = f[key] end end
+    for _, b in ipairs(HU.sideTabs) do list[#list + 1] = b end
+    for _, b in ipairs(list) do
+        local t = b:GetCheckedTexture()
+        if type(t) == "table" then t:SetAlpha(show and 1 or 0) end
+    end
+end
+
 local function ShowPanel(on)
     if not panel then return end
     -- (lo que cierra la pestaña de Blizzard no cierra la ventana propia)
     if not on and panel.where == "own" then
         if tab then tab:SetChecked(false) end
+        OtherChecks(true)
         return
     end
     if on then AttachBlizz() end
     panel:SetShown(on)
     if tab then tab:SetChecked(on) end
+    OtherChecks(not on)
     if HU.SyncCharSearch then HU.SyncCharSearch() end
     if on then RefreshStatus(); RefreshOfficers(); WhoTick() end
 end
@@ -456,12 +484,9 @@ local function BuildPanel()
     end)
     local bUnmute = Button(panel, L("Quitar"), 80, bMute)
     bUnmute:SetScript("OnClick", function() HU:SetMute(mName:GetText(), -1) end)
-    -- (lista negra de la comunidad: su ventana, Blacklist.lua)
-    local bBlack = Button(panel, L("Lista negra"), 90, bUnmute, 6)
-    bBlack:SetScript("OnClick", function() HU:ShowBlacklist() end)
     HU:NameSuggest(qName, function(s) s:ClearFocus(); b2:Click() end)
     HU:NameSuggest(mName)
-    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute, bBlack }) do
+    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute }) do
         panel.officerOnly[#panel.officerOnly + 1] = w
     end
 
@@ -514,15 +539,21 @@ local function BuildPanel()
     local rDot = Option("UIRadioButtonTemplate", 20, L("Punto"), rTagText, "RIGHT", 14)
     local lGuild = RowLabel(L("Hermandad"), -36)
     local cColor = Option("UICheckButtonTemplate", 26, L("En color"), lGuild, "LEFT", COL - 3)
-    local lEmotes = RowLabel(L("Emoticonos"), -62)
-    local cEmotes = Option("UICheckButtonTemplate", 26, L("Mostrar"), lEmotes, "LEFT", COL - 3)
+    -- (tercera fila: «Mostrar  [v] Emoticonos  [v] Nivel»: el nivel de quien escribe, delante de su nombre (Jorge, 24/11);
+    -- una cuarta fila no cabe con las herramientas de oficial encima)
+    local lShow = RowLabel(L("Mostrar"), -62)
+    local cEmotes, cEmotesText = Option("UICheckButtonTemplate", 26, L("Emoticonos"), lShow, "LEFT", COL - 3)
+    local cLevel = Option("UICheckButtonTemplate", 26, L("Nivel"), cEmotesText, "RIGHT", 14)
     local function FormatText()
         rTag:SetChecked(HU.db.chatMark == "tag")
         rDot:SetChecked(HU.db.chatMark ~= "tag")
         cColor:SetChecked(HU.db.chatGuildColor and true or false)
         cEmotes:SetChecked(not HU.db.emotesOff)
+        cLevel:SetChecked(HU.db.chatLevel and true or false)
     end
     cEmotes:SetScript("OnClick", function(s) HU.db.emotesOff = (not s:GetChecked()) or nil end)
+    cLevel:SetScript("OnClick", function(s) HU.db.chatLevel = s:GetChecked() and true or nil end)
+    Tip(cLevel, L("Formato de texto"), L("El nivel de quien escribe, delante de su nombre en el chat, si se sabe (de las listas de las hermandades)."))
     rTag:SetScript("OnClick", function() HU.db.chatMark = "tag"; FormatText() end)
     rDot:SetScript("OnClick", function() HU.db.chatMark = "dot"; FormatText() end)
     cColor:SetScript("OnClick", function(s) HU.db.chatGuildColor = s:GetChecked() and true or false end)
@@ -582,7 +613,7 @@ local function BuildPanel()
     hdr:SetPoint("RIGHT", panel, "RIGHT", -30, 0)
     local function SetView(v)
         view = v
-        if v == "members" then bMem:LockHighlight(); bOff:UnlockHighlight() else bOff:LockHighlight(); bMem:UnlockHighlight() end
+        HU.DJ.PickRed(bMem, v == "members"); HU.DJ.PickRed(bOff, v ~= "members")
         panel.memPick:SetShown(v == "members"); panel.memStatus:SetShown(v == "members")
         panel.whoBtn:SetShown(v == "members" and memberTag ~= nil)
         hdr:ClearAllPoints()
@@ -688,6 +719,14 @@ local function BuildPanel()
     -- (un clic en cualquier parte de la pestaña también vale para el /who)
     panel:HookScript("OnMouseDown", function() WhoTick() end)
     panel:SetScript("OnEvent", function() RefreshOfficers() end)
+    -- (copia 266: la mitad derecha es la configuración de la hermandad, UnionConfig.lua. Oficiales y Miembros se
+    -- guardan en un marco escondido: su código sigue igual, pero no se ven) [+ARCHITECTURE.md]
+    local stash = CreateFrame("Frame", nil, panel)
+    stash:Hide()
+    for _, w in ipairs({ bOff, bMem, panel.memPick, panel.whoBtn, hdr, sf }) do w:SetParent(stash) end
+    for _, row in ipairs(panel.offRows) do row:SetParent(stash) end
+    panel.memStatus:SetParent(stash); panel.offEmpty:SetParent(stash)
+    panel.config = HU:BuildUnionConfig(panel)
     -- (viendo «Miembros»: lo que llega se pinta al momento, y cada 2 s se mira si toca pedir otra vez)
     HU:Listen("CHANGED", function(what) if what == "unionMembers" and view == "members" then RefreshOfficers() end end)
     local acc = 0
@@ -733,10 +772,20 @@ local function FindChars(query)
             out[#out + 1] = { name = name, rank = rank or "", level = level, online = online, class = class, tag = HU.myTag, own = true, m = m }
         end
     end
+    -- (de las otras hermandades: sus oficiales y todos los conectados que se sepan, de Miembros o del /who)
+    local seen = {}
     for _, e in ipairs(OfficerEntries()) do
         local m = Match(e.name, q)
         if m then
+            seen[e.name:lower()] = true
             out[#out + 1] = { name = e.name, rank = e.rank, online = true, class = e.class, tag = e.tag, m = m }
+        end
+    end
+    for _, e in ipairs(HU:UnionMemberEntries(nil)) do
+        local m = not seen[e.name:lower()] and Match(e.name, q)
+        if m then
+            seen[e.name:lower()] = true
+            out[#out + 1] = { name = e.name, rank = e.rank or "", online = true, class = e.class, tag = e.tag, m = m }
         end
     end
     -- (primero TODOS los conectados y luego los desconectados, sin mezclarlos; dentro de cada grupo,
@@ -1041,10 +1090,17 @@ ScrollTo = function(name)
     hl.ticker = HU:Every(0.25, "pestana-resaltar", function() if f:IsShown() then Mark() end end)
 end
 
+
 local search
+HU.charSearchOff = false    -- (UnionRoster.lua: en Comercio, Calendario y Banco no sale el buscador)
+HU.chatSearchSpot = false   -- (UnionRoster.lua: el sitio de siempre del desplegable «Guild»: ahí va el buscador, en las dos vistas)
+HU.sideTabs = {}            -- (UnionRoster.lua: Comercio y Calendario, pestañas de la derecha: con nuestro panel abierto, sin su marca)
+HU.SyncCharSearch = function() end
 -- Elegir a alguien en el buscador: de mi hermandad, se marca en la lista; de otra, solo se dice de
 -- dónde es (antes se abría un susurro con él: Jorge, 10/11). Para susurrar, el clic derecho
 local function Pick(e)
+    -- (con la lista de toda la unión a la vista, UnionRoster.lua: se va allí, sea de la hermandad que sea)
+    if HU.UnionRosterPick(e) then return end
     if e.own then return ScrollTo(e.name) end
     HU:Print(string.format(L("%s es de %s: no sale en esta lista. Clic derecho en su nombre para susurrarle."),
         HU:Nice(e.name), "|cff" .. HU:GuildColorHex(e.tag) .. HU:GuildName(e.tag) .. "|r"))
@@ -1088,6 +1144,8 @@ local function BuildCharSearch(f)
     end
     pop.more = pop:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     local function Fill()
+        -- (buscando en el chat no hay lista de personajes: se busca al pulsar Intro)
+        if box.forChat then return pop:Hide() end
         local list = FindChars(box:GetText())
         if HU.Trim(box:GetText() or "") == "" then ClearMark(); return pop:Hide() end
         local shown = math.min(#list, 10)
@@ -1129,6 +1187,13 @@ local function BuildCharSearch(f)
     box:HookScript("OnEditFocusLost", function() HU.After(0.2, function() if not box:HasFocus() then pop:Hide() end end) end)
     box:SetScript("OnEscapePressed", function(s) s:SetText(""); pop:Hide(); s:ClearFocus() end)
     box:SetScript("OnEnterPressed", function(s)
+        -- (en la vista de chat, quien puede ver el historial busca en el chat: HistSearch, History.lua. Jorge, 24/11)
+        if s.forChat then
+            local text = HU.Trim(s:GetText() or "")
+            pop:Hide(); s:ClearFocus()
+            if text ~= "" then HU:HistSearch(nil, text) end
+            return
+        end
         local first = FindChars(s:GetText())[1]
         pop:Hide(); s:ClearFocus()
         if first then Pick(first) end
@@ -1137,14 +1202,32 @@ local function BuildCharSearch(f)
     -- del desplegable «Guild». No sale en Información ni en nuestra pestaña: Jorge, 10/11. IsVisible
     -- y no IsShown: la casilla sigue «puesta» aunque su lista esté escondida)
     local dd = f.StreamDropdown
+    -- (busca personajes o, en la vista de chat y con permiso para ver el historial, en el chat)
+    local function ForChat(on)
+        on = on and HU:CanPin() and HU:HistEnabled() or false
+        if box.forChat == on then return end
+        box.forChat = on
+        if box.Instructions then box.Instructions:SetText(on and L("Buscar en el chat") or L("Buscar personaje")) end
+        pop:Hide()
+    end
     local function Sync()
         box:ClearAllPoints()
         local ours = panel and panel.where == "blizz" and panel:IsShown()
-        if not ours and anchor:IsVisible() then
-            box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -24, 30)
+        if HU.charSearchOff then
+            box:Hide()
+            ClearMark()
+        elseif not ours and anchor:IsVisible() then
+            -- (en el mismo sitio que en la vista de chat: donde el desplegable «Guild», que en esta vista está escondido
+            -- pero sigue en su sitio; las casillas van a la derecha, UnionRoster.lua. Jorge, 24/11)
+            local spot = HU.chatSearchSpot or dd
+            if spot then box:SetPoint("LEFT", spot, "LEFT", 0, 0)
+            else box:SetPoint("BOTTOMRIGHT", ml, "TOPRIGHT", -108, 30) end
+            ForChat(false)
             box:Show()
         elseif not ours and dd and dd:IsVisible() then
-            box:SetPoint("LEFT", dd, "RIGHT", 16, 0)
+            -- (en la vista de chat, en el mismo sitio: el desplegable se fue a la derecha, UnionRoster.lua. Jorge, 24/11)
+            box:SetPoint("LEFT", HU.chatSearchSpot or dd, "LEFT", 0, 0)
+            ForChat(true)
             box:Show()
         else
             box:Hide()
@@ -1168,6 +1251,7 @@ local function SyncTab()
     local show = f.GuildInfoTab and f.GuildInfoTab:IsShown()
     -- (debajo de la última pestaña del juego que esté a la vista: la de preferencias de juego de la
     -- hermandad va justo debajo de la de Información, y la nuestra la tapaba. Jorge, 13/11)
+    -- (las de Comercio y Calendario van más arriba, debajo de la de miembros: UnionRoster.lua)
     local prefs = f.GuildPreferredPlaySettingsTab
     local anchor = (prefs and prefs:IsShown()) and prefs or f.GuildInfoTab
     if anchor and tab.anchoredTo ~= anchor then
@@ -1197,11 +1281,26 @@ local function Setup()
     -- de ese botón, así que se ve y se esconde con él; y solo con la hermandad elegida (SyncTab)
     if f.InviteButton and HU.ShowInviteLog then
         local b = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
-        b:SetSize(170, 20)
-        b:SetText(L("Registro de invitaciones"))
+        b:SetSize(120, 20)
+        b:SetText(L("Ver registro"))
         b:SetPoint("RIGHT", f.InviteButton, "LEFT", -4, 0)
         b:SetScript("OnClick", function() HU:ShowInviteLog() end)
         tab.logBtn = b
+        -- «Peticiones de oficiales» (InviteLog.lua): lo que piden otras hermandades (echar a alguien de la mía). Con
+        -- alguna pendiente, encendido y con el número
+        local rq = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
+        rq:SetSize(140, 20)
+        rq:SetPoint("RIGHT", b, "LEFT", -4, 0)
+        rq:SetScript("OnClick", function() HU:ShowRequests() end)
+        local function SyncRequests()
+            local n = HU:KickRequestCount()
+            rq:SetText(n > 0 and (L("Peticiones de oficiales") .. " (" .. n .. ")") or L("Peticiones de oficiales"))
+            if n > 0 then rq:LockHighlight() else rq:UnlockHighlight() end
+        end
+        HU:Listen("CHANGED", function(what) if what == "requests" then SyncRequests() end end)
+        rq:HookScript("OnShow", SyncRequests)
+        SyncRequests()
+        tab.reqBtn = rq
     end
     -- (cada parte por separado: si una falla, las demás siguen y el fallo queda en /gu errores)
     if not panel then HU:SafeCall("pestaña", BuildPanel) end
@@ -1222,13 +1321,8 @@ local function Setup()
         if f.Chat.MessageFrame then hooksecurefunc(f.Chat.MessageFrame, "Clear", OnClear) end
         if f.Chat.AddMessage then hooksecurefunc(f.Chat, "AddMessage", OnBlizzLine) end
     end
-    -- (abrirla con nuestra pestaña: si se acaba de pulsar el botón del minimapa, o con /gu tecla on)
+    -- (abrirla con nuestra pestaña, con /gu tecla on)
     f:HookScript("OnShow", function() HU.After(0.1, function() if HU:WantsTab() then SyncTab(); if tab and tab:IsShown() then ShowPanel(true) end end end) end)
-    -- (el botón del minimapa no cierra la ventana si ya está abierta: Minimap.lua)
-    local function MinimapClick() if HU.UpdateMinimapClick then HU:UpdateMinimapClick() end end
-    f:HookScript("OnShow", MinimapClick)
-    f:HookScript("OnHide", MinimapClick)
-    MinimapClick()
     SyncTab()
     if f:IsShown() and HU:WantsTab() then HU.After(0.1, function() SyncTab(); if tab and tab:IsShown() then ShowPanel(true) end end) end
     HU:Every(5, "pestana-al-dia", function()
@@ -1249,9 +1343,10 @@ end)
 -- desde nuestro código), toda la ventana quedaba «contaminada» y el juego bloqueaba lo que solo puede
 -- hacer su interfaz: cambiar el rango de un miembro (SetGuildRankOrder) o guardar una nota (SetNote).
 ---------------------------------------------------------------------------
--- ¿Hay que abrir la pestaña GuildUnion al abrirse la ventana? (botón del minimapa hace <1 s, o /gu tecla on)
+-- ¿Hay que abrir la pestaña GuildUnion al abrirse la ventana? (/gu tecla on. El botón del minimapa ya no la pide desde la
+-- 5.4.29: pulsa el de Hermandad del juego, Minimap.lua)
 function HU:WantsTab()
-    return (self.tabWantedT and GetTime() - self.tabWantedT < 1) or (self.db and self.db.keyJ) or false
+    return (self.db and self.db.keyJ) or false
 end
 function HU:OpenReduce()
     local f = Win()
@@ -1299,6 +1394,7 @@ function HU:OpenMainWindow()
     panel:SetToplevel(false)
     panel.where = "own"
     if tab then tab:SetChecked(false) end
+    OtherChecks(true)
     main:Show()
     panel:Show()
     -- (el panel siempre encima del fondo de la ventana; se pone después de enseñarla)
@@ -1431,4 +1527,4 @@ HU:OnStart(function()
     end
 end)
 
-HU:Module("BlizzTab", { "Blacklist", "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "UnionMembers", "Wizard" })
+HU:Module("BlizzTab", { "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "UnionConfig", "UnionMembers", "UnionRoster", "Wizard" })

@@ -84,7 +84,7 @@ local function RosterEntries(self, everyone)
                 local short = Clean(self:Short(e.name))
                 local cls, lvl, rank = HU.CLASS_INDEX[e.class or ""] or 0, e.level or 0, e.rankIndex or ""
                 c = { n = e.name, c = e.class, l = e.level, r = e.rankIndex, z = e.zone, a = e.afk, short = short,
-                    en = table.concat({ short, cls, lvl, rank, Clean(HU.Utf8Cut(e.zone or "", 24)) .. (e.afk and ",a" or "") }, ","),
+                    en = table.concat({ short, cls, lvl, rank, Clean(HU.Utf8Cut(HU.ZoneOut(e.zone) or "", 24)) .. (e.afk and ",a" or "") }, ","),
                     -- lo que importa para avisar de un cambio (la zona cambia sin parar: no cuenta)
                     sig = table.concat({ cls, lvl, rank, e.afk and "a" or "" }, ",") }
                 e._re = c
@@ -148,6 +148,43 @@ local function MembersSigHash(members)
 end
 -- (el rango apartado de una lista sin confirmar también cuenta: la huella es la misma que la del que la manda)
 HU.MembersSigHash = MembersSigHash
+
+-- Zonas en el idioma de cada uno: el nombre que da el juego está en el idioma de quien la manda (en una lista
+-- salían mitad en español y mitad en inglés). Se manda el número de su mapa («@1429», C_Map) y quien la recibe
+-- pone el nombre de ese mapa en su idioma; la que no está en el mapa del juego va tal cual [+ARCHITECTURE.md]
+local zoneIds
+local function ZoneIds()
+    if zoneIds then return zoneIds end
+    local ids, any = {}, false
+    local M = C_Map
+    if M and M.GetMapChildrenInfo then
+        local root = M.GetFallbackWorldMapID and M.GetFallbackWorldMapID() or 947
+        local ok, maps = pcall(M.GetMapChildrenInfo, root, nil, true)
+        for _, info in ipairs(ok and type(maps) == "table" and maps or {}) do
+            local name = info.name
+            if type(name) == "string" and name ~= "" and not HU.Secret(name) and not ids[name] then
+                ids[name], any = info.mapID, true
+            end
+        end
+    end
+    -- (hasta que el juego tenga los mapas, se vuelve a mirar)
+    if any then zoneIds = ids end
+    return ids
+end
+function HU.ZoneOut(name)
+    if type(name) ~= "string" or name == "" then return name end
+    local id = ZoneIds()[name]
+    return id and ("@" .. id) or name
+end
+function HU.ZoneIn(text)
+    local id = type(text) == "string" and text:match("^@(%d+)$")
+    if not id then return text end
+    local get = C_Map and C_Map.GetMapInfo
+    local ok, info = false, nil
+    if get then ok, info = pcall(get, tonumber(id)) end
+    local name = ok and type(info) == "table" and info.name or nil
+    return (type(name) == "string" and name ~= "" and not HU.Secret(name)) and name or nil
+end
 
 -- la zona va como un código corto (#1, #2...) y cada código se explica una
 -- sola vez ("#1=Orgrimmar"): con cientos de conectados, las listas ocupan bastante menos
@@ -483,7 +520,7 @@ function HU:SendStoredRoster(tag, force)
         -- (la línea de cada uno se guarda en su ficha y solo se rehace si cambia algo)
         local c = m._rb
         if not (c and c.n == m.name and c.c == m.class and c.l == m.level and c.r == (m.rankIndex or m.rankHidden) and c.z == m.zone and c.a == m.afk) then
-            local zone = HU.Utf8Cut((tostring(m.zone or "")):gsub("[~,;|]", " "), 24)
+            local zone = HU.Utf8Cut((tostring(HU.ZoneOut(m.zone) or "")):gsub("[~,;|]", " "), 24)
             c = { n = m.name, c = m.class, l = m.level, r = m.rankIndex or m.rankHidden, z = m.zone, a = m.afk,
                 line = table.concat({ (self:Short(m.name):gsub("[~,;|]", " ")), HU.CLASS_INDEX[m.class or ""] or 0,
                     m.level or 0, m.rankIndex or m.rankHidden or "", zone .. (m.afk and ",a" or "") }, ",") }
@@ -661,6 +698,8 @@ local function ParseRosterEntry(self, en, tag, dict)
         local z, flags = zone:match("^(.-),(%a*)$")
         if z then zone, afk = z, flags:find("a", 1, true) ~= nil end
         if dict and dict[zone] then zone = dict[zone] end
+        -- (el número de mapa, con el nombre en mi idioma)
+        zone = HU.ZoneIn(zone)
     end
     return {
         name = self:FullName(name),
