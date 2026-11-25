@@ -361,20 +361,19 @@ describe("Oficios (OF): buscar", function()
         return out
     end
 
-    it("quien sabe la receta sale primero y luego por nivel; con otra lista, sin saberse; quien seguro que no la sabe, fuera", function()
+    it("un objeto: solo quien se sabe la receta (su línea lo confirma); quien solo tiene la profesión, con otra lista o sin saberse, fuera (Jorge, 25/11)", function()
         local a, HU, l, Hear = Setup()
         local other = l.hash == "zzz" and "yyy" or "zzz"
-        Hear("Compi-Reino", "164", "250," .. l.hash .. ",E")   -- (la 3 de la lista)
-        Hear("Jefa-Reino", "164", "300," .. l.hash .. ",B")    -- (solo la 1)
-        Hear("Otro-Reino", "164", "280," .. other .. ",E")
-        Hear("Nueva-Reino", "164", "100")
+        Hear("Compi-Reino", "164", "250," .. l.hash .. ",E")   -- (sabe la 3 de la lista)
+        Hear("Jefa-Reino", "164", "300," .. l.hash .. ",B")    -- (sabe solo la 1)
+        Hear("Otro-Reino", "164", "280," .. other .. ",E")     -- (otra lista: no se sabe qué recetas tiene)
+        Hear("Nueva-Reino", "164", "100")                      -- (solo la profesión, sin recetas)
+        -- (el objeto 3: solo Compi, que lo sabe; Jefa sabe otra receta, Otro y Nueva no se sabe: fuera)
         local third = l[3]
-        A.same({ "Compi 250 ✓", "Otro 280", "Nueva 100" }, Rows(HU, "algo", { [third.id] = true }, { [164] = third.lv }))
-        -- (algo que pide más nivel: sin saberse, solo quien lo tiene)
-        local hard
-        for i = 1, l.n do if not hard and l[i].lv > 100 and l[i].lv <= 280 and not l[i].spell then hard = l[i] end end
-        A.same({ "Otro 280" }, Rows(HU, "algo", { [hard.id] = true }, { [164] = hard.lv }))
-        -- (por el nombre de la profesión, todos, por nivel)
+        A.same({ "Compi 250 ✓" }, Rows(HU, "algo", { [third.id] = true }, { [164] = third.lv }))
+        -- (el objeto 1: solo Jefa; aunque Otro (280) y Nueva (100) tengan nivel de sobra, no se sabe que lo sepan)
+        A.same({ "Jefa 300 ✓" }, Rows(HU, "algo", { [l[1].id] = true }, { [164] = l[1].lv }))
+        -- (por el nombre de la profesión, sí salen todos, por nivel)
         A.same({ "Jefa 300", "Otro 280", "Compi 250", "Nueva 100" }, Rows(HU, "herreria"))
         A.same({}, Rows(HU, "sastreria"))
         local r = HU:UnionCrafters("herreria")[1]

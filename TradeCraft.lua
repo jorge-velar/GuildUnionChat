@@ -180,10 +180,9 @@ local function SearchMembers(q)
         have[(HU:Key(r.name) or r.name) .. "|" .. r.skill] = true
     end
     for _, m in ipairs(ClubRows()) do
-        local need = needs and type(m.id) == "number" and needs[m.id]
-        -- (sin nivel —el de los demás, que la comunidad no da—: sale si tiene la profesión)
-        if not have[m.name:lower() .. "|" .. tostring(m.id)] and not HasLine(m.name, m.id)
-            and (HU.TextRank(m.prof, q) or (need and (m.rank == nil or m.rank >= need))) then
+        -- (solo al buscar por nombre de profesión: ahí sí quieres a todos los que la tienen. Al buscar un objeto, de
+        -- mi hermandad no se sabe las recetas, así que no se añaden: solo sale quien lo confirma. Jorge, 25/11)
+        if not have[m.name:lower() .. "|" .. tostring(m.id)] and not HasLine(m.name, m.id) and HU.TextRank(m.prof, q) then
             out[#out + 1] = ClubRow(m)
         end
     end
@@ -234,10 +233,8 @@ local function CraftersOf(key)
         r.online = Status(r.name)
         out[#out + 1] = r
     end
-    for _, m in ipairs(ClubRows()) do
-        local need = type(m.id) == "number" and needs[m.id]
-        if need and (m.rank == nil or m.rank >= need) and not HasLine(m.name, m.id) then out[#out + 1] = ClubRow(m) end
-    end
+    -- (de mi hermandad por la lista del juego no se sabe qué recetas tienen, solo la profesión: por eso ya no se
+    -- añaden aquí. Solo sale quien lo confirma con su línea de oficios. Jorge, 25/11)
     table.sort(out, function(a, b)
         if (a.online == true) ~= (b.online == true) then return a.online == true end
         if (a.knows == true) ~= (b.knows == true) then return a.knows == true end

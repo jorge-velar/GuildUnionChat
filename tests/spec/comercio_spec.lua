@@ -1637,8 +1637,9 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
         A.same({ "Nuevo encargo", true }, { d.title:GetText(), d.expLabel:IsShown() })
         A.matches("Espada azul", d.item:GetText())
         d:Hide()
-        -- (fuera los filtros de rareza y tipo, solo Sastrería: la bolsa (Jefa, sin línea); la ventana sigue con la espada
-        -- hasta que se pide otra)
+        -- (fuera los filtros de rareza y tipo, solo Sastrería: la bolsa; la ventana sigue con la espada hasta que se pide
+        -- otra. De la bolsa, Jefa solo tiene la profesión (sin línea de oficios), así que ya no sale: solo quien sabe la
+        -- receta. Jorge, 25/11)
         for _, b in ipairs({ tr.filters.qual, tr.filters.type, tr.filters.prof }) do
             m.checks = {}
             Click(b)
@@ -1654,7 +1655,7 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
         Click(tr.items.rows[1].allBtn)
         A.matches("Bolsa de lino", who.titleText:GetText())
         A.equal("", who.find:GetText(), "con otro objeto, el buscador vacío")
-        A.same({ "Jefa UNO —" }, Found(tr, who.lst))
+        A.same({}, Found(tr, who.lst), "Jefa solo tiene la profesión, no se sabe que sepa la receta: no sale")
         -- (sin repintar por fotograma)
         local function Inside(f)
             while f do if f == tr then return true end f = f._parent end
@@ -1695,11 +1696,19 @@ describe("Comercio (Trade.lua): la pestaña Buscar", function()
         A.same({}, Found(tr))
         m.checks[2].set()
         A.same({ "Encantar brazales" }, Found(tr))
-        -- (lo que llega de oficios con Buscar a la vista se pinta 2 s después)
-        WU(a, "Compi-Reino", "OF", "333", "300")
+        -- (lo que llega de oficios con Buscar a la vista se pinta 2 s después; solo sale quien sabe la receta, así que
+        -- Compi llega con su línea marcando ese encantamiento. Jorge, 25/11)
+        local el = HU.ProfessionsForTests.list(333)
+        local pos
+        for i = 1, el.n do if el[i].id == first and el[i].spell then pos = i; break end end
+        A.truthy(pos, "el encantamiento está en la lista de oficios")
+        local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        local v = 2 ^ ((pos - 1) % 6)
+        local bits = string.rep("A", math.floor((pos - 1) / 6)) .. B64:sub(v + 1, v + 1)
+        WU(a, "Compi-Reino", "OF", "333", "300," .. el.hash .. "," .. bits)
         a.w:Advance(3)
         Click(tr.items.rows[1].allBtn)
-        A.same({ "Compi UNO 300" }, Found(tr, a.env.GuildUnionTradeWho.lst))
+        A.same({ "Compi UNO 300 ✓" }, Found(tr, a.env.GuildUnionTradeWho.lst))
         -- (sin nada del juego todavía)
         local b = F.Community()
         Observe(b)

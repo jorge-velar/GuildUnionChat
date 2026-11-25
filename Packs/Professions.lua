@@ -274,7 +274,6 @@ function HU:UnionCrafters(q, items, needs)
         local byName = type(q) == "string" and q ~= "" and HU.TextRank(prof, q) ~= nil
         local where = {}
         for k in pairs(items or {}) do if l.pos[k] then where[#where + 1] = l.pos[k] end end
-        local need = needs and needs[skill]
         if byName or #where > 0 then
             for _, r in ipairs(rows) do
                 local knows
@@ -282,7 +281,10 @@ function HU:UnionCrafters(q, items, needs)
                     knows = false
                     for _, i in ipairs(where) do if Known(r.bits, i) then knows = true; break end end
                 end
-                if byName or knows or (knows == nil and (not need or r.rank >= need)) then
+                -- (por nombre de profesión: todos los que la tienen; por un objeto: solo quien se sabe la receta
+                -- (su línea de oficios lo confirma), no quien solo tiene la profesión. Jorge, 25/11: «si no lo tiene,
+                -- que no aparezca») [+ARCHITECTURE.md]
+                if byName or knows == true then
                     out[#out + 1] = { name = r.name, tag = r.tag, skill = skill, prof = prof, icon = ProfIcon(skill),
                         rank = r.rank, knows = knows or nil }
                 end

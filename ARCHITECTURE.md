@@ -2551,11 +2551,14 @@ cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profes
 - **Al recibir no se descifra nada**: lo guarda Net/Packs.lua tal cual. El índice (`bySkill`, `byName`) sale de
   `HU:Proposals("OF")` la primera vez que se mira tras un cambio. Si alguien sale en dos hermandades (se cambió), su línea
   más nueva. Las recetas solo se guardan en la fila si la huella es la mía.
-- **`HU:UnionCrafters(q, items, needs)`** → `{ name, tag, skill, prof, icon, rank, knows }`: los que tienen la profesión
-  cuyo nombre encaja con `q` o pueden hacer algo de `items` (las claves de TradeCraft.lua: el objeto o `"s" .. hechizo`;
-  `needs`, el nivel que pide cada profesión). Saber una receta es mirar un bit (`Known`: una letra). `knows`, true si sabe
-  alguna; quien seguro que no (su lista leída entera, sin ese bit) no sale; sin saberse (otra huella o sin la lista
-  leída), sale si tiene el nivel. Primero quien la sabe, luego por nivel.
+- **`HU:UnionCrafters(q, items, needs)`** → `{ name, tag, skill, prof, icon, rank, knows }`: por el nombre de una
+  profesión (`q`), todos los que la tienen; por un objeto (`items`: el objeto o `"s" .. hechizo`), solo quien se sabe la
+  receta. Saber una receta es mirar un bit (`Known`: una letra). `knows`, true si sabe alguna de `items`. **Desde el
+  25/11 (copia 340), por un objeto solo sale `knows == true`:** quien solo tiene la profesión pero no se sabe que sepa
+  la receta (otra huella, sin la lista leída, o de mi hermandad por la lista del juego) ya **no** sale, porque Jorge
+  vio «gente inventada» (92 alquimistas para un frasco) y pidió «si no lo tiene, que no aparezca». `needs` ya no filtra;
+  se deja por si acaso. Primero quien la sabe, luego por nivel. Efecto: hasta que la gente actualice y comparta sus
+  recetas (abrir la ventana de profesión con el addon), «Quién lo hace» de un objeto sale casi vacío; es lo correcto.
 - **`HU:UnionProfessionsOf(nombre)`** → `{ id, name, icon, rank, secondary, recipes }` (`recipes`, desde el 25/11: su
   línea trae recetas, de la lista que sea, es decir, ha abierto esa ventana con el addon; lo usa «Ver recetas» de la
   ficha, UnionRoster.lua. No es `bits`, que con otra huella queda vacío aunque las haya abierto), primero las principales (Cocina y
