@@ -67,6 +67,13 @@ describe("Medidas: CPU del addon según el juego y FPS (Perf.lua)", function()
         HU.Perf.Start()
         Has(HU.Perf.Report(), "la más alta 6.7 % (" .. peakAt .. ")")
         HU.Perf.Stop()
+        -- (un dato del juego que no vale, NaN o negativo, no cuenta)
+        a.w.profiler = { app = 0 / 0, all = 2, mine = 1 }
+        a.w:Advance(5)
+        A.is_nil((HU:PerfNow()), "con NaN")
+        a.w.profiler = { app = 10, all = 2, mine = -1 }
+        a.w:Advance(5)
+        A.is_nil((HU:PerfNow()), "con un negativo")
         -- (si el juego apaga su medidor, se dice; lo que ya se ha medido se queda)
         a.w.profiler = nil
         a.w:Advance(5)
