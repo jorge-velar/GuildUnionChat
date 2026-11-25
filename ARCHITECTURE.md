@@ -2965,8 +2965,9 @@ marcaba a esa persona para cambiarlas en la ficha del juego (la única que las g
 En la vista de chat, un clic en la lista de la derecha del juego abre
 la ficha del juego, sin tocarla (hasta el 23/11 se cerraba y salía la nuestra: así no se podían guardar notas).
 
-**«Ver recetas»** (Jorge, 24/11: «más bonito y además no funciona»): oscuro, con borde fino dorado y letra dorada que se
-aclara al pasar el ratón (`DJ.Panel`, como Comercio y Calendario; antes, el botón rojo del juego). Solo en las profesiones
+**«Ver recetas»**: el botón rojo del juego (`UIPanelButtonTemplate`, 92 x 20, letra pequeña). Jorge, 25/11, copia 333:
+«pasarlo a rojo de nuevo»; del 24/11 («más bonito y además no funciona») al 25/11 fue oscuro, con borde fino dorado
+(`DJ.Panel`, como Comercio y Calendario). Solo en las profesiones
 que fabrican (`HasRecipes`: las de CraftItems.lua; Herboristería o Desuello, sin botón). Al pulsarlo (`OpenRecipes`):
 - las mías (`isSelf`) abren mi ventana de esa profesión, como hace el juego (`C_TradeSkillUI.OpenTradeSkill`); si no se
   abre, se piden como las de otro;
@@ -3818,13 +3819,18 @@ excluyen; de entrada, Encargo; hasta la 331, «Pedir»), Objeto
 va entero en la caja: es lo que se publica) y Cantidad
 (1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina: «Sin propina» · «A negociar» (se
 excluyen; cualquiera de las dos esconde las monedas: Jorge, 25/11, copia 332) y, sin ninguna, oro · plata · cobre (vacías:
-a negociar), la casilla «Encargo personal» (hasta la 331, «En el tablón: Sí · No»; de entrada, según la vista: en Mis
-encargos, marcada) que con ella enseña «Personaje» (con autorrelleno) y sin ella, en el tablón, «Duración:» («Post
+a negociar), la casilla «Encargo personal», 12 más abajo y con una raya dorada encima para que no parezca de la propina
+(Jorge, 25/11, copia 333: «sepáralo un poco de tip»; hasta la 331, «En el tablón: Sí · No»; de entrada, según la vista:
+en Mis encargos, marcada) que con ella enseña «Personaje» (con autorrelleno) y sin ella, en el tablón, «Duración:» («Post
 duration:»; hasta la 331, «Dura:») 5 h · 12 h · 24 h · 48 h (de entrada, 24: ver «Lo que dura en el tablón»). Al vender
 no salen Materiales ni «Encargo personal» (una venta va siempre al tablón), la propina se llama «Precio:» y solo queda
 «A negociar». La propina viaja como antes en TR: un número (cobre), `0` con «Sin propina» (en el tablón, «Sin propina»)
 o `-` a negociar. La ventana se mueve arrastrándola, sin salirse de la pantalla (Jorge, 25/11, copia 330: «la ventana del
-request order debe ser movible»). «Publicar» exige el objeto, que no pase del tope y que la personal tenga para quién
+request order debe ser movible»), y la cierra la X de arriba a la derecha, como «Cancelar» (copia 333). Va **atada por
+arriba** (`TOP` a 160 por encima del centro de la sección; al soltarla tras arrastrarla, `TOPLEFT` donde quedó): crece y
+encoge hacia abajo y lo de arriba no se mueve. Hasta la 332 iba centrada: al marcar «Sin propina» encogía 44 y todo bajaba
+22, y el clic siguiente en el mismo sitio caía en «Yo» de Materiales (la misma x, ya marcada: no hacía nada). Jorge, 25/11:
+«cuando pulso no tip no tengo manera de volver a ponerle un tip». «Publicar» exige el objeto, que no pase del tope y que la personal tenga para quién
 («Para un encargo personal, pon para quién es.»); al vender mira si es BOE (abajo); y salta al Tablón o a Mis encargos.
 `ui.OpenNew(nombre, objeto)` la abre personal para esa persona («Encargo para …»; hasta la 331, «Pedir una receta a …»)
 y con el objeto puesto, si se le da (Buscar). Con el comercio apagado
@@ -3973,10 +3979,11 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   de cada fila al pintar: era lo que trababa la lista al bajar («cuando no tienes nada puesto… y bajas se va trabando»).
   Ahora no se calcula al pintar, y bajar (`OnVerticalScroll` de `ui.items`) repinta solo la lista (`PaintFind`), sin lo
   demás de `Paint`.
-- **Cargando** (Jorge: «si está cargando los ítems que aparezca arriba a la derecha unas flechitas como de carga»):
-  mientras el cargador de nombres sigue (`craftLoader`, hasta que acaba su última vuelta: `craftLoader.done`), las
-  flechas del juego (`Interface\Buttons\UI-RefreshButton`) giran (una animación `Rotation`) en la derecha del título de
-  la lista (`ui.items.spin`).
+- **Cargando**: mientras el cargador de nombres sigue (`craftLoader`, hasta que acaba su última vuelta:
+  `craftLoader.done`), el círculo de carga del juego (`LoadingSpinnerTemplate`, el del buscador de grupos, que gira solo
+  al verse), de 24, abajo a la derecha de la sección (`ui.items.spin`). Es hijo de la lista de Buscar: fuera de Buscar no
+  se ve. Jorge, 25/11, copia 333: «la flecha que gira no me gusta el formato. la pondría abajo a la derecha» (en la 332
+  eran las flechas `UI-RefreshButton` girando a la derecha del título de la lista).
 - **Quién lo hace un objeto** (`CraftersOf`): los de toda la unión con línea de oficios que saben la receta o tienen el
   nivel (`HU:UnionCrafters` con ese objeto), y los de mi hermandad sin línea que tienen la profesión (`ClubRows`, como
   en el buscador); conectados primero (`Status`), luego quien sabe la receta y por nivel.
@@ -4249,7 +4256,7 @@ que se señala (`title`, `line`, `hover`). Además, las texturas `DJ.WHITE`, `DJ
 
 `DJ.Switch(parent, items)`: los dos botones de arriba de Comercio (Tablón · Mis encargos) y de Calendario (Eventos ·
 Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos del juego de 150 x 28 (`DJ.SWITCH`), con
-6 entre ellos, en un marco que quien lo usa coloca (los dos, arriba en el centro). Elegido, negro (`DJ.PickRed`).
+6 entre ellos, en un marco que quien lo usa coloca (los dos, arriba en el centro). Elegido, gris (`DJ.PickRed`).
 - `items`: `{ { clave, texto }, ... }`; los botones, en `btns[clave]`, con `:Pick(on)` o `:SetSelected(on)` (lo mismo),
   `:Label(texto)` y `b.picked`. Los clics los pone quien lo usa.
 - Historia (Jorge, 24/11): en la 315 fue un interruptor dorado de dos mitades (la «opción 3» de tres dibujos) y, para
@@ -4262,11 +4269,19 @@ Calendario), una sola pieza para que se vean idénticos: dos `DJ.Button` rojos d
   `:Pick(on)` lo deja elegido (`b.picked` lo dice) y `:Label(t)` es `SetText`.
 - `DJ.PickRed(b, on)` vale para cualquier botón rojo (los de arriba de la lista de miembros, UnionRoster.lua, ya no:
   desde el 24/11 son redondos y usan `PickRound`): las pestañas de las ventanas «Registro» (Invitaciones · Salidas) y «Peticiones de oficiales»
-  (Todas · Echar · Rango) de InviteLog.lua y Miembros · Oficiales (BlizzTab.lua). Elegido, sus tres piezas (`Left`,
-  `Middle`, `Right`) se desaturan y oscurecen hasta el negro y la letra pasa a blanca; sin elegir, rojo con letra
-  dorada. Si ya está así no hace nada (`djPicked`): se llama en cada repintado.
-- Por qué el elegido mantiene la forma: no se esconde ni se añade nada, solo se tiñen las piezas que ya tiene. Sigue
-  siendo el mismo botón que sus vecinos (contorno y tamaño), solo que oscuro, y vale para botones de otros archivos.
+  (Todas · Echar · Rango) de InviteLog.lua y Miembros · Oficiales (BlizzTab.lua). Elegido, gris: sus tres piezas
+  (`Left`, `Middle`, `Right`) llevan la textura del botón apagado del juego (`UI-Panel-Button-Disabled`; pulsándolo,
+  `UI-Panel-Button-Disabled-Down`), con la letra dorada de siempre; sin elegir, rojo (`UI-Panel-Button-Up`). Es como
+  la pestaña elegida del Dungeon Journal de Forever (Mapa · Jefes · Misiones), que se apaga al elegirla; aquí sigue
+  encendido (algunos se vuelven a pulsar para quitarlos). Jorge, 25/11, copia 333, con capturas de esas pestañas: «todos
+  los pulsados que ahora están en negro pasarlos al formato que te paso… solo el gris». Hasta la 332, las piezas se
+  desaturaban y oscurecían hasta el negro, con la letra blanca.
+- El juego vuelve a poner sus texturas al pulsar, soltar, enseñarse o encenderse el botón (`UIPanelButton_OnMouseDown`,
+  `OnMouseUp`, `OnShow`, `OnEnable`, SecureUIPanelTemplates.lua): `PickRed` engancha esos cuatro (una vez, `djHooked`) y
+  detrás vuelve a poner el gris si sigue elegido. Apagado no lo toca: el juego ya lo pinta de gris. Si ya está así no
+  hace nada (`djPicked`): se llama en cada repintado.
+- Por qué el elegido mantiene la forma: no se esconde ni se añade nada, solo cambian las piezas que ya tiene. Sigue
+  siendo el mismo botón que sus vecinos (contorno y tamaño), solo que gris, y vale para botones de otros archivos.
 - «+ Nuevo anuncio» (TradeView.lua; hasta el 25/11, «+ Nueva solicitud») y «+ Nuevo evento» (UnionCalendar.lua) son `DJ.Button` con sus tres piezas teñidas
   de verde y la letra blanca; lo hace cada archivo, como hasta la copia 304. Entre medias fueron un «+» solo, verde
   claro (`DJ.Plus`, quitado el 24/11: Jorge los quiso «como antes y abajo centrado»).

@@ -1204,6 +1204,8 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         -- (las mías: Herboristería, de recoger, sin botón; Minería abre mi ventana de la profesión)
         local rows, row = Card("Tester")
         A.same({ false, true }, { rows.btns[1]:IsShown(), rows.btns[2]:IsShown() })
+        -- (el botón rojo del juego otra vez, con letra pequeña: Jorge, 25/11, «pasarlo a rojo de nuevo»)
+        A.same({ "UIPanelButtonTemplate", "UIPanelButtonTemplate" }, { rows.btns[1]._template, rows.btns[2]._template })
         Press(rows.btns[2])
         A.same({ 186 }, opened)
         A.same({}, asked)

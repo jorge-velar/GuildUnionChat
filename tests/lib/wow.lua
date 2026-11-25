@@ -247,6 +247,7 @@ function wow.New(opts)
 
     api.CreateFrame = function(kind, name, parent, template)
         local f = NewFrame(w, kind, name, parent)
+        f._template = template
         -- (las piezas que traen las plantillas del juego y que el addon toca: el fondo de InsetFrameTemplate)
         if type(template) == "string" and template:find("InsetFrameTemplate", 1, true) then f.Bg = NewFrame(w, "Texture", nil, f) end
         -- (y las tres piezas del botón rojo, UIPanelButtonTemplate: DJStyle.lua las oscurece al elegirlo)

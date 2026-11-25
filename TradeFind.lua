@@ -102,7 +102,7 @@ end
 
 -- Buscar: los objetos que encajan, con «Ver todos» y «Publicarlo» en cada fila. Quién lo hace ya no se mira al pintar
 -- (era lo que trababa la lista al bajar: Jorge, 25/11); lo calcula la ventana de «Ver todos». Mientras el juego da
--- los nombres, las flechas de «cargando» arriba a la derecha [+ARCHITECTURE.md]
+-- los nombres, el círculo de carga abajo a la derecha [+ARCHITECTURE.md]
 local function PaintFind()
     local ui = T.ui
     local items = FindItems(CraftIndex())
@@ -301,14 +301,11 @@ local function BuildWho(host)
     ui.items.scroll:SetScript("OnVerticalScroll", function(s, offset)
         FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, PaintFind)
     end)
-    -- (arriba a la derecha de la lista, las flechas que giran mientras el juego da los nombres de los objetos)
-    local spin = ui.items.hdr:CreateTexture(nil, "OVERLAY")
-    spin:SetSize(16, 16); spin:SetPoint("RIGHT", ui.items.hdr, "RIGHT", -4, 0)
-    spin:SetTexture("Interface\\Buttons\\UI-RefreshButton")
-    local turn = spin:CreateAnimationGroup()
-    local rot = turn:CreateAnimation("Rotation")
-    rot:SetDegrees(-360); rot:SetDuration(1)
-    turn:SetLooping("REPEAT"); turn:Play()
+    -- (abajo a la derecha de la sección, el círculo de carga del juego (el del buscador de grupos), pequeño, mientras el
+    -- juego da los nombres de los objetos. Es de la lista: fuera de Buscar no se ve. Jorge, 25/11: «la flecha que gira
+    -- no me gusta… la pondría abajo a la derecha»)
+    local spin = CreateFrame("Frame", nil, ui.items.list, "LoadingSpinnerTemplate")
+    spin:SetSize(24, 24); spin:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -12, 8)
     spin:Hide()
     ui.items.spin = spin
     -- (en la capa HIGH, por debajo de la ventana de pedir (DIALOG) y de los menús, que así salen por encima)

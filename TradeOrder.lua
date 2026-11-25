@@ -156,18 +156,29 @@ local pendingSubmit
 local function BuildNewDialog(host)
     local d = CreateFrame("Frame", "GuildUnionTradeNew", host, "BackdropTemplate")
     d:SetSize(310, 290)
-    d:SetPoint("CENTER", host, "CENTER", 0, 0)
+    -- (atada por arriba: al cambiar de alto, lo de arriba no se mueve. Centrada, bajaba al encoger y el clic siguiente
+    -- caía en la fila de encima: Jorge, 25/11, «cuando pulso no tip no tengo manera de volver a ponerle un tip») [+ARCHITECTURE.md]
+    d:SetPoint("TOP", host, "CENTER", 0, 160)
     d:SetFrameStrata("DIALOG")
     DJ.Panel(d, DJ.T.content, DJ.T.border, 14, 4)
     DJ.Parchment(d, 0.18)
     d:EnableMouse(true)
-    -- (se mueve arrastrándola, sin salirse de la pantalla: Jorge, 25/11, «la ventana del request order debe ser movible»)
+    -- (se mueve arrastrándola, sin salirse de la pantalla: Jorge, 25/11, «la ventana del request order debe ser movible».
+    -- Al soltarla, otra vez atada por arriba, donde quedó)
     d:SetMovable(true); d:SetClampedToScreen(true); d:RegisterForDrag("LeftButton")
     d:SetScript("OnDragStart", d.StartMoving)
-    d:SetScript("OnDragStop", d.StopMovingOrSizing)
+    d:SetScript("OnDragStop", function(s)
+        s:StopMovingOrSizing()
+        local left, top = s:GetLeft(), s:GetTop()
+        if left and top then s:ClearAllPoints(); s:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top) end
+    end)
     d:Hide()
     d.title = d:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     d.title:SetPoint("TOPLEFT", 12, -10)
+    -- (la X de arriba a la derecha la cierra, como «Cancelar»: Jorge, 25/11)
+    d.close = CreateFrame("Button", nil, d, "UIPanelCloseButton")
+    d.close:SetPoint("TOPRIGHT", -2, -2)
+    d.close:SetScript("OnClick", function() d:Hide() end)
     local function Label(text, font)
         local l = d:CreateFontString(nil, "OVERLAY", font or "GameFontNormalSmall")
         l:SetText(text)
@@ -219,6 +230,7 @@ local function BuildNewDialog(host)
     -- (un encargo personal, para alguien en concreto: con la casilla, a quién, con autorrelleno; sin ella, al tablón.
     -- Hasta el 25/11, «En el tablón: Sí · No»)
     d.personal = Check(L("Encargo personal"))
+    d.sep = DJ.Line(d, 0.35)
     d.toLabel = Label(L("Personaje:"))
     d.to = HU.NewEditBox(d, 196)
     Suggest(d.to, NameMatches)
@@ -264,7 +276,12 @@ local function BuildNewDialog(host)
                 y = y - 44
             end
         end
+        -- («Encargo personal», algo más abajo y con una raya encima: que no parezca de la propina. Jorge, 25/11)
+        d.sep:SetShown(not sale)
         if not sale then
+            y = y - 6
+            d.sep:ClearAllPoints(); d.sep:SetPoint("TOPLEFT", 12, y + 2); d.sep:SetPoint("TOPRIGHT", -12, y + 2)
+            y = y - 6
             At(d.personal, 10, 5)
             y = y - 26
         end

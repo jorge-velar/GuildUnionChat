@@ -32,6 +32,7 @@ local function Observe(a)
             pts[p] = { ... }
         end,
         SetVertexColor = function(self, ...) rawset(self, "_color", { ... }) end,
+        SetTexture = function(self, t) rawset(self, "_tex", t) end,
         SetColorTexture = function(self, ...) rawset(self, "_fill", { ... }) end,
         SetTextColor = function(self, ...) rawset(self, "_textColor", { ... }) end,
         SetBackdropColor = function(self, ...) rawset(self, "_bg", { ... }) end,
@@ -543,7 +544,7 @@ end)
 -- Aspecto
 ---------------------------------------------------------------------------
 describe("Comercio (Trade.lua): aspecto", function()
-    it("las pestañas de arriba (DJ.Switch, DJStyle.lua): dos botones rojos del juego, juntos; el elegido, negro", function()
+    it("las pestañas de arriba (DJ.Switch, DJStyle.lua): dos botones rojos del juego, juntos; el elegido, gris", function()
         local a = F.Community()
         Observe(a)
         local DJ = a.HU.DJ
@@ -557,10 +558,45 @@ describe("Comercio (Trade.lua): aspecto", function()
         A.same({ "Uno", "Dos" }, { x:GetText(), y:GetText() })
         A.falsy(x.picked or y.picked)
         x:Pick(true); y:SetSelected(false)
-        A.truthy(x.picked, "el elegido, negro (DJ.PickRed)")
+        A.truthy(x.picked, "el elegido, gris (DJ.PickRed)")
         A.falsy(y.picked)
         y:Label("Otra")
         A.equal("Otra", y:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("lo elegido, gris como la pestaña elegida del Dungeon Journal (antes, negro): el juego le pone el rojo al pulsar, soltar, enseñarse o encenderse y vuelve el gris; sin elegir, rojo; la letra, la de siempre", function()
+        local a = F.Community()
+        Observe(a)
+        local DJ = a.HU.DJ
+        local GREY, DOWN, RED = "Interface\\Buttons\\UI-Panel-Button-Disabled", "Interface\\Buttons\\UI-Panel-Button-Disabled-Down",
+            "Interface\\Buttons\\UI-Panel-Button-Up"
+        local b = DJ.Button(a.env.UIParent, "Uno", 100)
+        local function Skin() return { b.Left._tex, b.Middle._tex, b.Right._tex } end
+        local function Game(file) for _, k in ipairs({ "Left", "Middle", "Right" }) do b[k]:SetTexture(file) end end
+        b:Pick(true)
+        A.same({ GREY, GREY, GREY }, Skin(), "elegido: las tres piezas, grises")
+        A.is_nil(b._font, "la letra no cambia: dorada, como en el Dungeon Journal")
+        -- (lo que hace el juego al pulsarlo (UIPanelButton_OnMouseDown / OnMouseUp, SecureUIPanelTemplates.lua), y detrás lo nuestro)
+        Game("Interface\\Buttons\\UI-Panel-Button-Down"); b:GetScript("OnMouseDown")(b)
+        A.same({ DOWN, DOWN, DOWN }, Skin(), "pulsándolo, gris hundido")
+        Game(RED); b:GetScript("OnMouseUp")(b)
+        A.same({ GREY, GREY, GREY }, Skin(), "al soltarlo, gris otra vez")
+        for _, what in ipairs({ "OnShow", "OnEnable" }) do
+            Game(RED); b:GetScript(what)(b)
+            A.same({ GREY, GREY, GREY }, Skin(), what)
+        end
+        b:Pick(false)
+        A.same({ RED, RED, RED }, Skin(), "sin elegir, rojo")
+        Game("Interface\\Buttons\\UI-Panel-Button-Down"); b:GetScript("OnMouseUp")(b)
+        A.same({ "Interface\\Buttons\\UI-Panel-Button-Down", "Interface\\Buttons\\UI-Panel-Button-Down",
+            "Interface\\Buttons\\UI-Panel-Button-Down" }, Skin(), "sin elegir, lo del juego no se toca")
+        -- (apagado, el juego pone su gris de apagado: elegirlo no lo toca; al encenderse, el gris de elegido)
+        b:SetEnabled(false); Game(GREY)
+        b:Pick(true)
+        A.same({ GREY, GREY, GREY }, Skin())
+        b:SetEnabled(true); Game(RED); b:GetScript("OnEnable")(b)
+        A.same({ GREY, GREY, GREY }, Skin())
         A.same({}, a:Errors())
     end)
 
@@ -1836,7 +1872,7 @@ describe("Comercio (Trade.lua): lo del 25/11 por la tarde", function()
         A.same({}, a:Errors())
     end)
 
-    it("Buscar: mientras el juego da los nombres de los objetos, las flechas de «cargando» giran arriba a la derecha de la lista; al acabar, fuera", function()
+    it("Buscar: mientras el juego da los nombres de los objetos, el círculo de carga del juego, pequeño, abajo a la derecha de la sección; al acabar, fuera; fuera de Buscar no se ve", function()
         local a = F.Community()
         Observe(a)
         Known(a, {})
@@ -1844,10 +1880,44 @@ describe("Comercio (Trade.lua): lo del 25/11 por la tarde", function()
         Click(tr.viewBtns.find)
         local spin = tr.items.spin
         A.truthy(spin:IsShown())
-        A.same({ "RIGHT", -4, 0 }, { spin._pts.RIGHT[2], spin._pts.RIGHT[3], spin._pts.RIGHT[4] })
-        A.equal(tr.items.hdr, spin._pts.RIGHT[1])
+        A.same({ "LoadingSpinnerTemplate", 24, 24 }, { spin._template, spin._w, spin._h }, "el del buscador de grupos")
+        A.same({ tr, "BOTTOMRIGHT", -12, 8 }, spin._pts.BOTTOMRIGHT)
+        A.equal(tr.items.list, spin:GetParent(), "de la lista de Buscar: se esconde con ella")
         a.w:Advance(400)
         A.falsy(spin:IsShown(), "al acabar, fuera")
+        A.same({}, a:Errors())
+    end)
+
+    it("nuevo encargo: atada por arriba (con «Sin propina» encoge sin bajar y se quita en el mismo sitio); arrastrada, sigue atada por arriba; la X la cierra; «Encargo personal», más abajo y con una raya encima", function()
+        local a = F.Community()
+        Observe(a)
+        local tr = OpenTrade(a)
+        tr.OpenNew(nil)
+        local d = a.env.GuildUnionTradeNew
+        A.same({ tr, "CENTER", 0, 160 }, d._pts.TOP, "atada por arriba")
+        A.is_nil(d._pts.CENTER, "no por el centro: al encoger bajaba y el clic caía en «Yo» de Materiales")
+        local h0, y0 = d._h, d.noTip._pts.TOPLEFT[2]
+        Toggle(d.noTip)
+        A.same({ true, false }, { d._h < h0, d.coins[1]:IsShown() }, "sin monedas, encoge")
+        A.same({ tr, "CENTER", 0, 160 }, d._pts.TOP, "sin moverse")
+        A.equal(y0, d.noTip._pts.TOPLEFT[2], "la casilla, donde estaba")
+        Toggle(d.noTip)
+        A.same({ false, true, h0 }, { d.noTip:GetChecked(), d.coins[1]:IsShown(), d._h }, "otra vez con propina")
+        -- («Encargo personal»: 12 más abajo que antes, con la raya en medio)
+        local tipY = d.tipLabel._pts.TOPLEFT[2]
+        A.same({ true, tipY - 22 - 44 - 12 + 5 }, { d.sep:IsShown(), d.personal._pts.TOPLEFT[2] })
+        A.same({ 12, tipY - 22 - 44 - 6 + 2 }, { d.sep._pts.TOPLEFT[1], d.sep._pts.TOPLEFT[2] })
+        Click(d.kindSell)
+        A.same({ false, false }, { d.sep:IsShown(), d.personal:IsShown() }, "al vender, ni casilla ni raya")
+        Click(d.kindAsk)
+        -- (arrastrada: al soltarla, atada por arriba donde quedó, para que tampoco baje)
+        d:GetScript("OnDragStop")(d)
+        A.same({ a.env.UIParent, "BOTTOMLEFT", 0, 0 }, d._pts.TOPLEFT)
+        A.is_nil(d._pts.TOP)
+        -- (la X)
+        A.same({ "UIPanelCloseButton", "TOPRIGHT", -2, -2 }, { d.close._template, "TOPRIGHT", d.close._pts.TOPRIGHT[1], d.close._pts.TOPRIGHT[2] })
+        Click(d.close)
+        A.falsy(d:IsShown(), "la X la cierra")
         A.same({}, a:Errors())
     end)
 end)

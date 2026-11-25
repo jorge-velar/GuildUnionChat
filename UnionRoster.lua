@@ -578,22 +578,14 @@ local function BuildCard(f)
         local lvl = rows:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lvl:SetPoint("LEFT", icon, "RIGHT", 4, 0)
         lvl:SetWidth(24); lvl:SetJustifyH("LEFT")
-        -- («Ver recetas»: oscuro, con borde fino y letra dorada que se aclara al pasar el ratón, como los paneles de Comercio
-        -- y Calendario (DJStyle.lua). Jorge, 24/11: «más bonito»; antes era el botón rojo del juego) [+ARCHITECTURE.md]
-        local DJ = HU.DJ
-        local b = CreateFrame("Button", "GuildUnionMemberCardRecipes" .. k, rows, "BackdropTemplate")
-        b:SetSize(92, 18)
+        -- («Ver recetas»: el botón rojo del juego, con letra pequeña. Jorge, 25/11: «pasarlo a rojo de nuevo»; del 24/11
+        -- al 25/11 fue oscuro, como los paneles de Comercio y Calendario) [+ARCHITECTURE.md]
+        local b = CreateFrame("Button", "GuildUnionMemberCardRecipes" .. k, rows, "UIPanelButtonTemplate")
+        b:SetSize(92, 20)
         b:SetPoint("LEFT", lvl, "RIGHT", 2, 0)
-        DJ.Panel(b, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
-        local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("CENTER")
-        b:SetFontString(fs)
         b:SetNormalFontObject("GameFontNormalSmall")
         b:SetHighlightFontObject("GameFontHighlightSmall")
         b:SetDisabledFontObject("GameFontDisableSmall")
-        local hl = b:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetPoint("TOPLEFT", 2, -2); hl:SetPoint("BOTTOMRIGHT", -2, 2)
-        hl:SetColorTexture(1, 0.82, 0, 0.15)
         b:SetText(L("Ver recetas"))
         b:SetScript("OnClick", function(s) OpenRecipes(s.prof) end)
         -- (apagado, al pasar el ratón dice por qué: RecipesWhy. El juego no lanza OnEnter en un botón apagado sin esto)
