@@ -144,6 +144,14 @@ local function Said(a, text)
     return false
 end
 
+-- (lo de mi hermandad en el conjunto EV, tal cual está en el almacén de propuestas: «clave=datos», ordenado)
+local function Stored(a)
+    local out = {}
+    for _, e in pairs(a.HU.db.wuStore.UNO and a.HU.db.wuStore.UNO.EV or {}) do out[#out + 1] = e.k .. "=" .. e.d end
+    table.sort(out)
+    return out
+end
+
 local function TestMode(a, ui) Click(Child(a, ui, "Modo prueba")) end
 -- (lo que sale al pasar el ratón por un botón: el título y las líneas de debajo; nil si no sale nada)
 local function Hover(a, b)
@@ -492,8 +500,13 @@ describe("Calendario: quién crea eventos (HU:CanMakeEvents)", function()
         Click(ui.grid.cells[22]) -- (el 18)
         A.truthy(ui.new:IsShown())
         A.truthy(ui.new:IsEnabled())
+        -- (lo que se crea así es de prueba: no sale a la red y se va al apagarlo)
+        NewEvent(a, ui, "Sin permiso")
+        A.equal("Sin permiso", ui.side.dayBtns[1].text:GetText())
+        A.same({}, Stored(a), "nada a la red")
         TestMode(a, ui) -- (se apaga)
         A.falsy(ui.new:IsEnabled())
+        A.equal("No hay eventos este día.", ui.side.info:GetText())
         A.same({}, a:Errors())
     end)
 
@@ -571,6 +584,22 @@ describe("Calendario: nuevo evento", function()
         Click(Child(a, ui.newDlg, "Cancelar"))
         A.falsy(ui.newDlg:IsShown())
         A.truthy(ui.empty:IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("si no se puede mandar a la red (sin comunidad leída), lo dice y la ventana sigue abierta", function()
+        local a = Community()
+        local ui = Open(a)
+        Click(ui.new)
+        ui.newDlg.title:SetText("Sin red")
+        a.HU.myTag = nil
+        Click(Child(a, ui.newDlg, "Crear"))
+        A.truthy(Said(a, "No se ha podido crear el evento."))
+        A.truthy(ui.newDlg:IsShown())
+        A.same({}, Titles(ui))
+        a.HU.myTag = "UNO"
+        Click(Child(a, ui.newDlg, "Crear"))
+        A.same({ "Sin red" }, Titles(ui), "con la comunidad, sí")
         A.same({}, a:Errors())
     end)
 
@@ -902,7 +931,8 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.equal(-64, d.benchF._pts.TOPLEFT[2])
         Detail(ui, "Con descripción")
         A.truthy(d.desc:IsShown())
-        A.equal("Traed pociones de fuego.\nSalimos desde Forjaz.", d.desc:GetText())
+        -- (viaja como propuesta: sin saltos de línea, Packs/Events.lua)
+        A.equal("Traed pociones de fuego. Salimos desde Forjaz.", d.desc:GetText())
         A.equal(480 + 28, d._h, "crece lo que ocupa (y un margen)")
         A.same({ 10, -56 }, d.rule._pts.TOPLEFT, "la raya, debajo")
         A.equal(-62, d.addRaid._pts.TOPLEFT[4], "las pestañas de raid, debajo de la raya")
@@ -1935,12 +1965,197 @@ describe("Calendario: lo guardado", function()
         A.truthy(c, "el mío sigue")
         A.matches("Apuntado", c.join:GetText(), "y sigo apuntado")
         A.is_nil(Card(ui2, "Núcleo de Magma"), "los de prueba no se guardan")
-        -- (una semana y un día después de su hora, al salir se quita)
+        -- (una semana y un día después de su hora ya no sale, ni en el mes; sale del almacén de propuestas (al entrar y
+        -- cada hora) y sus raids, al salir)
         Later(b, 8 * 86400)
+        Section(b, 1); Section(b, 3)
+        Click(ui2.viewBtns.month)
+        A.equal("", ui2.grid.cells[22].ev:GetText(), "ni en el mes")
+        A.truthy(next(b.HU.db.calRaids), "sus raids, todavía")
+        b.HU.PackCleanStores()
+        for _, s in ipairs(Stored(b)) do A.falsy(s:match("^e"), "el evento sigue en el almacén: " .. s) end
         b.w:Fire("PLAYER_LOGOUT")
+        A.same({}, b.HU.db.calRaids, "sus raids, fuera")
         local d = Community({ db = b.env.GuildUnionDB, charDb = b.env.GuildUnionCharDB })
+        A.is_nil(Card(Open(d), "Noche de Onyxia"), "no vuelve")
         A.equal(0, #d.HU.db.calEvents)
         A.same({}, a:Errors())
         A.same({}, b:Errors())
+        A.same({}, d:Errors())
+    end)
+end)
+
+describe("Calendario: la red (propuestas EV, Packs/Events.lua)", function()
+    it("crear, apuntarse y salir pasan por propuestas, salen por GUILD y siguen tras /reload", function()
+        local a = Community()
+        local ui = Open(a)
+        NewEvent(a, ui, "Noche, de Onyxia", { minLv = "58", desc = "Traed pociones; y agua|fría." })
+        local st = Stored(a)
+        A.equal(2, #st, "el evento y yo apuntado")
+        local id = st[1]:match("^e(%w+)=")
+        A.truthy(id, st[1])
+        -- (hora en base 36, tipo, nivel, imagen, título sin comas y descripción sin ; ni |)
+        A.matches("^e" .. id .. "=%w+,raid,58,INV_Misc_Head_Dragon_01,Noche de Onyxia,Traed pociones y agua fría%.$", st[1])
+        A.equal("s" .. id .. "=T", st[2], "guerrero: de tanque")
+        A.equal("Noche de Onyxia", Titles(ui)[1])
+        a.w:Advance(10)
+        local sent = {}
+        for _, m in ipairs(a.w.sent) do
+            local k = m.text:match("^WU~UNO~EV~(%w+)~")
+            if k and m.dist == "GUILD" then sent[#sent + 1] = k end
+        end
+        table.sort(sent)
+        A.same({ "e" .. id, "s" .. id }, sent, "por GUILD")
+        -- (salgo: mi línea, vacía)
+        Click(Card(ui, "Noche de Onyxia").join)
+        Click(Child(a, a.env.GuildUnionCalendarConfirm, "Sí"))
+        A.equal("s" .. id .. "=", Stored(a)[2])
+        a.w:Fire("PLAYER_LOGOUT")
+        local b = Community({ db = a.env.GuildUnionDB, charDb = a.env.GuildUnionCharDB })
+        local c = Card(Open(b), "Noche de Onyxia")
+        A.equal("Apuntarme", c.join:GetText(), "tras /reload, sigo fuera")
+        A.equal(0, Going(c))
+        -- (vuelvo, de sanador: también se queda)
+        local menus = Menus(b)
+        b.env.UnitClass = function() return "Sacerdote", "PRIEST" end
+        Click(c.join)
+        Item(menus[#menus], "Sanador").fn()
+        A.equal("s" .. id .. "=H", Stored(b)[2])
+        b.w:Fire("PLAYER_LOGOUT")
+        local c3 = Card(Open(Community({ db = b.env.GuildUnionDB, charDb = b.env.GuildUnionCharDB })), "Noche de Onyxia")
+        A.matches("Apuntado", c3.join:GetText())
+        A.same({ TANK = 0, HEALER = 1, DAMAGER = 0 }, Roles(c3.roles:GetText()))
+        A.same({}, a:Errors())
+        A.same({}, b:Errors())
+    end)
+
+    it("lo de la copia 324 (calEvents) pasa a la red al entrar, una vez: los míos con mi apuntado y sus raids; los de otro personaje se quedan", function()
+        local raid = { name = "Raid 1", leader = "Tester-Reino", groups = { { "Tester-Reino" }, {}, {}, {}, {}, {}, {}, {} } }
+        local db = { calEvents = {
+            { id = "a1b2", title = "De la 324", kind = "social", t = MONDAY + 86400, who = "Tester-Reino", tag = "UNO", desc = "Viene de antes",
+                signups = { ["Tester-Reino"] = "yes" }, roles = { ["Tester-Reino"] = "HEALER" }, raids = { raid }, minLevel = 50,
+                icon = "Interface\\Icons\\Spell_Fire_Incinerate" },
+            { id = "c3d4", title = "Sin apuntarme", kind = "raid", t = MONDAY + 2 * 86400, who = "Tester-Reino", signups = {}, raids = {} },
+            { id = "e5f6", title = "De otro personaje", kind = "raid", t = MONDAY + 86400, who = "Otro-Reino", signups = { ["Otro-Reino"] = "yes" },
+                raids = {} },
+            { id = "a7b8", title = "Muy viejo", kind = "pvp", t = MONDAY - 20 * 86400, who = "Tester-Reino", signups = {}, raids = {} },
+        } }
+        local a = Community({ db = db })
+        local st = Stored(a)
+        A.equal(3, #st, table.concat(st, " | "))
+        A.matches("^ea1b2=%w+,social,50,Spell_Fire_Incinerate,De la 324,Viene de antes$", st[1])
+        A.matches("^ec3d4=%w+,raid,0,,Sin apuntarme,$", st[2])
+        A.equal("sa1b2=H", st[3], "con su rol")
+        A.equal(1, #a.HU.db.calEvents, "el de otro personaje se queda; el viejo, fuera")
+        A.equal("De otro personaje", a.HU.db.calEvents[1].title)
+        A.equal(raid, a.HU.db.calRaids.a1b2[1], "sus raids, aquí")
+        -- (se ve como antes: apuntado, su imagen y su raid)
+        local ui = Open(a)
+        A.same({ "De la 324", "Sin apuntarme" }, Titles(ui))
+        local c = Card(ui, "De la 324")
+        A.matches("Apuntado", c.join:GetText())
+        A.equal("Interface\\Icons\\Spell_Fire_Incinerate", c.icon:GetTexture())
+        A.matches("Nv%. 50%+", c.kind:GetText())
+        local d = Detail(ui, "De la 324")
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        A.matches("Tester%-Reino", d.leaderBar.text:GetText())
+        -- (una sola vez: al volver a leer la comunidad no se repite)
+        a.HU:RefreshConfig(true)
+        A.equal(3, #Stored(a))
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que llega de mi hermandad se pinta solo con la ventana abierta; quien se va sale de mis raids (con el paquete de otra hermandad a medias, todavía no)", function()
+        local a = Community()
+        local ui = Open(a)
+        NewEvent(a, ui, "Mío")
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        local d = Detail(ui, "Mío")
+        AddRaid(d)
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        -- (Compi, de UNO, se apunta de sanador: llega por GUILD y se ve enseguida, sin tocar nada)
+        local now = a.HU.StampNow()
+        a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. now .. "~H", "GUILD", "Compi-Reino")
+        a.w:Advance(0.5)
+        A.same({ "Compi" }, Bench(d))
+        A.equal("HEALER", RoleIn(d.bench[1].text:GetText()))
+        A.equal(2, Going(d))
+        Click(d.place)
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText())
+        -- (se va, pero el paquete de DOS está a medias: puede estar en un trozo que se pide, y no se le quita)
+        local half = {}
+        for i = 1, 16 do half[i] = "000000000000" end
+        a.HU.db.packs = { DOS = { EV = { h = half, t = {}, ok = {} } } }
+        a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. (now + 1) .. "~", "GUILD", "Compi-Reino")
+        a.w:Advance(0.5)
+        A.equal(1, Going(d), "ya no va")
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText(), "pero sigue en la raid")
+        -- (con todo, fuera de la raid; y no vuelve al banquillo)
+        a.HU.db.packs = nil
+        a.HU:Changed("calendar")
+        a.w:Advance(0.5)
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        A.same({}, Bench(d))
+        A.falsy(SlotOf(d, "Compi-Reino"))
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que no cabe en la línea del paquete (200) se corta: la descripción y el título; lo que no tiene forma no entra", function()
+        local a = Community()
+        local HU = a.HU
+        local t = MONDAY + 86400
+        -- (con un icono largo, la descripción no cabe entera: se corta para que la línea quepa justa)
+        A.truthy(HU:ProposeEvent("abc", { t = t, kind = "raid", icon = "Interface\\Icons\\" .. string.rep("a", 40),
+            title = string.rep("T", 50), desc = string.rep("d", 120) }))
+        local line = HU:PackLines("UNO", "EV")[1]
+        A.equal(200, #line, line)
+        local ev = HU:PackedEvents()[1]
+        A.equal(string.rep("T", 40), ev.title)
+        A.equal(string.rep("d", 79), ev.desc)
+        -- (tipo que no existe: «other»; nivel de más: 60; imagen de fuera de Interface\Icons: la del tipo)
+        A.truthy(HU:ProposeEvent("def", { t = t, kind = "fiesta", icon = "Interface\\Otra\\Cosa", title = "Raro", minLevel = 99 }))
+        local def
+        for _, e in ipairs(HU:PackedEvents()) do if e.id == "def" then def = e end end
+        A.same({ "other", 60 }, { def.kind, def.minLevel })
+        A.is_nil(def.icon)
+        -- (claves que no valen)
+        A.falsy(HU:ProposeEvent("con-guion", { t = t, title = "X" }))
+        A.falsy(HU:ProposeEvent(string.rep("x", 21), { t = t, title = "X" }))
+        A.falsy(HU:ProposeEvent("sintitulo", { t = t, title = " , " }), "sin título")
+        -- (de mi hermandad, por GUILD: lo que no tiene la forma de EV no entra. Una cada 7 s: como mucho van 5 seguidas)
+        local t36 = HU.B36(t)
+        for _, m in ipairs({ "ex1~no es un evento", "sx1~Q", "zx1~T", "e" .. string.rep("x", 21) .. "~" .. t36 .. ",raid,0,,Largo,",
+            "ex2~" .. t36 .. ",raid,61,,Nivel,", "ex3~" .. t36 .. ",fiesta,0,,Tipo,", "ex4~" .. t36 .. ",raid,0,,Bien,",
+            "sx4~H" }) do
+            local key, data = m:match("^([^~]+)~(.*)$")
+            a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. HU.StampNow() .. "~" .. data, "GUILD", "Compi-Reino")
+            a.w:Advance(7)
+        end
+        local got = {}
+        for _, s in ipairs(Stored(a)) do if not s:match("^e[ad]") then got[#got + 1] = s end end
+        A.same({ "ex4=" .. t36 .. ",raid,0,,Bien,", "sx4=H" }, got, "solo las buenas")
+        -- (dos creadores con la misma clave: vale la que se propuso antes, la de Compi; su apuntado, con ella)
+        A.truthy(HU:ProposeEvent("x4", { t = t, kind = "raid", title = "Repetido" }))
+        local ui = Open(a)
+        A.is_nil(Card(ui, "Repetido"))
+        A.equal(1, Going(Card(ui, "Bien")))
+        A.matches("Compi%-Reino", Card(ui, "Bien").who:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("al abrir pide lo que falta de mi hermandad y de las otras, y cada minuto mientras se ve", function()
+        local a = Community()
+        local asked = {}
+        F.Stub(a.HU, "PackNeed", function(_, tag, id) asked[#asked + 1] = tag .. ":" .. id end)
+        Open(a)
+        A.same({ "UNO:EV", "DOS:EV" }, asked, "al abrir")
+        asked = {}
+        a.w:Advance(61)
+        A.same({ "UNO:EV", "DOS:EV" }, asked, "al minuto")
+        asked = {}
+        Section(a, 1) -- (a Miembros: ya no se ve)
+        a.w:Advance(61)
+        A.same({}, asked, "sin verse, nada")
+        A.same({}, a:Errors())
     end)
 end)

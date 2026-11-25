@@ -42,7 +42,9 @@ HU20B RB GUILD   RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,~<n>~<nombre
 HU20B RB WHISPER RB~<etiq>~<x>~<n>~<n>~<n>~<n>~<nombre>,<n>,<n>,<n>,
 HU20B RC WHISPER RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~+<nombre>,<n>,<n>,<n>,~<nombre>~<x>
 HU20B RC WHISPER RC~<etiq>~<x>~<x>~<n>~<n>~<n>~<n>~-<nombre>~<nombre>~<x>
+HU20B WM GUILD   WM~<etiq>~EV~<n>~<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>
 HU20B WM GUILD   WM~<etiq>~MB~<n>~<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>
+HU20B WM WHISPER WM~<etiq>~EV~<n>~<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>
 HU20B WM WHISPER WM~<etiq>~MB~<n>~<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>,<x>
 HU20H ?  WHISPER v~<n>~<n>~<n>:<n>:<n>
 HU20H ?  WHISPER w~<n>

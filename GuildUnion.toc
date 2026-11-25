@@ -48,6 +48,7 @@ GuardKeeper.lua
 Social.lua
 UnionMembers.lua
 Packs\Members.lua
+Packs\Events.lua
 History.lua
 Channels.lua
 Community.lua

@@ -2191,8 +2191,9 @@ después, Banco, Calendario, Comercio y Configuración), repartidos sin atascar.
 Obsidian, «GuildUnion - specs / plan / tareas paquetes con huella».
 
 Net/Packs.lua no sabe qué hay dentro: cada **conjunto** se declara con
-`HU:RegisterPackSet(id, { chunks, key, encode, source, onChange })` (dos mayúsculas; hoy solo `MB`, en
-Packs/Members.lua: «Nombre-Reino,clase,nivel,rango», una línea por miembro).
+`HU:RegisterPackSet(id, { chunks, key, encode, source, onChange })` (dos mayúsculas; hoy `MB`, en
+Packs/Members.lua: «Nombre-Reino,clase,nivel,rango», una línea por miembro; y `EV`, los eventos del Calendario, que
+es de propuestas: Packs/Events.lua, más abajo).
 
 ### Trozos y huella
 
@@ -2289,6 +2290,40 @@ Con «Mostrar desconectados» marcada, Members pide la lista completa de cada ot
 añade a los que no están en la de conectados (`HU:PackedMembers`). Si la lista de conectados de esa hermandad
 (Miembros, UnionMembers.lua) tiene menos de 2 min (`ONLINE_FRESH`), quien no sale en ella está desconectado; si
 no, no se sabe y su zona dice «?». Abajo, mientras llega, «lista completa 5/16».
+
+## Packs/Events.lua
+
+### Qué hay en el archivo
+
+El conjunto **`EV`** (16 trozos, de propuestas): los eventos del Calendario (UnionCalendar.lua) y quién se apunta, de
+todas las hermandades. Jorge, 24/11: «los eventos no se ven entre los de su propia guild ni entre los de otras guild, se
+tiene que poder ver y apuntar» y «al hacer /reload se borra todo de eventos». Cada uno manda lo suyo (`HU:Propose`): su
+hermandad lo oye por GUILD al momento, las otras lo reciben con el paquete de su enlace y, tras /reload, sigue en el
+almacén (`wuStore`). Las raids no viajan: se quedan en el PC de quien organiza (UnionCalendar.lua, `calRaids`).
+
+| Clave | De quién | Datos |
+|---|---|---|
+| `e<id>` | el creador | `<hora36>,<tipo>,<nivelMin>,<icono>,<título>,<descripción>` |
+| `s<id>` | quien se apunta | su rol: `T`, `H` o `D`; desapuntarse, datos vacíos |
+
+- `<id>`: letras y cifras, 20 como mucho (el de `NewId` del calendario: 8 cifras hexadecimales).
+- `<hora36>`: la hora del evento en base 36 (`HU.B36`; se lee con `tonumber(x, 36)`). `<tipo>`: raid, dungeon, pvp,
+  social u other. `<nivelMin>`: de 0 a 60 (0 o 1, ninguno). `<icono>`: el nombre del archivo tras `Interface\Icons\`,
+  o vacío si la imagen no es de ahí (entonces se ve la del tipo).
+- `<título>`: 40 bytes como mucho (una letra con tilde ocupa 2), sin comas (se cambian por espacios). `<descripción>`: 90
+  como mucho; puede llevar comas y va la última. Fuera `~`, `;`, `|` y los saltos de línea (pasan a espacio) y los
+  espacios repetidos.
+- **Lo que cabe.** La línea del paquete («Nombre-Reino,clave,hora,datos») no puede pasar de 200 (`PART` de
+  Net/Packs.lua): una más larga no se publicaría a las otras hermandades. `HU:ProposeEvent` mide lo que queda con mi
+  nombre y la clave, y corta la descripción (y, si hiciera falta, el título) para que quepa; los datos, además, en 180.
+- **`validate`** comprueba la forma de las dos claves. **`alive`**: el evento vive hasta 7 días después de su hora; lo
+  apuntado y lo borrado, 45 días desde que se propuso. **`onChange`** → `HU:Changed("calendar")`.
+
+Lo que usa el calendario (así el formato está solo aquí):
+- `HU:ProposeEvent(id, e)`: mi evento `{ t, kind, minLevel, icon (ruta entera), title, desc }`; devuelve si ha podido.
+- `HU:ProposeSignup(id, rol)`: me apunto con `TANK`, `HEALER` o `DAMAGER` (otro rol, como daño); sin rol, me desapunto.
+- `HU:PackedEvents()`: de `HU:Proposals("EV")`, los eventos `{ id, tag, who, pt (cuándo se propuso), t, kind, minLevel,
+  icon, title, desc }` y quién se apunta `{ id, tag, who, role }`.
 
 ## History.lua
 
@@ -3660,17 +3695,36 @@ Solo eventos de la unión: el calendario del juego no se toca.
   evento» crea para el día elegido (sin elegir, y en Eventos, para hoy). Hasta el 24/11 el panel del día tenía su propio
   «+ Nuevo evento» abajo: con el de abajo en el centro sobraba (y no cabía con las 5 filas), y se quitó.
 
-### Fase 1: solo la ventana, sin red
+### Lo que se ve: los eventos de la red (`Rebuild`)
 
-Los eventos viven en una tabla local de la sesión (`events`): no salen de este PC y se pierden con /reload. La red irá
-con los paquetes con huella (Net/Packs.lua, aún sin escribir; diseño en Obsidian, «GuildUnion - specs paquetes con
-huella»), conjunto `EV`. Evento: `{ id, title, kind, t, who, tag, desc, minLevel, icon, signups = { [nombre] = "yes" },
-roles = { [nombre] = rol }, raids, test }`. Tipos (`KINDS`, con color e icono): Banda, Mazmorra, JcJ, Social y Otro; al
-crear se ofrecen Banda, JcJ y Social (Mazmorra solo sale en el modo prueba; Otro es el de reserva).
+Los eventos y quién va viajan como propuestas, conjunto `EV` (Packs/Events.lua): los ve y se apunta toda la unión, y
+siguen tras /reload. `events` es lo que se ve: lo rehace `Rebuild` con `HU:PackedEvents()` y le añade los de prueba, que
+van aparte (`testEvents`, solo en este PC). Evento: `{ id, title, kind, t, who, tag, desc, minLevel, icon, signups = {
+[nombre] = "yes" }, roles = { [nombre] = rol }, raids, test }`; `signups` y `roles` salen de las líneas `s<id>` de
+cualquier hermandad. Tipos (`KINDS`, con color e icono): Banda, Mazmorra, JcJ, Social y Otro; al crear se ofrecen Banda,
+JcJ y Social (Mazmorra solo sale en el modo prueba; Otro es el de reserva).
+- **Cuándo se rehace** (procesador barato): solo cuando cambia algo de la red (`HU:Changed("calendar")`, el `onChange`
+  del conjunto) o al abrir la sección. El aviso solo marca `dirty` y `Paint` rehace antes de pintar. Con la sección a la
+  vista (`open`: entre su OnShow y su OnHide, que también salta al cerrar la ventana del juego) se pinta 0,3 s después, una
+  vez para todo lo que llega seguido (`paintSoon`: p. ej. los trozos de un paquete, uno tras otro); escondida, nada hasta
+  abrirla. Lo que hago yo (crear, apuntarme, salir) se rehace y se pinta en el momento.
+- **Pedir** (`Need`): al abrir y cada minuto mientras se ve (`HU:Every(60, "calendario-pedir")`), `HU:PackNeed` de mi
+  hermandad (lo que me perdí estando fuera) y de cada una de las otras (`HU:OtherTags()`).
+- **Una clave de dos creadores** (dos `e<id>` iguales): vale la que se propuso antes (`pt`; luego nombre e id).
+- **Las raids** (`NewRaid`, `AutoPlace`, `TakeOut`…) no viajan: se quedan en el PC de quien organiza, en
+  `HU.db.calRaids[id]`, enganchadas al evento con la misma tabla (lo que se mueve se guarda solo). Las de mis eventos se
+  crean al rehacer, vacías, y llevan `t`, la hora del evento, para limpiarlas (`Tidy`). En otro PC, los eventos que no son
+  suyos no tienen raids, así que no los organiza.
+- **Quien se va sale de mis raids** (`Prune`): al rehacer, quien está en una raid y ya no está apuntado se saca
+  (`TakeOut`; si era el líder, la raid se queda sin él, como al salir uno mismo). Solo si tengo enteros los paquetes de las
+  otras hermandades (`Whole`, con `HU:PackProgress`): tras un anuncio nuevo, sus trozos cambiados no valen hasta que
+  llegan, y quien está en ellos no se ha ido. Quien se apunta desde otro PC entra en el banquillo de quien organiza
+  («Colocar en raids» lo coloca); cuando me apunto yo a uno mío, entro solo en una raid con sitio (`AutoPlace`), como antes.
 
 ### Nuevo evento (`BuildNewDialog`)
 
-Ventana movible: título (40 letras), tipo, imagen, día, hora, nivel mínimo y descripción (varias líneas, 240 → `desc`).
+Ventana movible: título (40 letras), tipo, imagen, día, hora, nivel mínimo y descripción (varias líneas, 90 → `desc`; viaja
+sin saltos de línea).
 - Imagen: vista previa + «Elegir imagen», que abre una rejilla de 64 iconos de vanilla (`EVENT_ICONS`, 8 x 4 y barra).
   Siempre hay una: la del tipo, que sigue al tipo hasta que se elige otra (`iconCustom`).
 - Día y hora se eligen, no se escriben (sin errores de formato): «Día», un calendario pequeño (hoy en dorado, el
@@ -3680,6 +3734,9 @@ Ventana movible: título (40 letras), tipo, imagen, día, hora, nivel mínimo y 
 - Nivel mínimo (2 cifras; vacío o 1, ninguno) → `minLevel`: «Nv. N+» en tarjeta y ficha; no deja apuntarse con menos.
 - «Crear» pide título y un día y una hora que no hayan pasado; el evento lleva la hermandad de quien lo crea (`tag`)
   y este queda apuntado con su rol (`MyRole`: el último con el que se apuntó o, si no, el primero que hace su clase).
+  Los dos van a la red (`HU:ProposeEvent`, `HU:ProposeSignup`); si no se puede (sin comunidad leída), «No se ha podido
+  crear el evento.» y la ventana sigue abierta. En el modo prueba sin permiso para crear, el evento es de prueba: solo en
+  este PC y se va al apagarlo (si no, el modo prueba dejaría crear eventos de verdad a quien no puede).
 
 ### La ficha del evento (`BuildDetail`, `PaintDetail`)
 
@@ -3688,7 +3745,9 @@ van · nivel y los roles; debajo, la descripción (hasta 4 líneas, `DESC_LINES`
 crecer la ventana lo que ocupa (`descH`); abajo a la derecha, «Apuntarme» / «Apuntado» (verde, con tic).
 - Apuntarse (`SignUp`): mira el nivel y pide el rol con un menú que solo trae los de la clase (`CAN_ROLE`, vanilla:
   tanque guerrero, druida o paladín; sanador sacerdote, druida, paladín o chamán; daño, todas). Ya apuntado, pregunta
-  «¿Seguro que quieres salir del evento?» (`ui.confirm`); salir te quita también de la raid.
+  «¿Seguro que quieres salir del evento?» (`ui.confirm`); salir te quita también de la raid. En uno de verdad, apuntarse
+  y salir van primero a la red (`SetSignup` → `HU:ProposeSignup`, `s<id>`) y luego a mis raids; en los de prueba, solo
+  aquí. Quien organiza, en su PC, saca de sus raids a quien sale en cuanto le llega (ver «Lo que se ve»).
 - Raids: `{ name, leader, groups = { {nombres} x 8 } }`, 8 grupos de 5, hasta 20 (`MAX_RAIDS`). Pestañas «Raid N
   (cuántos)»: botones rojos del juego de 92 x 24 (`TAB_W`, `TAB_H`) con su letra de siempre, que se lea «Raid 20 (40)»;
   la elegida, negra con la letra blanca (`DJ.PickRed`). Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…» (antes,
@@ -3738,16 +3797,26 @@ Apagado, al pasar el ratón dice quién crea eventos según `calMake` (`NoMakeTi
 añadir raid, mover, colocar, hacer líder): quien creó el evento o el líder de alguna de sus raids. «Invitar a todos» y «Convertir en banda»: el líder de esa
 raid. «Quitar raid»: quien creó el evento o ese líder. Apuntarse, ver la ficha, susurrar e invitar al grupo: cualquiera.
 
-### Lo guardado (`calEvents`)
+### Lo guardado (`calRaids`, `calEvents`)
 
-Desde la copia 324 (Jorge, 24/11: «al hacer /reload se borra todo»): los eventos, con quién va, sus roles y sus raids,
-se guardan en la cuenta (`HU:Saved` account, `{}` de entrada). Al entrar, `events` pasa a ser esa tabla y `Tidy` quita
-lo de prueba (`test`), lo que no tiene forma de evento y lo que pasó hace más de `KEEP_DAYS` (7) días; lo mismo al salir
-(`PLAYER_LOGOUT`). Todavía no viaja: con la red (conjunto `EV` de paquetes) los de los demás llegarán aparte.
+Jorge, 24/11: «al hacer /reload se borra todo». Los eventos y quién va, con sus roles, están en el almacén de propuestas
+(Packs/Events.lua), que se guarda en la cuenta y quita solo lo caducado: tras /reload siguen. Aquí, en la cuenta
+(`HU:Saved` account, `{}` de entrada):
+- `calRaids[id] = { raid, …, t = hora del evento }`: las raids de los eventos que organizo, en este PC.
+- `calEvents`: lo que queda de la copia 324, donde los eventos solo se guardaban aquí.
+
+`Tidy`, al entrar y al salir (`PLAYER_LOGOUT`), quita de `calRaids` las de eventos que pasaron hace más de `KEEP_DAYS`
+(7) días (o sin `t`), y de `calEvents` lo de prueba (`test`), lo que no tiene forma de evento y lo viejo.
+
+**Migración de la copia 324** (`Migrate`, en cuanto se lee la comunidad: `CHANGED` «config»). Los eventos míos de
+`calEvents` (`who == Me()`) se proponen una vez, con mi apuntado (con el rol que tenía) y sus raids (pasan a `calRaids`), y
+salen de `calEvents`. Los de otro personaje de la cuenta se quedan hasta que entre él: `calEvents` es de la cuenta y
+vaciarla entera perdería los suyos. `calEvents` sigue declarada.
 
 ### Modo prueba
 
-Se enciende y se apaga (encendido, el botón oscuro). `AddTest` pone cinco eventos de mi hermandad y de otra
+Se enciende y se apaga (encendido, el botón oscuro). Lo de prueba va aparte (`testEvents`): no sale a la red ni se
+guarda. `AddTest` pone cinco eventos de mi hermandad y de otra
 (`HU:OtherTags()`, o «OTRA»): hoy a las 21:00, una banda (nivel 55) de otra persona con 23 apuntados de mentira
 (`-Prueba`, clase y nivel en `testClass` / `testLevel`) y una raid que llevo yo (así se puede organizar) con 12
 colocados, el resto en el banquillo y las tres marcas de invitación; además, una mazmorra, un JcJ, un social mío y otra

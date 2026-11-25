@@ -114,7 +114,9 @@ describe("Datos guardados: lo que declara cada módulo (HU:Saved)", function()
         -- (nuevo, copia 324: lo guardado de Comercio y Calendario, que empieza vacío)
         tradeReqs = {}, tradeChats = {}, tradeUnread = {}, calEvents = {},
         -- (nuevo, paquetes: las propuestas de mi hermandad, Net/Packs.lua)
-        wuStore = {} }
+        wuStore = {},
+        -- (nuevo, eventos por la red: las raids de los eventos que organizo, UnionCalendar.lua)
+        calRaids = {} }
 
     it("da exactamente lo de antes: qué va en el personaje y los valores por defecto", function()
         local HU = F.Community().HU

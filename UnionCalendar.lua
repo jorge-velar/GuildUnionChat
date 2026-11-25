@@ -1,12 +1,14 @@
 -- Guild Union - Calendario de la unión (la sección Calendar de la lista de miembros) [+ARCHITECTURE.md]
--- Fase 1: solo la ventana, sin red. Con el estilo compartido (DJStyle.lua): fondos lisos casi negros con borde de
--- tooltip gris, títulos y rayas doradas, tarjetas con sombra arriba y brillo dorado.
+-- Los eventos y quién va viajan como propuestas (Packs/Events.lua, conjunto EV); las raids se quedan en el PC de quien
+-- organiza. Con el estilo compartido (DJStyle.lua): fondos lisos casi negros con borde de tooltip gris, títulos y rayas
+-- doradas, tarjetas con sombra arriba y brillo dorado.
 -- Pestañas Eventos (tarjetas) y Calendario (el mes); la ficha de cada evento son sus raids.
 local _, HU = ...
 local L = HU.L
 
--- (los eventos, para que /reload no los borre: ver Tidy)
-HU:Saved({ account = { calEvents = {} } })
+-- (las raids de los eventos que organizo, en este PC: calRaids[id] = { raid, …, t = hora del evento }. calEvents: los
+-- eventos de la copia 324, que pasan a la red al entrar: ver Migrate)
+HU:Saved({ account = { calEvents = {}, calRaids = {} } })
 
 -- (Eventos: una tarjeta por línea, a todo lo ancho, y 4 a la vista; la rueda baja de una en una. Jorge, 24/11)
 local CARD_H, CARD_GAP, CARD_N = 62, 6, 4
@@ -56,8 +58,12 @@ local DAYS_ABBR = { "lun", "mar", "mié", "jue", "vie", "sáb", "dom" }
 local MONTHS = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
     "noviembre", "diciembre" }
 
--- (en la sesión: fase 1, sin red)
+-- (lo que se ve: los eventos de la red, que rehace Rebuild, y los del modo prueba, aparte y solo en este PC)
 local events = {}           -- { id, title, kind, t, who, tag, desc, minLevel, icon, signups = { [nombre] = "yes" }, roles = { [nombre] = rol }, raids, test }
+local testEvents = {}
+local dirty = true          -- ha llegado algo de la red: se rehace antes de pintar
+local paintSoon             -- (lo que llega seguido se pinta una sola vez)
+local open                  -- la sección se ve (entre su OnShow y su OnHide: también se esconde al cerrar la ventana)
 local lastRole              -- el último rol con el que me apunté (sin el menú del juego, y al crear un evento, voy con él)
 local view = "list"         -- "list" (Eventos) o "month" (Calendario)
 local selected              -- el evento cuya ficha está abierta (id)
@@ -324,6 +330,55 @@ local function NewRaid(e, leader)
 end
 
 ---------------------------------------------------------------------------
+-- Lo que se ve: lo de la red (HU:PackedEvents) y los de prueba. Se rehace al llegar algo o al abrir [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (¿tengo enteros los paquetes de las otras hermandades? Un trozo que se está pidiendo no quiere decir que se hayan ido)
+local function Whole()
+    for _, tag in ipairs(HU:OtherTags()) do
+        local got, total = HU:PackProgress(tag, "EV")
+        if got and got < total then return false end
+    end
+    return true
+end
+-- (quien ya no va sale de las raids de ese evento)
+local function Prune(e)
+    for _, r in ipairs(e.raids) do
+        for _, n in ipairs(Members(r)) do if e.signups[n] ~= "yes" then TakeOut(r, n) end end
+    end
+end
+local function Rebuild()
+    dirty = false
+    local list, byId = {}, {}
+    local evs, signs = HU:PackedEvents()
+    -- (si dos creadores usan la misma clave, vale el primero que la propuso)
+    table.sort(evs, function(a, b)
+        if a.pt ~= b.pt then return a.pt < b.pt end
+        if a.who ~= b.who then return a.who < b.who end
+        return a.id < b.id
+    end)
+    for _, e in ipairs(evs) do
+        if not byId[e.id] then byId[e.id] = e; list[#list + 1] = e end
+    end
+    -- (las raids, con su tabla guardada: lo que se mueve se guarda solo. Las de los míos, guardadas desde el principio)
+    local saved, me = HU.db.calRaids, Me()
+    for _, e in ipairs(list) do
+        e.signups, e.roles = {}, {}
+        local raids = saved[e.id]
+        if not raids and e.who == me then raids = {}; saved[e.id] = raids end
+        if raids then raids.t = e.t end
+        e.raids = raids or {}
+    end
+    for _, s in ipairs(signs) do
+        local e = byId[s.id]
+        if e then e.signups[s.who], e.roles[s.who] = "yes", s.role end
+    end
+    -- (quien ya no va sale de mis raids)
+    if Whole() then for _, e in ipairs(list) do Prune(e) end end
+    for _, e in ipairs(testEvents) do list[#list + 1] = e end
+    events = list
+end
+
+---------------------------------------------------------------------------
 -- Invitar a todos los de la raid, y lo que pasa con cada uno: reloj (invitado), tic (dentro), X (no acepta,
 -- rechaza o no se le encuentra) [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
@@ -404,8 +459,14 @@ local function Status(name)
     return st.s == "ok" and ST_OK or st.s == "no" and ST_NO or ST_WAIT
 end
 
--- Apuntarse (con un rol) o desapuntarse; al apuntarse se entra en una raid con sitio
+-- Apuntarse (con un rol) o desapuntarse; al apuntarse se entra en una raid con sitio. Yo, en uno de verdad: primero a la
+-- red (s<id>) y luego lo de mis raids
 local function SetSignup(e, name, role)
+    if not e.test and name == Me() then
+        if not HU:ProposeSignup(e.id, role) then return end
+        Rebuild()
+        e = Find(e.id) or e
+    end
     e.roles = e.roles or {}
     if role then
         e.signups[name], e.roles[name] = "yes", role
@@ -1033,6 +1094,7 @@ end
 
 function Paint()
     if not (ui and ui:IsShown()) then return end
+    if dirty then Rebuild() end
     for k, b in pairs(ui.viewBtns) do b:Pick(k == view) end
     ui.list:SetShown(view == "list")
     ui.month:SetShown(view == "month")
@@ -1268,7 +1330,7 @@ local function BuildNewDialog(host)
     box:SetPoint("TOPLEFT", 12, -228); box:SetSize(326, 84)
     Panel(box, T.row, T.border, 10, 2)
     d.desc = CreateFrame("EditBox", nil, box)
-    d.desc:SetMultiLine(true); d.desc:SetAutoFocus(false); d.desc:SetMaxLetters(240)
+    d.desc:SetMultiLine(true); d.desc:SetAutoFocus(false); d.desc:SetMaxLetters(90)
     d.desc:SetFontObject(ChatFontNormal); d.desc:SetTextInsets(6, 6, 6, 6)
     d.desc:SetPoint("TOPLEFT", 2, -2); d.desc:SetPoint("BOTTOMRIGHT", -2, 2)
     d.desc:SetScript("OnEscapePressed", d.desc.ClearFocus)
@@ -1284,10 +1346,20 @@ local function BuildNewDialog(host)
         local when = time({ year = d.y, month = d.m, day = d.dd, hour = d.hh, min = d.mi })
         if when < time() then return HU:Print(L("Elige un día y una hora que no hayan pasado.")) end
         local minLv = tonumber(d.minLv:GetText() or "")
-        -- (quien lo crea va, con su rol: como al apuntarse)
-        events[#events + 1] = { id = NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
-            desc = HU.Trim(d.desc:GetText() or ""), signups = { [Me()] = "yes" }, roles = { [Me()] = MyRole() }, raids = {},
-            minLevel = (minLv and minLv > 1) and minLv or nil, icon = d.icon }
+        local e = { id = NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
+            desc = HU.Trim(d.desc:GetText() or ""), minLevel = (minLv and minLv > 1) and minLv or nil, icon = d.icon }
+        -- (a la red, y quien lo crea va, con su rol: como al apuntarse. En el modo prueba sin permiso para crear, solo en este
+        -- PC, como los de prueba)
+        if ui.testOn and not HU:CanMakeEvents() then
+            e.test, e.signups, e.roles, e.raids = true, { [Me()] = "yes" }, { [Me()] = MyRole() }, {}
+            testEvents[#testEvents + 1] = e
+            dirty = true
+        elseif HU:ProposeEvent(e.id, e) then
+            HU:ProposeSignup(e.id, MyRole())
+            Rebuild()
+        else
+            return HU:Print(L("No se ha podido crear el evento."))
+        end
         d:Hide()
         Paint()
     end)
@@ -1309,7 +1381,8 @@ end
 ---------------------------------------------------------------------------
 -- (quitar lo de prueba: sus eventos, invitaciones, clases y niveles; la ficha abierta, solo si era de prueba)
 local function ClearTest()
-    for k = #events, 1, -1 do if events[k].test then table.remove(events, k) end end
+    testEvents = {}
+    Rebuild()
     if selected and not Find(selected) then selected = nil end
     for n in pairs(invites) do if n:find("%-Prueba$") then invites[n] = nil end end
     for n in pairs(testClass) do testClass[n] = nil end
@@ -1324,9 +1397,9 @@ local function AddTest()
         return time({ year = base.year, month = base.month, day = base.day + days, hour = h, min = m or 0 })
     end
     local function E(title, kind, t, who, tag, desc, su)
-        events[#events + 1] = { id = NewId() .. #events, title = title, kind = kind, t = t, who = who, tag = tag, desc = desc,
-            signups = su or {}, raids = {}, test = true }
-        return events[#events]
+        testEvents[#testEvents + 1] = { id = NewId() .. #testEvents, title = title, kind = kind, t = t, who = who, tag = tag,
+            desc = desc, signups = su or {}, raids = {}, test = true }
+        return testEvents[#testEvents]
     end
     local CLASSES = { "WARRIOR", "PRIEST", "MAGE", "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN" }
     local mc = { ["Jandra-Prueba"] = "yes", ["Pepe-Prueba"] = "yes", ["Bea-Prueba"] = "yes", [Me()] = "yes" }
@@ -1367,22 +1440,49 @@ local function AddTest()
         { [Me()] = "yes" })
     E(L("Guarida de Onyxia"), "raid", At(8, 21), "Bea-Prueba", other, L("Para los que tengáis la misión."), { ["Bea-Prueba"] = "yes" }).minLevel = 60
     ui.testOn = true
+    dirty = true
     Paint()
 end
 
--- Lo guardado, en la cuenta: los eventos, con quién va y sus raids (Jorge, 24/11: «al hacer /reload se borra todo»). Lo de
--- prueba no se guarda, y un evento se quita KEEP_DAYS días después de su hora [+ARCHITECTURE.md]
+-- Lo guardado, en la cuenta: los eventos y quién va, en la red (Packs/Events.lua, tras /reload siguen); aquí, las raids de
+-- los míos (calRaids) y lo que queda de la copia 324 (calEvents). Lo de prueba no se guarda [+ARCHITECTURE.md]
 local KEEP_DAYS = 7
 local function Tidy()
     local old = time() - KEEP_DAYS * 86400
-    for k = #events, 1, -1 do
-        local e = events[k]
-        if type(e) ~= "table" or e.test or type(e.t) ~= "number" or e.t < old or type(e.signups) ~= "table" then table.remove(events, k) end
+    local kept = HU.db.calEvents
+    for k = #kept, 1, -1 do
+        local e = kept[k]
+        if type(e) ~= "table" or e.test or type(e.t) ~= "number" or e.t < old or type(e.signups) ~= "table" then table.remove(kept, k) end
+    end
+    for id, raids in pairs(HU.db.calRaids) do
+        if type(raids) ~= "table" or type(raids.t) ~= "number" or raids.t < old then HU.db.calRaids[id] = nil end
     end
 end
+-- (copia 324: los eventos solo se guardaban aquí. Con la comunidad leída, los míos pasan a la red, con mi apuntado y sus
+-- raids, y salen de calEvents; los de otro personaje de la cuenta se quedan para cuando entre él) [+ARCHITECTURE.md]
+local function Migrate()
+    local kept, me = HU.db.calEvents, HU:Me()
+    if not (HU.myTag and me and #kept > 0) then return end
+    for k = #kept, 1, -1 do
+        local e = kept[k]
+        if type(e) == "table" and e.who == me and not e.test and type(e.t) == "number" and type(e.signups) == "table" then
+            table.remove(kept, k)
+            if e.t >= time() - KEEP_DAYS * 86400 and HU:ProposeEvent(e.id, e) then
+                if e.signups[me] == "yes" then HU:ProposeSignup(e.id, type(e.roles) == "table" and e.roles[me] or MyRole()) end
+                if type(e.raids) == "table" and #e.raids > 0 then e.raids.t = e.t; HU.db.calRaids[e.id] = e.raids end
+            end
+        end
+    end
+end
+-- (lo que falta de la red: lo de mi hermandad que me perdí estando fuera y lo de las otras. Al abrir y cada minuto mientras
+-- se ve)
+local function Need()
+    HU:PackNeed(HU.myTag, "EV")
+    for _, tag in ipairs(HU:OtherTags()) do HU:PackNeed(tag, "EV") end
+end
 HU:OnStart(function()
-    events = HU.db.calEvents
     Tidy()
+    HU:Every(60, "calendario-pedir", function() if open then Need() end end)
 end)
 HU:On("PLAYER_LOGOUT", Tidy)
 
@@ -1646,12 +1746,26 @@ function HU:BuildCalendar(host)
     new:SetMotionScriptsWhileDisabled(true)
     ui.new = new
 
-    host:HookScript("OnShow", Paint)
-    host:HookScript("OnHide", function() selected = nil; ui.detail:Hide() end)
+    -- (al abrir, se pide lo que falte y se rehace)
+    host:HookScript("OnShow", function() open = true; Need(); dirty = true; Paint() end)
+    host:HookScript("OnHide", function() open = false; selected = nil; ui.detail:Hide() end)
     Paint()
 end
 
--- (si cambia quién crea eventos, «+ Nuevo evento» se pone al día)
-HU:Listen("CHANGED", function(what) if what == "unionCfg" then Paint() end end)
+-- (si cambia quién crea eventos, «+ Nuevo evento» se pone al día; con la comunidad leída, lo de la copia 324 pasa a la red;
+-- y lo que llega de la red se rehace al pintar: si se ve, enseguida, y lo que llega seguido, de una vez)
+HU:Listen("CHANGED", function(what)
+    if what == "unionCfg" then
+        Paint()
+    elseif what == "config" then
+        Migrate()
+    elseif what == "calendar" then
+        dirty = true
+        if open and not paintSoon then
+            paintSoon = true
+            HU.After(0.3, function() paintSoon = false; if dirty then Paint() end end)
+        end
+    end
+end)
 
-HU:Module("UnionCalendar", { "BlizzTab", "Config", "Core", "ListWindow", "UnionConfig" })
+HU:Module("UnionCalendar", { "BlizzTab", "Config", "Core", "ListWindow", "Net/Packs", "Packs/Events", "UnionConfig" })
