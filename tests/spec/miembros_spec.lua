@@ -1614,7 +1614,7 @@ describe("Comercio (Trade.lua)", function()
         meta.__index = function(f, k) if k == "SetPoint" then return SetPoint end return base(f, k) end
         local tr = OpenTrade(a)
         local new = tr.new
-        A.equal("+ Nuevo anuncio", new:GetText(), "con su texto: «Nuevo anuncio»")
+        A.equal("+ Nuevo encargo", new:GetText(), "con su texto: «Nuevo encargo»")
         A.same({ tr, "TOP", 0, -4 }, tr.switch._pts.TOP, "los botones, arriba en el centro")
         A.same({ "Tablón", "Mis encargos" }, { tr.viewBtns.pub:GetText(), tr.viewBtns.priv:GetText() }, "sus dos botones")
         A.same({ tr, "TOPLEFT", 23, -39 }, tr.search._pts.TOPLEFT, "el buscador, debajo a la izquierda")
@@ -1733,10 +1733,11 @@ describe("Comercio (Trade.lua)", function()
         Click(Header(tr, "mats"))
         A.equal("Mats ^", Header(tr, "mats"):GetText())
         Click(tr.viewBtns.priv)
-        -- (en Privado, lo más nuevo arriba: la poción para Jandra, la cofia de Lyra, la espada y el elixir de Bea)
+        -- (en Privado, primero los chats con algo sin leer —la cofia de Lyra, la espada de Pepe y el elixir de Bea— y luego
+        -- la poción para Jandra)
         local mats = {}
         for _, r in ipairs(Rows(tr)) do mats[#mats + 1] = r.entry.mats end
-        A.same({ false, true, true, false }, mats, "sin ordenar por Mats, que aquí no está")
+        A.same({ true, true, false, false }, mats, "sin ordenar por Mats, que aquí no está")
         for _, t in ipairs(Titles(tr)) do A.falsy(t:find(" [%^v]$"), t) end
         Click(tr.viewBtns.pub)
         A.equal("Mats", Header(tr, "mats"):GetText(), "al volver a Público, tampoco")

@@ -64,7 +64,8 @@ local COLS = {
         { "act", "Acción", ACT_W + 6 } },
     priv = { { "who", "Con quién", 86 }, { "item", "Receta / objeto", 120 }, { "qty", "Cant.", 36 }, { "tip", "Propina", 56 }, { "state", "Estado", 0 } },
     search = { { "who", "Quién", 110 }, { "guild", "Hermandad", 80 }, { "prof", "Profesión", 130 }, { "lvl", "Nivel", 0 } },
-    find = { { "item", "Objeto", 0 }, { "lvl", "Nivel", 44 }, { "prof", "Profesión", 120 }, { "who", "Quién lo hace", 230 } },
+    find = { { "item", "Objeto", 0 }, { "lvl", "Nivel", 44 }, { "prof", "Profesión", 120 }, { "who", "Quién lo hace", 92 },
+        { "board", "Tablón", 84 } },
 }
 
 -- (lo que se ve: las de prueba y las de la red, juntas; se rehace con Merge)
@@ -184,7 +185,7 @@ end
 local function PaintUnread()
     local b = ui and ui.viewBtns and ui.viewBtns.priv
     if not b then return end
-    local n = HU:TradeUnread()
+    local n = HU:TradeUnreadChats()
     b:Label(n > 0 and string.format(L("Mis encargos (%d)"), n) or L("Mis encargos"))
 end
 local function MarkRead(key)
@@ -213,6 +214,7 @@ local function ChatLine(key, who, text, sys)
     -- (de otro y con su chat fuera de la pantalla: sin leer; nunca más de las que guarda el chat)
     if not IsMe(who) and not ChatOnScreen(key) then
         unread[key] = math.min(#l, (unread[key] or 0) + 1)
+        if ui then ui.rerank = true end
         PaintUnread()
         HU:Changed("tradeUnread")
     end
@@ -321,6 +323,7 @@ local function Fresh() if netDirty or builtTag ~= HU.myTag then Rebuild() end en
 local rebuildQueued
 local function MarkDirty()
     netDirty = true
+    if ui then ui.rerank = true end
     if rebuildQueued then return end
     rebuildQueued = true
     HU.After(1, function()
@@ -474,9 +477,12 @@ local function LoadCraftNames()
         for _ = 1, 30 do
             local id = queue[pos]
             if not id then
-                -- (una vuelta entera: con Buscar a la vista, se pinta lo que ha llegado)
+                -- (una vuelta entera: con Buscar a la vista, se pinta lo que ha llegado; al acabar, sin las flechas de
+                -- «cargando» (`done`))
+                local last = pass >= 3 or #missing == 0
+                if last then craftLoader:Cancel(); craftLoader.done = true end
                 if ui and view == "find" and ui:IsVisible() then Paint() end
-                if pass >= 3 or #missing == 0 then craftLoader:Cancel(); return end
+                if last then return end
                 queue, missing, pos, pass = missing, {}, 1, pass + 1
                 return
             end
@@ -716,15 +722,6 @@ local function CraftersOf(key)
     end)
     crafters[key] = out
     return out
-end
--- (en la fila de un objeto: el primero que lo hace, con su circulito, su nivel y el tic, y cuántos más)
-local function WhoSummary(list)
-    local c = list[1]
-    if not c then return "|cff808080" .. L("Nadie") .. "|r" end
-    local s = (IsMe(c.name) and MINE or OTHERS) .. HU:Short(c.name) .. "|r " .. (c.online and DOT_ON or DOT_OFF) .. " "
-        .. (c.rank and tostring(c.rank) or "—") .. (c.knows and (" |T" .. TICK .. ":12:12|t") or "")
-    if #list > 1 then s = s .. " " .. GREY .. "+" .. (#list - 1) .. "|r" end
-    return s
 end
 -- (el icono de una profesión, el del juego, si lo da: se recuerda)
 local profIcons = {}
@@ -977,6 +974,28 @@ local function Visible(profs)
             return va < vb
         end)
     end
+    -- (en Mis encargos, primero las de los chats con algo sin leer, cada grupo en su orden: Jorge, 25/11, «los chats sin
+    -- leer en la pestaña de "my orders" serán los primeros que aparezcan y con un "brillo"». Ese orden se hace al entrar
+    -- en Mis encargos, al abrir la sección y cuando llega algo sin leer (`ui.rerank`), y se guarda (`ui.privRank`):
+    -- leer un chat no lo cambia, para que las filas no salten bajo el ratón. Lo que no estaba, detrás) [+ARCHITECTURE.md]
+    if priv and ui then
+        if ui.rerank or not ui.privRank then
+            ui.rerank, ui.privRank = nil, {}
+            local n = 0
+            for pass = 1, 2 do
+                for _, r in ipairs(out) do
+                    if (unread[Other(r) or ""] ~= nil) == (pass == 1) then n = n + 1; ui.privRank[EntryKey(r)] = n end
+                end
+            end
+        end
+        local rank, pos = ui.privRank, {}
+        for i, r in ipairs(out) do pos[r] = i end
+        table.sort(out, function(a, b)
+            local ra, rb = rank[EntryKey(a)] or math.huge, rank[EntryKey(b)] or math.huge
+            if ra ~= rb then return ra < rb end
+            return pos[a] < pos[b]
+        end)
+    end
     return out
 end
 
@@ -1083,7 +1102,7 @@ local function RowMenu(owner, r)
                 local fn = C_PartyInfo and C_PartyInfo.InviteUnit
                 if fn then pcall(fn, HU:FullName(person) or person) end
             end)
-            if not r.id then root:CreateButton(L("Pedir una receta"), function() ui.OpenNew(person, view == "find" and FindLink() or nil) end) end
+            if not r.id then root:CreateButton(L("Hacer un encargo"), function() ui.OpenNew(person, view == "find" and FindLink() or nil) end) end
         end
         if priv and CanMarkDone(r) then
             root:CreateButton(L("Marcar como hecha"), function() MarkDone(r) end)
@@ -1151,8 +1170,9 @@ local function ReqCols()
     return out
 end
 
--- (Buscar: los objetos que encajan, en toda la altura; quién lo hace cada uno, en su columna y, con «Ver todos», en su
--- ventana. Hasta el 25/11 iba debajo una lista de quién lo hace el elegido: Jorge, «la quitas»)
+-- (Buscar: los objetos que encajan, en toda la altura; en sus dos últimas columnas, «Ver todos» (quién lo hace, en su
+-- ventana) y «Publicarlo» (al tablón). Hasta el 25/11 iba debajo una lista de quién lo hace el elegido: Jorge, «la
+-- quitas»)
 local function LayoutFind()
     local items = ui.items
     ui.chat:Hide(); ui.req.list:Hide(); ui.found.list:Hide()
@@ -1162,9 +1182,6 @@ local function LayoutFind()
     Titled(items, nil)
     items.list:Show()
     Columns(items, COLS.find, 4)
-    -- (el texto de quién lo hace, a la izquierda de «Ver todos», que va al final de su columna)
-    local w = COLS.find[#COLS.find][3] - 2 * CELL_PAD - SIZES.allW - 4
-    for _, row in ipairs(items.rows) do row.cells[4]:SetWidth(w) end
     ui.new:ClearAllPoints()
     ui.new:SetPoint("BOTTOM", ui, "BOTTOM", 0, 8)
     ui.new:Show()
@@ -1214,6 +1231,7 @@ local function PaintRows(lst, list, fill)
         row.entry = e
         row.accept:Hide(); row.cancel:Hide(); row.actText:Hide()
         row.itemBtn:SetShown(e ~= nil and e.item ~= nil); row.yes:Hide(); row.no:Hide(); row.pickTex:Hide(); row.saleTex:Hide()
+        row.glow:Hide()
         if e then fill(row, e); row:Show() else row:Hide() end
         -- (el clic del enlace, solo encima del texto del enlace, no en toda la casilla)
         if row.itemBtn:IsShown() then
@@ -1236,23 +1254,25 @@ local function FillWho(row, e)
     c[4]:SetText((e.rank and tostring(e.rank) or "—") .. (e.knows and (" |T" .. TICK .. ":12:12|t") or ""))
 end
 
--- Buscar: los objetos que encajan (quién lo hace, solo de los que se ven; con alguien, «Ver todos»)
+-- Buscar: los objetos que encajan, con «Ver todos» y «Publicarlo» en cada fila. Quién lo hace ya no se mira al pintar
+-- (era lo que trababa la lista al bajar: Jorge, 25/11); lo calcula la ventana de «Ver todos». Mientras el juego da
+-- los nombres, las flechas de «cargando» arriba a la derecha [+ARCHITECTURE.md]
 local function PaintFind()
     local items = FindItems(CraftIndex())
     local still = false
     for _, e in ipairs(items) do if e.key == findSel then still = true; break end end
     if not still then findSel = nil end
     LayoutFind()
+    ui.items.spin:SetShown(craftLoader ~= nil and not craftLoader.done)
     ui.items.empty:SetText(next(craft) and L("Ningún objeto fabricable encaja con los filtros.") or L("Cargando los objetos del juego…"))
     PaintRows(ui.items, items, function(row, e)
         local c = row.cells
-        local who = CraftersOf(e.key)
         row.pickTex:SetShown(e.key == findSel)
         c[1]:SetText(e.item)
         c[2]:SetText((e.rl and e.rl > 0) and tostring(e.rl) or "—")
         c[3]:SetText(ProfLabel(e.skill))
-        c[4]:SetText(WhoSummary(who))
-        row.allBtn:SetShown(#who > 0)
+        c[4]:SetText(""); c[5]:SetText("")
+        row.allBtn:Show(); row.postBtn:Show()
     end)
 end
 
@@ -1276,6 +1296,10 @@ function Paint()
     if ChatOnScreen(chatKey) then MarkRead(chatKey) end
     PaintUnread()
     for k, b in pairs(ui.viewBtns) do b:SetSelected(k == view and not searching) end
+    -- (la ayuda del buscador, según la vista: Jorge, 25/11, «search on board» y «search order»)
+    if ui.search.Instructions then
+        ui.search.Instructions:SetText(view == "priv" and L("Buscar encargo") or L("Buscar en el tablón"))
+    end
     if find then
         ui.delBtn:Hide(); ui.doneBtn:Hide()
         return PaintFind()
@@ -1317,7 +1341,7 @@ function Paint()
         row.saleTex:SetShown(r.sale == true)
         -- (lo de cada columna, por su clave: sin propinas, la suya no está)
         local v = { item = r.item or "?", qty = tostring(r.qty or 1), state = StateText(r) .. test,
-            tip = r.tip and Coins(r.tip) or (GREY .. L("A negociar") .. "|r") }
+            tip = (r.tip == 0 and (GREY .. L("Sin propina") .. "|r")) or (r.tip and Coins(r.tip)) or (GREY .. L("A negociar") .. "|r") }
         if view == "pub" or searching then
             v.state = v.state .. TimeLeft(r, now)
             v.who = mine and (MINE .. L("Yo") .. "|r " .. DOT_ON) or (OTHERS .. HU:Short(r.who) .. "|r " .. Dot(r.who))
@@ -1344,6 +1368,7 @@ function Paint()
             -- (la otra persona, con cuántas suyas hay sin leer)
             local other = Other(r)
             v.who = (mine and MINE or OTHERS) .. HU:Short(other) .. "|r " .. Dot(other) .. UnreadMark(other)
+            row.glow:SetShown(unread[other or ""] ~= nil)
             -- (solo en las abiertas: el tic para aceptarla —si me la piden a mí y puedo hacerla— y la X para
             -- cancelarla —mía, también una venta— o rechazarla; las aceptadas y las ventas de otros, sin nada)
             local ask = r.state == "open" and not mine and not r.sale
@@ -1519,7 +1544,7 @@ local function BuildNewDialog(host)
     end
 
     d.kindLabel = Label(L("Anuncio:"))
-    d.kindAsk, d.kindSell = Check(L("Pedir")), Check(L("Vender"))
+    d.kindAsk, d.kindSell = Check(L("Encargo")), Check(L("Vender"))
     d.itemLabel = Label(L("Objeto o encantamiento (o Mayús+clic):"))
     d.item = HU.NewEditBox(d, 222)
     d.qtyLabel = Label(L("Cantidad:"))
@@ -1531,26 +1556,28 @@ local function BuildNewDialog(host)
     d.matsMe, d.matsSeller = Check(L("Yo")), Check(L("Vendedor"))
     Group({ d.matsMe, d.matsSeller })
 
-    -- (la propina (o el precio, al vender): se esconde si el maestro no permite propinas, UnionConfig.lua)
+    -- (la propina (o el precio, al vender): se esconde si el maestro no permite propinas, UnionConfig.lua. «Sin propina»
+    -- o «A negociar» esconden las monedas (Jorge, 25/11); al vender, solo «A negociar». Sin marcar nada y sin monedas,
+    -- a negociar, como antes)
     d.tipLabel = Label(L("Propina:"))
-    d.tipParts = { d.tipLabel, Label(L("(en blanco: a negociar)"), "GameFontDisableSmall") }
-    d.coins = {}
+    d.noTip, d.nego = Check(L("Sin propina")), Check(L("A negociar"))
+    d.coins, d.coinIcons = {}, {}
     for i, icon in ipairs(COIN_ICON) do
         local box = HU.NewEditBox(d, 56); box:SetNumeric(true)
         box:SetMaxLetters(i == 1 and 6 or 2); box:SetJustifyH("CENTER")
         local tex = d:CreateTexture(nil, "ARTWORK")
         tex:SetSize(14, 14); tex:SetTexture(icon); tex:SetPoint("BOTTOM", box, "TOP", -3, 2)
-        d.coins[i] = box
-        d.tipParts[#d.tipParts + 1] = box; d.tipParts[#d.tipParts + 1] = tex
+        d.coins[i], d.coinIcons[i] = box, tex
     end
 
-    d.pubLabel = Label(L("En el tablón:"))
-    d.pubYes, d.pubNo = Check(L("Sí")), Check(L("No"))
+    -- (un encargo personal, para alguien en concreto: con la casilla, a quién, con autorrelleno; sin ella, al tablón.
+    -- Hasta el 25/11, «En el tablón: Sí · No»)
+    d.personal = Check(L("Encargo personal"))
     d.toLabel = Label(L("Personaje:"))
     d.to = HU.NewEditBox(d, 196)
     Suggest(d.to, NameMatches)
-    -- (cuánto dura en el tablón: 5, 12, 24 (de entrada) o 48 h; las privadas no caducan, como hasta ahora)
-    d.expLabel = Label(L("Dura:"))
+    -- (cuánto dura en el tablón: 5, 12, 24 (de entrada) o 48 h; las personales no caducan, como hasta ahora)
+    d.expLabel = Label(L("Duración:"))
     d.expChecks = {}
     for i, h in ipairs(EXPIRY_HOURS) do
         local c = Check(h .. " h")
@@ -1559,11 +1586,11 @@ local function BuildNewDialog(host)
     end
     Group(d.expChecks)
 
-    -- Coloca las filas que tocan, de arriba abajo: al vender no hay materiales ni «En el tablón» (una venta va siempre
+    -- Coloca las filas que tocan, de arriba abajo: al vender no hay materiales ni «Encargo personal» (una venta va siempre
     -- al tablón) y la propina es el precio; en el tablón, cuánto dura; si no, a quién
     function d.Relayout()
         local sale = d.kindSell:GetChecked() and true or false
-        local pub = sale or (d.pubYes:GetChecked() and true or false)
+        local pub = sale or not d.personal:GetChecked()
         local tips = not HU:UnionCfg().tipsOff
         local y = -34
         local function At(w, x, dy)
@@ -1573,27 +1600,33 @@ local function BuildNewDialog(host)
         y = y - 26
         At(d.itemLabel, 12); At(d.qtyLabel, 248); At(d.item, 18, -14); At(d.qty, 254, -14)
         y = y - 46
-        for _, w in ipairs({ d.matsLabel, d.matsMe, d.matsSeller, d.pubLabel, d.pubYes, d.pubNo }) do w:SetShown(not sale) end
+        for _, w in ipairs({ d.matsLabel, d.matsMe, d.matsSeller, d.personal }) do w:SetShown(not sale) end
         if not sale then
             At(d.matsLabel, 12); At(d.matsMe, 96, 5); At(d.matsSeller, 170, 5)
             y = y - 26
         end
         d.tipLabel:SetText(sale and L("Precio:") or L("Propina:"))
-        for _, w in ipairs(d.tipParts) do w:SetShown(tips) end
+        local coins = tips and not ((d.noTip:GetChecked() and not sale) or d.nego:GetChecked())
+        for _, w in ipairs({ d.tipLabel, d.noTip, d.nego }) do w:SetShown(tips) end
+        for i, box in ipairs(d.coins) do box:SetShown(coins); d.coinIcons[i]:SetShown(coins) end
         if tips then
-            At(d.tipParts[1], 12); At(d.tipParts[2], 64)
-            for i, box in ipairs(d.coins) do At(box, 18 + (i - 1) * 74, -32) end
-            y = y - 64
+            At(d.tipLabel, 12)
+            if sale then d.noTip:Hide(); At(d.nego, 96, 5) else At(d.noTip, 96, 5); At(d.nego, 190, 5) end
+            y = y - 22
+            if coins then
+                for i, box in ipairs(d.coins) do At(box, 18 + (i - 1) * 74, -14) end
+                y = y - 44
+            end
         end
         if not sale then
-            At(d.pubLabel, 12); At(d.pubYes, 96, 5); At(d.pubNo, 170, 5)
-            y = y - 28
+            At(d.personal, 10, 5)
+            y = y - 26
         end
         d.toLabel:SetShown(not pub); d.to:SetShown(not pub); d.expLabel:SetShown(pub)
         for _, c in ipairs(d.expChecks) do c:SetShown(pub) end
         if pub then
             At(d.expLabel, 12)
-            for i, c in ipairs(d.expChecks) do At(c, 64 + (i - 1) * 58, 5) end
+            for i, c in ipairs(d.expChecks) do At(c, 86 + (i - 1) * 54, 5) end
         else
             At(d.toLabel, 12); At(d.to, 102, 4)
         end
@@ -1601,7 +1634,7 @@ local function BuildNewDialog(host)
         d:SetHeight(-y + 38)
     end
     function d.SetPub(pub)
-        d.pubYes:SetChecked(pub); d.pubNo:SetChecked(not pub)
+        d.personal:SetChecked(not pub)
         d.Relayout()
     end
     function d.SetExpiry(hours)
@@ -1612,10 +1645,17 @@ local function BuildNewDialog(host)
         return EXPIRY_DEFAULT
     end
     Group({ d.kindAsk, d.kindSell }, d.Relayout)
-    Group({ d.pubYes, d.pubNo }, function()
+    d.personal:SetScript("OnClick", function()
         d.Relayout()
         if d.to:IsShown() then d.to:SetFocus() end
     end)
+    -- («Sin propina» y «A negociar» se excluyen; sin ninguna, las monedas)
+    for _, c in ipairs({ d.noTip, d.nego }) do
+        c:SetScript("OnClick", function(s)
+            if s:GetChecked() then (s == d.noTip and d.nego or d.noTip):SetChecked(false) end
+            d.Relayout()
+        end)
+    end
 
     -- Publicar. Un BOE solo se vende y solo se venden BOE: si el juego aún no conoce el objeto, se le pide y se decide al
     -- llegar (final: ya no se espera más; lo que sigue sin saberse, al pedir vale y al vender no) [+ARCHITECTURE.md]
@@ -1630,33 +1670,35 @@ local function BuildNewDialog(host)
         Fresh()
         if OpenCount() >= MAX_OPEN then return HU:Print(string.format(L("Ya tienes %d solicitudes abiertas: cierra alguna antes."), MAX_OPEN)) end
         local sale = d.kindSell:GetChecked() and true or false
-        local pub = sale or (d.pubYes:GetChecked() and true or false)
+        local pub = sale or not d.personal:GetChecked()
         local to = HU.Trim(d.to:GetText() or "")
-        if not pub and to == "" then return HU:Print(L("Si no va al tablón, pon a quién se la pides.")) end
-        local boe, id = BoeOf(item)
-        if boe == nil and not final then
-            local p = { id = id }
-            pendingSubmit = p
-            HU.After(ITEM_WAIT, function()
-                if pendingSubmit ~= p then return end
-                pendingSubmit = nil
-                if d:IsShown() then d.Submit(true) end
-            end)
-            return HU:Print(L("Comprobando el objeto con el juego…"))
+        if not pub and to == "" then return HU:Print(L("Para un encargo personal, pon para quién es.")) end
+        -- (solo se venden BOE: si el juego aún no conoce el objeto, se le pide y se decide al llegar. Un encargo vale de
+        -- cualquier objeto, también de un BOE: Jorge, 25/11, «que los BOE también sea posible crear un order»)
+        if sale then
+            local boe, id = BoeOf(item)
+            if boe == nil and not final then
+                local p = { id = id }
+                pendingSubmit = p
+                HU.After(ITEM_WAIT, function()
+                    if pendingSubmit ~= p then return end
+                    pendingSubmit = nil
+                    if d:IsShown() then d.Submit(true) end
+                end)
+                return HU:Print(L("Comprobando el objeto con el juego…"))
+            end
+            if boe == nil then return HU:Print(L("No se ha podido comprobar el objeto: prueba otra vez.")) end
+            if not boe then return HU:Print(L("Solo se venden objetos BOE: los que se ligan al equipar, de verde a legendario.")) end
         end
-        -- (un BOE que se fabrica sí se pide: es encargarlo a quien sabe hacerlo, no comprarlo. Casi todo el equipo fabricado
-        -- de Forever es BOE verde o mejor. Uno de botín, solo se vende. Jorge, 25/11: «los BOES solo se podrán vender, nunca
-        -- poner para comprar»)
-        if boe and not sale and not CraftTargets(item) then
-            return HU:Print(L("Es BOE de botín (se liga al equipar y no se fabrica): solo se puede vender, no pedir."))
-        end
-        if sale and boe == nil then return HU:Print(L("No se ha podido comprobar el objeto: prueba otra vez.")) end
-        if sale and not boe then return HU:Print(L("Solo se venden objetos BOE: los que se ligan al equipar, de verde a legendario.")) end
-        -- (la propina o el precio, en cobre; las tres cajas vacías: a negociar)
+        -- (la propina o el precio, en cobre: «Sin propina», 0; «A negociar» o las tres cajas vacías, sin nada)
         local tip, any = 0, false
-        for i, box in ipairs(d.coins) do
-            local v = tonumber(box:GetText() or "")
-            if v then any = true; tip = tip + v * (i == 1 and 10000 or i == 2 and 100 or 1) end
+        if not ((d.noTip:GetChecked() and not sale) or d.nego:GetChecked()) then
+            for i, box in ipairs(d.coins) do
+                local v = tonumber(box:GetText() or "")
+                if v then any = true; tip = tip + v * (i == 1 and 10000 or i == 2 and 100 or 1) end
+            end
+        elseif d.noTip:GetChecked() and not sale then
+            any = true
         end
         local mats
         if d.matsMe:GetChecked() then mats = true elseif d.matsSeller:GetChecked() then mats = false end
@@ -1668,6 +1710,7 @@ local function BuildNewDialog(host)
         if not HU:TradeOrder(r) then return HU:Print(L("No se ha podido pedir: tu hermandad todavía no está en la unión.")) end
         d:Hide()
         view = pub and "pub" or "priv"
+        ui.rerank = true
         ui.search:SetText("")
         Paint()
     end
@@ -1848,7 +1891,15 @@ local function FilterMenu(owner, base, set, opts)
         end
         if U and U.CreateContextMenu then return U.CreateContextMenu(owner, gen) end
     end
-    Open(function(_, root)
+    -- (otro clic en el botón con su menú abierto lo cierra (Jorge, 25/11): el juego cierra los menús al pulsar fuera de
+    -- ellos, antes del clic; por eso el botón mira al pulsar (OnMouseDown, BuildFilters) si estaba abierto: `wasOpen`)
+    if owner.wasOpen then
+        owner.wasOpen = nil
+        if owner.menu and owner.menu.Close then owner.menu:Close() end
+        owner.menu = nil
+        return
+    end
+    local menu = Open(function(_, root)
         root:CreateTitle(L(base))
         for _, o in ipairs(opts) do
             local text = (o.skill and ProfLabel(o.skill)) or (o.color and ("|cff" .. o.color .. L(o[2]) .. "|r")) or L(o[2])
@@ -1859,6 +1910,10 @@ local function FilterMenu(owner, base, set, opts)
             end)
         end
     end)
+    owner.menu = menu
+    if menu and menu.SetClosedCallback then
+        menu:SetClosedCallback(function() owner.menu, owner.closedAt = nil, GetTime() end)
+    end
 end
 
 -- La fila 2 de Buscar: profesión · nivel (el requerido) de… a… · rareza · tipo · buscador, en vez del buscador y la
@@ -1876,6 +1931,8 @@ local function BuildFilters(host)
     local function FilterBtn(base, set, opts, x, w)
         local b = Flat(f, L(base), w, 22)
         b:SetPoint("LEFT", host, "TOPLEFT", x, y)
+        -- (abierto al pulsar: aún lo está, o el juego lo acaba de cerrar en este mismo momento por ese clic)
+        b:SetScript("OnMouseDown", function(s) s.wasOpen = s.menu ~= nil or s.closedAt == GetTime() end)
         b:SetScript("OnClick", function(s) FilterMenu(s, base, set, opts) end)
         return b
     end
@@ -1955,31 +2012,54 @@ end
 -- BuildTrade, que ya usa casi todo lo que deja Lua 5.1 (60 variables de fuera) [+ARCHITECTURE.md]
 local function BuildWho(host, MakeList)
     local S = SIZES
-    -- (las filas de objetos de Buscar: clic, se elige (lo que pide «+ Nuevo anuncio»); clic derecho, publicarlo en el
+    -- (las filas de objetos de Buscar: clic, se elige (lo que pide «+ Nuevo encargo»); clic derecho, publicarlo en el
     -- tablón o ver quién lo hace (Jorge, 25/11: «que pueda hacer botón derecho "publicar en tablón"… y hacerlo público»);
-    -- al final de quién lo hace, «Ver todos»)
+    -- en sus dos últimas columnas, «Ver todos» y «Publicarlo» (Jorge: «all [see all]… otra columna de board… [post it]»))
+    local function Small(row, text, cell, fn)
+        local b = Flat(row, text, S.allW, 18)
+        b:SetNormalFontObject("GameFontNormalSmall"); b:SetHighlightFontObject("GameFontHighlightSmall")
+        b:SetPoint("CENTER", row.cells[cell], "CENTER")
+        b:SetScript("OnClick", function() if row.entry then fn(row.entry) end end)
+        b:Hide()
+        return b
+    end
     for _, row in ipairs(ui.items.rows) do
         row:SetScript("OnClick", function(s, button)
             local e = s.entry
             if not e then return end
             findSel = e.key
-            Paint()
+            PaintFind()
             if button ~= "RightButton" or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
             MenuUtil.CreateContextMenu(s, function(_, root)
                 root:CreateTitle(e.item)
                 root:CreateButton(L("Publicar en el tablón"), function() ui.OpenNew(nil, e.item) end)
-                if row.allBtn:IsShown() then root:CreateButton(L("Ver quién lo hace"), function() ui.OpenWho(e.key) end) end
+                root:CreateButton(L("Ver quién lo hace"), function() ui.OpenWho(e.key) end)
                 root:CreateButton(L("Cancelar"), function() end)
             end)
         end)
-        local all = Flat(row, L("Ver todos"), S.allW, 18)
-        all:SetNormalFontObject("GameFontNormalSmall"); all:SetHighlightFontObject("GameFontHighlightSmall")
-        all:SetPoint("RIGHT", row, "RIGHT", -(6 + CELL_PAD), 0)
-        all:SetScript("OnClick", function() if row.entry then ui.OpenWho(row.entry.key) end end)
-        all:Hide()
-        row.allBtn = all
+        row.allBtn = Small(row, L("Ver todos"), 4, function(e) ui.OpenWho(e.key) end)
+        row.postBtn = Small(row, L("Publicarlo"), 5, function(e)
+            findSel = e.key
+            ui.OpenNew(nil, e.item)
+        end)
     end
+    -- (bajar por la lista solo repinta la lista, sin lo demás de la sección: con todo, se trababa. Jorge, 25/11)
+    ui.items.scroll:SetScript("OnVerticalScroll", function(s, offset)
+        FauxScrollFrame_OnVerticalScroll(s, offset, ROW_H, PaintFind)
+    end)
+    -- (arriba a la derecha de la lista, las flechas que giran mientras el juego da los nombres de los objetos)
+    local spin = ui.items.hdr:CreateTexture(nil, "OVERLAY")
+    spin:SetSize(16, 16); spin:SetPoint("RIGHT", ui.items.hdr, "RIGHT", -4, 0)
+    spin:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    local turn = spin:CreateAnimationGroup()
+    local rot = turn:CreateAnimation("Rotation")
+    rot:SetDegrees(-360); rot:SetDuration(1)
+    turn:SetLooping("REPEAT"); turn:Play()
+    spin:Hide()
+    ui.items.spin = spin
+    -- (en la capa HIGH, por debajo de la ventana de pedir (DIALOG) y de los menús, que así salen por encima)
     local who = DJ.Window("GuildUnionTradeWho", host, S.whoW, S.whoH)
+    who:SetFrameStrata("HIGH")
     tinsert(UISpecialFrames, "GuildUnionTradeWho")
     who.titleText:SetWidth(S.whoW - 70); who.titleText:SetWordWrap(false)
     -- (arriba, un buscador por nombre, solo entre los de la ventana: Jorge, 25/11)
@@ -1997,17 +2077,23 @@ local function BuildWho(host, MakeList)
         FauxScrollFrame_SetOffset(wl.scroll, 0)
         who.Paint()
     end)
+    -- (clic derecho en alguien: susurrarle o hacerle un encargo con el objeto ya puesto; a mí mismo, solo mi nombre.
+    -- Jorge, 25/11: «añadir en el botón derecho, whisp y make an order»)
     local function WhoMenu(owner, r)
         local c = who.key and craft[who.key]
-        if not (c and MenuUtil and MenuUtil.CreateContextMenu) or IsMe(r.name) then return end
+        if not (c and MenuUtil and MenuUtil.CreateContextMenu) then return end
         MenuUtil.CreateContextMenu(owner, function(_, root)
             root:CreateTitle(HU:Short(r.name))
-            root:CreateButton(L("Susurrar"), function() HU.WhisperTo(r.name) end)
-            root:CreateButton(L("Solicitar pedido"), function() ui.OpenNew(r.name, c.link) end)
+            if not IsMe(r.name) then
+                root:CreateButton(L("Susurrar"), function() HU.WhisperTo(r.name) end)
+                root:CreateButton(L("Hacer un encargo"), function() ui.OpenNew(r.name, c.link) end)
+            end
             root:CreateButton(L("Cancelar"), function() end)
         end)
     end
     for _, row in ipairs(wl.rows) do
+        -- (las filas, por encima de su lista y de su barra, para que les lleguen los clics)
+        row:SetFrameLevel(wl.scroll:GetFrameLevel() + 3)
         row:SetScript("OnClick", function(s, button)
             if button == "RightButton" and s.entry then WhoMenu(s, s.entry) end
         end)
@@ -2064,6 +2150,7 @@ function HU:BuildTrade(host)
     for k, b in pairs(sw.btns) do
         b:SetScript("OnClick", function()
             view, selected, picks = k, nil, {}
+            ui.rerank = true
             ui.search:SetText("")
             FauxScrollFrame_SetOffset(ui.scroll, 0)
             Paint()
@@ -2075,7 +2162,7 @@ function HU:BuildTrade(host)
     search:SetSize(SEARCH_W, 22)
     search:SetPoint("TOPLEFT", host, "TOPLEFT", 23, ROW2_Y - (ROW2_H - 22) / 2)
     if search.Instructions then
-        search.Instructions:SetText(L("Buscar receta")); DJ.C(search.Instructions, DJ.T.muted)
+        search.Instructions:SetText(L("Buscar en el tablón")); DJ.C(search.Instructions, DJ.T.muted)
     end
     local sbox = CreateFrame("Frame", nil, host, "BackdropTemplate")
     sbox:SetPoint("TOPLEFT", search, "TOPLEFT", -9, 3); sbox:SetPoint("BOTTOMRIGHT", search, "BOTTOMRIGHT", 3, -3)
@@ -2218,6 +2305,7 @@ function HU:BuildTrade(host)
                 else
                     sortKey, sortDesc = key, false
                 end
+                ui.rerank = true
                 Paint()
             end)
             lst.hdrCells[i] = b
@@ -2237,6 +2325,13 @@ function HU:BuildTrade(host)
             -- (una venta: un fondo suave de su color)
             row.saleTex = row:CreateTexture(nil, "BACKGROUND", nil, 1)
             row.saleTex:SetAllPoints(); row.saleTex:SetColorTexture(SALE_RGB[1], SALE_RGB[2], SALE_RGB[3], 0.10); row.saleTex:Hide()
+            -- (un chat con algo sin leer, en Mis encargos: un brillo verde que late)
+            row.glow = row:CreateTexture(nil, "BACKGROUND", nil, 2)
+            row.glow:SetAllPoints(); row.glow:SetColorTexture(0.25, 1, 0.35, 0.18); row.glow:Hide()
+            local beat = row.glow:CreateAnimationGroup()
+            local fade = beat:CreateAnimation("Alpha")
+            fade:SetFromAlpha(0.35); fade:SetToAlpha(1); fade:SetDuration(0.8)
+            beat:SetLooping("BOUNCE"); beat:Play()
             if i % 2 == 0 then
                 local stripe = row:CreateTexture(nil, "BACKGROUND")
                 stripe:SetAllPoints(); stripe:SetColorTexture(1, 1, 1, 0.05)
@@ -2349,7 +2444,7 @@ function HU:BuildTrade(host)
     -- Abajo: «+ Nuevo anuncio», como hasta la copia 304 (teñido de verde, letra blanca), centrado debajo de la lista
     -- (Layout); va en el panel, para quedar encima de él [+ARCHITECTURE.md]
     local newDlg = BuildNewDialog(host)
-    local new = Flat(bg, "+ " .. L("Nuevo anuncio"), 200, 24)
+    local new = Flat(bg, "+ " .. L("Nuevo encargo"), 200, 24)
     new:SetPoint("BOTTOM", host, "BOTTOM", 0, 8)
     for _, k in ipairs({ "Left", "Middle", "Right" }) do if new[k] then new[k]:SetVertexColor(0.45, 1, 0.45) end end
     new:SetNormalFontObject("GameFontHighlight")
@@ -2358,9 +2453,10 @@ function HU:BuildTrade(host)
     function ui.OpenNew(to, item)
         if HU:UnionCfg().tradeOff then return end
         pendingSubmit = nil
-        newDlg.title:SetText(to and (L("Pedir una receta a ") .. HU:Short(to)) or L("Nuevo anuncio"))
+        newDlg.title:SetText(to and (L("Encargo para ") .. HU:Short(to)) or L("Nuevo encargo"))
         newDlg.item:SetText(item or ""); newDlg.to:SetText(to or ""); newDlg.qty:SetText("1")
         for _, box in ipairs(newDlg.coins) do box:SetText("") end
+        newDlg.noTip:SetChecked(false); newDlg.nego:SetChecked(false)
         newDlg.matsMe:SetChecked(true); newDlg.matsSeller:SetChecked(false)
         newDlg.kindAsk:SetChecked(true); newDlg.kindSell:SetChecked(false)
         newDlg.SetExpiry(EXPIRY_DEFAULT)
@@ -2382,7 +2478,7 @@ function HU:BuildTrade(host)
 
     Suggest(ui.search, ItemMatches)
     -- (al abrirla: las solicitudes otra vez y lo que falte de toda la unión)
-    host:HookScript("OnShow", function() LoadCraftNames(); netDirty = true; NeedAll(); Paint() end)
+    host:HookScript("OnShow", function() LoadCraftNames(); netDirty = true; ui.rerank = true; NeedAll(); Paint() end)
     LoadCraftNames()
     OpenChat(nil)
     Paint()

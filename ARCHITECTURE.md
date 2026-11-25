@@ -3675,21 +3675,26 @@ la red, además, `tag`, la hermandad de quien la pide, y `data`, sus datos tal c
 - `Paint` lee una vez mis profesiones (`MyProfessions`) y las solicitudes que se ven (`Visible(profs)`), y se las pasa
   a `Layout` y a cada fila.
 
-### Nuevo anuncio (`BuildNewDialog`, `ui.OpenNew`)
+### Nuevo encargo (`BuildNewDialog`, `ui.OpenNew`)
 
-Hasta el 25/11, «Nueva solicitud» (Jorge: «cambiamos ''new request'' por ''new post''»; en inglés «New post»), y su
-botón «Pedir», ahora «Publicar» («Post»): con las ventas, «Pedir» no valía. Las filas, de arriba abajo (`d.Relayout`, que
-las coloca según lo elegido y ajusta el alto): Anuncio Pedir · Vender (se excluyen; de entrada, Pedir), Objeto
+Hasta el 25/11 por la mañana, «Nueva solicitud» y luego «Nuevo anuncio» («New post»); desde la copia 332, «Nuevo
+encargo» («New order»: Jorge, «el botón de "new post" lo cambiamos a "new order"»). Su botón «Publicar» («Post»). Las
+filas, de arriba abajo (`d.Relayout`, que las coloca según lo elegido y ajusta el alto): Anuncio Encargo · Vender (se
+excluyen; de entrada, Encargo; hasta la 331, «Pedir»), Objeto
 (autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco; aquí el enlace sí
 va entero en la caja: es lo que se publica) y Cantidad
-(1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina en oro · plata · cobre (vacías: a
-negociar), En el tablón Sí · No (de entrada, según la vista: en Mis encargos, No; con No, «Personaje»; hasta el 24/11,
-«Pública») y, en el tablón, Dura 5 h · 12 h · 24 h · 48 h (de entrada, 24: ver «Lo que dura en el tablón»). Al vender no
-salen Materiales ni En el tablón (una venta va siempre al tablón) y la propina se llama «Precio:». La ventana se mueve
-arrastrándola, sin salirse de la pantalla (Jorge, 25/11, copia 330: «la ventana del request order debe ser movible»).
-«Publicar» exige el objeto, que no pase del tope y que la que no va al Tablón tenga a quién («Si no va al tablón, pon a
-quién se la pides.»), mira si es BOE (abajo), y salta al Tablón o a Mis encargos. `ui.OpenNew(nombre, objeto)` la abre
-privada para esa persona («Pedir una receta a …») y con el objeto puesto, si se le da (Buscar). Con el comercio apagado
+(1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina: «Sin propina» · «A negociar» (se
+excluyen; cualquiera de las dos esconde las monedas: Jorge, 25/11, copia 332) y, sin ninguna, oro · plata · cobre (vacías:
+a negociar), la casilla «Encargo personal» (hasta la 331, «En el tablón: Sí · No»; de entrada, según la vista: en Mis
+encargos, marcada) que con ella enseña «Personaje» (con autorrelleno) y sin ella, en el tablón, «Duración:» («Post
+duration:»; hasta la 331, «Dura:») 5 h · 12 h · 24 h · 48 h (de entrada, 24: ver «Lo que dura en el tablón»). Al vender
+no salen Materiales ni «Encargo personal» (una venta va siempre al tablón), la propina se llama «Precio:» y solo queda
+«A negociar». La propina viaja como antes en TR: un número (cobre), `0` con «Sin propina» (en el tablón, «Sin propina»)
+o `-` a negociar. La ventana se mueve arrastrándola, sin salirse de la pantalla (Jorge, 25/11, copia 330: «la ventana del
+request order debe ser movible»). «Publicar» exige el objeto, que no pase del tope y que la personal tenga para quién
+(«Para un encargo personal, pon para quién es.»); al vender mira si es BOE (abajo); y salta al Tablón o a Mis encargos.
+`ui.OpenNew(nombre, objeto)` la abre personal para esa persona («Encargo para …»; hasta la 331, «Pedir una receta a …»)
+y con el objeto puesto, si se le da (Buscar). Con el comercio apagado
 (`tradeOff`) no se pide: `ui.OpenNew` no la abre y «Publicar»
 la cierra y lo dice. Autorrelleno (`Suggest`): desde 2 letras, todo lo que encaja de mejor a peor (`HU.TextRank`, Core.lua:
 lo exacto y las palabras enteras primero, sin mayúsculas ni acentos; `Better`: en cada grupo, el nombre más corto, que es
@@ -3711,11 +3716,8 @@ vender, nunca poner para comprar. En la lista aparecerán de otro color».
   del nombre exacto de un fabricable (`ItemIdOf`); lo que no es un objeto (texto suelto, un hechizo, un encantamiento)
   no es BOE.
 - **Las reglas**, al publicar (`d.Submit`):
-  - un BOE de botín solo se vende («Es BOE de botín (se liga al equipar y no se fabrica): solo se puede vender, no
-    pedir.»);
-  - un BOE que se fabrica (`CraftTargets`) sí se pide: es encargarlo a quien sabe hacerlo, no comprarlo. Casi todo el
-    equipo fabricado de Forever es BOE verde o mejor, y con «un BOE no se pide» ya no se podría encargar nada (lo vio el
-    ayudante del tablón; decidido por ADMIN el 25/11);
+  - un encargo vale de cualquier objeto, también de un BOE, de botín o fabricado (Jorge, 25/11, copia 332: «que los BOE
+    también sea posible crear un order»; hasta la 331, uno de botín solo se vendía): no se pregunta al juego;
   - lo que no es BOE no se vende («Solo se venden objetos BOE: …»).
   - Si no se cumple, la ventana sigue abierta.
 - **Si el juego aún no conoce el objeto** (`GetItemInfo` da nada): se le pide (`C_Item.RequestLoadItemDataByID`, el que
@@ -3831,10 +3833,17 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   todavía: «Cargando los objetos del juego…».
 - **La lista** (`ui.items`, 9 filas, como el Tablón): Objeto (el enlace, de su color, con su ficha al pasar el ratón y al
   pinchar en el nombre) · Nivel (el requerido; sin él, «—») · Profesión (su icono, si el juego lo da) · Quién lo hace
-  (230): el primero, con su circulito, su nivel y el tic si sabe la receta, y cuántos más («+2»), o «Nadie»
-  (`WhoSummary`), y al final de la columna, si hay alguien, **«Ver todos»** (`row.allBtn`, botón rojo de 64 x 18 con letra
-  pequeña, a 10 del final de la fila; el texto de la columna, a su izquierda, 154). Quién lo hace se calcula solo de las
-  filas que se ven, y se guarda hasta el siguiente repintado (`crafters`).
+  (92): **«Ver todos»** (`row.allBtn`) · Tablón (84): **«Publicarlo»** (`row.postBtn`, «Post it»: el encargo del tablón con
+  ese objeto). Botones rojos de 64 x 18 con letra pequeña, en el centro de su columna. Jorge, 25/11, copia 332: «cambiar
+  lo que sale del who can make it… por all [see all] y luego otra columna de board y que salga [post it]». Hasta la 331
+  la columna decía el primero que lo hacía y cuántos más (`WhoSummary`, ya quitado), y para eso se calculaba quién lo hace
+  de cada fila al pintar: era lo que trababa la lista al bajar («cuando no tienes nada puesto… y bajas se va trabando»).
+  Ahora no se calcula al pintar, y bajar (`OnVerticalScroll` de `ui.items`) repinta solo la lista (`PaintFind`), sin lo
+  demás de `Paint`.
+- **Cargando** (Jorge: «si está cargando los ítems que aparezca arriba a la derecha unas flechitas como de carga»):
+  mientras el cargador de nombres sigue (`craftLoader`, hasta que acaba su última vuelta: `craftLoader.done`), las
+  flechas del juego (`Interface\Buttons\UI-RefreshButton`) giran (una animación `Rotation`) en la derecha del título de
+  la lista (`ui.items.spin`).
 - **Quién lo hace un objeto** (`CraftersOf`): los de toda la unión con línea de oficios que saben la receta o tienen el
   nivel (`HU:UnionCrafters` con ese objeto), y los de mi hermandad sin línea que tienen la profesión (`ClubRows`, como
   en el buscador); conectados primero (`Status`), luego quien sabe la receta y por nivel.
@@ -3847,14 +3856,21 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   pedir otro objeto: Jorge, 25/11, copia 330) y, debajo, cuántos pueden (todos) y la ayuda («Pueden hacerlo: N · clic
   derecho: susurrar o solicitar pedido»). Título: «Quién lo
   hace: [objeto]». La pinta `Paint` (`who.Paint`, si está abierta: también desde otra vista, con lo que llega de oficios
-  y cada minuto), con todos los que pueden. Clic derecho en alguien (`WhoMenu`): Susurrar (`HU.WhisperTo`) y
-  «Solicitar pedido», que abre el anuncio privado para esa persona («Pedir una receta a …») con el objeto ya puesto; a
-  mí mismo, ningún menú. Si un filtro deja fuera su objeto, la ventana sigue con él hasta que se pide otro.
+  y cada minuto), con todos los que pueden. Clic derecho en alguien (`WhoMenu`): Susurrar (`HU.WhisperTo`) y «Hacer un
+  encargo» («Make an order»; hasta la 331, «Solicitar pedido»), que abre el encargo personal para esa persona con el
+  objeto ya puesto; en mí mismo, solo mi nombre y Cancelar. En la 329 Jorge vio que el clic derecho «no funciona»: la
+  ventana pasa a la capa `HIGH` (estaba en `DIALOG`, la de la ventana de pedir, que podía quedar debajo) y sus filas van
+  por encima de su lista y de su barra (`SetFrameLevel`). Si un filtro deja fuera su objeto, la ventana sigue con él
+  hasta que se pide otro.
 - **Clic en un objeto** (las filas de `ui.items`, en `BuildWho`): se elige (raya azul); «+ Nuevo anuncio» abre uno del
   tablón con lo elegido. Si un filtro deja fuera lo elegido, se quita. Hasta la 328, debajo salía su «Quién lo hace:
   objeto» (`ui.found`, 3 filas) con «Pedir una receta» en el clic derecho: Jorge, 25/11, «la quitas». **Clic derecho**
   (copia 330; Jorge: «que pueda hacer botón derecho "publicar en tablón"… y hacerlo público»): se elige y sale
-  «Publicar en el tablón» (el anuncio del tablón con ese objeto) y, si alguien lo hace, «Ver quién lo hace» (su ventana).
+  «Publicar en el tablón» (el encargo del tablón con ese objeto) y «Ver quién lo hace» (su ventana).
+- **Los desplegables de los filtros se cierran con otro clic en su botón** (Jorge, 25/11, copia 332). El juego cierra
+  los menús al pulsar fuera de ellos (`GLOBAL_MOUSE_DOWN`, Blizzard_Menu), antes del clic: el botón mira al pulsar
+  (`OnMouseDown`) si su menú estaba abierto (`b.menu`, que se borra con `SetClosedCallback`) o si el juego lo acaba de
+  cerrar en ese mismo instante (`b.closedAt == GetTime()`), y entonces el clic lo cierra en vez de abrirlo otra vez.
 - Nada se repinta por fotograma: la pestaña no usa `OnUpdate`.
 - **Límites de Lua 5.1**: Trade.lua tiene casi 200 variables en el archivo (196 con la 330; Lua 5.1 no deja más) y
   `HU:BuildTrade` usa 57 de fuera (el tope es 60). Por eso los tamaños nuevos van juntos en `SIZES` y la ventana de quién
@@ -3888,9 +3904,18 @@ Montado para la red (Jorge, 24/11): cuentan las líneas que llegan por `TC`, el 
 - Se leen al ponerse en pantalla: al abrir su chat (`OpenChat`) o en cualquier repintado con él en pantalla (`Paint`:
   pasar a Mis encargos, dejar de buscar, volver a enseñarse la sección con su `OnShow`…). Aceptar en el Tablón pone su
   chat pero no se ve: sigue sin leer hasta ir a Mis encargos.
-- `HU:TradeUnread()`: el total. Con cada cambio, `HU:Changed("tradeUnread")`; lo escucha UnionRoster.lua, que hace
-  brillar la pestaña de Comercio (`TradeGlow`). La mitad Mis encargos del interruptor lleva el número (`PaintUnread`:
-  «Mis encargos (2)») y, en su lista, cada nombre el suyo (`UnreadMark`). `ClearTest` quita las de prueba.
+- `HU:TradeUnread()`: el total de líneas; `HU:TradeUnreadChats()`: cuántos chats (personas) tienen algo sin leer. Con
+  cada cambio, `HU:Changed("tradeUnread")`; lo escucha UnionRoster.lua (la pestaña de Comercio y el botón de hermandad
+  del juego, con el número de chats). El botón Mis encargos lleva el número de chats (`PaintUnread`: «Mis encargos
+  (2)»; hasta la 331, de líneas) y, en su lista, cada nombre el suyo (`UnreadMark`). `ClearTest` quita las de prueba.
+- **En Mis encargos, primero los de chats con algo sin leer, con brillo** (Jorge, 25/11, copia 332: «serán los
+  primeros que aparezcan y con un "brillo"»): `Visible` los pone delante (cada grupo, en su orden) y la fila lleva un
+  verde suave que late (`row.glow`, una animación `Alpha` en bucle). Ese orden se calcula solo al entrar en Mis
+  encargos, al abrir la sección, al ordenar por una columna, cuando cambian los encargos de la red (`MarkDirty`), al
+  publicar y cuando llega algo sin leer (`ui.rerank`), y se guarda (`ui.privRank`): leer un chat no lo cambia, así que
+  las filas no saltan bajo el ratón (con el orden rehecho en cada clic, la fila que leías se iba abajo y otra se ponía en
+  su sitio). Lo que no estaba al calcularlo va detrás. Los botones de vista (`DJ.Switch`) y la ayuda del buscador, según
+  la vista: «Buscar en el tablón» («Search on board») y «Buscar encargo» («Search order»); hasta la 331, «Buscar receta».
 
 ### ¿Puedo hacerlo? (`HU:CanCraft`, `ReadRecipes`)
 
