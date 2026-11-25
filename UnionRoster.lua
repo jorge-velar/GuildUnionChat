@@ -627,15 +627,17 @@ local function BuildCard(f)
 end
 
 -- (las de la ficha: de mi hermandad, las del juego, con el nivel de su línea de oficios (Packs/Professions.lua) si el
--- juego no lo da; de otra, las de sus líneas de oficios, que se piden a su hermandad al abrirla)
+-- juego no lo da; de otra, las de sus líneas de oficios, que se piden a su hermandad al abrirla. Cocina y Primeros
+-- auxilios no: las tiene cualquiera; sus líneas solo sirven para «Quién lo hace» (Jorge, 25/11))
 local function CardProfessions(e)
-    local union = HU:UnionProfessionsOf(e.name) or {}
+    local union, main = HU:UnionProfessionsOf(e.name) or {}, {}
+    for _, p in ipairs(union) do if not p.secondary then main[#main + 1] = p end end
     if not e.own then
         if e.tag then HU:NeedUnionProfessions(e.tag) end
-        return union
+        return main
     end
     local own = OwnProfessions(e.name)
-    if not own then return union end
+    if not own then return main end
     for _, p in ipairs(own) do
         for _, u in ipairs(union) do if u.id == p.id then p.rank = p.rank or u.rank end end
     end

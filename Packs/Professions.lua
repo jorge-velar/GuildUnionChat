@@ -297,14 +297,17 @@ function HU:UnionCrafters(q, items, needs)
     return out
 end
 
--- Las profesiones de alguien de la unión, de sus líneas de OF: { id, name, icon, rank }, primero las principales; nil si
--- no hay (sin el addon o sin su paquete todavía)
+-- Las profesiones de alguien de la unión, de sus líneas de OF: { id, name, icon, rank, secondary }, primero las
+-- principales; nil si no hay (sin el addon o sin su paquete todavía). Cocina y Primeros auxilios van marcadas
+-- (`secondary`): la ficha no las enseña, pero cuentan para «Quién lo hace» (Jorge, 25/11: «que no salga en las
+-- profesiones de alguien normal, pero sí para tener la data»)
 function HU:UnionProfessionsOf(name)
     local rows = Index().byName[self:Key(name) or ""]
     if not rows then return nil end
     local out = {}
     for _, r in ipairs(rows) do
-        out[#out + 1] = { id = r.skill, name = ProfName(r.skill), icon = ProfIcon(r.skill), rank = r.rank }
+        out[#out + 1] = { id = r.skill, name = ProfName(r.skill), icon = ProfIcon(r.skill), rank = r.rank,
+            secondary = SECONDARY[r.skill] or nil }
     end
     table.sort(out, function(a, b)
         if (SECONDARY[a.id] == true) ~= (SECONDARY[b.id] == true) then return not SECONDARY[a.id] end

@@ -8,8 +8,9 @@ local _, HU = ...
 local L = HU.L
 
 -- (las raids de los eventos que organizo, en este PC: calRaids[id] = { raid, …, t = hora del evento }. calEvents: los
--- eventos de la copia 324, que pasan a la red al entrar: ver Migrate)
-HU:Saved({ account = { calEvents = {}, calRaids = {} } })
+-- eventos de la copia 324, que pasan a la red al entrar: ver Migrate. calPinned[id] = hora del evento: los que fijé
+-- arriba en Eventos, solo para mí)
+HU:Saved({ account = { calEvents = {}, calRaids = {}, calPinned = {} } })
 
 -- (Eventos: una tarjeta por línea, a todo lo ancho, y 4 a la vista; la rueda baja de una en una. Jorge, 24/11)
 local CARD_H, CARD_GAP, CARD_N = 62, 6, 4
@@ -128,10 +129,25 @@ end
 -- (un evento no tiene hora de fin: acaba LASTS (3 h) después de su hora. En Eventos, por fecha, hasta CARDS_AFTER (2 días)
 -- después de acabar; luego solo en el mes, hasta que caduca su línea en la red (Packs/Events.lua)) [+ARCHITECTURE.md]
 local LASTS, CARDS_AFTER = 3 * 3600, 2 * 86400
+-- (por fecha, y arriba los que fijé yo (Jorge, 25/11: «por orden de fecha, pudiendo fijar si se quiere»); un fijado se
+-- olvida cuando su evento ya no sale en las tarjetas) [+ARCHITECTURE.md]
 local function Upcoming()
-    local out, now = {}, time()
-    for _, e in ipairs(events) do if now < e.t + LASTS + CARDS_AFTER then out[#out + 1] = e end end
-    table.sort(out, function(a, b) return a.t < b.t end)
+    local out, now, pins = {}, time(), HU.db.calPinned
+    for _, e in ipairs(events) do
+        if now < e.t + LASTS + CARDS_AFTER then
+            out[#out + 1] = e
+            if pins[e.id] then pins[e.id] = e.t end
+        end
+    end
+    for id, t in pairs(pins) do
+        if type(t) ~= "number" or now >= t + LASTS + CARDS_AFTER then pins[id] = nil end
+    end
+    table.sort(out, function(a, b)
+        local pa, pb = pins[a.id] ~= nil, pins[b.id] ~= nil
+        if pa ~= pb then return pa end
+        if a.t ~= b.t then return a.t < b.t end
+        return tostring(a.id) < tostring(b.id)
+    end)
     return out
 end
 local function OnDay(key)
@@ -535,15 +551,25 @@ local function DeleteEvent(id)
     Rebuild()
     Paint()
 end
+-- (clic derecho en un evento: fijarlo arriba de Eventos o quitarlo, solo para mí; en uno mío, además, editarlo o
+-- eliminarlo)
 local function EventMenu(owner, id)
     local e = id and Find(id)
-    if not (e and e.who == Me() and MenuUtil and MenuUtil.CreateContextMenu) then return end
+    if not (e and MenuUtil and MenuUtil.CreateContextMenu) then return end
+    local pins = HU.db.calPinned
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(e.title)
-        root:CreateButton(L("Editar evento"), function() local x = Find(id); if x then ui.newDlg.Open(nil, x) end end)
-        root:CreateButton(L("Eliminar"), function()
-            ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
+        root:CreateButton(pins[id] and L("Quitar de arriba") or L("Fijar arriba"), function()
+            local x = Find(id)
+            if pins[id] then pins[id] = nil elseif x then pins[id] = x.t end
+            Paint()
         end)
+        if e.who == Me() then
+            root:CreateButton(L("Editar evento"), function() local x = Find(id); if x then ui.newDlg.Open(nil, x) end end)
+            root:CreateButton(L("Eliminar"), function()
+                ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
+            end)
+        end
         root:CreateButton(L("Cancelar"), function() end)
     end)
 end
@@ -1017,7 +1043,8 @@ local function PaintCards()
             local r, g, b = KindRGB(e.kind)
             card.wash:SetColorTexture(r, g, b, 0.10)
             card.icon:SetTexture(EventIcon(e))
-            card.title:SetText(e.title)
+            -- (fijado: con la estrella delante)
+            card.title:SetText((HU.db.calPinned[e.id] and "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:14:14|t " or "") .. e.title)
             card.kind:SetText(KindText(e.kind) .. "  |cffe6e6ea" .. date("%H:%M", e.t) .. "|r"
                 .. (e.minLevel and ("  |cffa0a4ad" .. string.format(L("Nv. %d+"), e.minLevel) .. "|r") or ""))
             card.num:SetText(tonumber(date("%d", e.t)))
@@ -1619,16 +1646,20 @@ function HU:BuildCalendar(host)
         glow:SetColorTexture(1.0, 0.84, 0.25, 0.30)
         local hl = c:CreateTexture(nil, "HIGHLIGHT")
         hl:SetPoint("TOPLEFT", 4, -4); hl:SetPoint("BOTTOMRIGHT", -4, 4); hl:SetColorTexture(1, 0.82, 0.18, 0.08)
-        -- (a lo ancho, de izquierda a derecha: el día grande con el día de la semana y el mes; la imagen redonda; en tres
-        -- líneas, el título dorado, tipo · hora · nivel y quién lo pone, y a su derecha los roles y cuántos van; y a la
-        -- derecha del todo, Apuntarme encima de Más información)
+        -- (a lo ancho, de izquierda a derecha: el día grande con el día de la semana y el mes; una raya dorada que lo
+        -- separa del resto; la imagen redonda; en tres líneas, el título dorado, quién lo pone y tipo · hora · nivel, y a su
+        -- derecha los roles y cuántos van; y a la derecha del todo, Apuntarme encima de Más información. Jorge, 25/11:
+        -- «primero la fecha… luego una pequeña separación… el nombre, by… debajo del nombre y debajo la hora»)
         c.num = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
         C(c.num, T.title); Big(c.num, 26)
         c.num:SetPoint("LEFT", 12, 1)
         c.date = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), { 0.90, 0.90, 0.93 })
         c.date:SetPoint("LEFT", c.num, "RIGHT", 6, 0); c.date:SetJustifyH("LEFT"); c.date:SetSpacing(1)
+        c.sep = Line(c, 0.45)
+        c.sep:SetWidth(1); c.sep:SetHeight(CARD_H - 20)
+        c.sep:SetPoint("LEFT", c, "LEFT", 120, 0)
         c.icon = RoundIcon(c, 30)
-        c.icon:SetPoint("LEFT", c, "LEFT", 112, 0)
+        c.icon:SetPoint("LEFT", c, "LEFT", 130, 0)
         c.join = DJButton(c, L("Apuntarme"), 112, 22)
         c.join:SetPoint("TOPRIGHT", -8, -7)
         c.join:SetScript("OnClick", function(s) local e = c.id and Find(c.id); if e then SignUp(e, s) end end)
@@ -1639,17 +1670,17 @@ function HU:BuildCalendar(host)
         c.roles:SetPoint("TOPRIGHT", -132, -27)
         c.going = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), { 0.92, 0.92, 0.95 })
         c.going:SetPoint("TOPRIGHT", -132, -43)
-        -- (el título, hasta los botones; tipo · hora · nivel, hasta los roles, y quién lo pone, hasta cuántos van)
+        -- (el título, hasta los botones; quién lo pone, hasta los roles, y tipo · hora · nivel, hasta cuántos van)
         c.title = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         C(c.title, { 1.00, 0.88, 0.24 }); c.title:SetShadowColor(0, 0, 0, 1); c.title:SetShadowOffset(1, -1)
-        c.title:SetPoint("TOPLEFT", 150, -8); c.title:SetPoint("TOPRIGHT", -132, -8)
+        c.title:SetPoint("TOPLEFT", 168, -8); c.title:SetPoint("TOPRIGHT", -132, -8)
         c.title:SetJustifyH("LEFT"); c.title:SetWordWrap(false)
-        c.kind = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        c.kind:SetPoint("TOPLEFT", 150, -29); c.kind:SetPoint("TOPRIGHT", -250, -29)
-        c.kind:SetJustifyH("LEFT"); c.kind:SetWordWrap(false)
         c.who = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        c.who:SetPoint("TOPLEFT", 150, -43); c.who:SetPoint("TOPRIGHT", -210, -43)
+        c.who:SetPoint("TOPLEFT", 168, -29); c.who:SetPoint("TOPRIGHT", -250, -29)
         c.who:SetJustifyH("LEFT"); c.who:SetWordWrap(false)
+        c.kind = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        c.kind:SetPoint("TOPLEFT", 168, -43); c.kind:SetPoint("TOPRIGHT", -210, -43)
+        c.kind:SetJustifyH("LEFT"); c.kind:SetWordWrap(false)
         -- (al pasar el ratón, borde dorado)
         c:SetScript("OnEnter", function(s) s:SetBackdropBorderColor(T.hover[1], T.hover[2], T.hover[3], 1) end)
         c:SetScript("OnLeave", function(s) s:SetBackdropBorderColor(0.34, 0.34, 0.34, 1) end)

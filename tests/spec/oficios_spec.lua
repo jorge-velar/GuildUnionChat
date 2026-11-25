@@ -491,7 +491,12 @@ describe("Oficios (OF): la ficha y Comercio", function()
         local l = HU.ProfessionsForTests.list(164)
         PackOf(HU, "DOS", { "Bea-Reino,185,100", "Bea-Reino,164,275," .. l.hash .. ",E" })
         a.w:Advance(3)
-        A.same({ "275", "100" }, Profs(), "sin «Ver recetas»: el juego no da las de otra hermandad")
+        -- (sin «Ver recetas»: el juego no da las de otra hermandad. Su cocina no sale en la ficha, pero sí cuenta para
+        -- «Quién lo hace»: Jorge, 25/11, «que no salga en las profesiones de alguien normal, pero sí para tener la data»)
+        A.same({ "275" }, Profs(), "sin «Ver recetas» y sin la cocina")
+        local cooks = {}
+        for _, r in ipairs(HU:UnionCrafters("cocina")) do cooks[#cooks + 1] = r.name .. " " .. r.skill .. " " .. r.rank end
+        A.same({ "Bea-Reino 185 100" }, cooks)
         A.same({}, a:Errors())
     end)
 

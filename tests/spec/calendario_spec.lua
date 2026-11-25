@@ -164,12 +164,14 @@ local function Hover(a, b)
     table.insert(lines, 1, tip:GetText())
     return lines
 end
+-- (el título de una tarjeta, sin la estrella de los fijados)
+local function TitleOf(c) return (c.title:GetText():gsub("^|T.-|t ", "")) end
 local function Card(ui, title)
-    for _, c in ipairs(ui.cards) do if c:IsShown() and c.title:GetText() == title then return c end end
+    for _, c in ipairs(ui.cards) do if c:IsShown() and TitleOf(c) == title then return c end end
 end
 local function Titles(ui)
     local out = {}
-    for _, c in ipairs(ui.cards) do if c:IsShown() then out[#out + 1] = c.title:GetText() end end
+    for _, c in ipairs(ui.cards) do if c:IsShown() then out[#out + 1] = TitleOf(c) end end
     return out
 end
 -- (la ficha de un evento, por su tarjeta)
@@ -871,11 +873,17 @@ describe("Calendario: Eventos (las tarjetas)", function()
         -- (de izquierda a derecha: el día, la imagen y las tres líneas; los botones, uno encima de otro a la derecha)
         local c = Card(ui, "Núcleo de Magma")
         A.same({ 12, 1 }, c.num._pts.LEFT)
-        A.same({ c, "LEFT", 112, 0 }, c.icon._pts.LEFT)
-        A.same({ 150, -8 }, c.title._pts.TOPLEFT)
+        -- (la fecha, una raya dorada que la separa y la imagen; el título, debajo quién lo pone y debajo tipo · hora:
+        -- Jorge, 25/11)
+        A.equal(c, c.sep._pts.LEFT[1])
+        A.same({ "LEFT", 120, 0 }, { c.sep._pts.LEFT[2], c.sep._pts.LEFT[3], c.sep._pts.LEFT[4] })
+        A.same({ 1, 62 - 20 }, { c.sep._w, c.sep._h })
+        A.equal(c, c.icon._pts.LEFT[1])
+        A.same({ "LEFT", 130, 0 }, { c.icon._pts.LEFT[2], c.icon._pts.LEFT[3], c.icon._pts.LEFT[4] })
+        A.same({ 168, -8 }, c.title._pts.TOPLEFT)
         A.same({ -132, -8 }, c.title._pts.TOPRIGHT, "el título, hasta los botones")
-        A.same({ 150, -29 }, c.kind._pts.TOPLEFT)
-        A.same({ 150, -43 }, c.who._pts.TOPLEFT)
+        A.same({ 168, -29 }, c.who._pts.TOPLEFT, "quién lo pone, debajo del título")
+        A.same({ 168, -43 }, c.kind._pts.TOPLEFT, "y debajo, tipo · hora")
         A.same({ -132, -27 }, c.roles._pts.TOPRIGHT)
         A.same({ -132, -43 }, c.going._pts.TOPRIGHT)
         A.same({ -8, -7 }, c.join._pts.TOPRIGHT)
@@ -1105,7 +1113,7 @@ describe("Calendario: clic derecho en un evento mío (editar y eliminar)", funct
         return out
     end
 
-    it("en su tarjeta y en su fila del día: «Editar evento» y «Eliminar» (también en uno mío de prueba); en el de otro, nada, y el clic de siempre abre la ficha", function()
+    it("en su tarjeta y en su fila del día: «Fijar arriba», «Editar evento» y «Eliminar» (también en uno mío de prueba); en el de otro, solo «Fijar arriba», y el clic de siempre abre la ficha", function()
         local a = Community()
         local menus = Menus(a)
         local ui = Open(a)
@@ -1114,12 +1122,12 @@ describe("Calendario: clic derecho en un evento mío (editar y eliminar)", funct
         Click(Card(ui, "Mío"), "RightButton")
         local m = menus[#menus]
         A.equal("Mío", m.title)
-        A.same({ "Editar evento", "Eliminar", "Cancelar" }, Texts(m))
+        A.same({ "Fijar arriba", "Editar evento", "Eliminar", "Cancelar" }, Texts(m))
         A.falsy(ui.detail:IsShown(), "el clic derecho no abre la ficha")
         Item(m, "Cancelar").fn()
-        -- (en el de otro, de Jandra: ni menú ni ficha; con el clic de siempre, su ficha)
+        -- (en el de otro, de Jandra: solo fijarlo, y sin ficha; con el clic de siempre, su ficha)
         Click(Card(ui, "Núcleo de Magma"), "RightButton")
-        A.equal(1, #menus, "sin menú")
+        A.same({ "Fijar arriba", "Cancelar" }, Texts(menus[#menus]))
         A.falsy(ui.detail:IsShown())
         Click(Card(ui, "Núcleo de Magma"))
         A.equal("Núcleo de Magma", ui.detail.titleText:GetText())
@@ -1128,18 +1136,52 @@ describe("Calendario: clic derecho en un evento mío (editar y eliminar)", funct
         Click(ui.grid.cells[22])
         Click(ui.side.dayBtns[1], "RightButton")
         A.equal("Mío", menus[#menus].title)
-        A.same({ "Editar evento", "Eliminar", "Cancelar" }, Texts(menus[#menus]))
+        A.same({ "Fijar arriba", "Editar evento", "Eliminar", "Cancelar" }, Texts(menus[#menus]))
         Click(ui.side.dayBtns[2], "RightButton")
-        A.equal(2, #menus, "Magma no es mío")
+        A.same({ "Fijar arriba", "Cancelar" }, Texts(menus[#menus]), "Magma no es mío")
         Click(ui.grid.cells[27]) -- (el 23: Pesca en Tuercespina, mío y de prueba)
         Click(ui.side.dayBtns[1], "RightButton")
         A.equal("Pesca en Tuercespina", menus[#menus].title)
         Click(ui.side.dayBtns[1])
         A.equal("Pesca en Tuercespina", ui.detail.titleText:GetText(), "el clic de siempre, la ficha")
         -- (sin el menú del juego, nada)
+        local n = #menus
         a.env.MenuUtil = nil
         Click(ui.side.dayBtns[1], "RightButton")
-        A.equal(3, #menus)
+        A.equal(n, #menus)
+        A.same({}, a:Errors())
+    end)
+
+    it("fijar arriba (Jorge, 25/11): los eventos, por fecha, y los que fijo, arriba con una estrella; solo para mí y se guarda en la cuenta; se quita igual y se olvida cuando el evento ya no sale", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local byDate = { "Núcleo de Magma", "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina" }
+        A.same(byDate, Titles(ui))
+        Click(Card(ui, "Pesca en Tuercespina"), "RightButton")
+        Item(menus[#menus], "Fijar arriba").fn()
+        A.same({ "Pesca en Tuercespina", "Núcleo de Magma", "Profundidades de Roca Negra", "Garganta Grito de Guerra" }, Titles(ui))
+        A.equal("|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:14:14|t Pesca en Tuercespina", ui.cards[1].title:GetText())
+        A.equal("Núcleo de Magma", ui.cards[2].title:GetText(), "sin estrella")
+        local id = Card(ui, "Pesca en Tuercespina").id
+        A.truthy(a.HU.db.calPinned[id], "en la cuenta")
+        -- (dos fijados: entre ellos, por fecha)
+        Click(Card(ui, "Garganta Grito de Guerra"), "RightButton")
+        Item(menus[#menus], "Fijar arriba").fn()
+        A.same({ "Garganta Grito de Guerra", "Pesca en Tuercespina", "Núcleo de Magma", "Profundidades de Roca Negra" }, Titles(ui))
+        -- (quitar: «Quitar de arriba» en el menú de un fijado)
+        Click(Card(ui, "Garganta Grito de Guerra"), "RightButton")
+        A.same({ "Quitar de arriba", "Cancelar" }, Texts(menus[#menus]))
+        Item(menus[#menus], "Quitar de arriba").fn()
+        Click(Card(ui, "Pesca en Tuercespina"), "RightButton")
+        Item(menus[#menus], "Quitar de arriba").fn()
+        A.same(byDate, Titles(ui))
+        A.is_nil(next(a.HU.db.calPinned))
+        -- (un fijado de un evento que ya no sale se olvida al pintar)
+        a.HU.db.calPinned.viejo = a.env.time() - 10 * 86400
+        Click(ui.viewBtns.list)
+        A.is_nil(a.HU.db.calPinned.viejo)
         A.same({}, a:Errors())
     end)
 

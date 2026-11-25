@@ -2503,8 +2503,12 @@ cuando se abra la pestaña». Diseño: Obsidian/Addons/GuildUnion - specs profes
   `needs`, el nivel que pide cada profesión). Saber una receta es mirar un bit (`Known`: una letra). `knows`, true si sabe
   alguna; quien seguro que no (su lista leída entera, sin ese bit) no sale; sin saberse (otra huella o sin la lista
   leída), sale si tiene el nivel. Primero quien la sabe, luego por nivel.
-- **`HU:UnionProfessionsOf(nombre)`** → `{ id, name, icon, rank }`, primero las principales (Cocina y Primeros auxilios
-  detrás); nil si no hay. El nombre y el icono, los del juego (`C_TradeSkillUI.GetTradeSkillDisplayName` y
+- **`HU:UnionProfessionsOf(nombre)`** → `{ id, name, icon, rank, secondary }`, primero las principales (Cocina y
+  Primeros auxilios detrás, con `secondary`); nil si no hay. Cocina y Primeros auxilios van en `OF` como las demás (lo
+  que da `GetProfessions`: en Forever, prof1, prof2, primeros auxilios, pesca y cocina) y cuentan para «Quién lo hace»,
+  pero la ficha (`CardProfessions`, UnionRoster.lua) no las enseña: las tiene cualquiera (Jorge, 25/11, copia 330: «que
+  no salga en las profesiones de alguien normal, pero sí para tener la data»). De los que no tienen el addon, el juego
+  solo da las dos principales (la comunidad: `profession1`/`profession2`), así que su cocina no se sabe. El nombre y el icono, los del juego (`C_TradeSkillUI.GetTradeSkillDisplayName` y
   `GetTradeSkillTexture`, como en su lista de miembros); si no, el nuestro y sin icono.
 - **`HU:NeedUnionProfessions(etiqueta)`**: pide `OF` de esa hermandad o, sin ella, de todas, también la mía
   (`HU:PackNeed`: de la mía, lo que me perdí estando fuera). Lo llaman Comercio al abrirse y cada minuto mientras se ve
@@ -3670,11 +3674,13 @@ la red, además, `tag`, la hermandad de quien la pide, y `data`, sus datos tal c
 Hasta el 25/11, «Nueva solicitud» (Jorge: «cambiamos ''new request'' por ''new post''»; en inglés «New post»), y su
 botón «Pedir», ahora «Publicar» («Post»): con las ventas, «Pedir» no valía. Las filas, de arriba abajo (`d.Relayout`, que
 las coloca según lo elegido y ajusta el alto): Anuncio Pedir · Vender (se excluyen; de entrada, Pedir), Objeto
-(autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco) y Cantidad
+(autorrelleno o Mayús+clic: enganche a `ChatFrameUtil.InsertLink` mientras la caja tiene el foco; aquí el enlace sí
+va entero en la caja: es lo que se publica) y Cantidad
 (1 de entrada, hasta 3 cifras), Materiales Yo · Vendedor (se excluyen), Propina en oro · plata · cobre (vacías: a
 negociar), En el tablón Sí · No (de entrada, según la vista: en Mis encargos, No; con No, «Personaje»; hasta el 24/11,
 «Pública») y, en el tablón, Dura 5 h · 12 h · 24 h · 48 h (de entrada, 24: ver «Lo que dura en el tablón»). Al vender no
-salen Materiales ni En el tablón (una venta va siempre al tablón) y la propina se llama «Precio:».
+salen Materiales ni En el tablón (una venta va siempre al tablón) y la propina se llama «Precio:». La ventana se mueve
+arrastrándola, sin salirse de la pantalla (Jorge, 25/11, copia 330: «la ventana del request order debe ser movible»).
 «Publicar» exige el objeto, que no pase del tope y que la que no va al Tablón tenga a quién («Si no va al tablón, pon a
 quién se la pides.»), mira si es BOE (abajo), y salta al Tablón o a Mis encargos. `ui.OpenNew(nombre, objeto)` la abre
 privada para esa persona («Pedir una receta a …») y con el objeto puesto, si se le da (Buscar). Con el comercio apagado
@@ -3776,8 +3782,8 @@ para el item también, que se pueda linkear ahí con el shift+click», fuera la 
 columna, «un botón para sacar una pestaña (movible) con todos los que pueden, con botón derecho susurrar o solicitar
 pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las barras de bajar», arriba).
 - **La fila 2** (`BuildFilters`, `ui.filters`), en vez del buscador y la casilla: Profesión (118) · «Nivel:» de [ ] a [ ]
-  (dos cajas de 30, pegadas: la primera, 6 después de «Nivel:», 32) · Rareza (84) · Tipo (104) · el buscador de objetos
-  (116, acaba a 14 del borde derecho), de 23 a 603, sin pisarse y también en inglés («Level:», «Rarity»; comercio_spec).
+  (dos cajas de 30, pegadas: la primera, 6 después de «Nivel:», 32) · Rareza (92) · Tipo (104) · el buscador de objetos
+  (108, acaba a 14 del borde derecho), de 23 a 603, sin pisarse y también en inglés («Level:», «Rarity»; comercio_spec).
   Cada botón abre un menú con casillas (`CreateCheckbox`; las casillas no cierran el menú) y se pueden marcar varias; sin
   ninguna, todo. El botón dice lo elegido: su nombre, el de lo marcado si es uno, «Rareza (2)» si son varios
   (`FilterLabel`).
@@ -3788,8 +3794,10 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
     `MenuUtil.CreateContextMenu`, que lo abre donde está el ratón. Sin esas funciones, el de clic derecho.
   - Profesión: las de CraftItems.lua (`PROF_NAMES`), por su nombre, con su icono del juego entre la casilla y el nombre
     (`ProfLabel`, el de la columna).
-  - Rareza: la calidad del juego (3.er valor de `GetItemInfo`): Blanco 1, Verde 2, Azul 3, Morado 4, Naranja 5, cada uno
-    escrito de su color. Hasta la 328 se llamaba «Color».
+  - Rareza: la calidad del juego (3.er valor de `GetItemInfo`), con los nombres de Blizzard: Común 1, Poco común 2, Raro
+    3, Épico 4 (Common, Uncommon, Rare, Epic), cada uno escrito de su color. Hasta la 328 se llamaba «Color» y hasta la
+    329 eran Blanco, Verde, Azul, Morado y Naranja; el legendario no se fabrica y se quitó (Jorge, 25/11: «que sea normal,
+    común, poco común, épico, quita el orange»).
   - Tipo: la clase del juego (12.º valor, `Enum.ItemClass` de Forever): Consumible 0, Mercancías 7, Contenedores 1 y 11
     (los carcajes y las bolsas de munición son su propia clase, Quiver, y son bolsas), Armadura 4, Armas 2, Munición 6
     (Projectile), Misceláneo 15.
@@ -3801,6 +3809,13 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
     Con un enlace, al pasar el ratón, su ficha (`HyperTip`). **Mayús+clic** (en `BuildTrade`): un enganche a
     `ChatFrameUtil.InsertLink` (al que llama `HandleModifiedItemClick` de Forever) pone el enlace en el buscador que
     tenga el foco, el de Buscar o el del Tablón; el juego avisa con `OnTextChanged` y la lista se rehace.
+  - **Un enlace en un buscador** (`f.SetLink`, `f.WatchLink`, en `BuildFilters`; los dos buscadores): en la caja se ve
+    su nombre entre corchetes, del color de su calidad (`SetTextColor`), y el enlace queda aparte (`box.link`, el que
+    leen `FindItems` y `HyperTip`). En la 329 iban los códigos del enlace en la caja y, en una tan estrecha, el juego no
+    lo pintaba (Jorge, 25/11: «cuando linkeo no se ve, pero está… pincho y arrastro y aparece»). Con un enlace puesto,
+    borrar (o escribir) lo quita entero, de una vez («si le doy al botón de borrar… debería borrarse, entero de una si
+    es linkeado»); otro enlace encima lo cambia; vaciarla (la X) lo quita. Lo que entra por `SetText` con `|H` (Mayús+clic,
+    una sugerencia del Tablón) se pasa a nombre al momento.
 - **Qué sale** (`FindItems`): los fabricables cuyo nombre ya ha dado el juego (`craft`, ver «Los nombres»: la calidad,
   los niveles y la clase se guardan al cargarlos, en la misma llamada) que encajan con todos los filtros y con el
   buscador; de cada uno, la profesión (si hay filtro, la elegida) y el nivel que pide. Los encantamientos no son objetos:
@@ -3818,21 +3833,25 @@ pedido», y «cuidado con las barras de bajar que se salen un poco» (ver «Las 
   nivel (`HU:UnionCrafters` con ese objeto), y los de mi hermandad sin línea que tienen la profesión (`ClubRows`, como
   en el buscador); conectados primero (`Status`), luego quien sabe la receta y por nivel.
 - **La ventana «Quién lo hace»** (`BuildWho`, `ui.who`, `GuildUnionTradeWho`): «Ver todos» la abre con ese objeto
-  (`ui.OpenWho(clave)`, `who.key`) y lo elige. Es una `DJ.Window` (460 x 376, la del Dungeon Journal: se arrastra, no se
+  (`ui.OpenWho(clave)`, `who.key`) y lo elige. Es una `DJ.Window` (460 x 402, la del Dungeon Journal: se arrastra, no se
   sale de la pantalla, X y Esc), hija de la sección: se cierra con ella y no vuelve sola. La primera vez sale a la derecha
   de la ventana de hermandad (`CommunitiesFrame`, 4 de hueco); luego, donde la deje el jugador. Dentro, una lista como
-  las de la sección (`MakeList` con su panel de padre: 10 filas, Quién · Hermandad · Profesión · Nivel, `FillWho`) y,
-  debajo, cuántos pueden y la ayuda («Pueden hacerlo: N · clic derecho: susurrar o solicitar pedido»). Título: «Quién lo
+  las de la sección (`MakeList` con su panel de padre: 10 filas, Quién · Hermandad · Profesión · Nivel, `FillWho`),
+  encima un buscador por nombre que solo filtra a los de la ventana (`who.find`, «Buscar nombre», 170 x 20; se vacía al
+  pedir otro objeto: Jorge, 25/11, copia 330) y, debajo, cuántos pueden (todos) y la ayuda («Pueden hacerlo: N · clic
+  derecho: susurrar o solicitar pedido»). Título: «Quién lo
   hace: [objeto]». La pinta `Paint` (`who.Paint`, si está abierta: también desde otra vista, con lo que llega de oficios
   y cada minuto), con todos los que pueden. Clic derecho en alguien (`WhoMenu`): Susurrar (`HU.WhisperTo`) y
   «Solicitar pedido», que abre el anuncio privado para esa persona («Pedir una receta a …») con el objeto ya puesto; a
   mí mismo, ningún menú. Si un filtro deja fuera su objeto, la ventana sigue con él hasta que se pide otro.
-- **Clic en un objeto**: se elige (raya azul); «+ Nuevo anuncio» abre uno del tablón con lo elegido. Si un filtro deja
-  fuera lo elegido, se quita. Hasta la 328, debajo salía su «Quién lo hace: objeto» (`ui.found`, 3 filas) con «Pedir una
-  receta» en el clic derecho: Jorge, 25/11, «la quitas».
+- **Clic en un objeto** (las filas de `ui.items`, en `BuildWho`): se elige (raya azul); «+ Nuevo anuncio» abre uno del
+  tablón con lo elegido. Si un filtro deja fuera lo elegido, se quita. Hasta la 328, debajo salía su «Quién lo hace:
+  objeto» (`ui.found`, 3 filas) con «Pedir una receta» en el clic derecho: Jorge, 25/11, «la quitas». **Clic derecho**
+  (copia 330; Jorge: «que pueda hacer botón derecho "publicar en tablón"… y hacerlo público»): se elige y sale
+  «Publicar en el tablón» (el anuncio del tablón con ese objeto) y, si alguien lo hace, «Ver quién lo hace» (su ventana).
 - Nada se repinta por fotograma: la pestaña no usa `OnUpdate`.
-- **Límites de Lua 5.1**: Trade.lua tiene casi 200 variables en el archivo (196 con la 329; Lua 5.1 no deja más) y
-  `HU:BuildTrade` usa 58 de fuera (el tope es 60). Por eso los tamaños nuevos van juntos en `SIZES` y la ventana de quién
+- **Límites de Lua 5.1**: Trade.lua tiene casi 200 variables en el archivo (196 con la 330; Lua 5.1 no deja más) y
+  `HU:BuildTrade` usa 57 de fuera (el tope es 60). Por eso los tamaños nuevos van juntos en `SIZES` y la ventana de quién
   lo hace se monta aparte (`BuildWho`, que recibe `MakeList`). Lo nuevo, en tablas o en funciones aparte.
 
 ### Chat con cada persona y circulitos
@@ -4113,9 +4132,17 @@ Solo eventos de la unión: el calendario del juego no se toca.
   sale cada evento»), por fecha, **una tarjeta por línea, a todo lo ancho** (Jorge, 24/11; antes, de 2 en 2): 62 de alto
   (`CARD_H`), 6 entre ellas (`CARD_GAP`) y 4 a la vista
   (`CARD_N`). Lo de siempre, repartido de izquierda a derecha: el día grande con el día de la semana y el mes (desde 12),
-  la imagen redonda (112), tres líneas desde 150 —el título dorado (hasta 132 del borde derecho), tipo · hora · «Nv. N+»
-  y «por» quién (yo en azul, los demás en amarillo, con su hermandad a color)—, a su derecha los roles y «N van» (tic si
-  voy), y a la derecha del todo «Apuntarme» encima de «Más información» (112 de ancho; o clic en la tarjeta). Fondo con el
+  una raya dorada vertical que lo separa del resto (`c.sep`, en 120, 42 de alto), la imagen redonda (130), tres líneas
+  desde 168 —el título dorado (hasta 132 del borde derecho), «por» quién (yo en azul, los demás en amarillo, con su
+  hermandad a color) y tipo · hora · «Nv. N+»—, a su derecha los roles y «N van» (tic si voy), y a la derecha del todo
+  «Apuntarme» encima de «Más información» (112 de ancho; o clic en la tarjeta). Hasta la 329 no había raya, la imagen
+  iba en 112 pegada a «Wednesday» y las líneas eran título, tipo · hora y quién (Jorge, 25/11: «primero la fecha… luego
+  una pequeña separación… el nombre, by… debajo del nombre y debajo la hora»). **Fijar arriba** (copia 330; Jorge:
+  «por orden de fecha, pudiendo fijar si se quiere»): en el clic derecho de cualquier evento, «Fijar arriba» / «Quitar
+  de arriba», solo para mí (`calPinned[id] = hora del evento`, en la cuenta). `Upcoming` pone los fijados primero (entre
+  ellos, por fecha) y luego los demás por fecha (a igual hora, por id); el título del fijado lleva delante la estrella
+  de las marcas de banda. Un fijado se olvida cuando su evento ya no sale en las tarjetas. El clic derecho de uno mío
+  sigue con «Editar evento» y «Eliminar». Fondo con el
   tinte del tipo, sombra arriba y la raya de brillo dorado, como antes. Van en un panel centrado (`ui.list`) cuya zona
   de tarjetas (`ui.cardArea`) solo deja el hueco de la barra con más de 4, para no descentrarse. La rueda baja **de una
   tarjeta en una** (Jorge, 24/11: «baja de golpe»; antes, una fila de dos): mueve la barra 68 por vuelta y la lista la
@@ -4140,12 +4167,13 @@ evento no tiene hora de fin: acaba 3 h después de su hora (`LASTS`, lo mismo qu
 - Lo apuntado sigue con su regla: 45 días desde que cada uno se apuntó. En un evento puesto con más de 15 días de
   antelación, al final de esos 30 días el mes puede enseñarlo con menos apuntados.
 
-### Clic derecho en un evento mío: editar y eliminar (`EventMenu`, `DeleteEvent`)
+### Clic derecho en un evento: fijar arriba y, en uno mío, editar y eliminar (`EventMenu`, `DeleteEvent`)
 
 Jorge, 25/11: «poner botón derecho - editar evento y botón derecho - eliminar». En la tarjeta y en la fila del día del mes
 (`RegisterForClicks` con el botón derecho; el izquierdo sigue abriendo la ficha), solo en los que creé yo (`who == Me()`):
-un menú del juego (`MenuUtil.CreateContextMenu`, como el de los nombres de la ficha) con el título del evento, «Editar
-evento», «Eliminar» y «Cancelar». En los de otros, el clic derecho no hace nada; sin el menú del juego, tampoco. No hace
+un menú del juego (`MenuUtil.CreateContextMenu`, como el de los nombres de la ficha) con el título del evento, «Fijar
+arriba» (o «Quitar de arriba»), «Editar evento», «Eliminar» y «Cancelar». En los de otros, solo «Fijar arriba» y
+«Cancelar» (desde la copia 330: hasta entonces, nada); sin el menú del juego, nada. No hace
 falta poder crear eventos (`HU:CanMakeEvents`): lo mío lo edito y lo elimino siempre.
 - **Editar evento**: la ventana de nuevo evento con todo puesto (ver «Nuevo evento»); al guardar, el mismo id otra vez a
   la red (`HU:ProposeEvent(id, e)`). Lo apuntado va en las líneas de cada uno (`s<id>`) y no se toca, y las raids, en

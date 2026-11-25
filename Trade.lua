@@ -27,7 +27,7 @@ local SEARCH_ROWS = 3       -- al buscar: filas de cada mitad (publicadas arriba
 -- (edge), para que no se salga: listR en total. Jorge, 25/11: «cuidado con las barras de bajar que se salen un poco». Y la
 -- ventana de quién lo hace un objeto de Buscar (who*) y su botón «Ver todos» (allW). En una tabla: el archivo ya tiene
 -- casi 200 variables, lo más que deja Lua 5.1) [+ARCHITECTURE.md]
-local SIZES = { edge = 10, scroll = 24, listR = 34, whoW = 460, whoH = 376, whoRows = 10, allW = 64 }
+local SIZES = { edge = 10, scroll = 24, listR = 34, whoW = 460, whoH = 402, whoRows = 10, allW = 64 }
 local MAX_OPEN = 5          -- anuncios abiertos por persona
 local MINE, OTHERS = "|cff4da6ff", "|cffffd100"
 local GREY = "|cff9a8f78"
@@ -46,9 +46,9 @@ local GOLD = { 1, 0.82, 0.2 }
 local EXPIRY_HOURS, EXPIRY_DEFAULT = { 5, 12, 24, 48 }, 24
 local ITEM_WAIT = 5         -- lo que se espera a que el juego conozca un objeto para decidir si es BOE
 local BIND_EQUIP = (Enum and Enum.ItemBind and Enum.ItemBind.OnEquip) or 2
--- (los filtros de Buscar: colores (la calidad del juego) y tipos (las clases del juego, Enum.ItemClass); varios a la vez)
-local QUALITIES = { { 1, "Blanco", "ffffff" }, { 2, "Verde", "1eff00" }, { 3, "Azul", "0070dd" }, { 4, "Morado", "a335ee" },
-    { 5, "Naranja", "ff8000" } }
+-- (los filtros de Buscar: la rareza (la calidad del juego, con los nombres de Blizzard; sin legendario, que no se
+-- fabrica: Jorge, 25/11, «quita el orange») y tipos (las clases del juego, Enum.ItemClass); varios a la vez)
+local QUALITIES = { { 1, "Común", "ffffff" }, { 2, "Poco común", "1eff00" }, { 3, "Raro", "0070dd" }, { 4, "Épico", "a335ee" } }
 local TYPES = { { "cons", "Consumible", { 0 } }, { "trade", "Mercancías", { 7 } }, { "cont", "Contenedores", { 1, 11 } },
     { "armor", "Armadura", { 4 } }, { "weapon", "Armas", { 2 } }, { "ammo", "Munición", { 6 } },
     { "misc", "Misceláneo", { 15 } } }
@@ -613,7 +613,8 @@ local function FindItems(idx)
     local itemOnly = anyQ or anyT or findMin ~= nil or findMax ~= nil
     -- (su buscador: un enlace (Mayús+clic) es ese fabricable y nada más (`only`, su clave); un texto, los que lo llevan
     -- en el nombre (`q`), como el buscador del Tablón (HU.TextRank))
-    local text = ui.filters.search:GetText() or ""
+    local box = ui.filters.search
+    local text = box.link or box:GetText() or ""
     local q, only = nil, tonumber(text:match("|Hitem:(%d+)") or "")
     local sp = text:match("|Hspell:(%d+)") or text:match("|Henchant:(%d+)")
     if sp then only = "s" .. sp end
@@ -1482,6 +1483,10 @@ local function BuildNewDialog(host)
     DJ.Panel(d, DJ.T.content, DJ.T.border, 14, 4)
     DJ.Parchment(d, 0.18)
     d:EnableMouse(true)
+    -- (se mueve arrastrándola, sin salirse de la pantalla: Jorge, 25/11, «la ventana del request order debe ser movible»)
+    d:SetMovable(true); d:SetClampedToScreen(true); d:RegisterForDrag("LeftButton")
+    d:SetScript("OnDragStart", d.StartMoving)
+    d:SetScript("OnDragStop", d.StopMovingOrSizing)
     d:Hide()
     d.title = d:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     d.title:SetPoint("TOPLEFT", 12, -10)
@@ -1887,13 +1892,38 @@ local function BuildFilters(host)
     f.lvlTo:SetPoint("LEFT", host, "TOPLEFT", 221, y); f.lvlTo:SetWidth(14); f.lvlTo:SetJustifyH("CENTER")
     f.lvlTo:SetText(L("a"))
     f.lvlMax = Level(241, function(v) findMax = v end)
-    f.qual = FilterBtn("Rareza", findQual, quals, 281, 84)
-    f.type = FilterBtn("Tipo", findType, types, 373, 104)
+    f.qual = FilterBtn("Rareza", findQual, quals, 281, 92)
+    f.type = FilterBtn("Tipo", findType, types, 381, 104)
+    -- Un enlace en un buscador (Mayús+clic o una sugerencia): se ve su nombre entre corchetes, del color de su calidad, y
+    -- el enlace queda aparte (`box.link`). Con los códigos del enlace dentro, en una caja estrecha el juego no lo pintaba
+    -- (Jorge, 25/11: «cuando linkeo no se ve, pero está»). Con un enlace puesto, borrar (o escribir) lo quita entero, de
+    -- una vez («si le doy al botón de borrar… debería borrarse, entero de una si es linkeado») [+ARCHITECTURE.md]
+    function f.SetLink(box, link)
+        box.link, box.linkText = link, "[" .. (link:match("|h%[(.-)%]|h") or Plain(link)) .. "]"
+        local hex = link:match("^|c%x%x(%x%x%x%x%x%x)")
+        if hex then
+            box:SetTextColor(tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255)
+        end
+        box:SetText(box.linkText)
+    end
+    function f.WatchLink(box)
+        box:HookScript("OnTextChanged", function(s, user)
+            local text = s:GetText() or ""
+            if s.link and text == s.linkText then return end
+            if s.link then
+                s.link, s.linkText = nil, nil
+                s:SetTextColor(1, 1, 1)
+                if user then s:SetText(""); return end
+            end
+            -- (otro enlace encima del que había, o uno nuevo: se ve por su nombre)
+            if text:find("|H", 1, true) then f.SetLink(s, text) end
+        end)
+    end
     -- (al final, su buscador, como el del Tablón: un nombre, o el enlace de un objeto con Mayús+clic (BuildTrade), que
     -- deja solo ese objeto; con un enlace, al pasar el ratón, su ficha. Jorge, 25/11: «añade buscador para el item también,
     -- que se pueda linkear ahí con el shift+click»)
     local search = CreateFrame("EditBox", "GuildUnionTradeFindSearch", f, "SearchBoxTemplate")
-    search:SetSize(116, 22)
+    search:SetSize(108, 22)
     search:SetPoint("RIGHT", host, "TOPRIGHT", -14, y)
     if search.Instructions then
         search.Instructions:SetText(L("Buscar objeto")); DJ.C(search.Instructions, DJ.T.muted)
@@ -1903,8 +1933,9 @@ local function BuildFilters(host)
     DJ.Panel(box, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
     box:SetFrameLevel(search:GetFrameLevel())
     search:SetFrameLevel(box:GetFrameLevel() + 2)
+    f.WatchLink(search)
     search:HookScript("OnTextChanged", FilterChanged)
-    search:HookScript("OnEnter", function(s) HyperTip(s, s:GetText()) end)
+    search:HookScript("OnEnter", function(s) HyperTip(s, s.link or s:GetText()) end)
     search:HookScript("OnLeave", function() GameTooltip:Hide() end)
     f.search = search
     return f
@@ -1917,7 +1948,23 @@ end
 -- BuildTrade, que ya usa casi todo lo que deja Lua 5.1 (60 variables de fuera) [+ARCHITECTURE.md]
 local function BuildWho(host, MakeList)
     local S = SIZES
+    -- (las filas de objetos de Buscar: clic, se elige (lo que pide «+ Nuevo anuncio»); clic derecho, publicarlo en el
+    -- tablón o ver quién lo hace (Jorge, 25/11: «que pueda hacer botón derecho "publicar en tablón"… y hacerlo público»);
+    -- al final de quién lo hace, «Ver todos»)
     for _, row in ipairs(ui.items.rows) do
+        row:SetScript("OnClick", function(s, button)
+            local e = s.entry
+            if not e then return end
+            findSel = e.key
+            Paint()
+            if button ~= "RightButton" or not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+            MenuUtil.CreateContextMenu(s, function(_, root)
+                root:CreateTitle(e.item)
+                root:CreateButton(L("Publicar en el tablón"), function() ui.OpenNew(nil, e.item) end)
+                if row.allBtn:IsShown() then root:CreateButton(L("Ver quién lo hace"), function() ui.OpenWho(e.key) end) end
+                root:CreateButton(L("Cancelar"), function() end)
+            end)
+        end)
         local all = Flat(row, L("Ver todos"), S.allW, 18)
         all:SetNormalFontObject("GameFontNormalSmall"); all:SetHighlightFontObject("GameFontHighlightSmall")
         all:SetPoint("RIGHT", row, "RIGHT", -(6 + CELL_PAD), 0)
@@ -1928,11 +1975,21 @@ local function BuildWho(host, MakeList)
     local who = DJ.Window("GuildUnionTradeWho", host, S.whoW, S.whoH)
     tinsert(UISpecialFrames, "GuildUnionTradeWho")
     who.titleText:SetWidth(S.whoW - 70); who.titleText:SetWordWrap(false)
+    -- (arriba, un buscador por nombre, solo entre los de la ventana: Jorge, 25/11)
+    local find = CreateFrame("EditBox", "GuildUnionTradeWhoSearch", who.content, "SearchBoxTemplate")
+    find:SetSize(170, 20)
+    find:SetPoint("TOPLEFT", who.content, "TOPLEFT", 14, -7)
+    if find.Instructions then find.Instructions:SetText(L("Buscar nombre")); DJ.C(find.Instructions, DJ.T.muted) end
+    who.find = find
     local wl = MakeList(S.whoRows, false, "GuildUnionTradeWhoScroll", who.content)
-    wl.list:SetPoint("TOPLEFT", who.content, "TOPLEFT", 6, -6)
+    wl.list:SetPoint("TOPLEFT", who.content, "TOPLEFT", 6, -32)
     wl.list:SetWidth(S.whoW - 36 - 12 - S.scroll)
     Titled(wl, nil)
     wl.empty:SetText(L("Nadie de la unión lo hace."))
+    find:HookScript("OnTextChanged", function()
+        FauxScrollFrame_SetOffset(wl.scroll, 0)
+        who.Paint()
+    end)
     local function WhoMenu(owner, r)
         local c = who.key and craft[who.key]
         if not (c and MenuUtil and MenuUtil.CreateContextMenu) or IsMe(r.name) then return end
@@ -1952,7 +2009,7 @@ local function BuildWho(host, MakeList)
     who.hint = DJ.C(who:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), DJ.T.muted)
     who.hint:SetPoint("BOTTOM", who, "BOTTOM", 0, 20)
     ui.who = who
-    -- (lo pinta Paint, si está abierta: con lo de ahora, como la columna)
+    -- (lo pinta Paint, si está abierta: con lo de ahora, como la columna; con el buscador, solo los nombres que encajan)
     function who.Paint()
         if not who:IsShown() then return end
         local c = who.key and craft[who.key]
@@ -1960,11 +2017,20 @@ local function BuildWho(host, MakeList)
         local list = CraftersOf(who.key)
         who.titleText:SetText(L("Quién lo hace") .. ": " .. c.link)
         who.hint:SetText(string.format(L("Pueden hacerlo: %d · clic derecho: susurrar o solicitar pedido"), #list))
+        local q = HU.Trim(find:GetText() or "")
+        if q ~= "" then
+            local out = {}
+            for _, r in ipairs(list) do if HU.TextRank(r.name, q) then out[#out + 1] = r end end
+            list = out
+        end
         Columns(wl, COLS.search, 4)
         PaintRows(wl, list, FillWho)
     end
     function ui.OpenWho(key)
-        if key ~= who.key then FauxScrollFrame_SetOffset(wl.scroll, 0) end
+        if key ~= who.key then
+            FauxScrollFrame_SetOffset(wl.scroll, 0)
+            find:SetText("")
+        end
         who.key, findSel = key, key
         -- (la primera vez, a la derecha de la ventana de hermandad; luego, donde la deje el jugador)
         if not who.placed then
@@ -2011,7 +2077,7 @@ function HU:BuildTrade(host)
     search:SetFrameLevel(sbox:GetFrameLevel() + 2)
     ui.searchBox = sbox
     -- (con un objeto escrito, al pasar el ratón, su ficha, a la derecha del buscador)
-    search:HookScript("OnEnter", function(s) HyperTip(s, s:GetText()) end)
+    search:HookScript("OnEnter", function(s) HyperTip(s, s.link or s:GetText()) end)
     search:HookScript("OnLeave", function() GameTooltip:Hide() end)
     search:HookScript("OnTextChanged", function()
         if not ui.found then return end
@@ -2044,7 +2110,8 @@ function HU:BuildTrade(host)
     ui.onlyCraft = only
     -- (en Buscar, en la misma fila, los filtros)
     ui.filters = BuildFilters(host)
-    -- (Mayús+clic en un objeto con uno de los dos buscadores escribiendo: entra su enlace)
+    ui.filters.WatchLink(search)
+    -- (Mayús+clic en un objeto con uno de los dos buscadores escribiendo: entra su enlace, que se ve por su nombre)
     if ChatFrameUtil and ChatFrameUtil.InsertLink then
         hooksecurefunc(ChatFrameUtil, "InsertLink", function(text)
             if type(text) ~= "string" then return end
@@ -2263,17 +2330,11 @@ function HU:BuildTrade(host)
     ui.req = MakeList(ROWS, true, "GuildUnionTradeScroll")
     ui.found = MakeList(ROWS, false, "GuildUnionTradeScroll2")
     ui.list, ui.scroll = ui.req.list, ui.req.scroll
-    -- (Buscar: los objetos, con su enlace en la primera columna; clic, se elige (lo que pide «+ Nuevo anuncio»); al final
-    -- de quién lo hace, «Ver todos» abre su ventana)
+    -- (Buscar: los objetos, con su enlace en la primera columna; sus clics y «Ver todos», en BuildWho)
     ui.items = MakeList(ROWS, false, "GuildUnionTradeScroll3")
     ui.items.itemCol = 1
     for _, row in ipairs(ui.items.rows) do
         row.itemBtn:ClearAllPoints(); row.itemBtn:SetPoint("CENTER", row.cells[1], "CENTER")
-        row:SetScript("OnClick", function(s)
-            if not s.entry then return end
-            findSel = s.entry.key
-            Paint()
-        end)
     end
     ui.items.list:Hide()
     BuildWho(host, MakeList)
