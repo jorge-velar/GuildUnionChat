@@ -931,12 +931,22 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.same({ 1, 62 - 20 }, { c.sep._w, c.sep._h })
         A.equal(c, c.icon._pts.LEFT[1])
         A.same({ "LEFT", 130, 0 }, { c.icon._pts.LEFT[2], c.icon._pts.LEFT[3], c.icon._pts.LEFT[4] })
-        A.same({ 168, -8 }, c.title._pts.TOPLEFT)
-        A.same({ -132, -8 }, c.title._pts.TOPRIGHT, "el título, hasta los botones")
-        A.same({ 168, -29 }, c.who._pts.TOPLEFT, "quién lo pone, debajo del título")
-        A.same({ 168, -43 }, c.kind._pts.TOPLEFT, "y debajo, tipo · hora")
-        A.same({ -132, -27 }, c.roles._pts.TOPRIGHT)
-        A.same({ -132, -43 }, c.going._pts.TOPRIGHT)
+        -- (Jorge, 25/11: «movería el nombre, el by y el raid más a la derecha»: desde 184, pasado el aro de la imagen, que
+        -- llega a unos 175)
+        A.same({ 184, -8 }, c.title._pts.TOPLEFT)
+        A.same({ 184, -29 }, c.who._pts.TOPLEFT, "quién lo pone, debajo del título")
+        A.same({ 184, -43 }, c.kind._pts.TOPLEFT, "y debajo, tipo · hora")
+        A.truthy(c.icon._pts.LEFT[3] + 30 + 15 < 184, "a la derecha del aro")
+        -- («los iconos de gente apuntada… centrado en la parte marrón oscuro» y «"1 going" centrado en la parte marrón pero en
+        -- la X que están actualmente»: los roles, en el centro de la franja oscura de arriba; cuántos van, en el de la parte
+        -- clara de debajo, hasta el borde de la tarjeta (62, con 4 de marco); los dos, con su borde derecho donde estaba)
+        local shade
+        for _, f in ipairs(a.w.frames) do if f._parent == c and f._kind == "Texture" and f._h == 24 then shade = f end end
+        local top = shade._pts.TOPLEFT[2]
+        A.same({ c, "TOPRIGHT", -132, top - 24 / 2 }, c.roles._pts.RIGHT, "los roles, centrados en la franja oscura")
+        A.equal(-16, top - 24 / 2)
+        A.same({ c, "TOPRIGHT", -132, ((top - 24) + (-62 + 4)) / 2 }, c.going._pts.RIGHT, "cuántos van, en la parte clara")
+        A.equal(-43, ((top - 24) + (-62 + 4)) / 2)
         A.same({ -8, -7 }, c.join._pts.TOPRIGHT)
         A.same({ -8, 7 }, c.info._pts.BOTTOMRIGHT)
         A.equal(18, c.num:GetText())
@@ -944,6 +954,22 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.equal(24, Going(c))
         A.same({ TANK = 4, HEALER = 11, DAMAGER = 9 }, Roles(c.roles:GetText()))
         A.matches("Jandra%-Prueba", c.who:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("el título acaba antes de los roles, que van en su misma franja, y quién y tipo · hora, antes de cuántos van: según lo que ocupa cada uno", function()
+        local a = Community()
+        local ui = Open(a)
+        NewEvent(a, ui, "Uno")
+        local c = Card(ui, "Uno")
+        A.same({ -140, -8 }, c.title._pts.TOPRIGHT, "el WoW de mentira no mide: 8 antes de 132")
+        A.same({ -140, -29 }, c.who._pts.TOPRIGHT)
+        c.roles.GetStringWidth = function() return 96 end
+        c.going.GetStringWidth = function() return 120 end
+        Click(ui.viewBtns.list)
+        A.same({ -132 - 96 - 8, -8 }, c.title._pts.TOPRIGHT, "hasta los roles")
+        A.same({ -132 - 120 - 8, -29 }, c.who._pts.TOPRIGHT, "hasta cuántos van")
+        A.same({ -132 - 120 - 8, -43 }, c.kind._pts.TOPRIGHT)
         A.same({}, a:Errors())
     end)
 

@@ -4311,20 +4311,29 @@ Solo eventos de la unión: el calendario del juego no se toca.
   (`CARD_H`), 6 entre ellas (`CARD_GAP`) y 4 a la vista
   (`CARD_N`). Lo de siempre, repartido de izquierda a derecha: el día grande con el día de la semana y el mes (desde 12),
   una raya dorada vertical que lo separa del resto (`c.sep`, en 120, 42 de alto), la imagen redonda (130), tres líneas
-  desde 168 —el título dorado (hasta 132 del borde derecho), «por» quién (yo en azul, los demás en amarillo, con su
-  hermandad a color) y tipo · hora · «Nv. N+»—, a su derecha los roles y «N van» (tic si voy), y a la derecha del todo
-  «Apuntarme» encima de «Más información» (112 de ancho; o clic en la tarjeta). Hasta la 329 no había raya, la imagen
-  iba en 112 pegada a «Wednesday» y las líneas eran título, tipo · hora y quién (Jorge, 25/11: «primero la fecha… luego
-  una pequeña separación… el nombre, by… debajo del nombre y debajo la hora»). **Fijar arriba para todos** (copia 331;
-  Jorge: «por orden de fecha, pudiendo fijar si se quiere» y, tras probar en la 330 que cada uno fijara los suyos, «para
-  todos»): en el clic derecho de un evento mío, «Fijar arriba para todos» / «Quitar de arriba» (`HU:ProposeEventPin`, la
-  línea `p<id>` de Packs/Events.lua; uno mío de prueba se fija solo aquí). `Upcoming` pone los fijados (`e.pinned`)
-  primero (entre ellos, por fecha) y luego los demás por fecha (a igual hora, por id); el título del fijado lleva delante
-  la estrella de las marcas de banda. En los de otros, el clic derecho no saca nada, como antes. Fondo con el
-  tinte del tipo, sombra arriba y la raya de brillo dorado, como antes. Van en un panel centrado (`ui.list`) cuya zona
-  de tarjetas (`ui.cardArea`) solo deja el hueco de la barra con más de 4, para no descentrarse. La rueda baja **de una
-  tarjeta en una** (Jorge, 24/11: «baja de golpe»; antes, una fila de dos): mueve la barra 68 por vuelta y la lista la
-  sigue.
+  desde 184 —el título dorado, «por» quién (yo en azul, los demás en amarillo, con su hermandad a color) y tipo · hora ·
+  «Nv. N+»—, a su derecha los roles y «N van» (tic si voy), y a la derecha del todo «Apuntarme» encima de «Más
+  información» (112 de ancho; o clic en la tarjeta). Hasta la 329 no había raya, la imagen iba en 112 pegada a «Wednesday»
+  y las líneas eran título, tipo · hora y quién (Jorge, 25/11: «primero la fecha… luego una pequeña separación… el
+  nombre, by… debajo del nombre y debajo la hora»).
+  - **Tras probar la 332** (Jorge, 25/11): las tres líneas, de 168 a 184 («movería el nombre, el by y el raid más a la
+    derecha»: el aro de la imagen, `DJ.RoundIcon` de 30 en 130, llega a unos 175); los roles, centrados en la franja
+    oscura de arriba (`topShade`, 24 desde 4: centro en 16; «los iconos de gente apuntada… más arriba que quede centrado
+    en la parte marrón oscuro»), y «N van», en la parte clara de debajo (de 28 a 58: centro en 43; «centrado en la parte
+    marrón pero en la X que están actualmente»), los dos con su borde derecho en 132, donde estaban (`SetPoint("RIGHT",
+    c, "TOPRIGHT", -132, y)`). Como los roles van ahora a la altura del título, el título acaba 8 antes de ellos, y
+    quién y tipo · hora · nivel, 8 antes de «N van»: lo pone `PaintCards` con lo que ocupa cada uno (`GetStringWidth`).
+    Antes el título llegaba hasta los botones; uno largo se corta antes.
+  - **Fijar arriba para todos** (copia 331; Jorge: «por orden de fecha, pudiendo fijar si se quiere» y, tras probar en
+    la 330 que cada uno fijara los suyos, «para todos»): en el clic derecho de un evento mío, «Fijar arriba para todos» /
+    «Quitar de arriba» (`HU:ProposeEventPin`, la línea `p<id>` de Packs/Events.lua; uno mío de prueba se fija solo
+    aquí). `Upcoming` pone los fijados (`e.pinned`) primero (entre ellos, por fecha) y luego los demás por fecha (a igual
+    hora, por id); el título del fijado lleva delante la estrella de las marcas de banda. En los de otros, el clic
+    derecho no saca nada, como antes.
+  - Fondo con el tinte del tipo, sombra arriba y la raya de brillo dorado, como antes. Van en un panel centrado
+    (`ui.list`) cuya zona de tarjetas (`ui.cardArea`) solo deja el hueco de la barra con más de 4, para no descentrarse.
+    La rueda baja **de una tarjeta en una** (Jorge, 24/11: «baja de golpe»; antes, una fila de dos): mueve la barra 68 por
+    vuelta y la lista la sigue.
 - **Calendario** (`PaintMonth`): el mes en casillas, lunes primero, flechas del libro de hechizos; solo las semanas que
   tiene (casillas más altas). Cada día: número, «+N evento(s)» y un cuadradito del color del primero; hoy con borde
   dorado, el elegido en azul. Clic en un día: el panel de la derecha (`PaintDay`) enseña sus eventos (clic: la ficha;
