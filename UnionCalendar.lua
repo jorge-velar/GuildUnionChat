@@ -244,7 +244,7 @@ end
 -- decide el líder»). Donde están sus raids (el PC de quien la creó, o uno de prueba), lo dice la raid; en los demás, la
 -- lista que publica (u<id>, Packs/Events.lua) [+ARCHITECTURE.md]
 local function Reserve(e, n)
-    if not (e.reserve and e.reserve[n]) then return false end
+    if not (Band(e) and e.reserve and e.reserve[n]) then return false end
     if e.test or e.who == Me() then return not InAnyRaid(e, n) end
     return not (e.up and e.up[n:lower()])
 end
@@ -1767,6 +1767,9 @@ local function BuildNewDialog(host)
     d.invLabel = Label("", 12, -318)
     d.invBox = HU.NewEditBox(cf, 200); d.invBox:SetMaxLetters(48)
     d.invAdd = DJButton(cf, L("Añadir"), 80, 22)
+    d.invScroll = CreateFrame("ScrollFrame", "GuildUnionCalendarInviteScroll", cf, "FauxScrollFrameTemplate")
+    d.invScroll:SetSize(300, INV_ROWS * 16)
+    d.invScroll:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, 16, d.PaintInvites) end)
     d.invRows = {}
     for i = 1, INV_ROWS do
         local b = CreateFrame("Button", nil, cf)
@@ -1779,9 +1782,6 @@ local function BuildNewDialog(host)
         b:SetScript("OnClick", function(s) if s.name then d.RemoveInvite(s.name) end end)
         d.invRows[i] = b
     end
-    d.invScroll = CreateFrame("ScrollFrame", "GuildUnionCalendarInviteScroll", cf, "FauxScrollFrameTemplate")
-    d.invScroll:SetSize(300, INV_ROWS * 16)
-    d.invScroll:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, 16, d.PaintInvites) end)
     function d.PaintInvites()
         d.invLabel:SetText(string.format(L("Invitados (%d/%d):"), #d.invites, INV_MAX))
         FauxScrollFrame_Update(d.invScroll, #d.invites, INV_ROWS, 16)
