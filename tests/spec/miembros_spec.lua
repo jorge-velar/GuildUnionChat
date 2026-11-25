@@ -810,6 +810,27 @@ describe("«Unión» en la lista de miembros del juego (UnionRoster.lua)", funct
         A.same({}, a:Errors())
     end)
 
+    it("en combate no se toca si se pulsa la casilla «Mostrar desconectados» del juego (de ella cuelgan botones seguros: el juego lo bloqueaba, Jorge, 25/11); al salir del combate, sí", function()
+        local a = F.Community()
+        GuildWindow(a)
+        local chk = a.env.CommunitiesFrame.MemberList.ShowOfflineButton
+        local calls, fight = {}, true
+        a.env.InCombatLockdown = function() return fight end
+        chk.EnableMouse = function(_, v)
+            if fight then error("EnableMouse en combate") end
+            calls[#calls + 1] = v
+        end
+        Section(a, 2)
+        A.same({}, calls, "en combate, sin tocarla")
+        fight = false
+        a.w:Fire("PLAYER_REGEN_ENABLED")
+        a.w:Advance(0.1)
+        A.same({ false }, calls, "al salir del combate, en Comercio no se pulsa")
+        Section(a, 1)
+        A.same({ false, true }, calls, "en Miembros, otra vez")
+        A.same({}, a:Errors())
+    end)
+
     it("en Comercio, lo gris de arriba llega hasta su panel y el fondo oscuro empieza debajo, sin taparlo", function()
         local a = F.Community()
         GuildWindow(a)

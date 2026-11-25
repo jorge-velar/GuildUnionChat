@@ -398,16 +398,23 @@ end
 -- (la casilla «Mostrar desconectados» del juego solo pinta algo en Miembros: en Comercio y Calendario, ni se ve ni se
 -- pulsa (Jorge, 24/11). Solo sus dibujos y su texto: de ella cuelgan nuestros botones seguros y los de abajo, que siguen)
 -- [+ARCHITECTURE.md]
-local offlineShown = true
+local offlineShown, offlineMouse = true, true
 local function OfflineBox(show)
-    if show == offlineShown then return end
     local f = Win()
     local b = f and f.MemberList and f.MemberList.ShowOfflineButton
     if type(b) ~= "table" then return end
-    offlineShown = show
-    for _, r in ipairs({ b:GetRegions() }) do r:SetAlpha(show and 1 or 0) end
-    b:EnableMouse(show)
+    if show ~= offlineShown then
+        offlineShown = show
+        for _, r in ipairs({ b:GetRegions() }) do r:SetAlpha(show and 1 or 0) end
+    end
+    -- (que se pulse o no, solo fuera de combate: como de ella cuelgan botones seguros, en combate el juego no deja
+    -- tocarla (ADDON_ACTION_BLOCKED con CheckButton:EnableMouse, Jorge, 25/11). Al salir, otra vez)
+    if show ~= offlineMouse and not InCombatLockdown() then
+        offlineMouse = show
+        b:EnableMouse(show)
+    end
 end
+HU:On("PLAYER_REGEN_ENABLED", function() OfflineBox(offlineShown) end)
 
 -- (marcada, la pestaña de la derecha de la sección abierta. En Comercio y Calendario, la de miembros del juego no: el
 -- juego la vuelve a marcar cada vez que pone al día sus pestañas, y se le quita otra vez (Build). Marcar no es mover ni

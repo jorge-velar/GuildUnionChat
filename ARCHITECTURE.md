@@ -3023,6 +3023,9 @@ hermandad», las dos a la derecha (la casilla del juego, delante de la nuestra s
 capa `HIGH` para verse encima de lo nuestro, igual que el buscador). Los títulos de Miembros van justo debajo de la
 franja; Comercio y Calendario empiezan arriba del todo, porque en ellos la franja no lleva nada del juego (la casilla
 queda transparente y sin clics: `OfflineBox`, solo sus dibujos y su texto, porque de ella cuelgan los botones de abajo).
+Como de ella cuelgan botones seguros, en combate el juego no deja tocar si se pulsa (`EnableMouse`: «ADDON_ACTION_BLOCKED
+… CheckButton:EnableMouse()», Jorge, 25/11, al cambiar de pestaña en combate): en combate solo se esconden sus dibujos y
+lo de los clics espera a `PLAYER_REGEN_ENABLED` (`offlineMouse`, lo último que se le puso).
 
 - **En Comercio la piedra llega hasta su panel** (`TRADE_ROCK`, 72: Jorge, 24/11, «más grande lo gris claro de arriba»):
   los botones Tablón · Mis encargos y la fila del buscador quedan enteros sobre lo gris; en las demás vistas, `TAB_H +
