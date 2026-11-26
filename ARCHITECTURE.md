@@ -898,6 +898,28 @@ tenga algo):
   3. las fichas (profesiones, rol...) y los inactivos que alguien está mirando ahora
   4. lo que no corre prisa: listas completas de miembros e inactivos en segundo plano
 
+### Quién sé que ya no está (`HU:MarkOffline`, `HU:KnownOffline`, `HU:MarkOnline`)
+
+Jorge, 27/11: «cada vez que desloguea le llega eso a alguien… no revisa si está conectado». Un oficial (o el GM) salía
+del juego y a alguien le salían varios «No player named 'X' is currently playing.»: el addon le seguía susurrando. Ahora
+se apunta quién se ha ido y no se le susurra:
+
+- **Se apunta** (`gone[clave] = hora`) cuando: se despide de su hermandad (`PV`, Presence.lua); llega su «me voy» o el
+  reenvío de su «me voy» a mi hermandad (RC con la huella de base a 0, Net/RosterSync.lua); un compañero avisa de que no
+  está (`PX`); el juego dice «no hay ningún jugador llamado…» (el filtro del chat del sistema, **siempre**, sea mío el
+  susurro o no); o un envío contesta `TargetOffline` (aquí y en la cola del historial, History.lua).
+- **Se borra** en cuanto llega cualquier mensaje suyo del addon (`HU.OnAddonMessage`, Net/Security.lua; no lo que se
+  vuelve a tratar después del combate) o pasados `GONE_FOR` (10 min), por si se apuntó sin razón. Con más de 500
+  apuntados se olvidan los de hace más de 10 min.
+- **Se usa** en `HU:Whisper` (ni entra en la cola) y en `Pop` (lo que esperaba para él se tira al sacarlo, como lo
+  caducado: sin gastar cupo y contado en `qStats.offline`, «a desconectados»), y en la cola del historial
+  (`qStats.hist.offline`). Lo que se le mandó en los últimos 30 s ya va al siguiente de su hermandad (`HU:ForgetOffline`).
+- Con la lista vacía (`goneN == 0`), mirar cuesta nada: cada mensaje que llega y cada susurro solo comprueban eso.
+
+Además, el filtro del aviso «no hay ningún jugador llamado…» oculta el aviso si se le susurró en los últimos 30 s, y eso
+se apunta **al salir de verdad** el susurro (`SendOne`), no solo al entrar en la cola: con el chat bloqueado (un jefe,
+un campo de batalla) un susurro podía esperar más de 30 s y el aviso salía a la vista.
+
 ### `HU:Send`
 
 urgent = true pone el mensaje delante de su cola. Devuelve false si no ha entrado en la cola.
@@ -1788,6 +1810,13 @@ Salir del juego de forma normal (/camp, /logout, /quit): quien se comparte lo di
 otras hermandades (2 copias cada una: con 4 hermandades, 6 mensajes, dentro del cupo seguido). Antes
 se esperaba al aviso del juego y a que otro heredara: con el enlace fallaba siempre (5-7 s).
 Si se cancela (PW), vuelve a salir conectado. No con PLAYER_LOGOUT: también salta con /reload.
+
+El «me voy» a las otras hermandades es un cambio de lista (RC) con la huella de base a «0» y su nombre detrás (una
+huella de verdad siempre tiene 8 letras, así que «0» solo sale de aquí). Quien lo recibe (Net/RosterSync.lua) **no le
+da por contacto recién visto** (antes sí: quedaba el primero para los susurros justo cuando se iba), le apunta como ido
+(`HU:MarkOffline`, Net/Transport.lua) y le quita de contactos; y aunque su copia no cuadre después, **no le pide la
+lista entera** (antes, un RF a quien ya no estaba: el aviso «no hay ningún jugador llamado…»). Su hermandad, que recibe
+el reenvío, también le apunta como ido (por el nombre de detrás). Jorge, 27/11.
 
 ### `HU:AfterRosterScan`
 

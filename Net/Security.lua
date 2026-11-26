@@ -260,8 +260,9 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
         return
     end
     if not sender then return end
-    -- (quien manda algo del addon, lo tiene: lo apunta para /gu sinaddon; Roster.lua)
-    if not (HU.replaying or HU.combatReplay) then HU:NoteAddonUser(sender) end
+    -- (quien manda algo del addon, lo tiene: lo apunta para /gu sinaddon; Roster.lua. Y está conectado: si lo tenía por
+    -- ido, se le vuelve a susurrar; Net/Transport.lua)
+    if not (HU.replaying or HU.combatReplay) then HU:NoteAddonUser(sender); HU:MarkOnline(sender) end
     local cmd, rest = text:match("^(%u%u?)~?(.*)$")
     if cmd then HU.diagRecv = HU.diagRecv or {}; HU.diagRecv[cmd] = (HU.diagRecv[cmd] or 0) + 1 end
     local h = cmd and HU.comm[cmd]
@@ -308,4 +309,4 @@ function HU.OnAddonMessage(prefix, text, dist, sender, _, _, localID, chanName)
 end
 HU:On("CHAT_MSG_ADDON", HU.OnAddonMessage)
 
-HU:Module("Net/Security", { "Channel", "Combat", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Roster" })
+HU:Module("Net/Security", { "Channel", "Combat", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/Transport", "Roster" })

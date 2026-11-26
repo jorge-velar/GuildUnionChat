@@ -247,7 +247,11 @@ HU.comm.PX = function(self, sender, f, dist)
     if c.n >= PX_IN_MAX then return end
     c.n = c.n + 1
     local full = self:FullName(name)
-    if full then DropRemote(self, tag, full:lower()) end
+    if full then
+        DropRemote(self, tag, full:lower())
+        -- (no está: tampoco se le susurra; Net/Transport.lua)
+        self:MarkOffline(full)
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -275,6 +279,8 @@ HU.comm.PV = function(self, sender, f, dist)
     if not (k and self.roster[k]) or k == self:MeKey() then return end
     leavingPeers[k] = GetTime()
     MarkGuildmate(k, false)
+    -- (se va: ya no se le susurra hasta oírle otra vez; Net/Transport.lua)
+    self:MarkOffline(sender)
 end
 HU:RegisterMessage("PW")
 HU.comm.PW = function(self, sender, f, dist)

@@ -150,4 +150,122 @@ describe("Cola de envío", function()
     end)
 end)
 
+-- Jorge, 27/11: «cada vez que desloguea le llega eso a alguien… no revisa si está conectado». Un oficial sale del juego y
+-- a otro le salen varios «No player named 'X' is currently playing.»: el addon le seguía susurrando (Net/Transport.lua)
+describe("A quien ya no está no se le susurra", function()
+    local NOT_FOUND = "No player named '%s' is currently playing."
+    local function Offline(n) return string.format(NOT_FOUND, n) end
+    before_each(function()
+        a = F.Community()
+        HU, w = a.HU, a.w
+        a.env.ERR_CHAT_PLAYER_NOT_FOUND_S = NOT_FOUND
+        w:Advance(10)
+        w:TakeSent()
+    end)
+
+    it("si sé que se ha ido, ni entra en la cola; y lo que esperaba para él se tira, sin gastar cupo", function()
+        local q0 = HU.qStats.offline
+        -- (cinco esperando con el juego bloqueando el chat, como en un jefe; mientras, se va)
+        w.lockdown = true
+        for i = 1, 5 do A.truthy(HU:Whisper(DEST, "CW~a~linea" .. i)) end
+        HU:MarkOffline(DEST)
+        A.falsy(HU:Whisper(DEST, "CW~a~otra"), "ni entra en la cola")
+        A.truthy(HU:Send("CW~a~guild", "GUILD"))
+        w.lockdown = nil
+        w:Advance(3)
+        A.equal(0, #ToDest(), "nada le sale")
+        A.equal(q0 + 6, HU.qStats.offline)
+        -- (y lo de los demás sale como siempre)
+        A.truthy(HU:Whisper("Otro-Reino", "CW~a~hola"))
+        w:Advance(1)
+        local other = 0
+        for _, s in ipairs(w:TakeSent()) do if s.target == "Otro-Reino" then other = other + 1 end end
+        A.equal(1, other)
+        A.same({}, a:Errors())
+    end)
+
+    it("vuelve a recibir en cuanto le oigo (cualquier mensaje suyo) o pasados 10 minutos", function()
+        HU:MarkOffline("Bea-Reino")
+        A.truthy(HU:KnownOffline("Bea Reino"), "con espacio o con guion, es la misma")
+        w:Receive("HU20", "ZQ~algo", "WHISPER", "Bea-Reino")
+        A.falsy(HU:KnownOffline("Bea-Reino"), "le he oído")
+        HU:MarkOffline("Bea-Reino")
+        w:Advance(599)
+        A.truthy(HU:KnownOffline("Bea-Reino"))
+        w:Advance(2)
+        A.falsy(HU:KnownOffline("Bea-Reino"), "a los 10 minutos se le vuelve a probar")
+        A.falsy(HU:KnownOffline(nil))
+        -- (con muchos apuntados, los viejos se olvidan)
+        for i = 1, 300 do HU:MarkOffline("Viejo" .. i .. "-Reino") end
+        w:Advance(601)
+        for i = 1, 201 do HU:MarkOffline("Nuevo" .. i .. "-Reino") end
+        A.falsy(HU:KnownOffline("Viejo1-Reino"))
+        A.truthy(HU:KnownOffline("Nuevo1-Reino"))
+        A.same({}, a:Errors())
+    end)
+
+    it("el aviso del juego se oculta si el susurro es mío aunque esperase en la cola, y le apunta como ido siempre", function()
+        local Filter = HU.SystemFilterForTests
+        -- (el susurro entra en la cola y espera 40 s, con el chat bloqueado; sale, y entonces llega el aviso: antes se
+        -- miraba desde que entró y, pasados 30 s, se veía)
+        w.lockdown = true
+        HU:Whisper(DEST, "CW~a~hola")
+        w:Advance(40)
+        w.lockdown = nil
+        w:Advance(1)
+        A.equal(1, #ToDest(), "ha salido ahora")
+        A.truthy(Filter(nil, "CHAT_MSG_SYSTEM", Offline("Destino Reino")), "mío y recién salido: se oculta")
+        A.truthy(HU:KnownOffline(DEST), "y ya no se le susurra")
+        -- (de alguien a quien no he susurrado yo, p. ej. quien juega: se ve, pero también le apunto como ido)
+        A.falsy(Filter(nil, "CHAT_MSG_SYSTEM", Offline("Bea Reino")))
+        A.truthy(HU:KnownOffline("Bea-Reino"))
+        A.falsy(Filter(nil, "CHAT_MSG_SYSTEM", "Otro aviso cualquiera"))
+        A.same({}, a:Errors())
+    end)
+
+    it("si el juego contesta que no está conectado, le apunta como ido y no le manda el resto", function()
+        w.failSend = function(_, _, dist, target) if dist == "WHISPER" and target == DEST then return 12 end end
+        w.lockdown = true
+        for i = 1, 3 do HU:Whisper(DEST, "CW~a~linea" .. i) end
+        w.lockdown = nil
+        local tries = 0
+        local fail = w.failSend
+        w.failSend = function(p, t, dist, target)
+            if dist == "WHISPER" and target == DEST then tries = tries + 1 end
+            return fail(p, t, dist, target)
+        end
+        w:Advance(3)
+        A.equal(1, tries, "solo el primero lo intenta")
+        A.truthy(HU:KnownOffline(DEST))
+        A.same({}, a:Errors())
+    end)
+
+    it("si un compañero avisa de que alguien de otra hermandad no está (PX), tampoco se le susurra (Presence.lua)", function()
+        A.falsy(HU:KnownOffline("Bea-Reino"))
+        w:Receive("HU20", "PX~DOS~Bea-Reino", "GUILD", "Compi-Reino")
+        A.truthy(HU:KnownOffline("Bea-Reino"))
+        A.falsy(HU:Whisper("Bea-Reino", "CW~a~hola"))
+        A.same({}, a:Errors())
+    end)
+
+    it("el historial tampoco le manda el resto a quien se ha ido (History.lua)", function()
+        local send = HU.HistoryForTests.send
+        local hist = function() return HU.qStats.hist or { sent = 0, offline = 0 } end
+        local s0, o0 = hist().sent, hist().offline
+        -- (el primero sale y el juego dice que no está; el resto ya no sale)
+        w.failSend = function(prefix, _, dist, target) if prefix == "HU20H" and dist == "WHISPER" and target == DEST then return 12 end end
+        for i = 1, 3 do send("R~1~x~" .. i, DEST) end
+        w:Advance(3)
+        A.equal(o0 + 3, hist().offline, "los tres, como «no está»")
+        A.equal(s0, hist().sent, "ninguno como enviado")
+        A.truthy(HU:KnownOffline(DEST))
+        -- (y a otro sí)
+        w.failSend = nil
+        send("R~1~x~4", "Otro-Reino")
+        w:Advance(2)
+        A.equal(s0 + 1, hist().sent)
+        A.same({}, a:Errors())
+    end)
+end)
+
 -- (el formato de los mensajes se prueba en formato_spec.lua)
