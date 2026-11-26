@@ -116,6 +116,24 @@ describe("Estadísticas de la hermandad (GuildStats.lua)", function()
         A.same({}, a:Errors())
     end)
 
+    it("HU:GuildProfessionCounts: cuenta las profesiones principales de la hermandad, de lo que da el juego (sin addon)", function()
+        local a = F.Community()
+        local HU = a.HU
+        a.env.C_Club = {
+            GetGuildClubId = function() return 1 end,
+            GetClubMembers = function() return { 1, 2, 3 } end,
+            GetMemberInfo = function(_, id) return ({
+                [1] = { name = "Jefa-Reino", profession1Name = "Alquimia", profession1ID = 171 },
+                [2] = { name = "Tester-Reino", profession1Name = "Alquimia", profession1ID = 171, profession2Name = "Sastrería", profession2ID = 197 },
+                [3] = { name = "Compi-Reino", profession1Name = "Sastrería", profession1ID = 197 },
+            })[id] end,
+        }
+        local out = {}
+        for _, r in ipairs(HU:GuildProfessionCounts()) do out[#out + 1] = { name = r.name, n = r.n } end
+        A.same({ { name = "Alquimia", n = 2 }, { name = "Sastrería", n = 2 } }, out)
+        A.same({}, a:Errors())
+    end)
+
     it("fuera de una hermandad, lo dice y no revienta", function()
         local a = F.Community()
         a.w.guild = nil
