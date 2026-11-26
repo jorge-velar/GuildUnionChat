@@ -78,6 +78,7 @@ UnionConfig.lua
 ListWindow.lua
 Blacklist.lua
 InviteLog.lua
+GuildStats.lua
 Mention.lua
 Wizard.lua
 Report.lua

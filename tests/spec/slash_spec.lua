@@ -37,6 +37,7 @@ local INPUTS = {
     "quitarhermandad", "removeguild TRES",
     "notacanal", "channelnote", "pasarcanal", "sendchannel Compi-Reino", "perf",
     "sinaddon", "noaddon", "carga", "load",
+    "stats", "estadisticas",
     "language es",
 }
 

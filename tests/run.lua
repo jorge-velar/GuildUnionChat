@@ -47,6 +47,7 @@ local SPECS = {
     "spec/encargos_spec",
     "spec/oficios_spec",
     "spec/medidas_spec",
+    "spec/estadisticas_spec",
     "spec/protocolo_spec",
     "spec/strict_spec", -- (la última: mira lo que han leído todas las demás)
 }

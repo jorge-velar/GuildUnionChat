@@ -507,6 +507,8 @@ function HU:OfficersButton(parent, name)
             root:CreateButton(L("Ver registro"), function() HU:ShowInviteLog() end)
             -- (Jorge, 25/11: «un botón de mass remove en la parte de oficiales»; Social.lua)
             root:CreateButton("|cffff4040" .. L("Echar a varios") .. "|r", function() HU:ShowMassKick() end)
+            -- (Jorge, 26/11: estadísticas de la hermandad para oficiales y el maestro; GuildStats.lua)
+            root:CreateButton(L("Estadísticas"), function() HU:ShowGuildStats() end)
         end)
         if menu and menu.SetClosedCallback then menu:SetClosedCallback(function() menu, closedAt = nil, GetTime() end) end
     end)
@@ -516,4 +518,4 @@ function HU:OfficersButton(parent, name)
     return b
 end
 
-HU:Module("InviteLog", { "Config", "Core", "ListWindow", "Orders", "Ranks", "Roster", "Social" })
+HU:Module("InviteLog", { "Config", "Core", "GuildStats", "ListWindow", "Orders", "Ranks", "Roster", "Social" })

@@ -532,6 +532,10 @@ dice: |cff33ff99Comunidad de prueba|r: Midiendo la carga de los enlaces: pregunt
 == /gu load
 llama: Trim AskRelayLoad
 dice: |cff33ff99Comunidad de prueba|r: Ya estás midiendo: el resultado sale en unos segundos.
+== /gu stats
+llama: Trim ShowGuildStats
+== /gu estadisticas
+llama: Trim ShowGuildStats
 == /gu language es
 llama: Trim SetLang
 ======== como miembro ========
