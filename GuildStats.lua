@@ -2,7 +2,8 @@
 -- Miembros, rangos, niveles, clases, razas, profesiones y actividad (activos, alts, inactivos), con gráficos de barras
 -- en el juego (como los addons de estadísticas) y un botón para exportar el texto a Discord o a un archivo. Sale de
 -- datos que GuildUnion ya tiene (la lista de la hermandad y el registro de altas/bajas). Y el informe de la unión: los
--- números de cada hermandad, que da uno de sus oficiales a otro oficial (SQ y SR, como /gu carga), sumados.
+-- números de cada hermandad, que da uno de sus oficiales a otro oficial (SQ y SR, como /gu carga), sumados, con
+-- clases, razas y profesiones por su clave del juego (no por el nombre, que depende del idioma de cada uno).
 local _, HU = ...
 local L = HU.L
 local DJ = HU.DJ
@@ -31,12 +32,13 @@ local function IsActive(e)
     return type(e.offSecs) == "number" and e.offSecs < ACTIVE_DAYS * DAY
 end
 
--- (la raza, por el GUID; nil si no se puede saber)
+local function Text(x) if type(x) == "string" and x ~= "" and not HU.Secret(x) then return x end end
+-- (la raza, por el GUID: el nombre que da el juego y su clave fija, «NightElf»…; nil si no se puede saber)
 local function RaceOf(guid)
     if not (guid and GetPlayerInfoByGUID) then return nil end
-    local ok, _, _, race = pcall(GetPlayerInfoByGUID, guid)
-    if ok and type(race) == "string" and race ~= "" and not HU.Secret(race) then return race end
-    return nil
+    local ok, _, _, race, raceFile = pcall(GetPlayerInfoByGUID, guid)
+    if not ok then return nil end
+    return Text(race), Text(raceFile)
 end
 
 -- (el nombre de la clase, en el idioma del juego; si no se reconoce, tal cual)
@@ -62,8 +64,9 @@ end
 local function Pct(part, total) return total > 0 and (100 * part / total) or 0 end
 
 -- Las estadísticas, en una tabla (la usan la ventana, el informe de la unión y las pruebas). nil si no estoy en una
--- hermandad. light: sin razas ni profesiones, que es lo que más cuesta (al informe de la unión solo van números)
-function HU:GuildStats(light)
+-- hermandad. Clases, razas y profesiones, también por su clave fija (byClassKey, byRaceKey, byProfID): no dependen del
+-- idioma, y así se suman las de toda la unión
+function HU:GuildStats()
     local guild = IsInGuild() and GetGuildInfo and GetGuildInfo("player")
     if not guild then return nil end
     local roster = self.rosterList or {}
@@ -71,12 +74,12 @@ function HU:GuildStats(light)
         guild = guild, total = #roster, online = 0, mobile = 0,
         active = 0, alts = 0, activeNoAlt = 0, totalNoAlt = 0,
         byRank = {}, byClass = {}, byRace = {},
-        professions = light and {} or self:GuildProfessionCounts(),
+        professions = self:GuildProfessionCounts(),
         maxLevel = 0, avgLevel = 0, levelSum = 0, levelN = 0,
         levelBuckets = { { "1-19", 0 }, { "20-39", 0 }, { "40-59", 0 }, { tostring(MAX_LEVEL), 0 } },
         inactive7 = 0, inactive30 = 0,
     }
-    local rankTotals, rankOnline, rankLabel, classN, raceN = {}, {}, {}, {}, {}
+    local rankTotals, rankOnline, rankLabel, classN, raceN, raceKey = {}, {}, {}, {}, {}, {}
     local sumLevel, levelN = 0, 0
     for _, e in ipairs(roster) do
         local alt, active = IsAlt(e), IsActive(e)
@@ -92,8 +95,9 @@ function HU:GuildStats(light)
         if e.online then rankOnline[ri] = (rankOnline[ri] or 0) + 1 end
         rankLabel[ri] = rankLabel[ri] or e.rank or self:RankName(self.myTag, ri)
         if type(e.class) == "string" and e.class ~= "" then classN[e.class] = (classN[e.class] or 0) + 1 end
-        local race = not light and RaceOf(e.guid)
+        local race, rkey = RaceOf(e.guid)
         if race then raceN[race] = (raceN[race] or 0) + 1 end
+        if rkey then raceKey[rkey] = (raceKey[rkey] or 0) + 1 end
         local lv = tonumber(e.level)
         if lv and lv > 0 then
             sumLevel, levelN = sumLevel + lv, levelN + 1
@@ -119,6 +123,9 @@ function HU:GuildStats(light)
     end
     for _, c in ipairs(Sorted(classN)) do s.byClass[#s.byClass + 1] = { name = ClassLabel(c.name), n = c.n } end
     s.byRace = Sorted(raceN)
+    -- (por clave fija: la clase de la lista ya es la del juego en inglés, «MAGE»; la profesión, por su número)
+    s.byClassKey, s.byRaceKey, s.byProfID = classN, raceKey, {}
+    for _, p in ipairs(s.professions) do if p.id then s.byProfID[p.id] = (s.byProfID[p.id] or 0) + p.n end end
     local db = self.db or {}
     local inv = (db.inviteLog and db.inviteLog[guild]) or {}
     local lea = (db.leaveLog and db.leaveLog[guild]) or {}
@@ -294,23 +301,46 @@ local UNION_MAX = 20      -- respuestas como mucho en UNION_GAP s, a todos junto
 -- (los números que van en SR, en este orden: solo números, sin nombres)
 local UNION_FIELDS = { "total", "online", "mobile", "active", "alts", "activeNoAlt", "totalNoAlt", "maxLevel",
     "levelSum", "levelN", "b1", "b2", "b3", "b4", "joined7", "joined30", "left7", "left30", "inactive7", "inactive30" }
+-- (y detrás, tres listas de cuántos hay de cada clase, raza y profesión principal, en este orden fijo y por su clave
+-- del juego, no por el nombre, que depende del idioma de cada uno; las razas, HU.RACE_ORDER de Social.lua)
+local UNION_CLASSES = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
+local UNION_PROFS = { 171, 164, 333, 202, 182, 165, 186, 393, 197 }
+local LISTS = #UNION_FIELDS + 4   -- (en SR, dónde empiezan las listas)
+local UNION_CACHE = 10    -- lo que valen mis números para contestar: si me preguntan varios a la vez, se cuentan una vez
 local unionRun            -- mi pregunta en marcha: { id, rows = { { tag, name, officer, mine, data, bad } }, byKey }
 local unionAskT = -999
+local cache               -- { t, list }: mis números de la última vez
 
 -- (el tope de cada número: lo que acepta quien lo recibe)
 local function Cap(k) return (k == "levelSum" and 999999) or (k == "maxLevel" and 100) or 9999 end
 
--- Mis números como van en SR, sin la orden: etiqueta, id, versión y los de UNION_FIELDS. nil fuera de una hermandad
+-- (cuántos hay de cada clave, en ese orden: «3.0.2…»)
+local function CountList(by, keys)
+    local out = {}
+    for i, k in ipairs(keys) do out[i] = tostring(math.min(9999, by[k] or 0)) end
+    return table.concat(out, ".")
+end
+
+-- Mis números como van en SR, sin la orden: etiqueta, id, versión, los de UNION_FIELDS y las tres listas. nil fuera de
+-- una hermandad. Con hasta 1.000 miembros caben de sobra en un mensaje (como mucho ~242 de 255 letras)
 local function UnionFields(self, id)
-    local s = self:GuildStats(true)
-    if not s then return nil end
-    local b = s.levelBuckets
-    local v = { total = s.total, online = s.online, mobile = s.mobile, active = s.active, alts = s.alts,
-        activeNoAlt = s.activeNoAlt, totalNoAlt = s.totalNoAlt, maxLevel = s.maxLevel, levelSum = s.levelSum,
-        levelN = s.levelN, b1 = b[1][2], b2 = b[2][2], b3 = b[3][2], b4 = b[4][2], joined7 = s.joined7,
-        joined30 = s.joined30, left7 = s.left7, left30 = s.left30, inactive7 = s.inactive7, inactive30 = s.inactive30 }
+    if not (cache and GetTime() - cache.t < UNION_CACHE) then
+        local s = self:GuildStats()
+        if not s then return nil end
+        local b = s.levelBuckets
+        local v = { total = s.total, online = s.online, mobile = s.mobile, active = s.active, alts = s.alts,
+            activeNoAlt = s.activeNoAlt, totalNoAlt = s.totalNoAlt, maxLevel = s.maxLevel, levelSum = s.levelSum,
+            levelN = s.levelN, b1 = b[1][2], b2 = b[2][2], b3 = b[3][2], b4 = b[4][2], joined7 = s.joined7,
+            joined30 = s.joined30, left7 = s.left7, left30 = s.left30, inactive7 = s.inactive7, inactive30 = s.inactive30 }
+        local list = {}
+        for _, k in ipairs(UNION_FIELDS) do list[#list + 1] = tostring(math.min(Cap(k), math.max(0, math.floor(v[k])))) end
+        list[#list + 1] = CountList(s.byClassKey, UNION_CLASSES)
+        list[#list + 1] = CountList(s.byRaceKey, HU.RACE_ORDER)
+        list[#list + 1] = CountList(s.byProfID, UNION_PROFS)
+        cache = { t = GetTime(), list = list }
+    end
     local out = { self.myTag, id, tostring(HU.version) }
-    for _, k in ipairs(UNION_FIELDS) do out[#out + 1] = tostring(math.min(Cap(k), math.max(0, math.floor(v[k])))) end
+    for _, x in ipairs(cache.list) do out[#out + 1] = x end
     return out
 end
 
@@ -320,11 +350,23 @@ local function UnionInt(s, max)
     local n = tonumber(s)
     return (n and n <= max) and n or nil
 end
--- Los datos de un SR (f[1] etiqueta, f[2] id, f[3] versión y los números), o nil si algo no vale o no cuadra entre sí
+-- (una lista de SR: tantos números como claves, que no sumen más de max; nil si no vale)
+local function ParseCounts(s, n, max)
+    if type(s) ~= "string" or #s > n * 5 then return nil end
+    local out, sum = {}, 0
+    for x in (s .. "."):gmatch("([^.]*)%.") do
+        local v = UnionInt(x, 9999)
+        if not v then return nil end
+        out[#out + 1], sum = v, sum + v
+    end
+    return (#out == n and sum <= max) and out or nil
+end
+-- Los datos de un SR (f[1] etiqueta, f[2] id, f[3] versión, los números y las tres listas), o nil si algo no vale o no
+-- cuadra entre sí
 local function ParseUnion(f)
     local ver = f[3]
     if type(ver) ~= "string" or #ver > 16 or not ver:match("^[%w%.%-]+$") then return nil end
-    if f[4 + #UNION_FIELDS] ~= nil then return nil end
+    if f[LISTS + 3] ~= nil then return nil end
     local d = { ver = ver }
     for i, k in ipairs(UNION_FIELDS) do
         d[k] = UnionInt(f[3 + i], Cap(k))
@@ -339,6 +381,11 @@ local function ParseUnion(f)
         or d.inactive30 > d.inactive7 or d.joined7 > d.joined30 or d.left7 > d.left30 then
         return nil
     end
+    -- (clases y razas, una por miembro como mucho; profesiones principales, dos)
+    d.classes = ParseCounts(f[LISTS], #UNION_CLASSES, d.total)
+    d.races = ParseCounts(f[LISTS + 1], #HU.RACE_ORDER, d.total)
+    d.profs = ParseCounts(f[LISTS + 2], #UNION_PROFS, 2 * d.total)
+    if not (d.classes and d.races and d.profs) then return nil end
     return d
 end
 
@@ -422,14 +469,41 @@ end
 -- suma ZERO)
 local ZERO = {}
 for _, k in ipairs(UNION_FIELDS) do ZERO[k] = 0 end
+-- (suma una lista de cuántos a otra; la que no ha llegado no suma)
+local function AddList(into, list)
+    for i, v in ipairs(list or {}) do into[i] = (into[i] or 0) + v end
+end
 local function AddUp(rows)
-    local t = {}
+    local t = { classes = {}, races = {}, profs = {} }
     for _, k in ipairs(UNION_FIELDS) do t[k] = 0 end
     for _, row in ipairs(rows) do
         local d = row.data or ZERO
         for _, k in ipairs(UNION_FIELDS) do t[k] = (k == "maxLevel") and math.max(t[k], d[k]) or (t[k] + d[k]) end
+        AddList(t.classes, d.classes)
+        AddList(t.races, d.races)
+        AddList(t.profs, d.profs)
     end
     return t
+end
+
+-- (el nombre de una raza por su clave, en el idioma del addon: HU.RACE_NAMES de Social.lua; de una profesión, el del
+-- juego o el nuestro, Packs/Professions.lua; de una clase, ClassLabel)
+local function RaceLabel(k)
+    local n = HU.RACE_NAMES[k]
+    return n and ((HU.lang == "en" and n.en) or n.es) or k
+end
+local function ProfLabel(id) return HU:ProfessionName(id) end
+-- (una sección: cuántos hay de cada uno, de más a menos y con su nombre; los que no hay, fuera)
+local function CountLines(out, title, counts, keys, label)
+    out[#out + 1] = title
+    local byName = {}
+    for i, k in ipairs(keys) do
+        local n, name = counts[i] or 0, label(k)
+        if n > 0 then byName[name] = (byName[name] or 0) + n end
+    end
+    local rows = Sorted(byName)
+    for _, r in ipairs(rows) do out[#out + 1] = string.format("  %-18s %3d", r.name, r.n) end
+    if #rows == 0 then out[#out + 1] = "  -" end
 end
 
 local function TotalLines(t)
@@ -449,6 +523,9 @@ local function TotalLines(t)
     out[#out + 1] = string.format(L("  Altas: %d (7 días)  ·  %d (30 días)"), t.joined7, t.joined30)
     out[#out + 1] = string.format(L("  Bajas: %d (7 días)  ·  %d (30 días)"), t.left7, t.left30)
     out[#out + 1] = string.format(L("  Sin conectarse: %d (más de 7 días)  ·  %d (más de 30 días)"), t.inactive7, t.inactive30)
+    CountLines(out, L("Clases:"), t.classes, UNION_CLASSES, ClassLabel)
+    CountLines(out, L("Razas:"), t.races, HU.RACE_ORDER, RaceLabel)
+    CountLines(out, L("Profesiones:"), t.profs, UNION_PROFS, ProfLabel)
     return out
 end
 
@@ -515,4 +592,4 @@ end
 
 HU:RegisterSlash("stats", { aliases = { "estadisticas" }, fn = function() HU:ShowGuildStats() end })
 
-HU:Module("GuildStats", { "Comm", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Protocol", "Ranks", "Roster", "TradeCraft" })
+HU:Module("GuildStats", { "Comm", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Packs/Professions", "Protocol", "Ranks", "Roster", "TradeCraft" })

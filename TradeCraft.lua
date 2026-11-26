@@ -162,14 +162,14 @@ local function ClubRows()
 end
 local function ClubRow(m) return { name = m.name, tag = m.tag, prof = m.prof, icon = m.icon, online = m.online, rank = m.rank } end
 
--- Cuántos de mi hermandad tienen cada profesión principal, de lo que da el juego (sin addon): { { name, icon, n }, de más
--- a menos }. Para las estadísticas (GuildStats.lua). Se lee fresco porque se abre aparte de Comercio [+ARCHITECTURE.md]
+-- Cuántos de mi hermandad tienen cada profesión principal, de lo que da el juego (sin addon): { { name, icon, id, n }, de
+-- más a menos; id, su número }. Para las estadísticas (GuildStats.lua). Se lee fresco porque se abre aparte de Comercio [+ARCHITECTURE.md]
 function HU:GuildProfessionCounts()
     clubRows = nil
     local by = {}
     for _, r in ipairs(ClubRows()) do
         if type(r.prof) == "string" and r.prof ~= "" then
-            local e = by[r.prof] or { name = r.prof, icon = r.icon, n = 0 }
+            local e = by[r.prof] or { name = r.prof, icon = r.icon, id = r.id, n = 0 }
             e.n, by[r.prof] = e.n + 1, e
         end
     end

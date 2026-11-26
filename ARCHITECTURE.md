@@ -3239,18 +3239,26 @@ no tienen el addon o un oficial conectado salen como «no ha contestado».
   no contesto. Con mi lista ya cargada (recién entrado diría que somos 0). Topes: a cada uno una vez cada 30 s y a todos
   20 en 30 s. La respuesta, `SR~mi etiqueta~id~versión~` y 20 números en un orden fijo (`UNION_FIELDS`): miembros,
   conectados, con el móvil, activos, alts, activos sin alts, sin alts, nivel máximo, suma de niveles, con nivel, los
-  cuatro tramos de nivel, altas y bajas de 7 y 30 días y sin conectarse más de 7 y de 30 días. Los saca
-  `HU:GuildStats(true)`: sin razas ni profesiones, que es lo que más cuesta y no viaja. **Solo números**: razas, clases y
-  profesiones se quedan fuera (sus nombres dependen del idioma de cada jugador y no se sumarían bien).
+  cuatro tramos de nivel, altas y bajas de 7 y 30 días y sin conectarse más de 7 y de 30 días. Detrás, **tres listas**
+  de cuántos hay de cada clase (`UNION_CLASSES`, las 9 de vanilla), raza (`HU.RACE_ORDER`, Social.lua) y profesión
+  principal (`UNION_PROFS`, por su número), en ese orden y separados por puntos («3.0.2…»): por la **clave del juego**
+  («MAGE», «NightElf», 171), no por el nombre, que depende del idioma de cada jugador y no se sumaría bien (Jorge, 26/11:
+  «sí, añádelas»). El nombre lo pone quien lo enseña: la clase, `ClassLabel` (el del juego); la raza, `HU.RACE_NAMES` en
+  el idioma del addon (Forever no da el nombre por la clave); la profesión, `HU:ProfessionName` (Packs/Professions.lua:
+  el del juego o el nuestro). Todo sale de `HU:GuildStats()` (`byClassKey`, `byRaceKey`, `byProfID`; la clase de la
+  lista de la hermandad ya es la clave del juego, y la raza es el 4.º dato de `GetPlayerInfoByGUID`), y se recuerda 10 s
+  (`UNION_CACHE`): si preguntan varios a la vez, se cuenta una vez. Con hasta 1.000 miembros cabe en un mensaje (como
+  mucho unas 242 de 255 letras); si no cupiera, `HU:Send` lo cortaría y quien lo recibe lo daría por no válido.
 - **Lo que llega (`HU.comm.SR`):** solo de a quien pregunté, con su etiqueta y en esta pregunta; la segunda no cuenta.
   Cada número, entero con su tope (9999; el nivel, 100; la suma de niveles, 999999), y que **cuadren entre sí** como salen
   de una misma lista: nadie pasa del total, alts + sin alts = total, los activos sin alts no pasan de los activos ni de los
   sin alts, los tramos suman los que tienen nivel, la suma de niveles no pasa de «con nivel × máximo» y lo de 30 días
-  contiene lo de 7. Si no, «ha contestado con números que no valen».
+  contiene lo de 7. Las listas, con sus casillas justas y sin pasar de los miembros (clases y razas) ni de dos por cabeza
+  (profesiones). Si no, «ha contestado con números que no valen».
 - **El resultado**, a los 10 s, en la ventana de copiar (para Discord o un archivo): una línea por hermandad (miembros,
   conectados, activos y %, alts y %, nivel medio y máximo) y **toda la unión**, sumando las que han contestado, la mía
   incluida (los %, de las sumas; la media de nivel, la suma de niveles entre los que tienen nivel; el máximo, el mayor),
-  con «han contestado N de M» (M: las que sé a quién preguntar).
+  con sus **clases, razas y profesiones** de más a menos y «han contestado N de M» (M: las que sé a quién preguntar).
 - Para que conteste otra hermandad, su oficial necesita esta versión: las de antes no conocen SQ y no contestan.
 
 ### Contador de conectados de la unión

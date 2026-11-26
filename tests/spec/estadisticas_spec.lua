@@ -15,28 +15,34 @@ local function Said(a, i0)
     return table.concat(out, "\n")
 end
 
--- (una hermandad de prueba, con niveles, clases, rangos, conectados, inactivos, un par de alts y razas por GUID)
+-- (una hermandad de prueba, con niveles, clases (la clave del juego, como la da la lista de la hermandad), rangos,
+-- conectados, inactivos, un par de alts y razas por GUID)
 local function Stats(a)
     local HU = a.HU
     local now = a.env.time()
     HU.rosterList = {
-        { name = "Jefa-Reino", rank = "Maestra", rankIndex = 0, level = 60, class = "Druida", online = true, guid = "g1" },
-        { name = "Tester-Reino", rank = "Oficial", rankIndex = 1, level = 60, class = "Mago", online = true, guid = "g2" },
-        { name = "Compi-Reino", rank = "Miembro", rankIndex = 4, level = 45, class = "Mago", online = false, offSecs = 10 * DAY, guid = "g3" },
-        { name = "Nuevo-Reino", rank = "Miembro", rankIndex = 4, level = 15, class = "Guerrero", online = true, mobile = true, guid = "g4" },
-        { name = "Viejo-Reino", rank = "Miembro", rankIndex = 4, level = 60, class = "Druida", online = false, offSecs = 40 * DAY, guid = "g5" },
-        { name = "Mula-Reino", rank = "Alt", rankIndex = 5, level = 60, class = "Pícaro", online = true, guid = "g6" },
-        { name = "Dobleuno-Reino", rank = "Miembro", rankIndex = 4, level = 30, class = "Pícaro", online = false, offSecs = 5 * DAY, note = "alt de Jefa", guid = "g7" },
+        { name = "Jefa-Reino", rank = "Maestra", rankIndex = 0, level = 60, class = "DRUID", online = true, guid = "g1" },
+        { name = "Tester-Reino", rank = "Oficial", rankIndex = 1, level = 60, class = "MAGE", online = true, guid = "g2" },
+        { name = "Compi-Reino", rank = "Miembro", rankIndex = 4, level = 45, class = "MAGE", online = false, offSecs = 10 * DAY, guid = "g3" },
+        { name = "Nuevo-Reino", rank = "Miembro", rankIndex = 4, level = 15, class = "WARRIOR", online = true, mobile = true, guid = "g4" },
+        { name = "Viejo-Reino", rank = "Miembro", rankIndex = 4, level = 60, class = "DRUID", online = false, offSecs = 40 * DAY, guid = "g5" },
+        { name = "Mula-Reino", rank = "Alt", rankIndex = 5, level = 60, class = "ROGUE", online = true, guid = "g6" },
+        { name = "Dobleuno-Reino", rank = "Miembro", rankIndex = 4, level = 30, class = "ROGUE", online = false, offSecs = 5 * DAY, note = "alt de Jefa", guid = "g7" },
     }
+    -- (los nombres de las clases, como los da el juego en castellano)
+    a.env.LOCALIZED_CLASS_NAMES_MALE = { DRUID = "Druida", MAGE = "Mago", WARRIOR = "Guerrero", ROGUE = "Pícaro" }
     HU.db.inviteLog = { ["Hermandad Uno"] = {
         { t = now - 1 * DAY }, { t = now - 3 * DAY }, { t = now - 20 * DAY }, { t = now - 50 * DAY },
     } }
     HU.db.leaveLog = { ["Hermandad Uno"] = { { t = now - 2 * DAY }, { t = now - 40 * DAY } } }
-    -- (las razas, por el GUID)
+    -- (las razas, por el GUID: el nombre que da el juego y su clave)
     local race = { g1 = "Elfa de la noche", g2 = "Humano", g3 = "Humano", g4 = "Enano", g5 = "Elfa de la noche", g6 = "No-muerto", g7 = "Humano" }
-    a.env.GetPlayerInfoByGUID = function(guid) return "x", "X", race[guid] end
-    -- (las profesiones de la hermandad, de lo que da el juego: fijadas para la prueba)
-    F.Stub(HU, "GuildProfessionCounts", function() return { { name = "Alquimia", n = 3 }, { name = "Sastrería", n = 2 } } end)
+    local raceKey = { g1 = "NightElf", g2 = "Human", g3 = "Human", g4 = "Dwarf", g5 = "NightElf", g6 = "Scourge", g7 = "Human" }
+    a.env.GetPlayerInfoByGUID = function(guid) return "x", "X", race[guid], raceKey[guid] end
+    -- (las profesiones de la hermandad, de lo que da el juego, con su número: fijadas para la prueba)
+    F.Stub(HU, "GuildProfessionCounts", function()
+        return { { name = "Alquimia", n = 3, id = 171 }, { name = "Sastrería", n = 2, id = 197 } }
+    end)
     return HU
 end
 
@@ -53,7 +59,7 @@ describe("Estadísticas de la hermandad (GuildStats.lua)", function()
         A.same({ { "1-19", 1 }, { "20-39", 1 }, { "40-59", 1 }, { "60", 4 } }, s.levelBuckets)
         A.same({ { name = "Druida", n = 2 }, { name = "Mago", n = 2 }, { name = "Pícaro", n = 2 }, { name = "Guerrero", n = 1 } }, s.byClass)
         A.same({ { name = "Humano", n = 3 }, { name = "Elfa de la noche", n = 2 }, { name = "Enano", n = 1 }, { name = "No-muerto", n = 1 } }, s.byRace)
-        A.same({ { name = "Alquimia", n = 3 }, { name = "Sastrería", n = 2 } }, s.professions)
+        A.same({ { name = "Alquimia", n = 3, id = 171 }, { name = "Sastrería", n = 2, id = 197 } }, s.professions)
         A.same({ 2, 3, 1, 1 }, { s.joined7, s.joined30, s.left7, s.left30 })
         A.same({ 2, 1 }, { s.inactive7, s.inactive30 })
         A.same({}, a:Errors())
@@ -162,23 +168,24 @@ describe("Estadísticas de la unión (GuildStats.lua, SQ y SR)", function()
     end
     -- (los números de la hermandad de prueba (Stats) como van en SR: miembros, conectados, móvil, activos, alts, activos
     -- sin alts, sin alts, nivel máximo, suma de niveles, con nivel, tramos 1-19/20-39/40-59/60, altas de 7 y 30 días,
-    -- bajas de 7 y 30 y sin conectarse más de 7 y de 30 días)
-    local MINE = "7~4~1~6~2~4~5~60~330~7~1~1~1~4~2~3~1~1~2~1"
+    -- bajas de 7 y 30 y sin conectarse más de 7 y de 30 días; luego, cuántos de cada clase (WARRIOR, PALADIN, HUNTER,
+    -- ROGUE, PRIEST, SHAMAN, MAGE, WARLOCK, DRUID), raza (Human, Dwarf, NightElf, Gnome, Orc, Scourge, Tauren, Troll) y
+    -- profesión (171, 164, 333, 202, 182, 165, 186, 393, 197))
+    local MINE = "7~4~1~6~2~4~5~60~330~7~1~1~1~4~2~3~1~1~2~1~1.0.0.2.0.0.2.0.2~3.1.2.0.0.1.0.0~3.0.0.0.0.0.0.0.2"
 
-    it("GuildStats(true): sin razas ni profesiones (lo que más cuesta), y con la suma de niveles", function()
+    it("clases, razas y profesiones también por su clave del juego (no dependen del idioma), y la suma de niveles", function()
         local a = F.Community()
         local HU = Stats(a)
-        local calls = 0
-        F.Stub(HU, "GuildProfessionCounts", function() calls = calls + 1; return {} end)
-        local s = HU:GuildStats(true)
-        A.equal(0, calls, "sin profesiones")
-        A.same({}, s.byRace, "sin razas")
-        A.same({}, s.professions)
+        local s = HU:GuildStats()
+        A.same({ DRUID = 2, MAGE = 2, WARRIOR = 1, ROGUE = 2 }, s.byClassKey)
+        A.same({ NightElf = 2, Human = 3, Dwarf = 1, Scourge = 1 }, s.byRaceKey)
+        A.same({ [171] = 3, [197] = 2 }, s.byProfID)
         A.same({ 7, 330, 7 }, { s.total, s.levelSum, s.levelN })
-        -- (la de siempre, con todo)
+        -- (si el juego falla al dar la raza, no la cuenta y no revienta)
+        a.env.GetPlayerInfoByGUID = function() error("sin datos") end
         s = HU:GuildStats()
-        A.equal(1, calls)
-        A.equal(4, #s.byRace)
+        A.same({}, s.byRace)
+        A.same({}, s.byRaceKey)
         A.same({}, a:Errors())
     end)
 
@@ -252,11 +259,14 @@ describe("Estadísticas de la unión (GuildStats.lua, SQ y SR)", function()
         a.w:Receive("HU20", "SQ~UNO~tres", "WHISPER", "Jefa-Reino")
         a.w:Advance(1)
         A.equal(1, #SRs(a), "pasados 30 s, otra vez")
-        -- (de 22 a la vez: como mucho 20 en 30 s)
+        -- (de 22 a la vez: como mucho 20 en 30 s; y mis números se cuentan una vez, no veinte)
         a.w:Advance(30)
+        local calls, real = 0, HU.GuildStats
+        F.Stub(HU, "GuildStats", function(self) calls = calls + 1; return real(self) end)
         for i = 1, 22 do a.w:Receive("HU20", "SQ~UNO~s" .. i, "WHISPER", "Socio" .. i .. "-Reino") end
         a.w:Advance(25)
         A.equal(20, #SRs(a), "el tope de todos juntos")
+        A.equal(1, calls, "mis números, una vez")
         A.same({}, a:Errors())
     end)
 
@@ -337,8 +347,10 @@ describe("Estadísticas de la unión (GuildStats.lua, SQ y SR)", function()
         local id = Asked()
         A.truthy(id, "ha preguntado a Bea (su enlace: no sé si es oficial)")
         -- (DOS: 10 miembros, 3 conectados, 0 con el móvil, 8 activos, 2 alts, 7 activos sin alts, 8 sin alts, nivel máximo
-        -- 60, suma de niveles 400 de 10 con nivel, tramos 1, 2, 3 y 4, altas 1 y 2, bajas 0 y 1, sin conectarse 2 y 1)
-        local good = { "10", "3", "0", "8", "2", "7", "8", "60", "400", "10", "1", "2", "3", "4", "1", "2", "0", "1", "2", "1" }
+        -- 60, suma de niveles 400 de 10 con nivel, tramos 1, 2, 3 y 4, altas 1 y 2, bajas 0 y 1, sin conectarse 2 y 1;
+        -- clases 2-1-1-2-1-0-1-1-1, razas 4-2-2-2-0-0-0-0 y profesiones 3-2-2-1-2-1-3-2-2)
+        local good = { "10", "3", "0", "8", "2", "7", "8", "60", "400", "10", "1", "2", "3", "4", "1", "2", "0", "1", "2", "1",
+            "2.1.1.2.1.0.1.1.1", "4.2.2.2.0.0.0.0", "3.2.2.1.2.1.3.2.2" }
         local function Reply(i, v, who, tag, rid, extra)
             local f = { unpack(good) }
             if i then f[i] = v end
@@ -354,7 +366,15 @@ describe("Estadísticas de la unión (GuildStats.lua, SQ y SR)", function()
             { 9, "601" }, -- (más niveles de los que caben: 10 × 60)
             { 20, "3" },  -- (más sin conectarse de 30 días que de 7)
             { 15, "3" },  -- (más altas en 7 días que en 30)
-            { 17, "2" } }) do -- (más bajas en 7 días que en 30)
+            { 17, "2" },  -- (más bajas en 7 días que en 30)
+            { 21, "1.2" },                 -- (clases: faltan)
+            { 21, "1.1.1.1.1.1.1.1.1.1" }, -- (clases: sobran)
+            { 21, "a.1.1.1.1.1.1.1.1" },   -- (letras)
+            { 21, "5.5.0.0.0.0.0.0.1" },   -- (más clases que miembros)
+            { 22, "3.3.3.3.0.0.0.0" },     -- (más razas que miembros)
+            { 23, "9.9.9.0.0.0.0.0.0" },   -- (más de dos profesiones por cabeza)
+            { 22, "" },                    -- (vacía)
+            { 23, "1..1.1.1.1.1.1.1" } }) do -- (un hueco)
             Reply(bad[1], bad[2])
         end
         Reply(nil, nil, nil, nil, nil, "~9") -- (un número de más)
@@ -384,6 +404,12 @@ describe("Estadísticas de la unión (GuildStats.lua, SQ y SR)", function()
         Has(c.text, "\n    Altas: 3 (7 días)  ·  5 (30 días)\n")
         Has(c.text, "\n    Bajas: 1 (7 días)  ·  2 (30 días)\n")
         Has(c.text, "\n    Sin conectarse: 4 (más de 7 días)  ·  2 (más de 30 días)\n")
+        -- (clases, razas y profesiones de las dos sumadas, con su nombre y de más a menos)
+        A.truthy(c.text:find("\n  Clases:\n    Pícaro +4\n    Druida +3\n    Guerrero +3\n    Mago +3\n    HUNTER +1\n"
+            .. "    PALADIN +1\n    PRIEST +1\n    WARLOCK +1\n"), c.text)
+        A.truthy(c.text:find("\n  Razas:\n    Humano +7\n    Elfo de la noche +4\n    Enano +3\n    Gnomo +2\n    No%-muerto +1\n"), c.text)
+        A.truthy(c.text:find("\n  Profesiones:\n    Alquimia +6\n    Sastrería +4\n    Minería +3\n    Desuello +2\n"
+            .. "    Encantamiento +2\n    Herboristería +2\n    Herrería +2\n    Ingeniería +1\n    Peletería +1\n"), c.text)
         -- (y si no contesta, se dice)
         a.w:Advance(30)
         HU:AskUnionStats()
@@ -456,8 +482,9 @@ describe("Estadísticas de la unión (GuildStats.lua, SQ y SR)", function()
         A.equal(2, #srs)
         for _, m in ipairs(srs) do
             A.equal("WHISPER", m.dist)
-            A.truthy(m.text:match("^SR~%u+~%w+~[%d%.]+" .. ("~%d+"):rep(20) .. "$"), m.text)
+            A.truthy(m.text:match("^SR~%u+~%w+~[%d%.]+" .. ("~%d+"):rep(20) .. ("~[%d%.]+"):rep(3) .. "$"), m.text)
         end
+        for _, sec in ipairs({ "Clases:", "Razas:", "Profesiones:" }) do Has(c.text, "\n  " .. sec .. "\n") end
         A.same({}, net:Errors())
     end)
 end)

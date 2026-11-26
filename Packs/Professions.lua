@@ -232,6 +232,8 @@ local function ProfName(skill)
     end
     return names[skill] or L(PROFS[skill])
 end
+-- (el mismo nombre, para las estadísticas de la unión, GuildStats.lua)
+function HU:ProfessionName(skill) return ProfName(skill) end
 local function ProfIcon(skill)
     icons[skill] = icons[skill] or TS("GetTradeSkillTexture", skill)
     return icons[skill]
