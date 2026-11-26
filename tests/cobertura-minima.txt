@@ -62,3 +62,5 @@ UnionMembers.lua 94.1 16
 UnionRoster.lua 93.7 60
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144
+
+GuildStats.lua 98.3 3
