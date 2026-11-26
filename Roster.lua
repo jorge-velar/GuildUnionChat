@@ -48,7 +48,7 @@ local due, token = nil, 0
 local nameCache, nameCount = {}, 0   -- nombre que da el juego -> { completo, clave }
 
 local function ReadOne(self, s, i, now)
-    local name, rankName, rankIndex, level, _, zone, _, officerNote, isOnline, status, class, _, _, isMobile, _, _, guid = GetGuildRosterInfo(i)
+    local name, rankName, rankIndex, level, _, zone, note, officerNote, isOnline, status, class, _, _, isMobile, _, _, guid = GetGuildRosterInfo(i)
     if not name then return end
     local c = nameCache[name]
     if not c then
@@ -65,6 +65,7 @@ local function ReadOne(self, s, i, now)
     if not e then e, s.newNames = {}, true end
     local wasOnline = e.online
     e.name, e.rank, e.rankIndex, e.level, e.class, e.zone = full, rankName, rankIndex, level, class, zone
+    e.note = note ~= "" and note or nil   -- (nota pública: para detectar alts en las estadísticas, GuildStats.lua)
     e.guid = guid -- (para la raza en la ventana, si no hay ficha)
     e.online = isOnline and true or false
     -- (conectado con la aplicación del móvil: ahí no hay addon que conteste; /gu sinaddon, Report.lua)

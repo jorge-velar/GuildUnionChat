@@ -161,6 +161,23 @@ local function ClubRows()
     return clubRows
 end
 local function ClubRow(m) return { name = m.name, tag = m.tag, prof = m.prof, icon = m.icon, online = m.online, rank = m.rank } end
+
+-- Cuántos de mi hermandad tienen cada profesión principal, de lo que da el juego (sin addon): { { name, icon, n }, de más
+-- a menos }. Para las estadísticas (GuildStats.lua). Se lee fresco porque se abre aparte de Comercio [+ARCHITECTURE.md]
+function HU:GuildProfessionCounts()
+    clubRows = nil
+    local by = {}
+    for _, r in ipairs(ClubRows()) do
+        if type(r.prof) == "string" and r.prof ~= "" then
+            local e = by[r.prof] or { name = r.prof, icon = r.icon, n = 0 }
+            e.n, by[r.prof] = e.n + 1, e
+        end
+    end
+    local out = {}
+    for _, e in pairs(by) do out[#out + 1] = e end
+    table.sort(out, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.name < b.name end)
+    return out
+end
 -- (¿tiene ya línea de oficios de esa profesión? Entonces vale lo que dice su línea, también si seguro que no sabe la
 -- receta: no sale otra vez con lo que da el juego)
 local function HasLine(name, skill)

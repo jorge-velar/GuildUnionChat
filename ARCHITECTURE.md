@@ -3184,20 +3184,29 @@ miembro» del juego (`GuildUnionChatOfficers`).
 
 ### GuildStats.lua: estadísticas de la hermandad (`/gu stats`, «Oficiales» > «Estadísticas»)
 
-Jorge, 26/11: «para oficiales y gm, estadísticas de la guild, para exportar a Discord o a un archivo». Solo las ven los
-oficiales y el maestro (`HU:CanSeeStats` = `CanOfficer` o `IsGuildLeader`). Todo sale de datos que GuildUnion ya tiene,
-sin red nueva: la lista de la hermandad (`HU.rosterList`: nivel, clase, rango, conectado, móvil, `offSecs` = segundos sin
-conectarse) y el registro propio de altas y bajas (`HU.db.inviteLog` / `leaveLog`, InviteLog.lua).
+Jorge, 26/11: «para oficiales y gm, estadísticas de la guild… profesiones, raza, % de población activa, nº y % de alts,
+% activa sin contar alts… gráficos en el wow como los addons de estadísticas, y exportar a Discord o a un archivo». Solo
+las ven los oficiales y el maestro (`HU:CanSeeStats` = `CanOfficer` o `IsGuildLeader`). Casi todo sale de datos que
+GuildUnion ya tiene, sin red nueva: la lista de la hermandad (`HU.rosterList`: nivel, clase, rango, nota pública,
+conectado, móvil, GUID, `offSecs` = segundos sin conectarse) y el registro propio de altas y bajas (`HU.db.inviteLog` /
+`leaveLog`, InviteLog.lua). La raza sale del GUID (`GetPlayerInfoByGUID`) y las profesiones de la lista de la hermandad
+del juego (`HU:GuildProfessionCounts`, TradeCraft.lua: las dos principales, sin addon).
 
-- `HU:GuildStats()` → una tabla (para la ventana y las pruebas): miembros (total, conectados, con el móvil), por rango (de
-  más alto a más bajo, con cuántos conectados), niveles (máximo, media y tramos 1-19/20-39/40-59/60; el tope en Forever es
-  60, vanilla), clases (de más a menos), y actividad: altas y bajas de los últimos 7 y 30 días, e inactivos (desconectados
-  más de 7 y más de 30 días). nil fuera de una hermandad.
-- `HU:GuildStatsText()` → ese mismo contenido en **texto llano, sin códigos de color** (`|cff…|r`), para que se pegue
-  limpio en Discord o en un archivo.
-- `HU:ShowGuildStats()` abre la ventana de copiar (`UI:ShowCopy`, UIWindows.lua): Ctrl+A, Ctrl+C y a pegar. **Un addon no
-  puede escribir archivos**, así que «exportar a un archivo» es copiar el texto y pegarlo en un `.txt`; «a Discord», lo
-  mismo en su caja de texto.
+- `HU:GuildStats()` → una tabla (para la ventana y las pruebas): miembros (total, conectados, con el móvil); **activos**
+  (vistos en 30 días: conectados o con `offSecs` < 30 días) y su %; **alts** (nº y %) y **% activa sin contar alts**; por
+  rango (de más alto a más bajo, con cuántos conectados); niveles (máximo, media y tramos 1-19/20-39/40-59/60; el tope en
+  Forever es 60, vanilla); clases, razas y profesiones (de más a menos); y actividad: altas y bajas de los últimos 7 y 30
+  días, e inactivos (desconectados más de 7 y más de 30 días). nil fuera de una hermandad.
+- **Alts** (`IsAlt`): no se puede saber de verdad qué personajes son del mismo jugador, así que se cuenta lo que marca la
+  hermandad: el **rango** o la **nota pública** con una de `alt`, `mula`, `twink`, `secundari`, `doble`.
+- `HU:GuildStatsText()` → todo en **texto llano, sin códigos de color** (`|cff…|r`), para pegar limpio en Discord o un
+  archivo. `HU:ExportGuildStats()` lo abre en la ventana de copiar (`UI:ShowCopy`, UIWindows.lua). **Un addon no puede
+  escribir archivos**: «exportar a un archivo» es copiar el texto y pegarlo en un `.txt`; «a Discord», lo mismo en su caja.
+- `HU:ShowGuildStats()` abre **la ventana con gráficos de barras** (`DJ.Window`, como los addons de estadísticas): arriba
+  el resumen (miembros, activos, alts), y debajo, en un `ScrollFrame`, una sección de barras por rango, niveles, clases,
+  razas y profesiones (la barra, un `SetColorTexture` de ancho proporcional al mayor de su sección; dorado y verde). Un
+  botón «Exportar» abre el texto. Las filas y los títulos se reutilizan entre aperturas. Al ser solo ventana, lo prueba
+  Jorge en el juego; las pruebas comprueban los números (`GuildStats`) y que la ventana se monta y «Exportar» copia.
   - Con peticiones que puedo hacer (`HU:KickRequestCount`), el botón lleva el número, «Oficiales (2)», y se queda
     encendido (`LockHighlight`), como antes el de peticiones; la opción del desplegable, también con el número. Se pone
     al día con `CHANGED` «requests» y al enseñarse.
