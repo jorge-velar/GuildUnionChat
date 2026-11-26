@@ -91,6 +91,8 @@ colas `b…` (datos grandes), que salen por `HU20B`.
 | `RN` | `RN~ETIQ~nombres~rangos de oficial`: los nombres de los rangos de una hermandad | Ranks.lua | normal |  | etiq. 1, arranque, datos remotos |  |
 | `RQ` | el primero de su hermandad en entrar pregunta si hay alguien más (para ser enlace sin esperar) | Net/Relay.lua | normal |  |  |  |
 | `RR` | `RR~id~ok\|no~quién~objetivo`: respuesta a una petición de rango | Ranks.lua | normal |  |  |  |
+| `SQ` | `SQ~etiq~id`: un oficial pide los números de su hermandad a un oficial de otra («Pedir a la unión» en `/gu stats`, por susurro; contesta solo un oficial a otro oficial, una vez cada 30 s a cada uno) | GuildStats.lua | normal | 15 s | abierta | petición |
+| `SR` | `SR~etiq~id~versión~miembros~conectados~móvil~activos~alts~activosSinAlts~sinAlts~nivelMáx~sumaNiveles~conNivel~1-19~20-39~40-59~60~altas7~altas30~bajas7~bajas30~sinConectar7~sinConectar30`: la respuesta, solo números y sin nombres (vale solo de a quien se le preguntó y si cuadran entre sí) | GuildStats.lua | normal | 15 s | abierta |  |
 | `TC` | `TC~texto`: una línea del chat de un encargo de Comercio, a la otra persona (por susurro; vale si hay una solicitud entre los dos) | Trade.lua | chat | 60 s | abierta |  |
 | `UQ` | `UQ~etiq~id`: un oficial pide sus números al enlace de una hermandad (`/gu carga`, por susurro; contesta el enlace o un ayudante, una vez cada 30 s a cada uno) | Report.lua | normal | 15 s | abierta | petición |
 | `UR` | `UR~etiq~id~versión~papel~min~cpu~cpuPico~fps~fpsMín~cola~salen~entran`: la respuesta, solo números (CPU en décimas de %; `-` si no lo sabe; vale solo de a quien se le preguntó) | Report.lua | normal | 15 s | abierta |  |

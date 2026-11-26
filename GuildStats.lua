@@ -1,7 +1,8 @@
 -- Guild Union - estadísticas de la hermandad, para oficiales y el maestro (Jorge, 26/11) [+ARCHITECTURE.md]
 -- Miembros, rangos, niveles, clases, razas, profesiones y actividad (activos, alts, inactivos), con gráficos de barras
--- en el juego (como los addons de estadísticas) y un botón para exportar el texto a Discord o a un archivo. Todo sale de
--- datos que GuildUnion ya tiene (la lista de la hermandad y el registro de altas/bajas): sin red nueva.
+-- en el juego (como los addons de estadísticas) y un botón para exportar el texto a Discord o a un archivo. Sale de
+-- datos que GuildUnion ya tiene (la lista de la hermandad y el registro de altas/bajas). Y el informe de la unión: los
+-- números de cada hermandad, que da uno de sus oficiales a otro oficial (SQ y SR, como /gu carga), sumados.
 local _, HU = ...
 local L = HU.L
 local DJ = HU.DJ
@@ -60,8 +61,9 @@ end
 
 local function Pct(part, total) return total > 0 and (100 * part / total) or 0 end
 
--- Las estadísticas, en una tabla (la usan la ventana y las pruebas). nil si no estoy en una hermandad
-function HU:GuildStats()
+-- Las estadísticas, en una tabla (la usan la ventana, el informe de la unión y las pruebas). nil si no estoy en una
+-- hermandad. light: sin razas ni profesiones, que es lo que más cuesta (al informe de la unión solo van números)
+function HU:GuildStats(light)
     local guild = IsInGuild() and GetGuildInfo and GetGuildInfo("player")
     if not guild then return nil end
     local roster = self.rosterList or {}
@@ -69,8 +71,8 @@ function HU:GuildStats()
         guild = guild, total = #roster, online = 0, mobile = 0,
         active = 0, alts = 0, activeNoAlt = 0, totalNoAlt = 0,
         byRank = {}, byClass = {}, byRace = {},
-        professions = self:GuildProfessionCounts(),
-        maxLevel = 0, avgLevel = 0,
+        professions = light and {} or self:GuildProfessionCounts(),
+        maxLevel = 0, avgLevel = 0, levelSum = 0, levelN = 0,
         levelBuckets = { { "1-19", 0 }, { "20-39", 0 }, { "40-59", 0 }, { tostring(MAX_LEVEL), 0 } },
         inactive7 = 0, inactive30 = 0,
     }
@@ -90,7 +92,7 @@ function HU:GuildStats()
         if e.online then rankOnline[ri] = (rankOnline[ri] or 0) + 1 end
         rankLabel[ri] = rankLabel[ri] or e.rank or self:RankName(self.myTag, ri)
         if type(e.class) == "string" and e.class ~= "" then classN[e.class] = (classN[e.class] or 0) + 1 end
-        local race = RaceOf(e.guid)
+        local race = not light and RaceOf(e.guid)
         if race then raceN[race] = (raceN[race] or 0) + 1 end
         local lv = tonumber(e.level)
         if lv and lv > 0 then
@@ -105,6 +107,7 @@ function HU:GuildStats()
             if off >= 7 * DAY then s.inactive7 = s.inactive7 + 1 end
         end
     end
+    s.levelSum, s.levelN = sumLevel, levelN
     s.avgLevel = levelN > 0 and (sumLevel / levelN) or 0
     s.activePct, s.altsPct = Pct(s.active, s.total), Pct(s.alts, s.total)
     s.activeNoAltPct = Pct(s.activeNoAlt, s.totalNoAlt)
@@ -264,6 +267,11 @@ local function Build(self)
     exp:SetPoint("BOTTOMRIGHT", -8, 10)
     exp:SetScript("OnClick", function() HU:ExportGuildStats() end)
     win.export = exp
+    -- (el informe de la unión: los números de cada hermandad, que da uno de sus oficiales)
+    local uni = DJ.Button(cf, L("Pedir a la unión"), 140, 22)
+    uni:SetPoint("RIGHT", exp, "LEFT", -6, 0)
+    uni:SetScript("OnClick", function() HU:AskUnionStats() end)
+    win.union = uni
     tinsert(UISpecialFrames, "GuildUnionStats")
     return win
 end
@@ -277,6 +285,234 @@ function HU:ShowGuildStats()
     win:Show()
 end
 
+---------------------------------------------------------------------------
+-- El informe de la unión: los números de cada hermandad, sumados, como /gu carga (Report.lua) [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local UNION_WAIT = 10     -- lo que se espera a las respuestas
+local UNION_GAP = 30      -- entre dos preguntas mías; y quien contesta, al mismo, como mucho una vez en este tiempo
+local UNION_MAX = 20      -- respuestas como mucho en UNION_GAP s, a todos juntos
+-- (los números que van en SR, en este orden: solo números, sin nombres)
+local UNION_FIELDS = { "total", "online", "mobile", "active", "alts", "activeNoAlt", "totalNoAlt", "maxLevel",
+    "levelSum", "levelN", "b1", "b2", "b3", "b4", "joined7", "joined30", "left7", "left30", "inactive7", "inactive30" }
+local unionRun            -- mi pregunta en marcha: { id, rows = { { tag, name, officer, mine, data, bad } }, byKey }
+local unionAskT = -999
+
+-- (el tope de cada número: lo que acepta quien lo recibe)
+local function Cap(k) return (k == "levelSum" and 999999) or (k == "maxLevel" and 100) or 9999 end
+
+-- Mis números como van en SR, sin la orden: etiqueta, id, versión y los de UNION_FIELDS. nil fuera de una hermandad
+local function UnionFields(self, id)
+    local s = self:GuildStats(true)
+    if not s then return nil end
+    local b = s.levelBuckets
+    local v = { total = s.total, online = s.online, mobile = s.mobile, active = s.active, alts = s.alts,
+        activeNoAlt = s.activeNoAlt, totalNoAlt = s.totalNoAlt, maxLevel = s.maxLevel, levelSum = s.levelSum,
+        levelN = s.levelN, b1 = b[1][2], b2 = b[2][2], b3 = b[3][2], b4 = b[4][2], joined7 = s.joined7,
+        joined30 = s.joined30, left7 = s.left7, left30 = s.left30, inactive7 = s.inactive7, inactive30 = s.inactive30 }
+    local out = { self.myTag, id, tostring(HU.version) }
+    for _, k in ipairs(UNION_FIELDS) do out[#out + 1] = tostring(math.min(Cap(k), math.max(0, math.floor(v[k])))) end
+    return out
+end
+
+-- (un número que llega: entero de 0 al tope; cualquier otra cosa no vale)
+local function UnionInt(s, max)
+    if type(s) ~= "string" or #s > 6 or not s:match("^%d+$") then return nil end
+    local n = tonumber(s)
+    return (n and n <= max) and n or nil
+end
+-- Los datos de un SR (f[1] etiqueta, f[2] id, f[3] versión y los números), o nil si algo no vale o no cuadra entre sí
+local function ParseUnion(f)
+    local ver = f[3]
+    if type(ver) ~= "string" or #ver > 16 or not ver:match("^[%w%.%-]+$") then return nil end
+    if f[4 + #UNION_FIELDS] ~= nil then return nil end
+    local d = { ver = ver }
+    for i, k in ipairs(UNION_FIELDS) do
+        d[k] = UnionInt(f[3 + i], Cap(k))
+        if not d[k] then return nil end
+    end
+    -- (lo que sale de una misma lista cuadra: nadie cuenta dos veces y los tramos de nivel suman los que lo tienen)
+    for _, k in ipairs({ "online", "mobile", "active", "levelN", "inactive7" }) do
+        if d[k] > d.total then return nil end
+    end
+    if d.alts + d.totalNoAlt ~= d.total or d.activeNoAlt > math.min(d.active, d.totalNoAlt)
+        or d.b1 + d.b2 + d.b3 + d.b4 ~= d.levelN or d.levelSum > d.levelN * d.maxLevel
+        or d.inactive30 > d.inactive7 or d.joined7 > d.joined30 or d.left7 > d.left30 then
+        return nil
+    end
+    return d
+end
+
+-- (a quién de esa hermandad le pregunto: a un oficial suyo con el addon y conectado (su addon me ha hablado en los
+-- últimos 15 min), el enlace primero si lo es; si no conozco a ninguno, a su enlace o a mi mejor contacto, que solo
+-- contestará si es oficial. Devuelve su ficha y si sé que es oficial)
+local function UnionTarget(self, tag)
+    local now, best, bestScore = GetTime(), nil, nil
+    for _, key in ipairs(self:RemoteKeys(tag)) do
+        local p = self.remote[key]
+        local age = p and now - (p.last or 0)
+        local ok = p and p.tag == tag and p.name and age < 900 and self:IsOfficerName(p.name)
+        local score = ok and ((p.relay and 1000 or 0) - age / 10)
+        if score and (not bestScore or score > bestScore) then best, bestScore = p, score end
+    end
+    if best then return best, true end
+    return self:KnownRelay(tag) or self:BestPeer(tag), false
+end
+
+-- Contestar: solo un oficial (o el maestro), a otro oficial de la unión, por susurro, con topes y con mi lista cargada
+local answered, answeredN, winT, winN = {}, 0, -999, 0
+-- (abierta: lo que vale lo mira el manejador, como UQ. Oficial a oficial: quien pregunta, según lo que sé de su
+-- hermandad (su rango en su lista y sus rangos de oficial, RN); si no lo sé, no contesto)
+HU:RegisterMessage("SQ", { open = true, ttl = 15, combat = "req" })
+HU.comm.SQ = function(self, sender, f, dist)
+    local tag, id = f[1], f[2]
+    if dist ~= "WHISPER" or not (self.cfg and self.myTag and tag and self.cfg.byTag[tag]) then return end
+    if type(id) ~= "string" or #id > 8 or not id:match("^%w+$") then return end
+    if not (self:MemberOf(sender, tag) or (tag ~= self.myTag and self:Vouched(sender, tag))) then return end
+    if not (self:CanSeeStats() and self:IsOfficerName(sender)) then return end
+    -- (recién entrado, sin mi lista todavía, diría que somos 0)
+    if #(self.rosterList or {}) == 0 then return end
+    local k, now = sender:lower(), GetTime()
+    if answered[k] and now - answered[k] < UNION_GAP then return end
+    if now - winT >= UNION_GAP then winT, winN = now, 0 end
+    if winN >= UNION_MAX then return end
+    local fields = UnionFields(self, id)
+    if not fields then return end
+    if not answered[k] then answeredN = answeredN + 1 end
+    answered[k], winN = now, winN + 1
+    if answeredN > 200 then
+        for key, t in pairs(answered) do if now - t >= UNION_GAP then answered[key] = nil; answeredN = answeredN - 1 end end
+    end
+    self:Whisper(sender, "SR~" .. table.concat(fields, "~"), true)
+end
+
+-- (solo de a quien se lo he preguntado, con la etiqueta de su hermandad y en esta pregunta; cada número se mira)
+HU:RegisterMessage("SR", { open = true, ttl = 15 })
+HU.comm.SR = function(self, sender, f, dist)
+    local run = unionRun
+    if dist ~= "WHISPER" or not run or f[2] ~= run.id then return end
+    local row = run.byKey[sender:lower()]
+    if not row or row.tag ~= f[1] or row.data then return end
+    local d = ParseUnion(f)
+    if not d then
+        row.bad = true
+        return self:Debug("Estadísticas de la unión: números que no valen de", sender)
+    end
+    row.data = d
+end
+
+local function UnionLine(d)
+    return string.format(L("%d miembros · conectados %d · activos %d (%.0f%%) · alts %d (%.0f%%) · nivel medio %.1f (máx. %d)"),
+        d.total, d.online, d.active, Pct(d.active, d.total), d.alts, Pct(d.alts, d.total),
+        d.levelN > 0 and d.levelSum / d.levelN or 0, d.maxLevel)
+end
+
+local function UnionRow(self, row)
+    local head = "<" .. tostring(row.tag) .. ">  "
+    if row.mine then
+        return head .. L("(la mía)") .. "  " .. (row.data and UnionLine(row.data) or L("aún no tengo la lista de mi hermandad"))
+    end
+    if not row.name then return head .. L("no conozco a nadie suyo conectado con el addon") end
+    local who = self:Nice(row.name)
+    if row.data then return head .. who .. "  " .. UnionLine(row.data) end
+    return head .. who .. (row.officer and "" or L(" (no sé si es oficial)")) .. "  "
+        .. (row.bad and L("ha contestado con números que no valen") or L("NO HA CONTESTADO"))
+end
+
+-- (la suma de las que han contestado, la mía incluida; el nivel más alto, el mayor de todos. La que no ha contestado
+-- suma ZERO)
+local ZERO = {}
+for _, k in ipairs(UNION_FIELDS) do ZERO[k] = 0 end
+local function AddUp(rows)
+    local t = {}
+    for _, k in ipairs(UNION_FIELDS) do t[k] = 0 end
+    for _, row in ipairs(rows) do
+        local d = row.data or ZERO
+        for _, k in ipairs(UNION_FIELDS) do t[k] = (k == "maxLevel") and math.max(t[k], d[k]) or (t[k] + d[k]) end
+    end
+    return t
+end
+
+local function TotalLines(t)
+    local out = {
+        string.format(L("Miembros: %d  ·  conectados: %d"), t.total, t.online)
+            .. (t.mobile > 0 and string.format(L("  ·  con el móvil: %d"), t.mobile) or ""),
+        string.format(L("Activos (vistos en %d días): %d (%.0f%%)  ·  sin contar alts: %.0f%%"), ACTIVE_DAYS, t.active,
+            Pct(t.active, t.total), Pct(t.activeNoAlt, t.totalNoAlt)),
+        string.format(L("Alts: %d (%.0f%%)"), t.alts, Pct(t.alts, t.total)),
+        string.format(L("Niveles: máximo %d  ·  media %.1f  ·  al %d: %d"), t.maxLevel,
+            t.levelN > 0 and t.levelSum / t.levelN or 0, MAX_LEVEL, t.b4),
+    }
+    for i, label in ipairs({ "1-19", "20-39", "40-59", tostring(MAX_LEVEL) }) do
+        out[#out + 1] = string.format("  %-7s %3d", label, t["b" .. i])
+    end
+    out[#out + 1] = L("Actividad:")
+    out[#out + 1] = string.format(L("  Altas: %d (7 días)  ·  %d (30 días)"), t.joined7, t.joined30)
+    out[#out + 1] = string.format(L("  Bajas: %d (7 días)  ·  %d (30 días)"), t.left7, t.left30)
+    out[#out + 1] = string.format(L("  Sin conectarse: %d (más de 7 días)  ·  %d (más de 30 días)"), t.inactive7, t.inactive30)
+    return out
+end
+
+local function ShowUnion(self, run)
+    if unionRun ~= run then return end
+    unionRun = nil
+    local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("estadísticas de la unión") .. " - "
+        .. date("%d/%m/%Y %H:%M"),
+        L("Cada hermandad da solo números, sin nombres: los cuenta uno de sus oficiales con la lista de su hermandad."), "" }
+    local known, got = 0, 0
+    for _, row in ipairs(run.rows) do
+        lines[#lines + 1] = UnionRow(self, row)
+        if row.mine or row.name then known = known + 1 end
+        if row.data then got = got + 1 end
+    end
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = L("Toda la unión, sumando las que han contestado:")
+    for _, l in ipairs(TotalLines(AddUp(run.rows))) do lines[#lines + 1] = "  " .. l end
+    local summary = string.format(L("Estadísticas de la unión: han contestado %d de %d."), got, known)
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = summary
+    self:Print(summary)
+    if self.UI and self.UI.ShowCopy then
+        self.UI:ShowCopy(L("Estadísticas de la unión"), table.concat(lines, "\n"),
+            { hint = L("Ctrl+A selecciona todo · Ctrl+C copia · pégalo en Discord o en un archivo de texto") })
+    else
+        for _, l in ipairs(lines) do self:Print(l) end
+    end
+end
+
+-- «Pedir a la unión» (ventana de /gu stats; oficiales y el maestro): pregunta a un oficial de cada hermandad y a los
+-- UNION_WAIT s enseña lo que ha llegado, con lo de la mía y la suma
+function HU:AskUnionStats()
+    if not self:CanSeeStats() then return self:Print(L("Las estadísticas son solo para oficiales.")) end
+    if not (self.cfg and self.myTag) then return self:Print(L("Aún no hay comunidad: no sé qué hermandades mirar.")) end
+    if unionRun then return self:Print(L("Ya estás pidiendo las estadísticas de la unión: el resultado sale en unos segundos.")) end
+    local wait = math.ceil(UNION_GAP - (GetTime() - unionAskT))
+    if wait > 0 then
+        return self:Print(string.format(L("Espera %d s para volver a pedirlas: cada hermandad contesta como mucho una vez cada %d s."), wait, UNION_GAP))
+    end
+    if HU.paused or self:IsChatLockedDown() then
+        return self:Print(L("Ahora no se pueden mandar mensajes del addon (el juego bloquea el chat): prueba en un rato."))
+    end
+    unionAskT = GetTime()
+    local run = { id = HU.B36(time()), rows = {}, byKey = {} }
+    unionRun = run
+    HU.After(UNION_WAIT, function() ShowUnion(HU, run) end)
+    -- (la mía, con mis números: sin mensajes)
+    run.rows[1] = { tag = self.myTag, mine = true, data = ParseUnion(UnionFields(self, run.id) or {}) }
+    local asked = 0
+    for _, tag in ipairs(self:OtherTags()) do
+        local p, officer = UnionTarget(self, tag)
+        local row = { tag = tag, name = p and p.name, officer = officer }
+        local k = row.name and self:Key(row.name)
+        if k and k ~= self:MeKey() then
+            run.byKey[k] = row
+            asked = asked + 1
+            self:Whisper(row.name, "SQ~" .. self.myTag .. "~" .. run.id, true)
+        end
+        run.rows[#run.rows + 1] = row
+    end
+    self:Print(string.format(L("Pidiendo las estadísticas a la unión: preguntado a %d. El resultado, en %d s."), asked, UNION_WAIT))
+end
+
 HU:RegisterSlash("stats", { aliases = { "estadisticas" }, fn = function() HU:ShowGuildStats() end })
 
-HU:Module("GuildStats", { "Core", "Ranks", "Roster", "TradeCraft" })
+HU:Module("GuildStats", { "Comm", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Protocol", "Ranks", "Roster", "TradeCraft" })

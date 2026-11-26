@@ -47,6 +47,10 @@ local NEW = {
     -- preguntó; la pregunta, en combate, como las demás peticiones)
     UQ = { open = true, ttl = 15, combat = "req" },
     UR = { open = true, ttl = 15 },
+    -- (las estadísticas de la unión, «Pedir a la unión» en /gu stats, GuildStats.lua: como UQ y UR; el manejador mira que
+    -- sea de oficial a oficial y de a quien se preguntó)
+    SQ = { open = true, ttl = 15, combat = "req" },
+    SR = { open = true, ttl = 15 },
 }
 for cmd, marks in pairs(NEW) do
     for key, v in pairs(marks) do

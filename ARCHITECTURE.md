@@ -3186,8 +3186,8 @@ miembro» del juego (`GuildUnionChatOfficers`).
 
 Jorge, 26/11: «para oficiales y gm, estadísticas de la guild… profesiones, raza, % de población activa, nº y % de alts,
 % activa sin contar alts… gráficos en el wow como los addons de estadísticas, y exportar a Discord o a un archivo». Solo
-las ven los oficiales y el maestro (`HU:CanSeeStats` = `CanOfficer` o `IsGuildLeader`). Casi todo sale de datos que
-GuildUnion ya tiene, sin red nueva: la lista de la hermandad (`HU.rosterList`: nivel, clase, rango, nota pública,
+las ven los oficiales y el maestro (`HU:CanSeeStats` = `CanOfficer` o `IsGuildLeader`). Lo de la propia hermandad sale de
+datos que GuildUnion ya tiene, sin red nueva (lo de las otras, en «El informe de la unión», abajo): la lista de la hermandad (`HU.rosterList`: nivel, clase, rango, nota pública,
 conectado, móvil, GUID, `offSecs` = segundos sin conectarse) y el registro propio de altas y bajas (`HU.db.inviteLog` /
 `leaveLog`, InviteLog.lua). La raza sale del GUID (`GetPlayerInfoByGUID`) y las profesiones de la lista de la hermandad
 del juego (`HU:GuildProfessionCounts`, TradeCraft.lua: las dos principales, sin addon).
@@ -3220,6 +3220,38 @@ del juego (`HU:GuildProfessionCounts`, TradeCraft.lua: las dos principales, sin 
     soltar (`OnClick`) no se vuelve a abrir. No se usa `HandlesGlobalMouseEvent` (lo que hacen los desplegables del
     juego): el juego lo llama sobre lo que hay bajo el ratón en cada clic y, siendo nuestro, lo que hiciera el juego
     detrás en ese clic (soltar el foco del teclado, cerrar sus menús viejos) iría «contaminado».
+
+#### El informe de la unión (SQ y SR)
+
+Jorge, 26/11: «pedir informe a la unión»: que las estadísticas pidan a las otras hermandades su resumen (números, sin
+nombres) y lo junten, como `/gu carga` (UQ/UR, Report.lua) pide sus números a cada enlace. Solo oficial a oficial; las que
+no tienen el addon o un oficial conectado salen como «no ha contestado».
+
+- **Quién pregunta:** el botón «Pedir a la unión» de la ventana de `/gu stats` (`HU:AskUnionStats`), solo con
+  `HU:CanSeeStats`. Como `/gu carga`: una pregunta cada vez y no otra antes de 30 s; no con el chat bloqueado (campo de
+  batalla) ni en pausa. Lo de mi hermandad, de mis números, sin mensajes.
+- **A quién:** a cada hermandad, por susurro, `SQ~mi etiqueta~id`, a **un oficial suyo con el addon y conectado** (su
+  addon me ha hablado en los últimos 15 min y `HU:IsOfficerName`, que mira su rango en la lista que comparte su hermandad
+  y sus rangos de oficial, RN), el enlace primero si lo es. Si no conozco a ninguno, a su enlace (`KnownRelay`) o a mi
+  mejor contacto (`BestPeer`), que solo contestará si es oficial: sale «(no sé si es oficial)».
+- **Quién contesta (`HU.comm.SQ`):** por susurro, de una etiqueta de la unión y de alguien de esa hermandad (o avalado),
+  como UQ; además, **oficial a oficial**: yo `CanSeeStats` y quien pregunta `IsOfficerName` según lo que sé; si no lo sé,
+  no contesto. Con mi lista ya cargada (recién entrado diría que somos 0). Topes: a cada uno una vez cada 30 s y a todos
+  20 en 30 s. La respuesta, `SR~mi etiqueta~id~versión~` y 20 números en un orden fijo (`UNION_FIELDS`): miembros,
+  conectados, con el móvil, activos, alts, activos sin alts, sin alts, nivel máximo, suma de niveles, con nivel, los
+  cuatro tramos de nivel, altas y bajas de 7 y 30 días y sin conectarse más de 7 y de 30 días. Los saca
+  `HU:GuildStats(true)`: sin razas ni profesiones, que es lo que más cuesta y no viaja. **Solo números**: razas, clases y
+  profesiones se quedan fuera (sus nombres dependen del idioma de cada jugador y no se sumarían bien).
+- **Lo que llega (`HU.comm.SR`):** solo de a quien pregunté, con su etiqueta y en esta pregunta; la segunda no cuenta.
+  Cada número, entero con su tope (9999; el nivel, 100; la suma de niveles, 999999), y que **cuadren entre sí** como salen
+  de una misma lista: nadie pasa del total, alts + sin alts = total, los activos sin alts no pasan de los activos ni de los
+  sin alts, los tramos suman los que tienen nivel, la suma de niveles no pasa de «con nivel × máximo» y lo de 30 días
+  contiene lo de 7. Si no, «ha contestado con números que no valen».
+- **El resultado**, a los 10 s, en la ventana de copiar (para Discord o un archivo): una línea por hermandad (miembros,
+  conectados, activos y %, alts y %, nivel medio y máximo) y **toda la unión**, sumando las que han contestado, la mía
+  incluida (los %, de las sumas; la media de nivel, la suma de niveles entre los que tienen nivel; el máximo, el mayor),
+  con «han contestado N de M» (M: las que sé a quién preguntar).
+- Para que conteste otra hermandad, su oficial necesita esta versión: las de antes no conocen SQ y no contestan.
 
 ### Contador de conectados de la unión
 

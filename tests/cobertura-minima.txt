@@ -19,6 +19,7 @@ Domain/Trust.lua 79.0 51
 ErrorShare.lua 29.2 46
 Guard.lua 55.1 216
 GuardKeeper.lua 57.8 73
+GuildStats.lua 99.0 3
 History.lua 64.4 402
 InviteLog.lua 98.4 5
 ListWindow.lua 100.0 0
@@ -62,5 +63,3 @@ UnionMembers.lua 94.1 16
 UnionRoster.lua 93.7 60
 WMPanel.lua 3.6 816
 Wizard.lua 42.1 144
-
-GuildStats.lua 98.3 3
