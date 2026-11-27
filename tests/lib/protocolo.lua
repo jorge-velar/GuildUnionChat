@@ -5,6 +5,16 @@ local M = {}
 
 -- Qué es cada orden: el formato (campos separados por ~) y para qué sirve
 M.DESC = {
+    WD = "`WD~etiq~conj~trozo~antes~después~-línea;+línea`: un cambio pequeño en un trozo de un paquete con huella",
+    WM = "`WM~etiq~conj~n~h1,…,hn`: cómo es ahora un paquete con huella (la huella de cada trozo); lo anuncia el enlace dueño",
+    WP = "`WP~deEtiq~etiq~conj~turno~3,7|m`: pedir trozos o el anuncio (GUILD: al porteador; susurro: al equipo dueño)",
+    WT = "`WT~etiq~conj~trozo~parte~partes~datos`: un trozo de un paquete, en partes de líneas enteras",
+    WU = "`WU~etiq~conj~clave~hora~datos`: una propuesta, mi línea de un conjunto (por GUILD; datos vacíos: la borro)",
+    TC = "`TC~texto`: una línea del chat de un encargo de Comercio, a la otra persona (por susurro; vale si hay una solicitud entre los dos)",
+    UQ = "`UQ~etiq~id`: un oficial pide sus números al enlace de una hermandad (`/gu carga`, por susurro; contesta el enlace o un ayudante, una vez cada 30 s a cada uno)",
+    UR = "`UR~etiq~id~versión~papel~min~cpu~cpuPico~fps~fpsMín~cola~salen~entran`: la respuesta, solo números (CPU en décimas de %; `-` si no lo sabe; vale solo de a quien se le preguntó)",
+    SQ = "`SQ~etiq~id`: un oficial pide los números de su hermandad a un oficial de otra («Pedir a la unión» en `/gu stats`, por susurro; contesta solo un oficial a otro oficial, una vez cada 30 s a cada uno)",
+    SR = "`SR~etiq~id~versión~miembros~conectados~móvil~activos~alts~activosSinAlts~sinAlts~nivelMáx~sumaNiveles~conNivel~1-19~20-39~40-59~60~altas7~altas30~bajas7~bajas30~sinConectar7~sinConectar30~clases~razas~profesiones`: la respuesta, solo números y sin nombres; las tres listas, cuántos de cada clase, raza y profesión principal, en un orden fijo de claves del juego y separados por puntos (vale solo de a quien se le preguntó y si cuadran entre sí)",
     AU = "`AU~id~hora~etiq~autor~texto`: una entrada del registro compartido",
     BN = "`BN~nombre~1|0~autor~etiq~t`: veto (1) o readmisión (0)",
     CF = "`CF~canal~[ETIQ] mensaje`: chat de un compañero cuyo texto no sale por el canal (por GUILD)",

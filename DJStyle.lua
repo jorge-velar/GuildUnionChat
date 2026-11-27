@@ -1,6 +1,6 @@
 -- Guild Union - estilo compartido de Calendario y Comercio: el del addon Dungeon Journal de Forever [+ARCHITECTURE.md]
 -- Paneles de pizarra oscura con borde de tooltip, títulos dorados, rayas doradas de 1 px y
--- botones rojos del juego que, elegidos o pulsados, se quedan negros.
+-- botones rojos del juego que, elegidos o pulsados, se quedan grises.
 local _, HU = ...
 
 local WHITE = "Interface\\Buttons\\WHITE8X8"
@@ -51,24 +51,34 @@ function DJ.Line(f, alpha)
     return l
 end
 
--- Un botón rojo del juego (UIPanelButtonTemplate) elegido: sus tres piezas se quedan en gris oscuro (la misma
--- forma, en negro) con letra blanca; sin elegir, vuelve a rojo con letra dorada. Vale para cualquier botón rojo [+ARCHITECTURE.md]
-function DJ.PickRed(b, on)
-    on = on and true or false
-    if b.djPicked == on then return end
-    b.djPicked = on
-    -- (las mismas tres piezas del botón rojo, en gris y oscurecidas: queda negro con su misma forma)
+-- Un botón rojo del juego (UIPanelButtonTemplate) elegido: gris, como la pestaña elegida del Dungeon Journal de Forever,
+-- con la letra dorada de siempre; sin elegir, vuelve a rojo. Vale para cualquier botón rojo [+ARCHITECTURE.md]
+local GREY = "Interface\\Buttons\\UI-Panel-Button-Disabled"
+local GREY_DOWN = "Interface\\Buttons\\UI-Panel-Button-Disabled-Down"
+local RED = "Interface\\Buttons\\UI-Panel-Button-Up"
+local function Skin(b, file)
     for _, k in ipairs({ "Left", "Middle", "Right" }) do
         local t = b[k]
-        if t then
-            t:SetDesaturated(on)
-            if on then t:SetVertexColor(0.30, 0.30, 0.32) else t:SetVertexColor(1, 1, 1) end
-        end
+        if t then t:SetTexture(file) end
     end
-    b:SetNormalFontObject(on and "GameFontHighlight" or "GameFontNormal")
+end
+local function Regrey(b) if b.djPicked and b:IsEnabled() then Skin(b, GREY) end end
+function DJ.PickRed(b, on)
+    on = on and true or false
+    -- (el juego vuelve a poner el rojo al pulsar, soltar, enseñarse o encenderse: detrás, otra vez el gris)
+    if not b.djHooked then
+        b.djHooked = true
+        b:HookScript("OnMouseDown", function(s) if s.djPicked and s:IsEnabled() then Skin(s, GREY_DOWN) end end)
+        b:HookScript("OnMouseUp", Regrey)
+        b:HookScript("OnShow", Regrey)
+        b:HookScript("OnEnable", Regrey)
+    end
+    if b.djPicked == on then return end
+    b.djPicked = on
+    if b:IsEnabled() then Skin(b, on and GREY or RED) end
 end
 
--- Botón rojo del juego; :Pick(on) lo deja negro (elegido) y :Label(texto) cambia el texto
+-- Botón rojo del juego; :Pick(on) lo deja gris (elegido) y :Label(texto) cambia el texto
 function DJ.Button(parent, text, w, h)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetSize(w, h or 22)
@@ -79,8 +89,8 @@ function DJ.Button(parent, text, w, h)
     return b
 end
 
--- Las dos pestañas de arriba de Comercio y Calendario: dos botones rojos del juego, juntos y centrados en su fila; el
--- elegido, negro (DJ.PickRed). Jorge, 24/11: probó un interruptor dorado («no pega ni con cola»; «los botones eran
+-- Las pestañas de arriba de Comercio y Calendario: botones rojos del juego, juntos y centrados en su fila; el
+-- elegido, gris (DJ.PickRed). Jorge, 24/11: probó un interruptor dorado («no pega ni con cola»; «los botones eran
 -- bonitos») y se quedaron estos botones en el sitio del interruptor [+ARCHITECTURE.md]
 DJ.SWITCH = { w = 150, h = 28, gap = 6 }
 -- (items: { { clave, texto }, ... }; da el marco, con sus botones en `btns[clave]`, que se eligen con :Pick(on) o

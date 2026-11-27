@@ -247,6 +247,7 @@ function wow.New(opts)
 
     api.CreateFrame = function(kind, name, parent, template)
         local f = NewFrame(w, kind, name, parent)
+        f._template = template
         -- (las piezas que traen las plantillas del juego y que el addon toca: el fondo de InsetFrameTemplate)
         if type(template) == "string" and template:find("InsetFrameTemplate", 1, true) then f.Bg = NewFrame(w, "Texture", nil, f) end
         -- (y las tres piezas del botón rojo, UIPanelButtonTemplate: DJStyle.lua las oscurece al elegirlo)
@@ -324,7 +325,12 @@ function wow.New(opts)
         local m = w.guild and w.guild.members and w.guild.members[i]
         if not m then return end
         return m.name, m.rank or "Miembro", m.rankIndex or 4, m.level or 60, m.class or "Guerrero", m.zone or "",
-            m.note or "", m.officerNote or "", m.online ~= false, 0, m.classFile or "WARRIOR"
+            m.note or "", m.officerNote or "", m.online ~= false, 0, m.classFile or "WARRIOR", 0, 0, m.mobile == true
+    end
+    -- (el nombre de una zona o instancia por su número, como lo da el juego; sin él, el de donde estoy)
+    api.GetRealZoneText = function(id)
+        if id == nil then return w.zone or "" end
+        return w.zoneNames and w.zoneNames[id] or ""
     end
     -- (pedir la lista de la hermandad: el servidor contesta un momento después con GUILD_ROSTER_UPDATE;
     -- varias peticiones seguidas, una sola respuesta)
@@ -348,6 +354,14 @@ function wow.New(opts)
     api.IsInGroup = function() return false end
     api.IsInRaid = function() return false end
     api.GetNumGroupMembers = function() return 0 end
+    -- (sin grupo: nadie en la banda, ni líder ni ayudante; mover a alguien de grupo no hace nada)
+    api.GetRaidRosterInfo = function() return nil end
+    api.SetRaidSubgroup = function() end
+    api.SwapRaidSubgroup = function() end
+    api.UnitIsGroupLeader = function() return false end
+    api.UnitIsGroupAssistant = function() return false end
+    api.UnitInRaid = function() return nil end
+    api.UnitInParty = function() return false end
     api.GetZoneText = function() return "Ventormenta" end
     -- Canales: GetChannelName(número o nombre) -> número, nombre
     api.GetChannelName = function(x)
@@ -438,7 +452,14 @@ function wow.New(opts)
         GetNumWhoResults = function() return #w.who, w.whoTotal or #w.who end,
         GetWhoInfo = function(i) return w.who[i] end,
     }
-    api.GetFramerate = function() return 60 end
+    -- (los objetos, con C_Item como en Forever, que no tiene GetItemInfo suelto: el juego aún no conoce ninguno (la prueba
+    -- pone los suyos en C_Item.GetItemInfo) y pedirlo no hace nada)
+    api.C_Item = {
+        GetItemInfo = function() return nil end,
+        RequestLoadItemDataByID = function() end,
+    }
+    -- (los FPS: 60 salvo que la prueba ponga otros en w.fps)
+    api.GetFramerate = function() return w.fps or 60 end
     api.GetNetStats = function() return 0, 0, 50, 50 end
     api.IsShiftKeyDown = function() return false end
     api.IsControlKeyDown = function() return false end
@@ -456,10 +477,31 @@ function wow.New(opts)
     end
     api.SOUNDKIT = setmetatable({}, { __index = function() return 0 end })
     api.SendChatMessage = function(msg, kind, lang, target) w.said[#w.said + 1] = { msg = msg, kind = kind, target = target } end
+    -- (los datos del medidor de addons del juego, Enum.AddOnProfilerMetric, como en Forever)
+    local METRIC = { SessionAverageTime = 0, RecentAverageTime = 1, EncounterAverageTime = 2, LastTime = 3, PeakTime = 4,
+        CountTimeOver1Ms = 5, CountTimeOver5Ms = 6, CountTimeOver10Ms = 7, CountTimeOver50Ms = 8, CountTimeOver100Ms = 9,
+        CountTimeOver500Ms = 10, CountTimeOver1000Ms = 11 }
     api.Enum = { SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, ChannelThrottle = 8,
         GeneralError = 9, AddOnMessageLockdown = 11, TargetOffline = 12 },
         ClubStreamType = { General = 0, Guild = 1, Officer = 2, Other = 3 },
-        ClubType = { BattleNet = 0, Character = 1, Guild = 2, Other = 3 } }
+        ClubType = { BattleNet = 0, Character = 1, Guild = 2, Other = 3 },
+        AddOnProfilerMetric = METRIC }
+    -- El medidor de addons del juego (C_AddOnProfiler): apagado salvo que la prueba ponga w.profiler =
+    -- { app, all, mine }, en ms por fotograma (RecentAverageTime: el juego entero, todos los addons juntos y
+    -- GuildUnion) y, si quiere, peak, over5, over10 (PeakTime y CountTimeOver5Ms / 10Ms de GuildUnion)
+    local ADDON_FIELD = { [METRIC.RecentAverageTime] = "mine", [METRIC.PeakTime] = "peak",
+        [METRIC.CountTimeOver5Ms] = "over5", [METRIC.CountTimeOver10Ms] = "over10" }
+    api.C_AddOnProfiler = {
+        IsEnabled = function() return w.profiler ~= nil end,
+        GetApplicationMetric = function() return w.profiler and w.profiler.app or 0 end,
+        GetOverallMetric = function() return w.profiler and w.profiler.all or 0 end,
+        -- (de otro addon, nada: así se ve que se pregunta por el nombre de la carpeta)
+        GetAddOnMetric = function(name, metric)
+            local p, k = w.profiler, ADDON_FIELD[metric]
+            if not (p and k and name == "GuildUnion") then return 0 end
+            return p[k] or 0
+        end,
+    }
 
     local function SendAddon(prefix, text, dist, target, logged)
         if w.failSend then

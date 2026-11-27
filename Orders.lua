@@ -481,13 +481,14 @@ Present = function()
     ShowConfirm()
 end
 
--- job = { title, text, lines = {...}, onDone(sent), onLine(line), ask, list }
+-- job = { title, text, lines = {...}, onDone(sent), onLine(line), ask, list, quiet }
 function HU:RunOrders(newJob)
     if not newJob or not newJob.lines or #newJob.lines == 0 then return false end
     newJob.sent = 0
     if job and #job.lines > 0 then
         queue[#queue + 1] = newJob
-        self:Print(L("Hay otra lista de órdenes a medias: esta va después (") .. #queue .. L(" en espera)."))
+        -- (quiet: quien la pide ya ha avisado, como las tandas de /gu sinaddon, Report.lua)
+        if not newJob.quiet then self:Print(L("Hay otra lista de órdenes a medias: esta va después (") .. #queue .. L(" en espera).")) end
         return true
     end
     job = newJob

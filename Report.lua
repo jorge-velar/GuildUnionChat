@@ -1,6 +1,8 @@
 -- Guild Union - informe completo (/gu todo) y comprobación de los números de canal (/gu ids).
 -- Copia 147. [+ARCHITECTURE.md]
+-- También: quién de mi hermandad no tiene el addon (/gu sinaddon) y la carga de los enlaces (/gu carga).
 local ADDON, HU = ...
+local L = HU.L
 
 ---------------------------------------------------------------------------
 -- Los números de canal, tal como los ve ESTE jugador
@@ -408,6 +410,8 @@ local function GuildLines(self, add, res)
                 .. (#contacts > 0 and table.concat(contacts, ", ") or "NINGUNO"))
         end
     end
+    -- (quién no tiene el addon, por hermandad: el detalle, en /gu sinaddon)
+    add(self:WithoutAddonLine())
 end
 
 -- (una huella corta: sirve para comparar dos informes sin enseñar el dato)
@@ -461,6 +465,8 @@ local function SessionLines(self, add)
         local ok, kb = pcall(get, ADDON)
         if ok and type(kb) == "number" then add(string.format("memoria del addon: %.1f MB", kb / 1024)) end
     end
+    -- (la CPU del addon según el juego y los FPS, que se miden siempre: Perf.lua)
+    add(self:PerfSessionLine())
     local errs = self.errors or {}
     add("errores del addon en esta sesión: " .. #errs)
     for i = math.max(1, #errs - 2), #errs do
@@ -603,4 +609,524 @@ function HU.OnTextProbeMsg(text, sender, localID, chanName)
     end
 end
 
-HU:Module("Report", { "Channel", "Core", "Domain/Trust", "Lists", "Net/Relay", "Net/Transport", "PratBridge", "WMPanel" })
+---------------------------------------------------------------------------
+-- Quién de mi hermandad no tiene el addon (/gu sinaddon): se le pregunta a cada uno, tres veces [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local ASKS = 3            -- veces que se le pregunta a cada uno (Jorge, 25/11: «preguntando 1 a 1 (que tarde 5 mins)»)
+local STEP = 1            -- entre una pregunta que ya ha salido y la siguiente: la cola manda una por segundo
+local SENT_WAIT = 90      -- lo que se espera a que salga una pregunta (con la cola llena); si no sale, no cuenta
+local ROUND_GAP = 120     -- entre una vuelta y la siguiente: a cada uno, sus preguntas separadas al menos esto
+local LAST_WAIT = 30      -- tras la última, lo que se espera a las respuestas que tardan (en combate, Combat.lua)
+local MAP_IDS = 3000      -- los mapas del juego que se miran, por si son mazmorras o bandas
+-- (las instancias de Forever por su número, y el nombre, el del juego: en un campo de batalla el juego no deja
+-- contestar, y en mazmorras y bandas, en combate, el addon aplaza las preguntas. Y las de Forever por su nombre: los
+-- campos de batalla y las mazmorras nuevas que no son de vanilla, Jorge, 25/11)
+local INSTANCE_IDS = { 30, 489, 529, 33, 34, 36, 43, 47, 48, 70, 90, 109, 129, 189, 209, 229, 230, 289, 329, 349, 389,
+    429, 249, 309, 409, 469, 509, 531, 533 }
+local INSTANCE_NAMES = { "Valle de Alterac", "Garganta Grito de Guerra", "Cuenca de Arathi", "Alterac Valley",
+    "Warsong Gulch", "Arathi Basin",
+    -- (las mazmorras nuevas de Forever, como las nombra ForeverDungeonJournal (Data/DungeonEntrances.lua); Jorge, 25/11:
+    -- «Krol'dok Stronghold también es mazmorra, revisa las mazmorras nuevas»)
+    "Alcaz Prison", "The Drowned City", "Krol'dok Stronghold", "Blackmaw Hold", "Shaper's Terrace", "Hall of Thanes",
+    "Excavation Site: Wetlands", "Excavation Site", "Ruins of Lordaeron", "City of Dalaran", "Dalaran" }
+local instanceNames
+local addonRun, addonLast   -- la comprobación en marcha y la última acabada
+
+local function InstanceZone(zone)
+    if type(zone) ~= "string" or zone == "" then return false end
+    if not instanceNames then
+        instanceNames = {}
+        for _, n in ipairs(INSTANCE_NAMES) do instanceNames[n:lower()] = true end
+        -- (un nombre que sale con varios números no es el de una instancia: es lo que da el juego sin saberlo)
+        local seen = {}
+        for _, id in ipairs(INSTANCE_IDS) do
+            local ok, n = pcall(GetRealZoneText, id)
+            if ok and type(n) == "string" and n ~= "" then seen[n:lower()] = (seen[n:lower()] or 0) + 1 end
+        end
+        for n, c in pairs(seen) do if c == 1 then instanceNames[n] = true end end
+        -- (los campos de batalla que da el juego, en el idioma del jugador: también el nuevo de Forever; Jorge, 25/11)
+        local getBG = C_PvP and C_PvP.GetBattlegroundInfo
+        local okN, nBG = pcall(GetNumBattlegroundTypes)
+        for i = 1, (getBG and okN and tonumber(nBG)) or 0 do
+            local ok, info = pcall(getBG, i)
+            if ok and type(info) == "table" and type(info.name) == "string" and info.name ~= "" and not HU.Secret(info.name) then
+                instanceNames[info.name:lower()] = true
+            end
+        end
+        -- (y las mazmorras y bandas del mapa del juego, también las nuevas de Forever)
+        local dungeon = Enum and Enum.UIMapType and Enum.UIMapType.Dungeon or 4
+        local get = C_Map and C_Map.GetMapInfo
+        for id = 1, get and MAP_IDS or 0 do
+            local ok, info = pcall(get, id)
+            if ok and type(info) == "table" and info.mapType == dungeon and type(info.name) == "string" and info.name ~= ""
+                and not HU.Secret(info.name) then instanceNames[info.name:lower()] = true end
+        end
+    end
+    return instanceNames[zone:lower()] == true
+end
+
+-- (tiene el addon: cualquier señal, ahora o en los últimos días: me ha saludado o contestado, su addon me ha mandado
+-- algo o está en el canal de la comunidad; HU:AddonEvidence, Roster.lua. Jorge, 25/11: «ha echado a algunos con
+-- addon»: en Forever la respuesta a veces no llega, así que la pregunta sola no basta)
+local function HasAddon(self, k) return self:AddonEvidence(k) end
+
+-- (una pregunta «¿eres de la hermandad?» (PG, por GUILD) a uno: su addon contesta solo con PA, en cualquier versión
+-- desde la 5.4.12. onSent, cuando sale de verdad de la cola. Devuelve su espera, o nil si no ha entrado)
+local function SendPG(self, full, onSent)
+    local wait = { t = GetTime() }
+    local queued = self:Send("PG~" .. full, "GUILD", nil, nil, nil, nil, function()
+        wait.sent = GetTime()
+        if onSent then onSent() end
+    end)
+    return queued and wait or nil
+end
+-- (lo que queda de esperar a la anterior: hasta que sale, como mucho SENT_WAIT, y luego STEP; nil si ya se puede)
+local function WaitLeft(w)
+    if not w then return nil end
+    local now = GetTime()
+    if not w.sent and now - w.t < SENT_WAIT then return 0.5 end
+    if w.sent and now - w.sent < STEP then return STEP - (now - w.sent) end
+    return nil
+end
+
+-- (le pregunto a uno, y solo cuenta cuando sale de verdad: en la copia 334 contaba al entrar en la cola y, con 200
+-- conectados recién entrado al juego, muchas no llegaron a salir. Y apunto si está en una instancia o con el móvil.
+-- Devuelve la espera de esta pregunta, o nil si no la hay)
+local function Ask(self, r, row)
+    if HasAddon(self, row.key) then return nil end
+    local e = self.roster[row.key]
+    if not (e and e.online) then row.gone = true return nil end
+    if e.mobile then row.mobile = true end
+    if InstanceZone(e.zone) then row.inst = e.zone end
+    return SendPG(self, row.name, function() row.asked = row.asked + 1 end)
+end
+
+local function Stop(self, r)
+    if addonRun ~= r then return end
+    addonRun = nil
+    self:Print(L("He parado de mirar quién tiene el addon: ahora el juego no deja mandar nada (campo de batalla). Vuelve a probar al salir."))
+end
+
+local function Finish(self, r)
+    if addonRun ~= r then return end
+    if self:IsChatLockedDown() then return Stop(self, r) end
+    addonRun = nil
+    local res = { t = time(), tag = r.tag, total = #r.rows, with = 0, without = {}, unknown = {} }
+    for _, row in ipairs(r.rows) do
+        if HasAddon(self, row.key) then
+            res.with = res.with + 1
+        else
+            local e, why = self.roster[row.key], nil
+            if row.gone or not (e and e.online) then why = L("se ha desconectado")
+            elseif row.mobile or e.mobile then why = L("con la aplicación del móvil")
+            elseif row.inst or InstanceZone(e.zone) then why = string.format(L("en %s: ahí no le deja contestar"), row.inst or e.zone)
+            elseif row.asked < ASKS then why = L("no le he podido preguntar las tres veces") end
+            local item = { name = self:Nice(row.name), full = row.name, zone = e and e.zone, why = why }
+            if why then res.unknown[#res.unknown + 1] = item else res.without[#res.without + 1] = item end
+        end
+    end
+    local function ByName(a, b) return a.name:lower() < b.name:lower() end
+    table.sort(res.without, ByName)
+    table.sort(res.unknown, ByName)
+    addonLast = res
+    self:ShowAddonCheck()
+end
+
+-- (una vuelta: a los que aún no han contestado, uno detrás de otro, y cada pregunta cuando ya ha salido la
+-- anterior; tras la última, la espera y el resultado)
+local function Round(self, r)
+    if addonRun ~= r then return end
+    r.round = r.round + 1
+    local todo = {}
+    for _, row in ipairs(r.rows) do if not row.gone and not HasAddon(self, row.key) then todo[#todo + 1] = row end end
+    if #todo == 0 then return Finish(self, r) end
+    self:RequestRoster()
+    -- (y la lista del canal: quien está en él tiene el addon, aunque su respuesta no me llegue)
+    self:GetChannelMembersAsync("main", function() end)
+    local i = 0
+    local function Next()
+        if addonRun ~= r then return end
+        if self:IsChatLockedDown() then return Stop(self, r) end
+        local left = WaitLeft(r.waiting)
+        if left then return HU.After(left, Next) end
+        r.waiting = nil
+        i = i + 1
+        if not todo[i] then
+            if r.round < ASKS then return HU.After(ROUND_GAP, function() Round(self, r) end) end
+            return HU.After(LAST_WAIT, function() Finish(self, r) end)
+        end
+        r.waiting = Ask(self, r, todo[i])
+        HU.After(r.waiting and STEP or 0, Next)
+    end
+    Next()
+end
+
+-- (cuánto tarda, más o menos, con n conectados que preguntar: cada pregunta, al ritmo de la cola, y uno de cada tres
+-- que no contesta a la primera, otra vez en las dos vueltas siguientes)
+local function Eta(n) return n * (STEP + 0.5) * (1 + 2 / 3) + 2 * ROUND_GAP + LAST_WAIT end
+
+-- La línea corta, para el chat y /gu informe
+function HU:WithoutAddonLine()
+    if addonRun then return L("Sin addon: lo estoy mirando (/gu sinaddon).") end
+    local r = addonLast
+    if not r then return L("Sin addon: sin mirar (/gu sinaddon, unos 5 minutos).") end
+    return string.format(L("Sin addon en <%s> (mirado a las %s): %d de %d conectados · no se sabe %d"), HU:TagLabel(r.tag),
+        date("%H:%M", r.t), #r.without, r.total, #r.unknown)
+end
+
+local function AddonCheckText(self, r)
+    local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("quién no tiene el addon") .. " - " .. date("%d/%m/%Y %H:%M", r.t) }
+    local function add(s) lines[#lines + 1] = s end
+    add(string.format(L("<%s>: %d conectados · con addon %d · sin addon %d · no se sabe %d"), HU:TagLabel(r.tag), r.total, r.with, #r.without, #r.unknown))
+    local since = self:AddonSeenSince()
+    if since then
+        add(string.format(L("«Con addon»: quien ha dado alguna señal desde el %s (me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días)."), date("%d/%m %H:%M", since)))
+        -- (lo apuntado aún es poco: el primer día, que se sepa)
+        if time() - since < 86400 then
+            add(L("Ojo: llevo menos de un día apuntando quién tiene el addon. Para ir seguro, vuelve a mirarlo mañana antes de echar."))
+        end
+    end
+    add("")
+    add(L("Sin addon: no han contestado a ninguna de las tres preguntas (el addon contesta solo, en cualquier versión desde la 5.4.12):"))
+    for _, x in ipairs(r.without) do add("  " .. x.name .. ((x.zone and x.zone ~= "") and ("  ·  " .. x.zone) or "")) end
+    if #r.without == 0 then add("  -") end
+    if #r.unknown > 0 then
+        add("")
+        add(L("No se sabe (vuelve a mirarlo más tarde):"))
+        for _, x in ipairs(r.unknown) do add("  " .. x.name .. ": " .. x.why) end
+    end
+    return table.concat(lines, "\n")
+end
+
+-- (los «sin addon» de la última que aún están en la hermandad, mi rango deja echar y no han dado señal desde entonces;
+-- nunca los de «no se sabe»)
+local function Kickable(self, r)
+    local names = {}
+    for _, x in ipairs(r and r.without or {}) do
+        if self.roster[self:Key(x.full) or ""] and self:CanKickMember(x.full) and not self:AddonEvidence(x.full) then
+            names[#names + 1] = x.full
+        end
+    end
+    return names
+end
+
+-- Antes de echar, una vez más (Jorge, 25/11: «ha echado a algunos con addon… tiene que ser fiable de primeras»): a cada
+-- uno, otra pregunta (al ritmo de la cola), y la lista del canal; tras LAST_WAIT, solo los que siguen sin dar señal y
+-- a los que la pregunta les ha salido de verdad van a la ventana de órdenes (HU:KickNames, Social.lua). Lo usan
+-- «Echar (N)» y «Echar a varios» [+ARCHITECTURE.md]
+local recheckRun
+function HU:RecheckThenKick(names)
+    if recheckRun then return self:Print(L("Ya estoy comprobando a otros antes de echarlos: espera a que acabe.")) end
+    if self:IsChatLockedDown() then return self:Print(L("Ahora no se puede: el juego no deja mandar nada (campo de batalla). Prueba al salir.")) end
+    local list, has = {}, {}
+    for _, n in ipairs(names or {}) do
+        if self:AddonEvidence(n) then has[#has + 1] = self:Nice(n) else list[#list + 1] = n end
+    end
+    if #has > 0 then self:Print(L("Tienen el addon (han dado señal), no los echo: ") .. table.concat(has, ", ")) end
+    if #list == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
+    local run, i, sent = {}, 0, {}
+    recheckRun = run
+    self:Print(string.format(L("Antes de echarlos, les pregunto otra vez a los %d y miro el canal: unos %d s."), #list,
+        math.floor(#list * (STEP + 0.5) + LAST_WAIT + 0.5)))
+    self:GetChannelMembersAsync("main", function() end)
+    local function Done()
+        if recheckRun ~= run then return end
+        recheckRun = nil
+        if self:IsChatLockedDown() then return self:Print(L("No he echado a nadie: ahora el juego no deja mandar nada (campo de batalla). Vuelve a probar al salir.")) end
+        local still, answered, unasked = {}, {}, {}
+        for _, n in ipairs(list) do
+            if self:AddonEvidence(n) then answered[#answered + 1] = self:Nice(n)
+            elseif not sent[n] then unasked[#unasked + 1] = self:Nice(n)
+            else still[#still + 1] = n end
+        end
+        if #answered > 0 then self:Print(L("Tienen el addon (han dado señal ahora), no los echo: ") .. table.concat(answered, ", ")) end
+        if #unasked > 0 then self:Print(L("No les he podido volver a preguntar, no los echo: ") .. table.concat(unasked, ", ")) end
+        if #still == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
+        self:KickNames(still)
+    end
+    local function Next()
+        if recheckRun ~= run then return end
+        if self:IsChatLockedDown() then return Done() end
+        local left = WaitLeft(run.waiting)
+        if left then return HU.After(left, Next) end
+        run.waiting = nil
+        i = i + 1
+        local n = list[i]
+        if not n then return HU.After(LAST_WAIT, Done) end
+        if not self:AddonEvidence(n) then run.waiting = SendPG(self, n, function() sent[n] = true end) end
+        HU.After(run.waiting and STEP or 0, Next)
+    end
+    Next()
+end
+
+-- Echar a los «sin addon» de la última (Jorge, 25/11: «quiero un botón de mass echar»): antes, la última comprobación
+-- (HU:RecheckThenKick); luego, por tandas, cada una con su pregunta y su «Sí»
+function HU:KickWithoutAddon()
+    local names = Kickable(self, addonLast)
+    if #names == 0 then return self:Print(L("No queda nadie de la lista que puedas echar.")) end
+    self:RecheckThenKick(names)
+end
+
+-- El resultado de la última: la línea corta en el chat y el detalle en la ventana de copiar, con el botón de echar
+function HU:ShowAddonCheck()
+    local r = addonLast
+    if not r then return end
+    self:Print(self:WithoutAddonLine())
+    local text = AddonCheckText(self, r)
+    local n = #Kickable(self, r)
+    local opts = n > 0 and { button = string.format(L("Echar (%d)"), n), onClick = function() HU:KickWithoutAddon() end } or nil
+    if self.UI and self.UI.ShowCopy then self.UI:ShowCopy(L("Quién no tiene el addon (Ctrl+C para copiarlo)"), text, opts)
+    else for l in text:gmatch("[^\n]+") do self:Print(l) end end
+end
+
+-- /gu sinaddon: solo mi hermandad, y seguro (Jorge, 25/11: «que sea seguro los que no tienen addon, porque los echaré
+-- de la guild»). Con GU:v puesto no se mira: el addon de quien tenga una versión anterior está en pausa y no contesta
+function HU:ShowWithoutAddon()
+    if addonRun then
+        local left = math.floor((addonRun.eta - GetTime()) / 60 + 0.5)
+        if left < 2 then return self:Print(L("Ya lo estoy mirando: falta poco.")) end
+        return self:Print(string.format(L("Ya lo estoy mirando: faltan unos %d minutos."), left))
+    end
+    if not IsInGuild() then return self:Print(L("No estás en una hermandad.")) end
+    if self.guildMin then
+        return self:Print(string.format(L("Así no es seguro: la Información de la hermandad tiene GU:v:%s y el addon de quien tenga una versión anterior está en pausa y no contesta. Quítalo, espera un minuto y vuelve a probar."), tostring(self.guildMin)))
+    end
+    if self:IsChatLockedDown() then return self:Print(L("Ahora no se puede: el juego no deja mandar nada (campo de batalla). Prueba al salir.")) end
+    local me = self:MeKey()
+    local r = { t0 = GetTime(), round = 0, rows = {}, tag = self.myTag or (GetGuildInfo("player")) or "?" }
+    for _, e in ipairs(self.rosterList) do
+        local k = self:Key(e.name)
+        if e.online and k and k ~= me then r.rows[#r.rows + 1] = { name = e.name, key = k, asked = 0 } end
+    end
+    if #r.rows == 0 then return self:Print(L("No hay nadie más de tu hermandad conectado.")) end
+    addonRun = r
+    -- (los que ya sé que lo tienen no se preguntan: con ellos, el cálculo)
+    local ask = 0
+    for _, row in ipairs(r.rows) do if not HasAddon(self, row.key) then ask = ask + 1 end end
+    r.eta = r.t0 + Eta(ask)
+    self:Print(string.format(L("Miro quién tiene el addon en tu hermandad: les pregunto a los %d conectados, uno a uno y tres veces. Tarda unos %d minutos; te aviso al acabar."),
+        #r.rows, math.max(1, math.floor(Eta(ask) / 60 + 0.5))))
+    Round(self, r)
+end
+
+---------------------------------------------------------------------------
+-- La carga de los enlaces (/gu carga): cada enlace dice sus números, sin nombres [+ARCHITECTURE.md]
+--   UQ~etiq~id                                                         un oficial pregunta, por susurro
+--   UR~etiq~id~ver~papel~min~cpu~cpuPico~fps~fpsMín~cola~salen~entran  la respuesta (CPU en décimas de %; «-»: no lo sé)
+---------------------------------------------------------------------------
+local LOAD_WAIT = 10    -- quien pregunta junta las respuestas este rato
+local LOAD_GAP = 30     -- cada uno contesta a cada uno una vez en este rato, y quien pregunta no repite antes
+local LOAD_MAX = 20     -- y, a todos juntos, como mucho tantas respuestas en ese rato
+-- (los topes de lo que llega: minutos, CPU y su pico en décimas de %, FPS, FPS más bajos, cola, salen y entran)
+local LOAD_LIMITS = { 99999, 1000, 1000, 999, 999, 99999, 99999, 99999 }
+local loadRun           -- mi pregunta en marcha: { id, rows = { { tag, name, data, bad } }, byKey = { [clave] = fila } }
+local loadAskT = -999
+
+-- (minutos conectado desde que entró al juego: un /reload no los pone a cero, como el Uptime de Net/Relay.lua)
+local function Minutes(self)
+    local st = self.cdb and tonumber(self.cdb.sessionStart)
+    local secs = st and (time() - st) or (GetTime() - (self.loginT or GetTime()))
+    return math.max(0, math.floor(secs / 60))
+end
+-- (entero, sin pasar del tope que acepta quien lo recibe; «-» si no lo sé)
+local function Field(x, i, scale)
+    if not x then return "-" end
+    return tostring(math.min(LOAD_LIMITS[i], math.floor(x * (scale or 1) + 0.5)))
+end
+
+-- ¿Soy el enlace («e») o un ayudante («a») de mi hermandad? nil si ninguno (el equipo de Net/Packs.lua)
+local function MyRole(self)
+    if self:IsRelay() then return "e" end
+    local me = self:MeKey()
+    for _, n in ipairs(HU.PackTeams.Mine()) do if self:Key(n) == me then return "a" end end
+    return nil
+end
+
+-- Mis números como van en UR, sin la orden: etiqueta, id, versión, papel y los ocho de LOAD_LIMITS
+local function LoadFields(self, id, role)
+    local cpu, cpuMax, fps, fpsLow, sent, got = self:PerfNow()
+    return { self.myTag, id, tostring(HU.version), role, Field(Minutes(self), 1), Field(cpu, 2, 10), Field(cpuMax, 3, 10),
+        Field(fps, 4), Field(fpsLow, 5), Field(self:QueueSize(), 6), Field(sent, 7), Field(got, 8) }
+end
+
+-- (un número que llega: entero de 0 a max; «-» es que no lo sabe (false); cualquier otra cosa no vale (nil))
+local function Int(s, max)
+    if s == "-" then return false end
+    if type(s) ~= "string" or #s > 6 or not s:match("^%d+$") then return nil end
+    local n = tonumber(s)
+    if not n or n > max then return nil end
+    return n
+end
+-- Los datos de un UR (f[1] etiqueta, f[2] id, f[3] versión, f[4] papel y los números), o nil si algo no vale
+local function ParseLoad(f)
+    local ver, role = f[3], f[4]
+    if type(ver) ~= "string" or #ver > 16 or not ver:match("^[%w%.%-]+$") then return nil end
+    if role ~= "e" and role ~= "a" then return nil end
+    local d = { ver = ver, role = role }
+    for i, max in ipairs(LOAD_LIMITS) do
+        local v = Int(f[4 + i], max)
+        if v == nil then return nil end
+        d[i] = v
+    end
+    return d
+end
+
+-- Contestar: solo el enlace o un ayudante, solo a alguien de la unión y con topes
+local answered, answeredN, winT, winN = {}, 0, -999, 0
+-- (abierta: lo que vale lo mira el manejador. Por susurro, de una etiqueta de la configuración y de quien está en la
+-- lista de esa hermandad o, si es de otra, la comunidad lo avala; además, el tope por remitente de Net/Security.lua)
+HU:RegisterMessage("UQ", { open = true, ttl = 15, combat = "req" })
+HU.comm.UQ = function(self, sender, f, dist)
+    local tag, id = f[1], f[2]
+    if dist ~= "WHISPER" or not (self.cfg and self.myTag and tag and self.cfg.byTag[tag]) then return end
+    if type(id) ~= "string" or #id > 8 or not id:match("^%w+$") then return end
+    if not (self:MemberOf(sender, tag) or (tag ~= self.myTag and self:Vouched(sender, tag))) then return end
+    local role = MyRole(self)
+    if not role then return end
+    local k, now = sender:lower(), GetTime()
+    if answered[k] and now - answered[k] < LOAD_GAP then return end
+    if now - winT >= LOAD_GAP then winT, winN = now, 0 end
+    if winN >= LOAD_MAX then return end
+    if not answered[k] then answeredN = answeredN + 1 end
+    answered[k], winN = now, winN + 1
+    if answeredN > 200 then
+        for key, t in pairs(answered) do if now - t >= LOAD_GAP then answered[key] = nil; answeredN = answeredN - 1 end end
+    end
+    self:Whisper(sender, "UR~" .. table.concat(LoadFields(self, id, role), "~"), true)
+end
+
+-- (solo de a quien se lo he preguntado, con la etiqueta de su hermandad y en esta pregunta; cada número se mira)
+HU:RegisterMessage("UR", { open = true, ttl = 15 })
+HU.comm.UR = function(self, sender, f, dist)
+    local run = loadRun
+    if dist ~= "WHISPER" or not run or f[2] ~= run.id then return end
+    local row = run.byKey[sender:lower()]
+    if not row or row.tag ~= f[1] or row.data then return end
+    local d = ParseLoad(f)
+    if not d then
+        row.bad = true
+        return self:Debug("Carga de los enlaces: números que no valen de", sender)
+    end
+    row.data = d
+end
+
+local ROLE = { e = "enlace", a = "ayudante" }
+local function LoadPct(x) if x == false then return L("sin medidor") end return string.format("%.1f %%", x / 10) end
+local function LoadNum(x) if x == false then return "?" end return tostring(x) end
+local function LoadRow(self, row)
+    local head = "<" .. tostring(HU:TagLabel(row.tag)) .. ">  "
+    if not row.name then return head .. L("no sé quién es su enlace (aún no se ha presentado)") end
+    local who, d = self:Nice(row.name), row.data
+    if not d then
+        return head .. who .. (row.guess and L(" (un contacto: no sé si es su enlace)") or "") .. "  "
+            .. (row.bad and L("ha contestado con números que no valen") or L("NO HA CONTESTADO"))
+    end
+    return head .. string.format(L("%s · %s %s · %s min · CPU %s (pico %s) · FPS %s (mín. 10 min %s) · cola %s · mensajes por minuto: salen %s, entran %s"),
+        who, L(ROLE[d.role]), d.ver, LoadNum(d[1]), LoadPct(d[2]), LoadPct(d[3]), LoadNum(d[4]), LoadNum(d[5]), LoadNum(d[6]),
+        LoadNum(d[7]), LoadNum(d[8]))
+end
+
+local function ShowLoad(self, run)
+    if loadRun ~= run then return end
+    loadRun = nil
+    local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("carga de los enlaces") .. " - " .. date("%d/%m/%Y %H:%M"),
+        L("Cada enlace dice de sí mismo solo números: minutos conectado, CPU de GuildUnion según el juego (ahora y la más alta de su sesión), FPS (ahora y los más bajos de sus últimos 10 min), mensajes en su cola de envío y mensajes del addon por minuto que le salen y le entran."),
+        "" }
+    local known, got = 0, 0
+    for _, row in ipairs(run.rows) do
+        lines[#lines + 1] = LoadRow(self, row)
+        if row.name then known = known + 1 end
+        if row.data then got = got + 1 end
+    end
+    local summary = string.format(L("Carga de los enlaces: han contestado %d de %d."), got, known)
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = summary
+    self:Print(summary)
+    if self.UI and self.UI.ShowCopy then
+        self.UI:ShowCopy(L("Carga de los enlaces (Ctrl+C y mándaselo a quien lleva el addon)"), table.concat(lines, "\n"))
+    else
+        for _, l in ipairs(lines) do self:Print(l) end
+    end
+end
+
+-- /gu carga (oficiales): pregunta al enlace de cada hermandad, la mía incluida, y a los 10 s enseña lo que ha llegado
+function HU:AskRelayLoad()
+    if not (self:CanOfficer() or (self:IsOfficerName(self:Me()))) then
+        return self:Print(L("Solo los oficiales pueden medir la carga de los enlaces."))
+    end
+    if not (self.cfg and self.myTag) then return self:Print(L("Aún no hay comunidad: no hay enlaces que medir.")) end
+    if loadRun then return self:Print(L("Ya estás midiendo: el resultado sale en unos segundos.")) end
+    local wait = math.ceil(LOAD_GAP - (GetTime() - loadAskT))
+    if wait > 0 then
+        return self:Print(string.format(L("Espera %d s: cada enlace contesta como mucho una vez cada %d s."), wait, LOAD_GAP))
+    end
+    if HU.paused or self:IsChatLockedDown() then
+        return self:Print(L("Ahora no se pueden mandar mensajes del addon (el juego bloquea el chat): prueba en un rato."))
+    end
+    loadAskT = GetTime()
+    local run = { id = HU.B36(time()), rows = {}, byKey = {} }
+    loadRun = run
+    HU.After(LOAD_WAIT, function() ShowLoad(HU, run) end)
+    local tags, asked = { self.myTag }, 0
+    for _, t in ipairs(self:OtherTags()) do tags[#tags + 1] = t end
+    for _, tag in ipairs(tags) do
+        local name, guess
+        if tag == self.myTag then
+            name = self:RelayName()
+        else
+            -- (su enlace, si lo ha dicho él; si no, mi mejor contacto de esa hermandad, que suele serlo: con las listas
+            -- sin confirmar todavía no se sabe de primera mano)
+            local rp = self:KnownRelay(tag)
+            if not rp then rp, guess = self:BestPeer(tag), true end
+            name = rp and rp.name
+        end
+        local row = { tag = tag, name = name, guess = guess }
+        run.rows[#run.rows + 1] = row
+        local k = name and self:Key(name)
+        if k and k == self:MeKey() then
+            -- (el enlace de mi hermandad soy yo: mis números, sin mensajes)
+            row.data = ParseLoad(LoadFields(self, run.id, MyRole(self) or "e"))
+        elseif k then
+            run.byKey[k] = row
+            asked = asked + 1
+            self:Whisper(name, "UQ~" .. self.myTag .. "~" .. run.id, true)
+        end
+    end
+    self:Print(string.format(L("Midiendo la carga de los enlaces: preguntado a %d. El resultado, en %d s."), asked, LOAD_WAIT))
+end
+
+-- textos en inglés
+local E = HU.EN
+if E then
+    E["Sin addon, de los conectados que conozco: "] = "Without the addon, of the online players I know: "
+    E["<%s> %d de %d"] = "<%s> %d of %d"
+    E["quién no tiene el addon"] = "who doesn't have the addon"
+    E["Límites:"] = "Limits:"
+    E["- Solo los conectados: de quien no está conectado no se puede saber."] = "- Online players only: there's no way to know about those who are offline."
+    E["- De las otras hermandades, solo los conectados que veo en sus listas: la de Miembros de la unión y su lista corta (maestro, oficiales, enlace y ayudantes)."] = "- From the other guilds, only the online players I see in their lists: the Union members one and their short list (guild master, officers, relay and helpers)."
+    E["- «Con addon» = me ha saludado el addon en esta sesión. De las otras hermandades casi solo me saludan su enlace y sus ayudantes: ahí «sin addon» puede ser también «no lo sé»."] = "- \"With the addon\" = their addon has greeted me this session. From the other guilds almost only their relay and helpers greet me: there \"without the addon\" can also mean \"I don't know\"."
+    E["<%s> (la mía): %d conectados · con addon %d · sin addon %d"] = "<%s> (mine): %d online · with the addon %d · without it %d"
+    E["<%s>: %d conectados que veo · con addon %d · sin addon o sin saberlo %d"] = "<%s>: %d online that I see · with the addon %d · without it or unknown %d"
+    E["Aún no hay comunidad: no sé qué hermandades mirar."] = "No community yet: I don't know which guilds to look at."
+    E["Quién no tiene el addon (Ctrl+C para copiarlo)"] = "Who doesn't have the addon (Ctrl+C to copy it)"
+    E["enlace"] = "relay"
+    E["ayudante"] = "helper"
+    E["sin medidor"] = "no profiler"
+    E["no sé quién es su enlace (aún no se ha presentado)"] = "I don't know who their relay is (not introduced yet)"
+    E[" (un contacto: no sé si es su enlace)"] = " (a contact: I don't know if they're the relay)"
+    E["ha contestado con números que no valen"] = "answered with numbers that aren't valid"
+    E["NO HA CONTESTADO"] = "DID NOT ANSWER"
+    E["%s · %s %s · %s min · CPU %s (pico %s) · FPS %s (mín. 10 min %s) · cola %s · mensajes por minuto: salen %s, entran %s"] = "%s · %s %s · %s min · CPU %s (peak %s) · FPS %s (10 min low %s) · queue %s · messages per minute: out %s, in %s"
+    E["carga de los enlaces"] = "relay load"
+    E["Cada enlace dice de sí mismo solo números: minutos conectado, CPU de GuildUnion según el juego (ahora y la más alta de su sesión), FPS (ahora y los más bajos de sus últimos 10 min), mensajes en su cola de envío y mensajes del addon por minuto que le salen y le entran."] = "Each relay reports only numbers about itself: minutes online, GuildUnion CPU according to the game (now and its session high), FPS (now and its lowest in the last 10 min), messages in its send queue and addon messages per minute going out and coming in."
+    E["Carga de los enlaces: han contestado %d de %d."] = "Relay load: %d of %d answered."
+    E["Carga de los enlaces (Ctrl+C y mándaselo a quien lleva el addon)"] = "Relay load (Ctrl+C and send it to the addon's maintainer)"
+    E["Solo los oficiales pueden medir la carga de los enlaces."] = "Only officers can measure the relays' load."
+    E["Aún no hay comunidad: no hay enlaces que medir."] = "No community yet: there are no relays to measure."
+    E["Ya estás midiendo: el resultado sale en unos segundos."] = "Already measuring: the result comes in a few seconds."
+    E["Espera %d s: cada enlace contesta como mucho una vez cada %d s."] = "Wait %d s: each relay answers at most once every %d s."
+    E["Ahora no se pueden mandar mensajes del addon (el juego bloquea el chat): prueba en un rato."] = "Addon messages can't be sent right now (the game is blocking chat): try again in a while."
+    E["Midiendo la carga de los enlaces: preguntado a %d. El resultado, en %d s."] = "Measuring the relays' load: asked %d. The result in %d s."
+end
+
+HU:Module("Report", { "Channel", "Config", "Core", "Domain/Trust", "Guard", "Lists", "Net/Relay", "Net/RosterSync", "Net/Security", "Net/Transport", "Perf", "PratBridge", "Protocol", "Roster", "Social", "WMPanel" })

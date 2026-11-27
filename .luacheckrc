@@ -48,7 +48,8 @@ read_globals = {
     "GetCraftDisplaySkillLine", "GetCraftInfo", "GetCraftItemLink", "GetCurrentKeyBoardFocus",
     "GetCursorPosition", "GetFramerate", "GetGuildInfo", "GetGuildInfoText", "GetGuildRosterInfo",
     "GetGuildRosterLastOnline", "GetItemInfo", "GetNetStats", "GetNormalizedRealmName",
-    "GetNumChannelMembers", "GetNumCrafts", "GetNumDisplayChannels", "GetNumGroupMembers",
+    "GetNumChannelMembers", "GetNumCrafts", "GetNumDisplayChannels", "GetNumGroupMembers", "GetRealZoneText",
+    "GetNumBattlegroundTypes", "C_PvP",
     "GetNumGuildMembers", "GetNumSkillLines", "GetNumTalentGroups", "GetNumTalentTabs", "GetNumTradeSkills",
     "GetPlayerInfoByGUID", "GetProfessionInfo", "GetProfessions", "GetRealmName", "GetServerTime",
     "GetSkillLineInfo", "GetSpecialization", "GetSpecializationInfo", "GetSpellInfo", "GetTalentTabInfo",
@@ -73,4 +74,10 @@ read_globals = {
     "C_FriendList", "C_Map", "C_Texture", "EventRegistry", "FCF_GetChatFrameByID", "GameFontHighlight",
     "GetBattlefieldStatus", "GetCVarBool", "GetGuildEventInfo", "GetLocale", "GetMaxBattlefieldID",
     "GetNumGuildEvents", "Menu", "MenuUtil", "TimeUtil", "UIErrorsFrame",
+    -- (la banda montada como la raid del evento: UnionCalendar.lua)
+    "GetRaidRosterInfo", "SetRaidSubgroup", "SwapRaidSubgroup", "UnitIsGroupAssistant",
+    -- (el medidor de addons del juego, para /gu perf y /gu carga: Perf.lua)
+    "C_AddOnProfiler",
+    -- (los desplegables de Buscar, debajo de su botón, y su ventana «Quién lo hace»: Trade.lua)
+    "CreateAnchor", "MenuVariants", "CommunitiesFrame",
 }

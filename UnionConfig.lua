@@ -1,8 +1,8 @@
 -- Guild Union - Configuración de la hermandad (mitad derecha de la pestaña GuildUnion) [+ARCHITECTURE.md]
--- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio y Calendario.
--- Pestañas: Comercio (activo, propinas), Lista negra (la de la comunidad), Calendario (quién crea eventos y permisos
--- por un tiempo) y Hermandad (el color).
--- Lo cambia el maestro de la hermandad (la lista negra, también los oficiales); los demás lo ven sin poder tocarlo.
+-- Fase 1: sin red; se guarda en este PC, en cada personaje (HU.db.unionCfg), y la usan Comercio y Eventos.
+-- Pestañas: Comercio (activo, propinas), Eventos (quién crea eventos y permisos por un tiempo; hasta el 25/11,
+-- Calendario, como la sección) y Hermandad (el color). La lista negra, desde el 25/11, en su ventana (Blacklist.lua).
+-- Lo cambia el maestro de la hermandad; los demás lo ven sin poder tocarlo.
 local _, HU = ...
 local L = HU.L
 local DJ = HU.DJ
@@ -20,7 +20,7 @@ local function Cfg() return HU:UnionCfg() end
 local function IsGM() return HU:IsUnionGM() end
 local function Changed() HU:Changed("unionCfg") end
 
--- (¿puedo crear eventos? Según la configuración del calendario, o con un permiso por un tiempo)
+-- (¿puedo crear eventos? Según la configuración de Eventos, o con un permiso por un tiempo)
 function HU:CanMakeEvents()
     local c = Cfg()
     local who = c.calMake or "officers"
@@ -44,18 +44,18 @@ function HU:BuildUnionConfig(panel)
     local testL = DJ.C(box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
     testL:SetPoint("LEFT", testCb, "RIGHT", 2, 0); testL:SetText(L("Probar como maestro (solo en este PC)"))
 
-    -- Pestañas
+    -- Pestañas (de 3 en 3 por fila; las páginas, debajo de la última. Jorge, 25/11: la lista negra se fue a su ventana)
     local pages, tabs = {}, {}
     local current = "trade"
-    local TABS = { { "trade", L("Comercio") }, { "black", L("Lista negra") }, { "calendar", L("Calendario") },
-        { "guild", L("Hermandad") } }
+    local TABS = { { "trade", L("Comercio") }, { "calendar", L("Eventos") }, { "guild", L("Hermandad") } }
+    local pageTop = -38 - math.ceil(#TABS / 3) * 24
     for i, t in ipairs(TABS) do
         local b = DJ.Button(box, t[2], 84, 22)
         local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
         b:SetPoint("TOPLEFT", 8 + col * 87, -32 - line * 24)
         tabs[t[1]] = b
         local p = CreateFrame("Frame", nil, box)
-        p:SetPoint("TOPLEFT", 8, -86); p:SetPoint("BOTTOMRIGHT", -8, 30)
+        p:SetPoint("TOPLEFT", 8, pageTop); p:SetPoint("BOTTOMRIGHT", -8, 30)
         p:Hide()
         pages[t[1]] = p
     end
@@ -136,7 +136,7 @@ function HU:BuildUnionConfig(panel)
     tNote:SetPoint("TOPLEFT", 4, -82); tNote:SetWidth(250); tNote:SetJustifyH("LEFT")
     tNote:SetText(L("Sin propinas, las solicitudes no llevan oro. Con el comercio apagado, la sección Comercio no deja pedir."))
 
-    -- Calendario: quién crea eventos y permisos de un rato (a alguien que no es oficial, por ejemplo)
+    -- Eventos: quién crea eventos y permisos de un rato (a alguien que no es oficial, por ejemplo)
     local pc = pages.calendar
     Head(pc, L("Quién puede crear eventos"), -4)
     refresh[#refresh + 1] = Choice(pc, -24, { { "gm", L("Maestro"), 80 }, { "officers", L("Oficiales"), 80 }, { "all", L("Todos"), 80 } },
@@ -214,103 +214,6 @@ function HU:BuildUnionConfig(panel)
     end
     refresh[#refresh + 1] = PaintPerms
 
-    -- Lista negra: la lista, aquí mismo; añadir y quitar, el maestro y los oficiales
-    local pl = pages.black
-    Head(pl, L("Lista negra de la comunidad"), -4)
-    local list = CreateFrame("Frame", nil, pl, "BackdropTemplate")
-    list:SetPoint("TOPLEFT", 0, -22); list:SetPoint("BOTTOMRIGHT", 0, 76)
-    DJ.Panel(list, T.row, T.border, 10, 2)
-    local BL_ROW, BL_MAX = 16, 14
-    local lsf = CreateFrame("ScrollFrame", "GuildUnionCfgBlackScroll", list, "FauxScrollFrameTemplate")
-    lsf:SetPoint("TOPLEFT", 4, -4); lsf:SetPoint("BOTTOMRIGHT", -26, 4)
-    local blRows, PaintBlack = {}, nil
-    lsf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, BL_ROW, PaintBlack) end)
-    local nameBox, whyBox
-    for i = 1, BL_MAX do
-        local row = CreateFrame("Button", nil, list)
-        row:SetHeight(BL_ROW)
-        row:SetPoint("TOPLEFT", lsf, "TOPLEFT", 0, -(i - 1) * BL_ROW); row:SetPoint("RIGHT", lsf, "RIGHT")
-        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.name:SetPoint("LEFT", 4, 0); row.name:SetWidth(110); row.name:SetJustifyH("LEFT"); row.name:SetWordWrap(false)
-        row.by = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.by:SetPoint("LEFT", 118, 0); row.by:SetPoint("RIGHT", -2, 0); row.by:SetJustifyH("LEFT"); row.by:SetWordWrap(false)
-        -- (pulsar: el nombre abajo, listo para quitarlo; al pasar el ratón, quién lo vetó y el motivo)
-        row:SetScript("OnClick", function(s) if s.e and nameBox:IsShown() then nameBox:SetText(HU:Short(s.e.name)) end end)
-        row:SetScript("OnEnter", function(s)
-            if not s.e then return end
-            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(HU:Short(s.e.name))
-            if s.e.by then GameTooltip:AddLine(L("Lo vetó") .. ": " .. HU:Short(s.e.by), 0.8, 0.8, 0.8) end
-            if s.e.why and s.e.why ~= "" then GameTooltip:AddLine(s.e.why, 1, 1, 1, true) end
-            GameTooltip:Show()
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        blRows[i] = row
-    end
-    local blEmpty = DJ.C(list:CreateFontString(nil, "OVERLAY", "GameFontNormal"), T.muted)
-    blEmpty:SetPoint("CENTER"); blEmpty:SetText(L("No hay nadie en la lista negra."))
-    PaintBlack = function()
-        local all = HU:BlacklistEntries()
-        local h = lsf:GetHeight()
-        local shown = (type(h) == "number" and h > 0) and math.max(1, math.min(BL_MAX, math.floor(h / BL_ROW))) or 8
-        FauxScrollFrame_Update(lsf, #all, shown, BL_ROW)
-        local off = FauxScrollFrame_GetOffset(lsf)
-        for i, row in ipairs(blRows) do
-            local e = (i <= shown) and all[off + i] or nil
-            row.e = e
-            if e then
-                row.name:SetText((HU.roster[e.key] and "|cffff4444" or "|cffffffff") .. HU:Short(e.name) .. "|r")
-                row.by:SetText(e.by and (HU:Short(e.by) .. ((e.tag and e.tag ~= "") and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. e.tag .. ">|r") or "")) or "")
-            end
-            row:SetShown(e ~= nil)
-        end
-        blEmpty:SetShown(#all == 0)
-    end
-    lsf:SetScript("OnSizeChanged", function() if pl:IsVisible() then PaintBlack() end end)
-    -- (abajo: nombre + Quitar, motivo + Añadir, y la leyenda con «Comprobar ahora»)
-    local lName = DJ.C(pl:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.text)
-    lName:SetPoint("BOTTOMLEFT", 4, 58); lName:SetText(L("Nombre"))
-    nameBox = HU.NewEditBox(pl, 130)
-    nameBox:SetPoint("LEFT", lName, "LEFT", 50, 0)
-    HU:NameSuggest(nameBox)
-    local bDel = DJ.Button(pl, L("Quitar"), 70, 20)
-    bDel:SetPoint("LEFT", nameBox, "RIGHT", 8, 0)
-    local lWhy = DJ.C(pl:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.text)
-    lWhy:SetPoint("BOTTOMLEFT", 4, 32); lWhy:SetText(L("Motivo"))
-    whyBox = HU.NewEditBox(pl, 130)
-    whyBox:SetPoint("LEFT", lWhy, "LEFT", 50, 0)
-    whyBox:SetMaxLetters(80)
-    local bAdd = DJ.Button(pl, L("Añadir"), 70, 20)
-    bAdd:SetPoint("LEFT", whyBox, "RIGHT", 8, 0)
-    local legend = pl:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    legend:SetPoint("BOTTOMLEFT", 4, 8)
-    legend:SetText("|cffff4444" .. L("En rojo") .. "|r" .. L(": está ahora mismo en tu hermandad."))
-    local bCheck = DJ.Button(pl, L("Comprobar ahora"), 120, 20)
-    bCheck:SetPoint("BOTTOMRIGHT", 0, 4)
-    bCheck:SetScript("OnClick", function() HU:BlacklistCheck(true); PaintBlack() end)
-    bAdd:SetScript("OnClick", function()
-        local name = HU.Trim(nameBox:GetText() or "")
-        if name == "" then return end
-        HU:SetBan(name, true, whyBox:GetText())
-        if HU:IsBanned(name) then nameBox:SetText(""); whyBox:SetText("") end
-        PaintBlack(); HU:BlacklistCheck()
-    end)
-    bDel:SetScript("OnClick", function()
-        local name = HU.Trim(nameBox:GetText() or "")
-        if name == "" or not HU:IsBanned(name) then return end
-        HU:Unban(name)
-        nameBox:SetText("")
-        PaintBlack()
-    end)
-    -- (y «Comprobar ahora»: el repaso, HU:BlacklistCheck, solo lo hacen el maestro y los oficiales)
-    local blEdit = { lName, nameBox, bDel, lWhy, whyBox, bAdd, bCheck }
-    refresh[#refresh + 1] = function()
-        local can = HU:CanPin()
-        for _, w in ipairs(blEdit) do w:SetShown(can) end
-        if pl:IsVisible() then PaintBlack() end
-    end
-
     local function Paint()
         for k, b in pairs(tabs) do b:Pick(k == current) end
         for k, p in pairs(pages) do p:SetShown(k == current) end
@@ -323,12 +226,11 @@ function HU:BuildUnionConfig(panel)
     for k, b in pairs(tabs) do b:SetScript("OnClick", function() current = k; Paint() end) end
     testCb:SetScript("OnClick", function(s) Cfg().testGM = s:GetChecked() and true or nil; Changed() end)
     HU:Listen("CHANGED", function(what)
-        if (what == "unionCfg" or what == "config") and box:IsVisible() then Paint()
-        elseif pl:IsVisible() then PaintBlack() end
+        if (what == "unionCfg" or what == "config") and box:IsVisible() then Paint() end
     end)
     box:SetScript("OnShow", Paint)
     Paint()
     return box
 end
 
-HU:Module("UnionConfig", { "Blacklist", "BlizzTab", "Config", "Core", "ListWindow", "Pinned", "Social" })
+HU:Module("UnionConfig", { "BlizzTab", "Config", "Core", "ListWindow", "Pinned" })

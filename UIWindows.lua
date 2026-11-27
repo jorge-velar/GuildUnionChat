@@ -8,7 +8,8 @@ local RedButton = K.RedButton
 ---------------------------------------------------------------------------
 -- Ventana para copiar texto
 ---------------------------------------------------------------------------
--- opts (opcional): { hint = "texto de ayuda", button = "Borrar", onClick = function(f) end }
+-- opts (opcional): { hint = "texto de ayuda", button = "Borrar", onClick = function(f) end, editable = true (se puede
+-- escribir en ella: «Echar a varios», Social.lua) }
 function UI:ShowCopy(title, text, opts)
     opts = opts or {}
     local f = self.copyFrame
@@ -51,12 +52,13 @@ function UI:ShowCopy(title, text, opts)
         eb:SetFontObject(ChatFontNormal)
         eb:SetWidth(570)
         eb:SetScript("OnEscapePressed", function() f:Hide() end)
-        eb:SetScript("OnTextChanged", function(s, user) if user then s:SetText(f.text or ""); s:HighlightText() end end)
+        eb:SetScript("OnTextChanged", function(s, user) if user and not f.editable then s:SetText(f.text or ""); s:HighlightText() end end)
         sf:SetScrollChild(eb)
         f.edit = eb
         self.copyFrame = f
     end
     f.text = text
+    f.editable = opts.editable
     f.title:SetText(title)
     f.hint:SetText(opts.hint or L("Ctrl+A selecciona todo  ·  Ctrl+C copia"))
     f.onExtra = opts.onClick

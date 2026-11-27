@@ -345,14 +345,23 @@ local function RefreshStatus()
     local relay = (HU:IsRelay()) and L("tú") or (HU:RelayName()) or "?"
     -- (cuenta también la mía: con WLP, WLP2 y WLP3 son 3, no 2. Jorge, 12/11)
     local n = #HU:OtherTags() + (HU.myTag and 1 or 0)
-    panel.status:SetText(
-        L("Canal: ") .. (chan and "|cff44ff44" .. L("conectado") .. "|r" or "|cffff4444" .. L("sin conectar") .. "|r")
-        .. "    " .. L("Enlace: ") .. "|cffffffff" .. HU:Nice(relay) .. "|r"
-        .. "    " .. L("Hermandades unidas: ") .. "|cffffffff" .. n .. "|r")
+    if HU:IsSolo() then
+        -- (sin comunidad no hay canal ni otras hermandades: Config.lua)
+        panel.status:SetText("|cff33ff99" .. L("Hermandad sola.") .. "|r " .. L("Para juntaros con otras hermandades, el maestro pulsa «Crear comunidad»."))
+    else
+        panel.status:SetText(
+            L("Canal: ") .. (chan and "|cff44ff44" .. L("conectado") .. "|r" or "|cffff4444" .. L("sin conectar") .. "|r")
+            .. "    " .. L("Enlace: ") .. "|cffffffff" .. HU:Nice(relay) .. "|r"
+            .. "    " .. L("Hermandades unidas: ") .. "|cffffffff" .. n .. "|r")
+    end
     local officer = HU:CanPin()
     for _, f in ipairs(panel.officerOnly) do f:SetShown(officer) end
+    -- (la lista negra, debajo de los buscadores de los oficiales; sin ellos, arriba, donde empiezan)
+    panel.blackHead:ClearAllPoints()
+    if officer then panel.blackHead:SetPoint("TOPLEFT", panel.blackAfter, "BOTTOMLEFT", -6, -12)
+    else panel.blackHead:SetPoint("TOPLEFT", panel.status, "BOTTOMLEFT", 0, -16) end
     if panel.createBtn then
-        local has = HU.myTag ~= nil
+        local has = HU:HasCommunity()
         panel.createBtn:SetText(has and L("Invitar a la comunidad") or L("Crear comunidad"))
         panel.createBtn:SetShown(has and HU:CanInvite() or (not has and IsInGuild() and HU:IsMaster()))
         panel.manageBtn:SetShown(has and officer)
@@ -442,7 +451,11 @@ local function BuildPanel()
     mid:SetPoint("TOP", panel, "TOP", 0, -66)
     mid:SetPoint("BOTTOM", panel, "BOTTOM", 0, 10)
 
-    -- Columna izquierda: buscar, silenciar y ajustes (oficiales)
+    -- (lo que está pero no se ve: su código sigue igual. Ver más abajo y «Lista negra») [+ARCHITECTURE.md]
+    local stash = CreateFrame("Frame", nil, panel)
+    stash:Hide()
+
+    -- Columna izquierda: buscar (oficiales), la lista negra y ajustes
     local h1 = Header(panel, L("Buscar en el chat"), panel.status, -16)
     local qText = Box(panel, 160, h1)
     local b1 = Button(panel, L("Buscar"), 70, qText)
@@ -486,9 +499,22 @@ local function BuildPanel()
     bUnmute:SetScript("OnClick", function() HU:SetMute(mName:GetText(), -1) end)
     HU:NameSuggest(qName, function(s) s:ClearFocus(); b2:Click() end)
     HU:NameSuggest(mName)
-    for _, w in ipairs({ h1, qText, b1, h2, qName, b2, h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute }) do
+    for _, w in ipairs({ h1, qText, b1, h2, qName, b2 }) do
         panel.officerOnly[#panel.officerOnly + 1] = w
     end
+    -- «Silenciar», fuera por ahora (Jorge, 25/11: «la parte de Mute la quitamos momentáneamente»): guardado, sin verse.
+    -- Silenciar sigue en los menús de clic derecho [+ARCHITECTURE.md]
+    for _, w in ipairs({ h3, mName, mName2, mMin, mMinL, mWhy, mWhyL, bMute, bUnmute }) do w:SetParent(stash) end
+    -- «Lista negra», en su sitio: «Ver lista negra» abre la de la comunidad en su ventana, que se mueve (Blacklist.lua;
+    -- hasta el 25/11 iba en Configuración). La ven todos; añadir y quitar, el maestro y los oficiales [+ARCHITECTURE.md]
+    panel.blackHead = Header(panel, L("Lista negra"), qName, -12)
+    panel.blackHead:SetPoint("TOPLEFT", qName, "BOTTOMLEFT", -6, -12)
+    panel.blackBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    panel.blackBtn:SetSize(150, 22)
+    panel.blackBtn:SetText(L("Ver lista negra"))
+    panel.blackBtn:SetPoint("TOPLEFT", panel.blackHead, "BOTTOMLEFT", 0, -6)
+    panel.blackBtn:SetScript("OnClick", function() HU:ShowBlacklist() end)
+    panel.blackAfter = qName
 
     -- Ajustes (para todos)
     local h4 = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -544,6 +570,7 @@ local function BuildPanel()
     local lShow = RowLabel(L("Mostrar"), -62)
     local cEmotes, cEmotesText = Option("UICheckButtonTemplate", 26, L("Emoticonos"), lShow, "LEFT", COL - 3)
     local cLevel = Option("UICheckButtonTemplate", 26, L("Nivel"), cEmotesText, "RIGHT", 14)
+    panel.levelCheck = cLevel
     local function FormatText()
         rTag:SetChecked(HU.db.chatMark == "tag")
         rDot:SetChecked(HU.db.chatMark ~= "tag")
@@ -552,7 +579,12 @@ local function BuildPanel()
         cLevel:SetChecked(HU.db.chatLevel and true or false)
     end
     cEmotes:SetScript("OnClick", function(s) HU.db.emotesOff = (not s:GetChecked()) or nil end)
-    cLevel:SetScript("OnClick", function(s) HU.db.chatLevel = s:GetChecked() and true or nil end)
+    -- (al ponerlo se piden las listas completas de las otras hermandades que falten: de ahí sale el nivel de todos,
+    -- HU:LevelOf. Las que ya están, no)
+    cLevel:SetScript("OnClick", function(s)
+        HU.db.chatLevel = s:GetChecked() and true or nil
+        if HU.db.chatLevel then for _, t in ipairs(HU:OtherTags()) do HU:PackNeed(t, "MB") end end
+    end)
     Tip(cLevel, L("Formato de texto"), L("El nivel de quien escribe, delante de su nombre en el chat, si se sabe (de las listas de las hermandades)."))
     rTag:SetScript("OnClick", function() HU.db.chatMark = "tag"; FormatText() end)
     rDot:SetScript("OnClick", function() HU.db.chatMark = "dot"; FormatText() end)
@@ -720,9 +752,7 @@ local function BuildPanel()
     panel:HookScript("OnMouseDown", function() WhoTick() end)
     panel:SetScript("OnEvent", function() RefreshOfficers() end)
     -- (copia 266: la mitad derecha es la configuración de la hermandad, UnionConfig.lua. Oficiales y Miembros se
-    -- guardan en un marco escondido: su código sigue igual, pero no se ven) [+ARCHITECTURE.md]
-    local stash = CreateFrame("Frame", nil, panel)
-    stash:Hide()
+    -- guardan en el marco escondido: su código sigue igual, pero no se ven) [+ARCHITECTURE.md]
     for _, w in ipairs({ bOff, bMem, panel.memPick, panel.whoBtn, hdr, sf }) do w:SetParent(stash) end
     for _, row in ipairs(panel.offRows) do row:SetParent(stash) end
     panel.memStatus:SetParent(stash); panel.offEmpty:SetParent(stash)
@@ -1260,7 +1290,7 @@ local function SyncTab()
         tab:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -20)
     end
     tab:SetShown(show and true or false)
-    if tab.logBtn then tab.logBtn:SetShown(show and true or false) end
+    if tab.officersBtn then tab.officersBtn:SetShown(show and true or false) end
     if not show then ShowPanel(false) end
 end
 
@@ -1277,30 +1307,13 @@ local function Setup()
         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
         ShowPanel(not (panel and panel.where == "blizz" and panel:IsShown()))
     end)
-    -- «Registro de invitaciones» (InviteLog.lua), a la izquierda del botón de invitar del juego. Cuelga
-    -- de ese botón, así que se ve y se esconde con él; y solo con la hermandad elegida (SyncTab)
-    if f.InviteButton and HU.ShowInviteLog then
-        local b = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
-        b:SetSize(120, 20)
-        b:SetText(L("Ver registro"))
+    -- «Oficiales» (InviteLog.lua: Peticiones de oficiales y Ver registro, en su desplegable), a la izquierda del botón
+    -- de invitar del juego. Cuelga de ese botón, así que se ve y se esconde con él; y solo con la hermandad elegida
+    -- (SyncTab)
+    if f.InviteButton then
+        local b = HU:OfficersButton(f.InviteButton, "GuildUnionChatOfficers")
         b:SetPoint("RIGHT", f.InviteButton, "LEFT", -4, 0)
-        b:SetScript("OnClick", function() HU:ShowInviteLog() end)
-        tab.logBtn = b
-        -- «Peticiones de oficiales» (InviteLog.lua): lo que piden otras hermandades (echar a alguien de la mía). Con
-        -- alguna pendiente, encendido y con el número
-        local rq = CreateFrame("Button", nil, f.InviteButton, "UIPanelButtonTemplate")
-        rq:SetSize(140, 20)
-        rq:SetPoint("RIGHT", b, "LEFT", -4, 0)
-        rq:SetScript("OnClick", function() HU:ShowRequests() end)
-        local function SyncRequests()
-            local n = HU:KickRequestCount()
-            rq:SetText(n > 0 and (L("Peticiones de oficiales") .. " (" .. n .. ")") or L("Peticiones de oficiales"))
-            if n > 0 then rq:LockHighlight() else rq:UnlockHighlight() end
-        end
-        HU:Listen("CHANGED", function(what) if what == "requests" then SyncRequests() end end)
-        rq:HookScript("OnShow", SyncRequests)
-        SyncRequests()
-        tab.reqBtn = rq
+        tab.officersBtn = b
     end
     -- (cada parte por separado: si una falla, las demás siguen y el fallo queda en /gu errores)
     if not panel then HU:SafeCall("pestaña", BuildPanel) end
@@ -1412,7 +1425,7 @@ local function GuildsText()
     for _, g in ipairs((HU.cfg and HU.cfg.guilds) or {}) do
         local mark = (g.tag == principal) and ("  |cffffd100" .. L("(principal)") .. "|r") or ""
         local how = g.net and ("  |cff808080" .. L("(por invitación)") .. "|r") or ""
-        lines[#lines + 1] = "|cff" .. HU:GuildColorHex(g.tag) .. "<" .. g.tag .. ">|r  " .. g.name .. mark .. how
+        lines[#lines + 1] = "|cff" .. HU:GuildColorHex(g.tag) .. "<" .. HU:TagLabel(g.tag) .. ">|r  " .. g.name .. mark .. how
     end
     return #lines > 0 and table.concat(lines, "\n") or L("Sin configurar.")
 end
@@ -1527,4 +1540,4 @@ HU:OnStart(function()
     end
 end)
 
-HU:Module("BlizzTab", { "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Relay", "Pinned", "Ranks", "Social", "UnionConfig", "UnionMembers", "UnionRoster", "Wizard" })
+HU:Module("BlizzTab", { "Blacklist", "Channel", "Community", "Config", "Core", "History", "InviteLog", "Net/Packs", "Net/Relay", "Pinned", "Ranks", "Social", "UnionConfig", "UnionMembers", "UnionRoster", "Wizard" })

@@ -48,7 +48,7 @@ local due, token = nil, 0
 local nameCache, nameCount = {}, 0   -- nombre que da el juego -> { completo, clave }
 
 local function ReadOne(self, s, i, now)
-    local name, rankName, rankIndex, level, _, zone, _, officerNote, isOnline, status, class, _, _, _, _, _, guid = GetGuildRosterInfo(i)
+    local name, rankName, rankIndex, level, _, zone, note, officerNote, isOnline, status, class, _, _, isMobile, _, _, guid = GetGuildRosterInfo(i)
     if not name then return end
     local c = nameCache[name]
     if not c then
@@ -65,9 +65,12 @@ local function ReadOne(self, s, i, now)
     if not e then e, s.newNames = {}, true end
     local wasOnline = e.online
     e.name, e.rank, e.rankIndex, e.level, e.class, e.zone = full, rankName, rankIndex, level, class, zone
+    e.note = note ~= "" and note or nil   -- (nota pública: para detectar alts en las estadísticas, GuildStats.lua)
     e.guid = guid -- (para la raza en la ventana, si no hay ficha)
     e.online = isOnline and true or false
-    e.afk = isOnline and (status == 1 or status == 2 or (type(status) == "string" and status ~= "")) or false
+    -- (conectado con la aplicación del móvil: ahí no hay addon que conteste; /gu sinaddon, Report.lua)
+    e.mobile = isMobile == true or nil
+    e.afk =isOnline and (status == 1 or status == 2 or (type(status) == "string" and status ~= "")) or false
     if e.online then
         e.offSecs, e.offAt = nil, nil
     elseif GetGuildRosterLastOnline and (wasOnline ~= false or not e.offAt or now - e.offAt > OFF_EVERY) then
@@ -214,5 +217,61 @@ function HU:InMyGuild(name)
     local k = self:Key(name)
     return k and self.roster[k] ~= nil
 end
+
+---------------------------------------------------------------------------
+-- Quién de mi hermandad tiene el addon, lo que sé de los últimos días (para /gu sinaddon y echar a varios) [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- db.addonSeen[hermandad] = { since = desde cuándo se apunta, who = { [clave] = la última vez que dio señal } }
+HU:Saved({ account = { "addonSeen" } })
+local SEEN_DAYS = 7
+local function SeenOf(self, create)
+    local g = IsInGuild() and GetGuildInfo and GetGuildInfo("player")
+    if not (g and self.db) then return nil end
+    local all = self.db.addonSeen
+    if type(all) ~= "table" then
+        if not create then return nil end
+        all = {}
+        self.db.addonSeen = all
+    end
+    local s = all[g]
+    if type(s) ~= "table" or type(s.who) ~= "table" then
+        if not create then return nil end
+        s = { since = time(), who = {} }
+        all[g] = s
+    end
+    return s
+end
+-- (ha dado señal de tener el addon: un mensaje suyo del addon, por la vía que sea (Net/Security.lua), o está en el
+-- canal de la comunidad, donde solo entra el addon con la contraseña. Solo los de mi hermandad)
+function HU:NoteAddonUser(name)
+    local k = name and self:Key(name)
+    if not (k and self.roster[k]) then return end
+    local s = SeenOf(self, true)
+    if s then s.who[k] = time() end
+end
+-- ¿Ha dado alguna señal de tener el addon? Ahora (me ha saludado o contestado, HU.guildPeers; está en el canal,
+-- HU.chanSeen) o en los últimos SEEN_DAYS días (db.addonSeen). Para no echar nunca a quien lo tiene
+function HU:AddonEvidence(name)
+    local k = name and self:Key(name)
+    if not k then return false end
+    if k == self:MeKey() or self.guildPeers[k] or self.chanSeen[k] then return true end
+    local s = SeenOf(self)
+    local t = s and s.who[k]
+    return t ~= nil and time() - t < SEEN_DAYS * 86400
+end
+-- (desde cuándo se apunta, en mi hermandad; nil si aún nada)
+function HU:AddonSeenSince()
+    local s = SeenOf(self)
+    return s and s.since
+end
+HU:OnStart(function()
+    -- (lo de más de SEEN_DAYS días se olvida)
+    local now = time()
+    for _, s in pairs(type(HU.db and HU.db.addonSeen) == "table" and HU.db.addonSeen or {}) do
+        if type(s) == "table" and type(s.who) == "table" then
+            for k, t in pairs(s.who) do if type(t) ~= "number" or now - t >= SEEN_DAYS * 86400 then s.who[k] = nil end end
+        end
+    end
+end)
 
 HU:Module("Roster", { "Channel", "Channels", "Config", "Core", "NoteConfig", "Presence" })

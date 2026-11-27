@@ -204,15 +204,84 @@ local function UseNetChannel(cfg, net)
     end
 end
 
+---------------------------------------------------------------------------
+-- Hermandad sola (Jorge, 27/11): sin líneas GU: en la Información, la hermandad funciona igual dentro de sí misma
+-- (Eventos, Comercio, encargos, Oficiales), con una etiqueta propia y sin canal [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+local soloName, soloTag -- (la última calculada: TagLabel la pide en cada línea del chat)
+function HU.SoloTag(gname)
+    gname = tostring(gname or ""):lower()
+    if gname == soloName then return soloTag end
+    local h = 5381
+    for i = 1, #gname do h = (h * 33 + gname:byte(i)) % 2147483647 end
+    h = h % 60466176 -- (36^5: cinco letras)
+    local out = {}
+    for i = 5, 1, -1 do
+        local d = h % 36
+        out[i] = B36:sub(d + 1, d + 1)
+        h = math.floor(h / 36)
+    end
+    soloName, soloTag = gname, "S" .. table.concat(out):upper()
+    return soloTag
+end
+-- (lo que se enseña de la etiqueta de mi hermandad sola, que no le dice nada a nadie: las iniciales de su nombre)
+local function Initials(gname)
+    local out = {}
+    for w in tostring(gname or ""):gmatch("%S+") do
+        local c = w:match("%w")
+        if c and #out < 6 then out[#out + 1] = c:upper() end
+    end
+    return #out > 0 and table.concat(out) or "?"
+end
+function HU:TagLabel(tag)
+    if tag ~= nil and self.guildName and tag == HU.SoloTag(self.guildName) then return Initials(self.guildName) end
+    return tag
+end
+function HU:IsSolo() return self.cfg ~= nil and self.cfg.solo == true end
+function HU:HasCommunity() return self.myTag ~= nil and self.cfg ~= nil and not self.cfg.solo end
+
+-- (lo de mi hermandad, a la etiqueta de ahora: lo de la hermandad sola, siempre; lo de la etiqueta de antes, si es la
+-- misma hermandad. Quien cambia de hermandad no se lleva nada)
+local function MoveMine(self, wasTag, wasGuild, gname)
+    if not self.myTag then return end
+    if wasTag and wasGuild == gname then self:MovePackTag(wasTag, self.myTag) end
+    self:MovePackTag(HU.SoloTag(gname), self.myTag)
+end
+
+local function UseSolo(self, gname, wasTag, wasGuild, quick)
+    local tag = HU.SoloTag(gname)
+    local g = { name = gname, tag = tag }
+    self.cfg = { guilds = { g }, byTag = { [tag] = g }, byName = { [gname:lower()] = g }, errors = {}, ok = true, solo = true,
+        quick = quick }
+    self.myTag, self.guildName = tag, gname
+    self:Debug("Hermandad sola (sin líneas GU: en la Información). Etiqueta:", tag)
+    -- (la próxima vez, ya al entrar: con la Información vacía se esperaba hasta 45 s. Si esta hermandad tenía comunidad,
+    -- una vez, el aviso: puede que alguien haya borrado las líneas sin querer, y sin ellas no llega el chat de las otras)
+    local q = self.db.quickCfg
+    if type(q) == "table" and not q.solo and q.guild == gname then
+        self:Print(L("Tu hermandad ya no tiene las líneas de la comunidad (GU:g) en la Información de hermandad: sigues con el addon como hermandad sola, sin las otras hermandades. Si no es a propósito, avisa a tu maestro o a un oficial."))
+    end
+    if not (type(q) == "table" and q.solo and q.guild == gname) then self.db.quickCfg = { guild = gname, solo = true, t = time() } end
+    MoveMine(self, wasTag, wasGuild, gname)
+    self:ApplyChannels()
+    self:Changed("config")
+end
+
 -- Arranque rápido: al entrar, el juego tarda unos segundos en dar la Información de hermandad y la [+ARCHITECTURE.md]
 function HU:QuickConfig()
     if self.cfg or not IsInGuild() then return false end
     local q = self.db.quickCfg
-    if type(q) ~= "table" or type(q.text) ~= "string" or type(q.guild) ~= "string" then return false end
+    if type(q) ~= "table" or type(q.guild) ~= "string" then return false end
     -- (si el juego ya dice la hermandad y no es la de entonces, no vale. Si es la misma, vale [+ARCHITECTURE.md]
     local gname = GetGuildInfo("player")
     if gname and gname ~= q.guild then return false end
     if not gname and time() - (tonumber(q.t) or 0) > 7 * 86400 then return false end
+    if q.solo then
+        UseSolo(self, q.guild, nil, nil, true)
+        return true
+    end
+    if type(q.text) ~= "string" then return false end
     local cfg = HU.ParseConfigText(q.text)
     if not cfg then return false end
     self:MergeNetGuilds(cfg)
@@ -221,6 +290,7 @@ function HU:QuickConfig()
     if not cfg.ok or not cfg.channel or not mine then return false end
     cfg.quick = true
     self.cfg, self.myTag, self.guildName = cfg, mine.tag, q.guild
+    MoveMine(self, nil, nil, q.guild)
     self:Debug("Arranque rápido con la configuración guardada. Canal:", HU.MaskChannel(cfg.channel))
     self:ApplyChannels()
     self:Changed("config")
@@ -256,6 +326,7 @@ function HU:RefreshConfig(force)
 
     local gname = GetGuildInfo("player")
     if not gname then return end -- todavía no ha cargado
+    local wasTag, wasGuild = self.myTag, self.guildName
     local text = self:GuildInfoText()
     if not text then return end -- (restricción del juego: se mantiene lo que había)
     -- al entrar, el juego da la Información vacía unos segundos: se espera a que llegue (antes se tiraba
@@ -295,7 +366,7 @@ function HU:RefreshConfig(force)
     -- (sin hermandades, o sin la mía, teniendo una configuración buena: puede ser que el juego haya dado
     -- la Información vacía o a medias, p. ej. al cambiar de zona. Se espera a la siguiente entrega)
     local broken = not cfg or #cfg.guilds == 0 or not cfg.byName[gname:lower()]
-    if broken and self.cfg and self.cfg.ok and self.myTag then
+    if broken and self.cfg and self.cfg.ok and not self.cfg.solo and self.myTag then
         if Doubt(self, gname .. "\0" .. text) then
             lastKey = nil
             return
@@ -307,11 +378,7 @@ function HU:RefreshConfig(force)
         -- (recién entrado con la configuración guardada: la Información de hermandad aún puede venir
         -- vacía. No se sale del canal por eso en los primeros 30 s)
         if self.cfg and self.cfg.quick and GetTime() - (HU.loginT or 0) < 30 then return end
-        self.cfg, self.myTag = nil, nil
-        self:Debug("Sin configuración HU en la Información de hermandad")
-        self:ApplyChannels()
-        self:Changed("config")
-        return
+        return UseSolo(self, gname, wasTag, wasGuild)
     end
 
     UseNetChannel(cfg, net)
@@ -323,6 +390,7 @@ function HU:RefreshConfig(force)
     end
     self.cfg = cfg
     self.myTag = mine and mine.tag or nil
+    MoveMine(self, wasTag, wasGuild, gname)
 
     -- solo falta el canal: no es un error, llegará de un oficial conectado
     local onlyWaiting = cfg.missingChannel and not cfg.chanFromNote and #cfg.errors == 1
@@ -572,8 +640,37 @@ function RankInfoSlow(self, k)
     return nil
 end
 
--- El nivel de alguien de la unión, si se sabe: de la lista de mi hermandad o de las listas de las otras. Para el chat,
--- con db.chatLevel (Jorge, 24/11) [+ARCHITECTURE.md]
+-- Los niveles de las listas completas de las otras hermandades (paquete MB, Packs/Members.lua), por nombre: el índice
+-- se rehace solo si cambian esos paquetes, no con cada línea del chat (son miles de miembros) [+ARCHITECTURE.md]
+local mbLevels, mbDirty, mbSig = {}, true, nil
+HU:Listen("CHANGED", function(what) if what == "unionMembers" or what == "config" then mbDirty = true end end)
+-- (lo que forma el índice: de cada hermandad, las huellas de los trozos de su paquete y cuántos están comprobados)
+local function MBSig()
+    local parts = {}
+    for _, tag in ipairs(HU:OtherTags()) do
+        local p = HU:PackGet(tag, "MB")
+        parts[#parts + 1] = tag .. ":" .. tostring((HU:PackProgress(tag, "MB"))) .. ":" .. table.concat(p and p.h or {}, ".")
+    end
+    return table.concat(parts, "|")
+end
+local function MBLevels()
+    if not mbDirty then return mbLevels end
+    mbDirty = false
+    local sig = MBSig()
+    if sig == mbSig then return mbLevels end
+    mbSig, mbLevels = sig, {}
+    for _, tag in ipairs(HU:OtherTags()) do
+        for _, m in ipairs(HU:PackedMembers(tag)) do
+            if m.level > 0 then mbLevels[m.name:lower()] = m.level end
+        end
+    end
+    return mbLevels
+end
+
+local function GoodLevel(v) return type(v) == "number" and not HU.Secret(v) and v > 0 end
+-- El nivel de alguien de la unión, si se sabe: de la lista de mi hermandad, de las ligeras de las otras (RB) o de sus
+-- listas completas (MB). Para el chat, con db.chatLevel (Jorge, 24/11; 25/11: «de todos los pj de la guild»)
+-- [+ARCHITECTURE.md]
 function HU:LevelOf(name)
     local k = self:Key(name)
     if not k then return nil end
@@ -588,7 +685,8 @@ function HU:LevelOf(name)
             if m then lv = m.level; break end
         end
     end
-    return (type(lv) == "number" and not HU.Secret(lv) and lv > 0) and lv or nil
+    if not GoodLevel(lv) then lv = MBLevels()[k] end
+    return GoodLevel(lv) and lv or nil
 end
 
-HU:Module("Config", { "Channel", "Community", "Core", "Guard", "NoteConfig", "Popup", "Ranks", "Roster" })
+HU:Module("Config", { "Channel", "Community", "Core", "Guard", "Net/Packs", "NoteConfig", "Packs/Members", "Popup", "Ranks", "Roster" })

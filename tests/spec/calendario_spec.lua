@@ -11,14 +11,21 @@ local SECTION_H = (426 - 28 - 4) - ((23 + 60 - 57) + 2)   -- 366
 ---------------------------------------------------------------------------
 -- El WoW de mentira, con lo que aquí hace falta mirar
 ---------------------------------------------------------------------------
--- (lo que no guarda: textura, transparencia, activado, ancho, alto, los puntos de cada marco, y el tinte y la letra de
--- los botones)
+-- (lo que no guarda: textura, transparencia, activado, ancho, alto, los puntos de cada marco, el tinte y la letra de
+-- los botones, y la capa y subcapa de cada textura: en el juego, ARTWORK y 0 si no se dicen)
 local function Observe(a)
     local meta = a.w.frameMeta
     local base = meta.__index
     local extra = {
+        CreateTexture = function(self, name, layer, _, sub)
+            local t = base(self, "CreateTexture")(self, name)
+            rawset(t, "_layer", layer or "ARTWORK"); rawset(t, "_sub", sub or 0)
+            return t
+        end,
+        SetDrawLayer = function(self, layer, sub) rawset(self, "_layer", layer); rawset(self, "_sub", sub or 0) end,
         SetTexture = function(self, t) rawset(self, "_tex", t) end,
         GetTexture = function(self) return rawget(self, "_tex") end,
+        SetTexCoord = function(self, ...) rawset(self, "_tc", { ... }) end,
         SetAlpha = function(self, v) rawset(self, "_alpha", v) end,
         GetAlpha = function(self) return rawget(self, "_alpha") or 1 end,
         SetEnabled = function(self, v) rawset(self, "_off", not v) end,
@@ -97,6 +104,12 @@ local function GuildWindow(a)
 end
 
 local function Click(b, ...) return b:GetScript("OnClick")(b, ...) end
+-- (clic izquierdo con Ctrl («ctrl») o Mayús («shift») pulsada; sin tecla, el clic solo)
+local function Pick(a, b, key)
+    a.env.IsControlKeyDown = function() return key == "ctrl" end
+    a.env.IsShiftKeyDown = function() return key == "shift" end
+    return Click(b, "LeftButton")
+end
 
 -- (abrir una sección como el jugador: Calendario, con su pestaña de la derecha; Miembros, con la pestaña de miembros del
 -- juego)
@@ -144,7 +157,15 @@ local function Said(a, text)
     return false
 end
 
-local function TestMode(a, ui) Click(Child(a, ui, "Modo prueba")) end
+-- (lo de mi hermandad en el conjunto EV, tal cual está en el almacén de propuestas: «clave=datos», ordenado)
+local function Stored(a)
+    local out = {}
+    for _, e in pairs(a.HU.db.wuStore.UNO and a.HU.db.wuStore.UNO.EV or {}) do out[#out + 1] = e.k .. "=" .. e.d end
+    table.sort(out)
+    return out
+end
+
+local function TestMode(_, ui) Click(ui.testBtn) end
 -- (lo que sale al pasar el ratón por un botón: el título y las líneas de debajo; nil si no sale nada)
 local function Hover(a, b)
     local tip = a.env.GameTooltip
@@ -156,12 +177,28 @@ local function Hover(a, b)
     table.insert(lines, 1, tip:GetText())
     return lines
 end
+-- (el título de una tarjeta, sin la estrella de los fijados)
+local function TitleOf(c) return (c.title:GetText():gsub("^|T.-|t ", "")) end
+local function CardHere(ui, title)
+    for _, c in ipairs(ui.cards) do if c:IsShown() and TitleOf(c) == title then return c end end
+end
+-- (la tarjeta de un evento en la vista de tarjetas en que esté, Eventos o Raids: si no está en la que se ve, se pasa a
+-- la otra, como haría el jugador)
 local function Card(ui, title)
-    for _, c in ipairs(ui.cards) do if c:IsShown() and c.title:GetText() == title then return c end end
+    local c = CardHere(ui, title)
+    if c then return c end
+    for _, k in ipairs({ "list", "raids" }) do
+        local b = ui.viewBtns[k]
+        if not b.picked then
+            b:GetScript("OnClick")(b)
+            c = CardHere(ui, title)
+            if c then return c end
+        end
+    end
 end
 local function Titles(ui)
     local out = {}
-    for _, c in ipairs(ui.cards) do if c:IsShown() then out[#out + 1] = c.title:GetText() end end
+    for _, c in ipairs(ui.cards) do if c:IsShown() then out[#out + 1] = TitleOf(c) end end
     return out
 end
 -- (la ficha de un evento, por su tarjeta)
@@ -169,9 +206,9 @@ local function Detail(ui, title)
     Click(Card(ui, title).info)
     return ui.detail
 end
--- (cuántos van: en la tarjeta, «… 24 van»; en la ficha, en verde)
+-- (cuántos van: en la tarjeta, «… 24 van» o, en una banda, «… 24/40 van»; en la ficha, en verde)
 local function Going(x)
-    if x.going then return tonumber(x.going:GetText():match("(%d+) van$")) end
+    if x.going then return tonumber(x.going:GetText():match("(%d+)/%d+ ") or x.going:GetText():match("(%d+) van$")) end
     return tonumber(x.sub:GetText():match("|cff40ff40(%d+)|r"))
 end
 
@@ -210,6 +247,44 @@ local function SlotOf(d, name)
     end
 end
 local function BenchCount(d) return tonumber(d.benchHead:GetText():match("%((%d+)%)")) end
+
+-- (dónde queda una textura de la ventana w, desde su esquina de arriba a la izquierda (y hacia abajo, negativa): por sus
+-- puntos, respecto a w o a otra textura de w, y su ancho y alto. Lo justo para lo que monta DJ.Window y la ficha)
+local AT = { TOPLEFT = { 0, 0 }, TOP = { 0.5, 0 }, TOPRIGHT = { 1, 0 }, LEFT = { 0, 0.5 }, CENTER = { 0.5, 0.5 },
+    RIGHT = { 1, 0.5 }, BOTTOMLEFT = { 0, 1 }, BOTTOM = { 0.5, 1 }, BOTTOMRIGHT = { 1, 1 } }
+local function Rect(r, w)
+    if r == w then return { l = 0, r = w._w, t = 0, b = -w._h } end
+    local box = {}
+    for p, v in pairs(r._pts or {}) do
+        local rel, rp, x, y = w, p, v[1], v[2]
+        if type(v[1]) == "table" then rel, rp, x, y = v[1], v[2] or p, v[3], v[4] end
+        local R = Rect(rel, w)
+        local ax = R.l + (R.r - R.l) * AT[rp][1] + (x or 0)
+        local ay = R.t + (R.b - R.t) * AT[rp][2] + (y or 0)
+        local fx, fy = AT[p][1], AT[p][2]
+        if fx == 0 then box.l = ax elseif fx == 1 then box.r = ax else box.l, box.r = ax - r._w / 2, ax + r._w / 2 end
+        if fy == 0 then box.t = ay elseif fy == 1 then box.b = ay else box.t, box.b = ay + r._h / 2, ay - r._h / 2 end
+    end
+    box.r = box.r or box.l + r._w
+    box.l = box.l or box.r - r._w
+    box.b = box.b or box.t - r._h
+    box.t = box.t or box.b + r._h
+    return box
+end
+-- (las texturas de la ventana w en la misma capa y subcapa que t que pisan a t, con su capa y dónde están: el juego no
+-- fija cuál de las dos va encima)
+local function SameLayerOver(a, w, t)
+    local out, me = {}, Rect(t, w)
+    for _, f in ipairs(a.w.frames) do
+        if f._parent == w and f._kind == "Texture" and f ~= t and f._layer == t._layer and f._sub == t._sub then
+            local o = Rect(f, w)
+            if o.l < me.r and me.l < o.r and o.b < me.t and me.b < o.t then
+                out[#out + 1] = string.format("%s %d, de %g,%g a %g,%g", f._layer, f._sub, o.l, o.t, o.r, o.b)
+            end
+        end
+    end
+    return out
+end
 
 -- (los roles por su icono: «[T] 2   [H] 5   [D] 12» -> { TANK = 2, HEALER = 5, DAMAGER = 12 })
 local TC = { TANK = "0:19:22:41", HEALER = "20:39:1:20", DAMAGER = "20:39:22:41" }
@@ -325,12 +400,19 @@ local function NewEvent(a, ui, title, o)
 end
 
 describe("Calendario: la sección", function()
-    it("sale en la pestaña Calendario, en la vista Eventos y sin eventos", function()
+    it("sale en la pestaña Eventos (hasta el 25/11, Calendario), en la vista Eventos y sin eventos; en inglés, Events", function()
         local a = Community()
         local ui, cover = Open(a)
-        A.equal("Calendario", cover.side.tabs[2].tooltip, "su pestaña, a la derecha")
+        A.equal("Eventos", cover.side.tabs[2].tooltip, "su pestaña, a la derecha")
+        -- (dentro siguen las dos vistas, Eventos y Calendario; en inglés, Events y Calendar)
+        local en = Community({ locale = "enUS" })
+        local enUi, enCover = Open(en)
+        A.equal("Events", enCover.side.tabs[2].tooltip)
+        A.same({ "Events", "Raids", "Calendar" }, { enUi.viewBtns.list:GetText(), enUi.viewBtns.raids:GetText(), enUi.viewBtns.month:GetText() })
+        A.same({}, en:Errors())
         A.truthy(ui:IsShown())
         A.truthy(ui.viewBtns.list.picked)
+        A.falsy(ui.viewBtns.raids.picked)
         A.falsy(ui.viewBtns.month.picked)
         A.truthy(ui.list:IsShown())
         A.falsy(ui.month:IsShown())
@@ -342,16 +424,29 @@ describe("Calendario: la sección", function()
         A.same({}, a:Errors())
     end)
 
-    it("Eventos y Calendario cambian la vista; al salir de la pestaña se cierra la ficha", function()
+    it("Eventos, Raids y Calendario cambian la vista (Jorge, 25/11: «añadiría un raids Events / raid / calendar»): Eventos, lo que no es banda; Raids, las bandas; Calendario, todo junto; al salir de la pestaña se cierra la ficha", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
+        A.same({ "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina", "Valle de Alterac" }, Titles(ui), "Eventos: sin bandas")
+        a.env.FauxScrollFrame_SetOffset(ui.scroll, 1)
+        Click(ui.viewBtns.raids)
+        A.equal(0, a.env.FauxScrollFrame_GetOffset(ui.scroll), "otra lista, desde arriba")
+        A.truthy(ui.viewBtns.raids.picked)
+        A.falsy(ui.viewBtns.list.picked)
+        A.truthy(ui.list:IsShown(), "también en tarjetas")
+        A.falsy(ui.month:IsShown())
+        A.same({ "Núcleo de Magma", "Zul'Gurub", "Guarida de Onyxia" }, Titles(ui), "Raids: las bandas")
         Click(ui.viewBtns.month)
         A.truthy(ui.viewBtns.month.picked)
         A.falsy(ui.viewBtns.list.picked)
+        A.falsy(ui.viewBtns.raids.picked)
         A.falsy(ui.list:IsShown())
         A.truthy(ui.month:IsShown())
         A.truthy(ui.side:IsShown())
+        -- (en el mes, todo: el 18, Núcleo de Magma; el 19, la mazmorra)
+        A.equal("|cffffd100+1 evento|r", ui.grid.cells[22].ev:GetText())
+        A.equal("|cffffd100+1 evento|r", ui.grid.cells[23].ev:GetText())
         Click(ui.viewBtns.list)
         A.truthy(ui.list:IsShown())
         A.falsy(ui.month:IsShown())
@@ -363,26 +458,38 @@ describe("Calendario: la sección", function()
         Section(a, 3)
         A.truthy(ui:IsShown())
         A.falsy(ui.detail:IsShown(), "al volver, sin ficha abierta")
-        A.equal(4, #Titles(ui))
+        A.equal(3, #Titles(ui), "en Raids, donde estaba")
+        -- (sin bandas, en Raids: «No hay raids próximas.»; sin lo demás, en Eventos, lo de siempre)
+        TestMode(a, ui)
+        A.truthy(ui.empty:IsShown())
+        A.equal("No hay raids próximas.", ui.empty:GetText())
+        Click(ui.viewBtns.list)
+        A.equal("No hay eventos próximos.", ui.empty:GetText())
         A.same({}, a:Errors())
     end)
 
-    it("arriba, los botones Eventos · Calendario (como los de Comercio) y a su derecha el modo prueba; abajo, en el centro, «+ Nuevo evento» como hasta la copia 304 (teñido de verde, letra blanca), en las dos vistas y sin tapar las tarjetas ni el mes", function()
+    it("arriba, en el centro, los botones Eventos · Raids · Calendario, los de Comercio en el mismo sitio; abajo, en el centro, «+ Nuevo evento» como hasta la copia 304 (teñido de verde, letra blanca), y a su derecha el modo prueba, en las tres vistas y sin tapar las tarjetas ni el mes", function()
         local a = Community()
         local ui = Open(a)
-        local new, list, month = ui.new, ui.viewBtns.list, ui.viewBtns.month
+        local new, list, raids, month = ui.new, ui.viewBtns.list, ui.viewBtns.raids, ui.viewBtns.month
         local body = ui.list:GetParent()
-        local sw, test = ui.switch, Child(a, ui, "Modo prueba")
-        -- (el interruptor, centrado arriba en su fila; sus mitades, Eventos y Calendario)
+        local sw, test = ui.switch, ui.testBtn
+        -- (los tres botones, de 150 como los de Comercio y centrados como ellos: caben en la sección)
         A.same({ ui, "TOP", 0, -4 }, sw._pts.TOP)
         A.equal(sw.btns.list, list)
+        A.equal(sw.btns.raids, raids)
         A.equal(sw.btns.month, month)
-        A.same({ "Eventos", "Calendario" }, { list:GetText(), month:GetText() })
-        A.same({ 306, 28 }, { sw._w, sw._h })
-        -- (el modo prueba, a su derecha y a su altura, sin chocar: los botones acaban en 617 / 2 + 153)
-        A.same({ ui, "TOPRIGHT", -8, -6 }, test._pts.TOPRIGHT)
-        A.truthy(617 - 8 - test._w >= 617 / 2 + sw._w / 2 + 8, "el modo prueba no choca con los botones")
-        A.equal(-4 - sw._h / 2, -6 - test._h / 2, "a su altura")
+        A.same({ "Eventos", "Raids", "Calendario" }, { list:GetText(), raids:GetText(), month:GetText() })
+        A.same({ 462, 28 }, { sw._w, sw._h })
+        A.truthy(617 / 2 - sw._w / 2 >= 2 and 617 / 2 + sw._w / 2 <= 617 - 2, "caben")
+        -- (el modo prueba ya no cabe a su derecha (de 539,5 a 617 quedan 77,5 y mide 104): baja a la esquina de abajo a la
+        -- derecha del panel, a la altura de «+ Nuevo evento», sin chocar con él)
+        A.truthy(617 / 2 + sw._w / 2 + 8 > 617 - 8 - test._w, "arriba chocaría")
+        A.equal("Modo prueba", test:GetText())
+        A.equal(body, test:GetParent(), "en el panel, encima de él")
+        A.same({ body, "BOTTOMRIGHT", -8, 6 }, test._pts.BOTTOMRIGHT)
+        A.same({ 104, 24 }, { test._w, test._h })
+        A.truthy(613 / 2 + 200 / 2 + 8 <= 613 - 8 - test._w, "no choca con «+ Nuevo evento»")
         -- (el panel de la sección empieza 6 por debajo del interruptor)
         A.equal(-4 - sw._h - 6, body._pts.TOPLEFT[4])
         -- («+ Nuevo evento»: con su texto, teñido de verde y con letra blanca, abajo en el centro del panel)
@@ -406,9 +513,11 @@ describe("Calendario: la sección", function()
         local row = ui.side.dayBtns[#ui.side.dayBtns]
         local dayH = -row._pts.TOPLEFT[4] + row._h + 3
         A.truthy(dayH <= bodyH - 10 - top, "las filas del día caben: " .. dayH .. " de " .. (bodyH - 10 - top))
-        -- (en las dos vistas; al pasar el ratón, encendido, nada: su nombre ya se lee)
+        -- (en las tres vistas; al pasar el ratón, encendido, nada: su nombre ya se lee)
         A.truthy(new:IsShown())
         A.is_nil(Hover(a, new))
+        Click(raids)
+        A.truthy(new:IsShown(), "también en Raids")
         Click(month)
         A.truthy(new:IsShown(), "también en Calendario")
         Click(new)
@@ -492,8 +601,13 @@ describe("Calendario: quién crea eventos (HU:CanMakeEvents)", function()
         Click(ui.grid.cells[22]) -- (el 18)
         A.truthy(ui.new:IsShown())
         A.truthy(ui.new:IsEnabled())
+        -- (lo que se crea así es de prueba: no sale a la red y se va al apagarlo)
+        NewEvent(a, ui, "Sin permiso")
+        A.equal("Sin permiso", ui.side.dayBtns[1].text:GetText())
+        A.same({}, Stored(a), "nada a la red")
         TestMode(a, ui) -- (se apaga)
         A.falsy(ui.new:IsEnabled())
+        A.equal("No hay eventos este día.", ui.side.info:GetText())
         A.same({}, a:Errors())
     end)
 
@@ -549,7 +663,7 @@ describe("Calendario: nuevo evento", function()
         local c = ui.cards[1]
         A.truthy(c:IsShown())
         A.equal("Noche de Onyxia", c.title:GetText())
-        A.equal("|cffff8040Banda|r  |cffe6e6ea20:00|r  |cffa0a4adNv. 58+|r", c.kind:GetText())
+        A.equal("|cffff4040JcJ|r  |cffe6e6ea20:00|r  |cffa0a4adNv. 58+|r", c.kind:GetText(), "desde Eventos, de entrada JcJ")
         A.equal(18, c.num:GetText())
         A.equal("Lunes\nenero", c.date:GetText())
         A.equal("|cffa0a4adpor|r |cff4da6ffTester-Reino|r |cff33ff99<UNO>|r", c.who:GetText(), "el mío, en azul")
@@ -559,7 +673,7 @@ describe("Calendario: nuevo evento", function()
         A.falsy(ui.cards[2]:IsShown())
         -- (nivel 1 o vacío: sin nivel mínimo)
         NewEvent(a, ui, "Sin nivel", { minLv = "1" })
-        A.equal("|cffff8040Banda|r  |cffe6e6ea20:00|r", Card(ui, "Sin nivel").kind:GetText())
+        A.equal("|cffff4040JcJ|r  |cffe6e6ea20:00|r", Card(ui, "Sin nivel").kind:GetText())
         A.same({}, a:Errors())
     end)
 
@@ -574,7 +688,23 @@ describe("Calendario: nuevo evento", function()
         A.same({}, a:Errors())
     end)
 
-    it("tipos Banda, JcJ y Social; la imagen sigue al tipo hasta que se elige una de la rejilla", function()
+    it("si no se puede mandar a la red (sin comunidad leída), lo dice y la ventana sigue abierta", function()
+        local a = Community()
+        local ui = Open(a)
+        Click(ui.new)
+        ui.newDlg.title:SetText("Sin red")
+        a.HU.myTag = nil
+        Click(Child(a, ui.newDlg, "Crear"))
+        A.truthy(Said(a, "No se ha podido crear el evento."))
+        A.truthy(ui.newDlg:IsShown())
+        A.same({}, Titles(ui))
+        a.HU.myTag = "UNO"
+        Click(Child(a, ui.newDlg, "Crear"))
+        A.same({ "Sin red" }, Titles(ui), "con la comunidad, sí")
+        A.same({}, a:Errors())
+    end)
+
+    it("desde Eventos, tipos JcJ y Social (Banda ya no: va en Raids); la imagen sigue al tipo hasta que se elige una de la rejilla", function()
         local a = Community()
         local ui = Open(a)
         Click(ui.new)
@@ -583,16 +713,22 @@ describe("Calendario: nuevo evento", function()
         for k in pairs(nd.kindBtns) do kinds[#kinds + 1] = k end
         table.sort(kinds)
         A.same({ "pvp", "raid", "social" }, kinds)
-        A.equal("Banda", nd.kindBtns.raid:GetText())
+        A.falsy(nd.kindBtns.raid:IsShown(), "sin Banda")
+        A.same({ 10, -74 }, nd.kindBtns.pvp._pts.TOPLEFT, "JcJ, el primero")
+        A.same({ 112, -74 }, nd.kindBtns.social._pts.TOPLEFT)
         A.equal("JcJ", nd.kindBtns.pvp:GetText())
         A.equal("Social", nd.kindBtns.social:GetText())
-        A.truthy(nd.kindBtns.raid.picked)
+        A.truthy(nd.kindBtns.pvp.picked, "de entrada, el primero")
+        A.falsy(nd.sizeLabel:IsShown(), "sin tamaño")
+        for _, b in ipairs(nd.sizeBtns) do A.falsy(b:IsShown()) end
+        A.equal(420, nd._h)
         local preview = nd.iconPrev.tex
-        A.equal("Interface\\Icons\\INV_Misc_Head_Dragon_01", preview:GetTexture())
-        Click(nd.kindBtns.pvp)
-        A.truthy(nd.kindBtns.pvp.picked)
-        A.falsy(nd.kindBtns.raid.picked)
         A.equal("Interface\\Icons\\INV_BannerPVP_02", preview:GetTexture(), "la del tipo")
+        Click(nd.kindBtns.social)
+        A.truthy(nd.kindBtns.social.picked)
+        A.falsy(nd.kindBtns.pvp.picked)
+        A.equal("Interface\\Icons\\INV_Drink_05", preview:GetTexture(), "la del tipo")
+        Click(nd.kindBtns.pvp)
         -- (la rejilla: 8 x 4, con la que hay marcada)
         local grid = nd.popups[1]
         Click(Child(a, nd.content, "Elegir imagen"))
@@ -623,10 +759,137 @@ describe("Calendario: nuevo evento", function()
         local c = Card(ui, "Fogata")
         A.equal("Interface\\Icons\\Spell_Fire_Incinerate", c.icon:GetTexture())
         A.matches("^|cff40ff40Social|r", c.kind:GetText())
-        -- (otra vez: vuelve a Banda y a la imagen del tipo)
+        -- (otra vez: vuelve a JcJ y a la imagen del tipo)
         Click(ui.new)
-        A.truthy(nd.kindBtns.raid.picked)
-        A.equal("Interface\\Icons\\INV_Misc_Head_Dragon_01", preview:GetTexture())
+        A.truthy(nd.kindBtns.pvp.picked)
+        A.equal("Interface\\Icons\\INV_BannerPVP_02", preview:GetTexture())
+        A.same({}, a:Errors())
+    end)
+
+    it("desde Raids, una banda (Jorge, 25/11: «que cuando se escoja evento salga si es de 10, 20 o 40»): sin tipos, el tamaño 10 · 20 · 40 (40 de entrada) en su sitio; se ve en la tarjeta y en la ficha", function()
+        local a = Community()
+        local ui = Open(a)
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        local nd = ui.newDlg
+        A.falsy(nd.kindLabel:IsShown(), "sin tipo")
+        for _, b in pairs(nd.kindBtns) do A.falsy(b:IsShown()) end
+        A.truthy(nd.sizeLabel:IsShown())
+        A.equal("Tamaño:", nd.sizeLabel:GetText())
+        A.same({ 12, -58 }, nd.sizeLabel._pts.TOPLEFT, "donde iba el tipo")
+        local sizes = {}
+        for i, b in ipairs(nd.sizeBtns) do
+            sizes[i] = b:GetText()
+            A.truthy(b:IsShown())
+            A.same({ 10 + (i - 1) * 42, -74 }, b._pts.TOPLEFT)
+            A.same({ 40, 22 }, { b._w, b._h })
+            A.equal(b.size == 40, b.picked, "de entrada, 40")
+        end
+        A.same({ "10", "20", "40" }, sizes, "los de Forever")
+        A.equal(420, nd._h, "del mismo alto")
+        A.equal("Interface\\Icons\\INV_Misc_Head_Dragon_01", nd.iconPrev.tex:GetTexture(), "la de la banda")
+        Click(nd.sizeBtns[2])
+        A.truthy(nd.sizeBtns[2].picked)
+        A.falsy(nd.sizeBtns[3].picked)
+        nd.title:SetText("Zul'Gurub")
+        Click(Child(a, nd, "Crear"))
+        A.falsy(nd:IsShown())
+        local c = Card(ui, "Zul'Gurub")
+        A.truthy(ui.viewBtns.raids.picked, "en Raids")
+        A.equal("|cffff8040Banda de 20|r  |cffe6e6ea20:00|r", c.kind:GetText())
+        A.equal("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t 1/20 van", c.going:GetText())
+        -- (en la red: «raid,20»)
+        A.matches("^e%w+=%w+,raid,20,0,INV_Misc_Head_Dragon_01,Zul'Gurub,$", Stored(a)[1])
+        -- (la ficha: el tamaño y, una sola raid de 4 grupos, la mía, sin «+ Añadir»)
+        local d = Detail(ui, "Zul'Gurub")
+        A.matches("^|cffff8040Banda de 20|r", d.sub:GetText())
+        A.matches("|cff40ff401|r|cffe6e6ea/20 van|r", d.sub:GetText())
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        A.falsy(d.raidTabs[2]:IsShown())
+        A.falsy(d.addRaid:IsShown(), "una banda no añade raids")
+        for gi, grp in ipairs(d.groups) do A.equal(gi <= 4, grp:IsShown(), "grupo " .. gi) end
+        A.equal("Tester-Reino", d.groups[1].slots[1].name, "la llevo yo")
+        A.same({ d.groups[1], "BOTTOMLEFT", 0, -10 }, d.invite._pts.TOPLEFT, "invitar, justo debajo de sus grupos")
+        -- (desde Eventos no sale)
+        Click(ui.viewBtns.list)
+        A.same({}, Titles(ui))
+        local en = Community({ locale = "enUS" })
+        local enUi = Open(en)
+        Click(enUi.viewBtns.raids)
+        Click(enUi.new)
+        A.equal("Size:", enUi.newDlg.sizeLabel:GetText())
+        A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("desde Calendario, todo: los tres tipos y, con Banda, su tamaño debajo, y lo demás baja y la ventana crece", function()
+        local a = Community()
+        local ui = Open(a)
+        Click(ui.viewBtns.month)
+        Click(ui.new)
+        local nd = ui.newDlg
+        A.truthy(nd.kindLabel:IsShown())
+        A.same({ 10, -74 }, nd.kindBtns.raid._pts.TOPLEFT, "Banda, la primera")
+        A.same({ 112, -74 }, nd.kindBtns.pvp._pts.TOPLEFT)
+        A.same({ 214, -74 }, nd.kindBtns.social._pts.TOPLEFT)
+        A.truthy(nd.kindBtns.raid.picked, "de entrada, Banda")
+        A.truthy(nd.sizeLabel:IsShown())
+        A.same({ 12, -104 }, nd.sizeLabel._pts.TOPLEFT, "el tamaño, debajo de los tipos")
+        A.same({ 10, -120 }, nd.sizeBtns[1]._pts.TOPLEFT)
+        A.same({ 12, -120 - 46 }, nd.iconPrev._pts.TOPLEFT, "la imagen, una fila más abajo")
+        A.same({ 12, -182 - 46 }, nd.dayBtn._pts.TOPLEFT)
+        A.equal(420 + 46, nd._h)
+        -- (con JcJ, sin tamaño: todo vuelve a su sitio)
+        Click(nd.kindBtns.pvp)
+        A.falsy(nd.sizeLabel:IsShown())
+        A.same({ 12, -120 }, nd.iconPrev._pts.TOPLEFT)
+        A.same({ 12, -182 }, nd.dayBtn._pts.TOPLEFT)
+        A.equal(420, nd._h)
+        Click(nd.kindBtns.raid)
+        Click(nd.sizeBtns[1])
+        nd.title:SetText("Diez")
+        Click(Child(a, nd, "Crear"))
+        A.matches(",raid,10,", Stored(a)[1])
+        Click(ui.grid.cells[22]) -- (hoy, el 18)
+        A.equal("20:00  |cffff8040Banda de 10|r  |cff40ff401|r/10 van", ui.side.dayBtns[1].sub:GetText())
+        A.matches("Banda de 10", Card(ui, "Diez").kind:GetText(), "y en Raids")
+        A.same({}, a:Errors())
+    end)
+
+    it("editar una banda sigue siendo una banda (con su tamaño) y editar lo demás, sin Banda; al bajar de tamaño, quien queda en un grupo de más vuelve al banquillo", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        Click(ui.viewBtns.raids)
+        NewEvent(a, ui, "Banda grande")
+        local d = Detail(ui, "Banda grande")
+        -- (alguien de la hermandad se apunta y lo pongo en el grupo 6)
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. a.HU.StampNow() .. "~H", "GUILD", "Compi-Reino")
+        a.w:Advance(0.5)
+        Drag(d.bench[1], d.groups[6])
+        A.same({ "Compi" }, Groups(d)[6])
+        Click(Card(ui, "Banda grande"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        local nd = ui.newDlg
+        A.falsy(nd.kindLabel:IsShown(), "sin tipos: es una banda")
+        A.truthy(nd.sizeBtns[3].picked, "con su tamaño")
+        Click(nd.sizeBtns[1])
+        Click(Child(a, nd, "Guardar"))
+        A.matches(",raid,10,", Stored(a)[1])
+        A.matches("Banda de 10", Card(ui, "Banda grande").kind:GetText())
+        A.falsy(SlotOf(d, "Compi-Reino"), "fuera del grupo 6, que ya no está")
+        A.truthy(OnBench(d, "Compi-Reino"), "al banquillo")
+        for gi, grp in ipairs(d.groups) do A.equal(gi <= 2, grp:IsShown()) end
+        -- (lo de Eventos se edita sin Banda)
+        Click(ui.viewBtns.list)
+        NewEvent(a, ui, "Social")
+        Click(Card(ui, "Social"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        A.truthy(nd.kindLabel:IsShown())
+        A.falsy(nd.kindBtns.raid:IsShown())
+        A.falsy(nd.sizeLabel:IsShown())
+        Click(Child(a, nd, "Cancelar"))
         A.same({}, a:Errors())
     end)
 
@@ -768,7 +1031,7 @@ describe("Calendario: nuevo evento", function()
         PickTime(a, nd, 10)
         Click(Child(a, nd, "Crear"))
         A.falsy(nd:IsShown())
-        A.equal("|cffff8040Banda|r  |cffe6e6ea10:00|r", Card(ui, "Prisas").kind:GetText())
+        A.equal("|cffff4040JcJ|r  |cffe6e6ea10:00|r", Card(ui, "Prisas").kind:GetText())
         A.same({}, a:Errors())
     end)
 
@@ -797,20 +1060,28 @@ describe("Calendario: nuevo evento", function()
 end)
 
 describe("Calendario: Eventos (las tarjetas)", function()
-    it("los próximos, por fecha; lo que empezó hace más de 3 horas sale de la lista pero sigue en el calendario", function()
+    it("por fecha; dos días después de terminar (su hora + 3 h, sin hora de fin) sale de la lista, pero sigue en el mes", function()
         local a = Community()
         local ui = Open(a)
         NewEvent(a, ui, "Mañana", { day = { 2027, 1, 19 } })
         NewEvent(a, ui, "Hoy")
         A.same({ "Hoy", "Mañana" }, Titles(ui))
-        Later(a, 13 * 3600 - 60) -- (las 22:59: «Hoy» empezó a las 20:00)
+        -- («Hoy» es a las 20:00: acaba a las 23:00 y sale de la lista el miércoles 20 a las 23:00. Son las 10:00)
+        Later(a, 13 * 3600 + 60) -- (las 23:01: ya ha terminado y sigue, que antes salía a las 3 h)
         Click(ui.viewBtns.list)
-        A.same({ "Hoy", "Mañana" }, Titles(ui))
-        Later(a, 120) -- (las 23:01)
+        A.same({ "Hoy", "Mañana" }, Titles(ui), "recién terminado")
+        Later(a, 2 * 86400 - 120) -- (el miércoles a las 22:59)
+        Click(ui.viewBtns.list)
+        A.same({ "Hoy", "Mañana" }, Titles(ui), "un minuto antes")
+        Later(a, 60) -- (las 23:00: dos días después de terminar)
         Click(ui.viewBtns.list)
         A.same({ "Mañana" }, Titles(ui))
         Click(ui.viewBtns.month)
         A.equal("|cffffd100+1 evento|r", ui.grid.cells[22].ev:GetText(), "el 18 sigue con el suyo")
+        Click(ui.grid.cells[22])
+        A.equal("Hoy", ui.side.dayBtns[1].text:GetText())
+        Click(ui.side.dayBtns[1])
+        A.equal("Hoy", ui.detail.titleText:GetText(), "y su ficha se abre")
         A.same({}, a:Errors())
     end)
 
@@ -828,13 +1099,29 @@ describe("Calendario: Eventos (las tarjetas)", function()
         -- (de izquierda a derecha: el día, la imagen y las tres líneas; los botones, uno encima de otro a la derecha)
         local c = Card(ui, "Núcleo de Magma")
         A.same({ 12, 1 }, c.num._pts.LEFT)
-        A.same({ c, "LEFT", 112, 0 }, c.icon._pts.LEFT)
-        A.same({ 150, -8 }, c.title._pts.TOPLEFT)
-        A.same({ -132, -8 }, c.title._pts.TOPRIGHT, "el título, hasta los botones")
-        A.same({ 150, -29 }, c.kind._pts.TOPLEFT)
-        A.same({ 150, -43 }, c.who._pts.TOPLEFT)
-        A.same({ -132, -27 }, c.roles._pts.TOPRIGHT)
-        A.same({ -132, -43 }, c.going._pts.TOPRIGHT)
+        -- (la fecha, una raya dorada que la separa y la imagen; el título, debajo quién lo pone y debajo tipo · hora:
+        -- Jorge, 25/11)
+        A.equal(c, c.sep._pts.LEFT[1])
+        A.same({ "LEFT", 120, 0 }, { c.sep._pts.LEFT[2], c.sep._pts.LEFT[3], c.sep._pts.LEFT[4] })
+        A.same({ 1, 62 - 20 }, { c.sep._w, c.sep._h })
+        A.equal(c, c.icon._pts.LEFT[1])
+        A.same({ "LEFT", 130, 0 }, { c.icon._pts.LEFT[2], c.icon._pts.LEFT[3], c.icon._pts.LEFT[4] })
+        -- (Jorge, 25/11: «movería el nombre, el by y el raid más a la derecha»: desde 184, pasado el aro de la imagen, que
+        -- llega a unos 175)
+        A.same({ 184, -8 }, c.title._pts.TOPLEFT)
+        A.same({ 184, -29 }, c.who._pts.TOPLEFT, "quién lo pone, debajo del título")
+        A.same({ 184, -43 }, c.kind._pts.TOPLEFT, "y debajo, tipo · hora")
+        A.truthy(c.icon._pts.LEFT[3] + 30 + 15 < 184, "a la derecha del aro")
+        -- («los iconos de gente apuntada… centrado en la parte marrón oscuro» y «"1 going" centrado en la parte marrón pero en
+        -- la X que están actualmente»: los roles, en el centro de la franja oscura de arriba; cuántos van, en el de la parte
+        -- clara de debajo, hasta el borde de la tarjeta (62, con 4 de marco); los dos, con su borde derecho donde estaba)
+        local shade
+        for _, f in ipairs(a.w.frames) do if f._parent == c and f._kind == "Texture" and f._h == 24 then shade = f end end
+        local top = shade._pts.TOPLEFT[2]
+        A.same({ c, "TOPRIGHT", -132, top - 24 / 2 }, c.roles._pts.RIGHT, "los roles, centrados en la franja oscura")
+        A.equal(-16, top - 24 / 2)
+        A.same({ c, "TOPRIGHT", -132, ((top - 24) + (-62 + 4)) / 2 }, c.going._pts.RIGHT, "cuántos van, en la parte clara")
+        A.equal(-43, ((top - 24) + (-62 + 4)) / 2)
         A.same({ -8, -7 }, c.join._pts.TOPRIGHT)
         A.same({ -8, 7 }, c.info._pts.BOTTOMRIGHT)
         A.equal(18, c.num:GetText())
@@ -845,12 +1132,31 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.same({}, a:Errors())
     end)
 
+    it("el título acaba antes de los roles, que van en su misma franja, y quién y tipo · hora, antes de cuántos van: según lo que ocupa cada uno", function()
+        local a = Community()
+        local ui = Open(a)
+        NewEvent(a, ui, "Uno")
+        local c = Card(ui, "Uno")
+        A.same({ -140, -8 }, c.title._pts.TOPRIGHT, "el WoW de mentira no mide: 8 antes de 132")
+        A.same({ -140, -29 }, c.who._pts.TOPRIGHT)
+        c.roles.GetStringWidth = function() return 96 end
+        c.going.GetStringWidth = function() return 120 end
+        Click(ui.viewBtns.list)
+        A.same({ -132 - 96 - 8, -8 }, c.title._pts.TOPRIGHT, "hasta los roles")
+        A.same({ -132 - 120 - 8, -29 }, c.who._pts.TOPRIGHT, "hasta cuántos van")
+        A.same({ -132 - 120 - 8, -43 }, c.kind._pts.TOPRIGHT)
+        A.same({}, a:Errors())
+    end)
+
     it("con más de 4, la barra: la rueda baja de una tarjeta en una y se ven las de abajo; sin barra, el hueco se quita", function()
         local a = Community()
         local ui = Open(a)
         A.equal(-8, ui.cardArea._pts.BOTTOMRIGHT[3], "sin barra")
         TestMode(a, ui)
-        A.same({ "Núcleo de Magma", "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina" }, Titles(ui))
+        A.same({ "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina", "Valle de Alterac" }, Titles(ui))
+        A.equal(-8, ui.cardArea._pts.BOTTOMRIGHT[3], "caben las 4: sin barra")
+        NewEvent(a, ui, "Hoy")
+        A.same({ "Hoy", "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina" }, Titles(ui))
         A.equal(-30, ui.cardArea._pts.BOTTOMRIGHT[3], "con barra, su hueco a la derecha")
         local sf = ui.scroll
         sf:GetScript("OnMouseWheel")(sf, -1)
@@ -859,12 +1165,12 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.equal(0, sf.ScrollBar.value, "y vuelve")
         a.env.FauxScrollFrame_SetOffset(sf, 1)
         sf:GetScript("OnVerticalScroll")(sf, 68)
-        A.same({ "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina", "Guarida de Onyxia" }, Titles(ui))
-        A.equal("|cffff8040Banda|r  |cffe6e6ea21:00|r  |cffa0a4adNv. 60+|r", Card(ui, "Guarida de Onyxia").kind:GetText())
+        A.same({ "Profundidades de Roca Negra", "Garganta Grito de Guerra", "Pesca en Tuercespina", "Valle de Alterac" }, Titles(ui))
+        A.equal("|cffff4040JcJ|r  |cffe6e6ea21:00|r  |cffa0a4adNv. 55+|r", CardHere(ui, "Valle de Alterac").kind:GetText())
         a.env.FauxScrollFrame_SetOffset(sf, 0)
         TestMode(a, ui)
         A.equal(-8, ui.cardArea._pts.BOTTOMRIGHT[3])
-        A.truthy(ui.empty:IsShown())
+        A.same({ "Hoy" }, Titles(ui))
         A.same({}, a:Errors())
     end)
 
@@ -878,7 +1184,7 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.equal("Profundidades de Roca Negra", d.titleText:GetText())
         A.equal("Interface\\Icons\\INV_Misc_Key_03", d.icon:GetTexture(), "la imagen del tipo")
         A.equal("|cff4da6ffMazmorra|r   |cffe6e6eaMartes 19 de enero, 19:30|r   |cffa0a4adpor|r |cffffd100Pepe-Prueba|r |cff33ff99<UNO>|r"
-            .. "   |cff40ff401|r |cffe6e6eavan|r", d.sub:GetText())
+            .. "   |cff40ff401|r|cffe6e6ea van|r", d.sub:GetText())
         Click(Card(ui, "Garganta Grito de Guerra"))
         A.equal("Garganta Grito de Guerra", d.titleText:GetText())
         A.matches("<DOS>", d.sub:GetText(), "de la otra hermandad")
@@ -902,7 +1208,8 @@ describe("Calendario: Eventos (las tarjetas)", function()
         A.equal(-64, d.benchF._pts.TOPLEFT[2])
         Detail(ui, "Con descripción")
         A.truthy(d.desc:IsShown())
-        A.equal("Traed pociones de fuego.\nSalimos desde Forjaz.", d.desc:GetText())
+        -- (viaja como propuesta: sin saltos de línea, Packs/Events.lua)
+        A.equal("Traed pociones de fuego. Salimos desde Forjaz.", d.desc:GetText())
         A.equal(480 + 28, d._h, "crece lo que ocupa (y un margen)")
         A.same({ 10, -56 }, d.rule._pts.TOPLEFT, "la raya, debajo")
         A.equal(-62, d.addRaid._pts.TOPLEFT[4], "las pestañas de raid, debajo de la raya")
@@ -949,9 +1256,9 @@ describe("Calendario: el mes", function()
         A.equal("Lunes 18 de enero", side.title:GetText())
         A.equal("", side.info:GetText())
         A.equal("Antes de Magma", side.dayBtns[1].text:GetText(), "por la hora: 20:00")
-        A.equal("20:00  |cffff8040Banda|r  |cff40ff401|r van", side.dayBtns[1].sub:GetText())
+        A.equal("20:00  |cffff4040JcJ|r  |cff40ff401|r van", side.dayBtns[1].sub:GetText())
         A.equal("Núcleo de Magma", side.dayBtns[2].text:GetText())
-        A.equal("21:00  |cffff8040Banda|r  |cff40ff4024|r van", side.dayBtns[2].sub:GetText())
+        A.equal("21:00  |cffff8040Banda de 40|r  |cff40ff4024|r/40 van", side.dayBtns[2].sub:GetText(), "la banda, con su tamaño")
         A.equal("Interface\\Icons\\INV_Misc_Head_Dragon_01", side.dayBtns[2].icon:GetTexture())
         A.falsy(side.dayBtns[3]:IsShown())
         Click(side.dayBtns[2])
@@ -1034,6 +1341,335 @@ describe("Calendario: el mes", function()
         A.equal(-6, side.dayBtns[1]._pts.RIGHT[3])
         Click(cells[24])
         A.equal("A las 14", side.dayBtns[1].text:GetText(), "desde arriba")
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Calendario: clic derecho en un evento mío (editar y eliminar)", function()
+    -- (el id de mi evento con ese título, en el almacén de propuestas)
+    local function IdOf(a, title)
+        for _, s in ipairs(Stored(a)) do
+            local id = s:match("^e(%w+)=%w+,%l+,%w*,%d+,[%w_]*," .. (title:gsub("%p", "%%%0")) .. ",")
+            if id then return id end
+        end
+    end
+    -- (los datos de mi línea con esa clave de EV, en el almacén)
+    local function Data(a, key)
+        local e = a.HU.db.wuStore.UNO.EV["tester-reino," .. key]
+        return e and e.d
+    end
+    -- (lo mandado por GUILD con esa clave de EV: sus datos, en orden)
+    local function SentData(a, key)
+        local out = {}
+        for _, m in ipairs(a.w.sent) do
+            local d = m.dist == "GUILD" and m.text:match("^WU~UNO~EV~" .. key .. "~%d+~(.*)$")
+            if d then out[#out + 1] = d end
+        end
+        return out
+    end
+
+    it("en su tarjeta y en su fila del día: «Fijar arriba para todos», «Editar evento» y «Eliminar» (también en uno mío de prueba); en el de otro, nada, y el clic de siempre abre la ficha", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        NewEvent(a, ui, "Mío")
+        TestMode(a, ui)
+        Click(Card(ui, "Mío"), "RightButton")
+        local m = menus[#menus]
+        A.equal("Mío", m.title)
+        A.same({ "Fijar arriba para todos", "Editar evento", "Eliminar", "Cancelar" }, Texts(m))
+        A.falsy(ui.detail:IsShown(), "el clic derecho no abre la ficha")
+        Item(m, "Cancelar").fn()
+        -- (en el de otro, de Jandra: ni menú ni ficha; con el clic de siempre, su ficha)
+        Click(Card(ui, "Núcleo de Magma"), "RightButton")
+        A.equal(1, #menus, "sin menú")
+        A.falsy(ui.detail:IsShown())
+        Click(Card(ui, "Núcleo de Magma"))
+        A.equal("Núcleo de Magma", ui.detail.titleText:GetText())
+        -- (en el mes, en la fila del día: el 18, el mío a las 20:00 y Magma a las 21:00)
+        Click(ui.viewBtns.month)
+        Click(ui.grid.cells[22])
+        Click(ui.side.dayBtns[1], "RightButton")
+        A.equal("Mío", menus[#menus].title)
+        A.same({ "Fijar arriba para todos", "Editar evento", "Eliminar", "Cancelar" }, Texts(menus[#menus]))
+        Click(ui.side.dayBtns[2], "RightButton")
+        A.equal(2, #menus, "Magma no es mío")
+        Click(ui.grid.cells[27]) -- (el 23: Pesca en Tuercespina, mío y de prueba)
+        Click(ui.side.dayBtns[1], "RightButton")
+        A.equal("Pesca en Tuercespina", menus[#menus].title)
+        Click(ui.side.dayBtns[1])
+        A.equal("Pesca en Tuercespina", ui.detail.titleText:GetText(), "el clic de siempre, la ficha")
+        -- (sin el menú del juego, nada)
+        a.env.MenuUtil = nil
+        Click(ui.side.dayBtns[1], "RightButton")
+        A.equal(3, #menus)
+        A.same({}, a:Errors())
+    end)
+
+    it("fijar arriba para todos (Jorge, 25/11): solo quien lo crea; los fijados van arriba, entre ellos por fecha y con una estrella, y luego los demás por fecha; viaja a la unión como «p<id>», se quita igual y, al eliminar el evento, se quita también", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local STAR = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:14:14|t "
+        A.same({ "Profundidades de Roca Negra", "Pesca en Tuercespina" }, { Titles(ui)[1], Titles(ui)[3] }, "por fecha")
+        -- (uno mío de prueba: se fija solo aquí, al momento)
+        Click(Card(ui, "Pesca en Tuercespina"), "RightButton")
+        Item(menus[#menus], "Fijar arriba para todos").fn()
+        A.same({ "Pesca en Tuercespina", "Profundidades de Roca Negra" }, { Titles(ui)[1], Titles(ui)[2] })
+        A.equal(STAR .. "Pesca en Tuercespina", ui.cards[1].title:GetText())
+        A.equal("Profundidades de Roca Negra", ui.cards[2].title:GetText(), "sin estrella")
+        NewEvent(a, ui, "Mío")
+        A.same({ "Pesca en Tuercespina", "Mío", "Profundidades de Roca Negra" }, { Titles(ui)[1], Titles(ui)[2], Titles(ui)[3] })
+        -- (uno mío de la red: se propone «p<id>» = «1» por GUILD y sale arriba en cuanto llega al almacén; entre los
+        -- fijados, por fecha: el mío es el 18 y la pesca, el 23)
+        local id = IdOf(a, "Mío")
+        Click(Card(ui, "Mío"), "RightButton")
+        Item(menus[#menus], "Fijar arriba para todos").fn()
+        A.same({ "1" }, SentData(a, "p" .. id))
+        a.w:Advance(1)
+        A.same({ "Mío", "Pesca en Tuercespina", "Profundidades de Roca Negra" }, { Titles(ui)[1], Titles(ui)[2], Titles(ui)[3] })
+        A.equal(STAR .. "Mío", ui.cards[1].title:GetText())
+        -- (quitarlo: «Quitar de arriba», su línea vacía)
+        Click(Card(ui, "Mío"), "RightButton")
+        A.same({ "Quitar de arriba", "Editar evento", "Eliminar", "Cancelar" }, Texts(menus[#menus]))
+        Item(menus[#menus], "Quitar de arriba").fn()
+        A.same({ "1", "" }, SentData(a, "p" .. id))
+        a.w:Advance(1)
+        A.same({ "Pesca en Tuercespina", "Mío", "Profundidades de Roca Negra" }, { Titles(ui)[1], Titles(ui)[2], Titles(ui)[3] })
+        -- (fijado y eliminado: con el evento se va su fijado)
+        Click(Card(ui, "Mío"), "RightButton")
+        Item(menus[#menus], "Fijar arriba para todos").fn()
+        a.w:Advance(1)
+        Click(Card(ui, "Mío"), "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        Click(Child(a, a.env.GuildUnionCalendarConfirm, "Sí"))
+        A.same({ "1", "", "1", "" }, SentData(a, "p" .. id))
+        A.equal("", Data(a, "e" .. id))
+        A.same({}, a:Errors())
+    end)
+
+    it("«Editar evento»: la ventana con todo puesto; «Guardar» propone el mismo id, y quien estaba apuntado sigue, y sus raids también", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        NewEvent(a, ui, "Noche de Onyxia", { minLv = "58", desc = "Traed pociones.", day = { 2027, 1, 20 }, hour = 21 })
+        local id = IdOf(a, "Noche de Onyxia")
+        -- (Compi, de UNO, se apunta de sanador; en mi raid, los dos)
+        a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. a.HU.StampNow() .. "~H", "GUILD", "Compi-Reino")
+        a.w:Advance(0.5)
+        local d = Detail(ui, "Noche de Onyxia")
+        AddRaid(d)
+        Click(d.place)
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText())
+        local raids = a.HU.db.calRaids[id]
+        Click(Card(ui, "Noche de Onyxia"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        local nd = ui.newDlg
+        A.truthy(nd:IsShown())
+        A.equal("Editar evento", nd.titleText:GetText())
+        A.truthy(Child(a, nd, "Guardar"), "«Guardar», no «Crear»")
+        A.is_nil(Child(a, nd, "Crear"))
+        A.equal("Noche de Onyxia", nd.title:GetText())
+        A.equal("mié 20/01", nd.dayBtn:GetText())
+        A.equal("21:00", nd.hourBtn:GetText())
+        A.equal("58", nd.minLv:GetText())
+        A.equal("Traed pociones.", nd.desc:GetText())
+        A.truthy(nd.kindBtns.pvp.picked)
+        A.falsy(nd.kindBtns.raid:IsShown(), "no pasa a banda")
+        A.equal("Interface\\Icons\\INV_BannerPVP_02", nd.iconPrev.tex:GetTexture())
+        -- (todo cambia: título, tipo, una imagen de la rejilla, día, hora, nivel y descripción)
+        nd.title:SetText("Noche de Ragnaros")
+        Click(nd.kindBtns.social)
+        A.equal("Interface\\Icons\\INV_Drink_05", nd.iconPrev.tex:GetTexture(), "la del tipo sigue al tipo")
+        Click(Child(a, nd.content, "Elegir imagen"))
+        Click(nd.iconBtns[3])
+        Click(nd.kindBtns.pvp)
+        Click(nd.kindBtns.social)
+        A.equal("Interface\\Icons\\Spell_Fire_Incinerate", nd.iconPrev.tex:GetTexture())
+        PickDay(a, nd, 2027, 1, 22)
+        PickTime(a, nd, 19, 30)
+        nd.minLv:SetText("60")
+        nd.desc:SetText("Con resistencias.")
+        Click(Child(a, nd, "Guardar"))
+        A.falsy(nd:IsShown())
+        -- (el mismo id con lo nuevo; mi apuntado y el de Compi, igual, y la raid, la misma)
+        local t = os.time({ year = 2027, month = 1, day = 22, hour = 19, min = 30 })
+        A.same({ "e" .. id .. "=" .. a.HU.B36(t) .. ",social,,60,Spell_Fire_Incinerate,Noche de Ragnaros,Con resistencias.",
+            "s" .. id .. "=H", "s" .. id .. "=T" }, Stored(a))
+        A.is_nil(Card(ui, "Noche de Onyxia"))
+        local c = Card(ui, "Noche de Ragnaros")
+        A.equal("|cff40ff40Social|r  |cffe6e6ea19:30|r  |cffa0a4adNv. 60+|r", c.kind:GetText())
+        A.equal(22, c.num:GetText())
+        A.equal(2, Going(c), "Compi y yo, apuntados")
+        A.matches("Apuntado", c.join:GetText())
+        A.equal("Interface\\Icons\\Spell_Fire_Incinerate", c.icon:GetTexture())
+        A.equal("Noche de Ragnaros", d.titleText:GetText(), "la ficha abierta, al día")
+        A.equal("Con resistencias.", d.desc:GetText())
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText())
+        A.equal(raids, a.HU.db.calRaids[id], "las raids, las de antes")
+        A.equal(t, raids.t, "con la hora nueva")
+        a.w:Advance(10)
+        local sent = SentData(a, "e" .. id)
+        A.equal(2, #sent, "creado y editado, por GUILD")
+        A.equal(Stored(a)[1]:match("=(.*)$"), sent[2])
+        A.falsy(Said(a, "No se ha podido"))
+        -- (otra vez: la imagen elegida ya no sigue al tipo)
+        Click(c, "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        A.truthy(nd.kindBtns.social.picked)
+        Click(nd.kindBtns.pvp)
+        A.equal("Interface\\Icons\\Spell_Fire_Incinerate", nd.iconPrev.tex:GetTexture(), "elegida: no cambia con el tipo")
+        Click(Child(a, nd, "Cancelar"))
+        A.matches(",social,", Stored(a)[1], "Cancelar no guarda")
+        A.same({}, a:Errors())
+    end)
+
+    it("editar: el día y la hora de antes valen aunque ya hayan pasado (otra pasada, no); sin red, lo dice y sigue abierta; «+ Nuevo evento» vuelve a crear; uno de prueba se edita solo aquí", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        NewEvent(a, ui, "Empezado") -- (hoy a las 20:00)
+        local id = IdOf(a, "Empezado")
+        local nd = ui.newDlg
+        Later(a, 11 * 3600) -- (las 21:00: ya ha empezado)
+        Click(ui.viewBtns.list)
+        Click(Card(ui, "Empezado"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        nd.desc:SetText("Ya ha empezado.")
+        Click(Child(a, nd, "Guardar"))
+        A.falsy(nd:IsShown(), "con su hora de antes, se guarda")
+        A.matches("^e" .. id .. "=%w+,pvp,,0,INV_BannerPVP_02,Empezado,Ya ha empezado%.$", Stored(a)[1])
+        Click(Card(ui, "Empezado"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        PickTime(a, nd, 19)
+        Click(Child(a, nd, "Guardar"))
+        A.truthy(Said(a, "Elige un día y una hora que no hayan pasado."), "otra hora que ya ha pasado")
+        A.truthy(nd:IsShown())
+        PickTime(a, nd, 22)
+        a.HU.myTag = nil
+        Click(Child(a, nd, "Guardar"))
+        A.truthy(Said(a, "No se ha podido guardar el evento."))
+        A.truthy(nd:IsShown(), "sigue abierta")
+        a.HU.myTag = "UNO"
+        Click(Child(a, nd, "Guardar"))
+        A.falsy(nd:IsShown())
+        A.equal("|cffff4040JcJ|r  |cffe6e6ea22:00|r", Card(ui, "Empezado").kind:GetText())
+        A.equal(id, IdOf(a, "Empezado"), "el mismo id")
+        -- (si mientras tanto se va, no hay nada que guardar)
+        Click(Card(ui, "Empezado"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        local saved = a.HU.db.wuStore.UNO.EV["tester-reino,e" .. id]
+        a.HU.db.wuStore.UNO.EV["tester-reino,e" .. id] = nil
+        a.HU:Changed("calendar")
+        a.w.chat = {}
+        Click(Child(a, nd, "Guardar"))
+        A.truthy(Said(a, "No se ha podido guardar el evento."))
+        a.HU.db.wuStore.UNO.EV["tester-reino,e" .. id] = saved
+        a.HU:Changed("calendar")
+        -- («+ Nuevo evento»: otra vez para crear, vacía)
+        Click(ui.new)
+        A.equal("Nuevo evento", nd.titleText:GetText())
+        A.truthy(Child(a, nd, "Crear"))
+        A.same({ "", "", "", "20:00" }, { nd.title:GetText(), nd.desc:GetText(), nd.minLv:GetText(), nd.hourBtn:GetText() })
+        Click(Child(a, nd, "Cancelar"))
+        -- (uno mío de prueba: solo aquí, nada a la red)
+        TestMode(a, ui)
+        local before = Stored(a)
+        Click(ui.viewBtns.month)
+        Click(ui.grid.cells[27]) -- (el 23: Pesca en Tuercespina, a las 18:00)
+        Click(ui.side.dayBtns[1], "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        A.equal("Pesca en Tuercespina", nd.title:GetText())
+        A.truthy(nd.kindBtns.social.picked)
+        A.equal("18:00", nd.hourBtn:GetText())
+        nd.title:SetText("Pesca de noche")
+        PickTime(a, nd, 21, 30)
+        Click(Child(a, nd, "Guardar"))
+        A.falsy(nd:IsShown())
+        A.equal("Pesca de noche", ui.side.dayBtns[1].text:GetText())
+        A.matches("^21:30", ui.side.dayBtns[1].sub:GetText())
+        A.same(before, Stored(a), "de prueba: nada a la red")
+        A.same({}, a:Errors())
+    end)
+
+    it("«Eliminar» pregunta; «No» lo deja; «Sí» lo quita de Eventos y del mes: su línea, vacía a la red; sus raids y su ficha, fuera", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        NewEvent(a, ui, "Se va")
+        NewEvent(a, ui, "Se queda", { day = { 2027, 1, 19 } })
+        local id = IdOf(a, "Se va")
+        local d = Detail(ui, "Se va")
+        AddRaid(d)
+        A.truthy(a.HU.db.calRaids[id])
+        local cfm = a.env.GuildUnionCalendarConfirm
+        Click(Card(ui, "Se va"), "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        A.truthy(cfm:IsShown())
+        A.equal("¿Seguro que quieres eliminar el evento?", cfm.text:GetText())
+        Click(Child(a, cfm, "No"))
+        A.falsy(cfm:IsShown())
+        A.same({ "Se va", "Se queda" }, Titles(ui), "«No»: sigue")
+        Click(Card(ui, "Se va"), "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        Click(Child(a, cfm, "Sí"))
+        A.same({ "Se queda" }, Titles(ui))
+        A.falsy(d:IsShown(), "su ficha, cerrada")
+        A.is_nil(a.HU.db.calRaids[id], "sus raids, fuera")
+        -- (en la red, su línea vacía: borrada con su hora, no vuelve con una vieja; mi apuntado se queda hasta que caduca)
+        A.equal("", Data(a, "e" .. id))
+        A.equal("T", Data(a, "s" .. id))
+        A.matches(",Se queda,$", Data(a, "e" .. IdOf(a, "Se queda")))
+        a.w:Advance(10)
+        A.equal("", SentData(a, "e" .. id)[2], "por GUILD, vacía")
+        for _, e in ipairs(a.HU:PackedEvents()) do A.falsy(e.id == id, "sigue en la red") end
+        Click(ui.viewBtns.month)
+        A.equal("", ui.grid.cells[22].ev:GetText(), "ni en el mes")
+        A.equal("|cffffd100+1 evento|r", ui.grid.cells[23].ev:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("eliminar desde la fila del día; sin red, lo dice y no se quita; uno de prueba, solo aquí; la ficha de otro sigue abierta; sin permiso para crear, el creador también", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        NewEvent(a, ui, "Mío", { day = { 2027, 1, 21 } })
+        TestMode(a, ui)
+        F.Stub(a.HU, "CanPin", false) -- (ya no soy oficial: no puedo crear, pero lo mío sí lo elimino)
+        a.HU:Changed("unionCfg")
+        A.falsy(a.HU:CanMakeEvents())
+        local cfm = a.env.GuildUnionCalendarConfirm
+        Detail(ui, "Núcleo de Magma")
+        Click(ui.viewBtns.month)
+        Click(ui.grid.cells[25]) -- (el 21)
+        A.equal("Mío", ui.side.dayBtns[1].text:GetText())
+        a.HU.myTag = nil
+        Click(ui.side.dayBtns[1], "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        Click(Child(a, cfm, "Sí"))
+        A.truthy(Said(a, "No se ha podido eliminar el evento."))
+        a.HU.myTag = "UNO"
+        A.equal("Mío", ui.side.dayBtns[1].text:GetText(), "sin red, sigue")
+        Click(ui.side.dayBtns[1], "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        Click(Child(a, cfm, "Sí"))
+        A.equal("No hay eventos este día.", ui.side.info:GetText())
+        A.equal("Núcleo de Magma", ui.detail.titleText:GetText(), "la ficha de otro, abierta")
+        A.truthy(ui.detail:IsShown())
+        A.matches("^e%w+=$", Stored(a)[1])
+        -- (uno mío de prueba: solo aquí)
+        local before = Stored(a)
+        Click(ui.grid.cells[27]) -- (el 23: Pesca en Tuercespina)
+        Click(ui.side.dayBtns[1], "RightButton")
+        Item(menus[#menus], "Eliminar").fn()
+        Click(Child(a, cfm, "Sí"))
+        A.equal("No hay eventos este día.", ui.side.info:GetText())
+        A.same(before, Stored(a), "de prueba: nada a la red")
+        -- (al apagar y encender el modo prueba, vuelve: es de mentira)
+        TestMode(a, ui); TestMode(a, ui)
+        Click(ui.grid.cells[27])
+        A.equal("Pesca en Tuercespina", ui.side.dayBtns[1].text:GetText())
         A.same({}, a:Errors())
     end)
 end)
@@ -1163,24 +1799,34 @@ describe("Calendario: apuntarse", function()
 end)
 
 describe("Calendario: modo prueba", function()
-    it("encendido: eventos de mi hermandad y de otra, uno con su raid hecha; apagado: solo quedan los de verdad", function()
+    it("encendido: eventos de mi hermandad y de otra, en Eventos y en Raids, dos con su raid hecha; apagado: solo quedan los de verdad", function()
         local a = Community()
         local ui = Open(a)
         NewEvent(a, ui, "De verdad", { day = { 2027, 1, 19 } })
-        local btn = Child(a, ui, "Modo prueba")
+        local btn = ui.testBtn
         Click(btn)
         A.truthy(btn.picked)
-        A.same({ "Núcleo de Magma", "Profundidades de Roca Negra", "De verdad", "Garganta Grito de Guerra" }, Titles(ui))
+        A.same({ "Profundidades de Roca Negra", "De verdad", "Garganta Grito de Guerra", "Pesca en Tuercespina" }, Titles(ui))
         A.equal("|cffa0a4adpor|r |cffffd100Lyra-Prueba|r |cff66b7ff<DOS>|r", Card(ui, "Garganta Grito de Guerra").who:GetText())
-        local magma = Card(ui, "Núcleo de Magma")
-        A.equal(24, Going(magma))
-        A.same({ TANK = 4, HEALER = 11, DAMAGER = 9 }, Roles(magma.roles:GetText()))
-        local d = Detail(ui, "Núcleo de Magma")
-        A.equal("Raid 1 (13)", d.raidTabs[1]:GetText(), "yo y 12 más")
-        A.equal(11, BenchCount(d), "los demás, sin raid")
-        A.equal("Tester-Reino", d.groups[1].slots[1].name, "la llevo yo")
+        -- (Valle de Alterac, un JcJ de Eventos con varias raids posibles (el quinto: con la barra), y Núcleo de Magma, la
+        -- banda de 40: los dos con 24 apuntados y una raid que llevo yo, de 13)
+        a.env.FauxScrollFrame_SetOffset(ui.scroll, 1)
+        ui.scroll:GetScript("OnVerticalScroll")(ui.scroll, 68)
+        for _, title in ipairs({ "Valle de Alterac", "Núcleo de Magma" }) do
+            local c = Card(ui, title)
+            A.equal(24, Going(c), title)
+            A.same({ TANK = 4, HEALER = 11, DAMAGER = 9 }, Roles(c.roles:GetText()))
+            local d = Detail(ui, title)
+            A.equal("Raid 1 (13)", d.raidTabs[1]:GetText(), "yo y 12 más")
+            A.equal(11, BenchCount(d), "los demás, sin raid")
+            A.equal("Tester-Reino", d.groups[1].slots[1].name, "la llevo yo")
+        end
+        A.same({ "Núcleo de Magma", "Zul'Gurub", "Guarida de Onyxia" }, Titles(ui), "en Raids, las bandas")
+        A.matches("^|cffff8040Banda de 40|r", Card(ui, "Guarida de Onyxia").kind:GetText())
         Click(btn)
         A.falsy(btn.picked)
+        A.same({}, Titles(ui))
+        Click(ui.viewBtns.list)
         A.same({ "De verdad" }, Titles(ui))
         A.falsy(ui.detail:IsShown(), "la ficha de prueba, cerrada")
         A.same({}, a:Errors())
@@ -1206,9 +1852,9 @@ describe("Calendario: las raids de un evento", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
-        A.equal("|cffff8040Banda|r   |cffe6e6eaLunes 18 de enero, 21:00|r   |cffa0a4adpor|r |cffffd100Jandra-Prueba|r"
-            .. " |cff33ff99<UNO>|r   |cff40ff4024|r |cffe6e6eavan|r   |cffa0a4adNv. 55+|r", d.sub:GetText())
+        local d = Detail(ui, "Valle de Alterac")
+        A.equal("|cffff4040JcJ|r   |cffe6e6eaDomingo 24 de enero, 21:00|r   |cffa0a4adpor|r |cffffd100Jandra-Prueba|r"
+            .. " |cff33ff99<UNO>|r   |cff40ff4024|r|cffe6e6ea van|r   |cffa0a4adNv. 55+|r", d.sub:GetText())
         A.same({ TANK = 4, HEALER = 11, DAMAGER = 9 }, Roles(d.roles:GetText()))
         A.truthy(d.raidTabs[1]:IsShown())
         A.truthy(d.raidTabs[1].picked)
@@ -1249,7 +1895,7 @@ describe("Calendario: las raids de un evento", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         local pk = d.picker
         local firstBench = d.bench[1].name
         Click(d.addRaid)
@@ -1300,17 +1946,45 @@ describe("Calendario: las raids de un evento", function()
         A.same({}, a:Errors())
     end)
 
-    it("hasta 20 raids, en filas de 7 botones rojos de 92 con la letra de siempre (la elegida, negra): «+ Añadir» va en el hueco siguiente y a las 20 ya no sale", function()
+    it("«+ Añadir» otra vez cierra «¿Quién lleva la nueva raid?», y pinchar en cualquier otro sitio también (Jorge, 25/11)", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
+        local pk, catcher = d.picker, d.picker.catcher
+        A.falsy(catcher:IsShown(), "cerrada, sin la capa")
+        Click(d.addRaid)
+        A.truthy(pk:IsShown())
+        A.truthy(catcher:IsShown(), "abierta, la capa invisible para pinchar fuera")
+        A.truthy(catcher:GetFrameLevel() < pk:GetFrameLevel(), "por debajo de la ventanita: su buscador y sus filas siguen")
+        Click(d.addRaid)
+        A.falsy(pk:IsShown(), "otro clic en «+ Añadir»: se cierra")
+        A.falsy(catcher:IsShown())
+        A.falsy(d.raidTabs[2]:IsShown(), "sin raid nueva")
+        Click(d.addRaid)
+        A.truthy(pk:IsShown(), "y otro, se abre otra vez")
+        Click(catcher)
+        A.falsy(pk:IsShown(), "pinchar fuera: se cierra")
+        A.falsy(catcher:IsShown())
+        A.falsy(d.raidTabs[2]:IsShown())
+        -- (elegir a alguien sigue creando la raid, y la capa se va con la ventanita)
+        AddRaid(d)
+        A.truthy(d.raidTabs[2]:IsShown())
+        A.falsy(catcher:IsShown())
+        A.same({}, a:Errors())
+    end)
+
+    it("hasta 20 raids, en filas de 7 botones rojos de 92 con la letra de siempre (la elegida, gris): «+ Añadir» va en el hueco siguiente y a las 20 ya no sale", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Valle de Alterac")
         A.same({ 92, 24 }, { d.raidTabs[1]._w, d.raidTabs[1]._h })
         A.same({ 12, -62 }, { d.raidTabs[8]._pts.TOPLEFT[3], d.raidTabs[8]._pts.TOPLEFT[4] }, "la 8, al principio de la segunda fila")
         A.same({ 12 + 6 * 96, -34 }, { d.raidTabs[7]._pts.TOPLEFT[3], d.raidTabs[7]._pts.TOPLEFT[4] }, "la 7, la última de la primera")
         A.truthy(12 + 6 * 96 + 92 <= 704 - 12, "la fila cabe en el panel de la ficha")
-        -- (la letra: la normal y, elegida, la blanca, con el botón negro; no la pequeña de antes)
-        A.equal("GameFontHighlight", d.raidTabs[1]._font, "la elegida")
+        -- (la letra: la normal, también la elegida, que es gris como en el Dungeon Journal (Jorge, 25/11); no la pequeña de antes)
+        A.is_nil(d.raidTabs[1]._font, "la elegida, con su letra de siempre")
         A.truthy(d.raidTabs[1].picked)
         for k = 2, 20 do
             AddRaid(d)
@@ -1343,7 +2017,7 @@ describe("Calendario: las raids de un evento", function()
         Click(d.raidTabs[7])
         A.truthy(d.raidTabs[7].picked)
         A.falsy(d.raidTabs[20].picked)
-        A.equal("GameFontNormal", d.raidTabs[20]._font, "sin elegir, la dorada de siempre")
+        A.is_nil(d.raidTabs[20]._font, "sin elegir, la dorada de siempre")
         A.same({}, a:Errors())
     end)
 
@@ -1351,7 +2025,7 @@ describe("Calendario: las raids de un evento", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         A.equal("Pepe-Prueba", AddRaid(d, "pepe"))
         A.falsy(d.delRaid:IsShown(), "la raid 2 es de Pepe")
         Click(d.raidTabs[1])
@@ -1369,6 +2043,91 @@ describe("Calendario: las raids de un evento", function()
         A.falsy(d.place:IsShown())
         A.falsy(d.delRaid:IsShown())
         A.equal("", d.hint:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("«Quitar raid», arriba a la derecha, en la franja del título y a la izquierda de la X (Jorge, 25/11: «el delete raid ponerlo arriba a la derecha»); en una banda, que es una sola raid, la elimina entera: solo quien la creó y preguntando, como «Eliminar»", function()
+        local a = Community()
+        local ui = Open(a)
+        Click(ui.viewBtns.raids)
+        NewEvent(a, ui, "Mi banda")
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        local d = Detail(ui, "Mi banda")
+        local del = d.delRaid
+        A.equal("Quitar raid", del:GetText())
+        A.equal(d, del:GetParent(), "en la ventana, no en su panel")
+        A.same({ d, "TOPRIGHT", -40, -15 }, del._pts.TOPRIGHT)
+        A.truthy(-15 <= -10 and -15 - del._h >= -44, "dentro de la franja del título (de 10 a 44)")
+        A.truthy(-40 <= -(3 + 32), "a la izquierda de la X (32, a 3 del borde)")
+        A.truthy(del:IsShown(), "la banda es mía")
+        local cfm = a.env.GuildUnionCalendarConfirm
+        Click(del)
+        A.truthy(cfm:IsShown())
+        A.equal("¿Seguro que quieres eliminar el evento?", cfm.text:GetText())
+        Click(Child(a, cfm, "No"))
+        A.same({ "Mi banda" }, Titles(ui), "«No»: sigue")
+        Click(del)
+        Click(Child(a, cfm, "Sí"))
+        A.same({}, Titles(ui))
+        A.falsy(d:IsShown(), "su ficha, cerrada")
+        A.equal("", a.HU.db.wuStore.UNO.EV["tester-reino,e" .. id].d, "su línea, vacía a la red")
+        A.is_nil(a.HU.db.calRaids[id], "su raid, fuera")
+        -- (en la banda de otro, aunque lleve su raid, no sale: Núcleo de Magma es de Jandra; en la de otra hermandad, sin
+        -- raid en este PC, el aviso de que la monta quien la organiza)
+        TestMode(a, ui)
+        d = Detail(ui, "Núcleo de Magma")
+        A.equal("Tester-Reino", d.groups[1].slots[1].name, "la llevo yo")
+        A.falsy(d.delRaid:IsShown())
+        A.falsy(d.addRaid:IsShown())
+        d = Detail(ui, "Guarida de Onyxia")
+        A.truthy(d.noRaid:IsShown())
+        A.equal("La raid la monta quien la organiza.", d.noRaid:GetText())
+        A.falsy(d.delRaid:IsShown())
+        -- (en Eventos, como siempre: quita la raid que se ve, sin preguntar)
+        d = Detail(ui, "Valle de Alterac")
+        A.equal("Todavía no hay raids. Quien organiza las crea con «+ Añadir raid».", d.noRaid:GetText())
+        A.truthy(d.delRaid:IsShown())
+        Click(d.delRaid)
+        A.falsy(cfm:IsShown())
+        A.truthy(d.noRaid:IsShown(), "sin raids")
+        A.same({}, a:Errors())
+    end)
+
+    it("una banda de 10 usa solo sus 2 grupos: «Colocar en raids» llena 10 y el resto se queda; a un grupo que no se ve no se suelta a nadie; con la raid llena, «Hacer líder» deja fuera al último («La raid está llena (10).»)", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        Click(ui.newDlg.sizeBtns[1])
+        ui.newDlg.title:SetText("Diez")
+        Click(Child(a, ui.newDlg, "Crear"))
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        -- (11 de la hermandad se apuntan, de daño)
+        for k = 1, 11 do
+            a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. a.HU.StampNow() .. "~D", "GUILD", "Uno" .. string.char(96 + k) .. "-Reino")
+        end
+        a.w:Advance(0.5)
+        local d = Detail(ui, "Diez")
+        A.equal(11, BenchCount(d))
+        A.equal("Colocar en raids (11)", d.place:GetText())
+        Click(d.place)
+        A.truthy(Said(a, "Colocados 9 en raids; 2 se quedan sin raid."), "conmigo, 10")
+        A.equal("Raid 1 (10)", d.raidTabs[1]:GetText())
+        A.same({ 5, 5 }, { #Groups(d)[1], #Groups(d)[2] })
+        for g = 3, 8 do A.same({}, Groups(d)[g]) end
+        -- (soltar en un grupo que no se ve, el 5: nada)
+        local x = d.bench[1].name
+        Drag(d.bench[1], d.groups[5])
+        A.truthy(OnBench(d, x), "sigue en el banquillo")
+        A.equal("Raid 1 (10)", d.raidTabs[1]:GetText())
+        -- (hacer líder a uno del banquillo con la raid llena: entra él y el último del grupo 1 no cabe)
+        Click(d.bench[1], "RightButton")
+        Item(menus[#menus], "Hacer líder de la raid").fn()
+        A.truthy(Said(a, "La raid está llena (10)."))
+        A.equal(x, d.groups[1].slots[1].name, "el nuevo líder")
+        A.equal("Raid 1 (10)", d.raidTabs[1]:GetText())
+        A.equal(2, BenchCount(d), "el que no cabe, al banquillo")
         A.same({}, a:Errors())
     end)
 
@@ -1426,7 +2185,7 @@ describe("Calendario: las raids de un evento", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         BenchAll(d, "Tester-Reino") -- (la raid 1 solo conmigo, daño)
         A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
         A.equal(23, BenchCount(d))
@@ -1452,7 +2211,7 @@ describe("Calendario: las raids de un evento", function()
         local ui = Open(a)
         local menus = Menus(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         local lastOfG1 = Groups(d)[1][5]
         local who = d.bench[1].name
         Click(d.bench[1])
@@ -1471,12 +2230,371 @@ describe("Calendario: las raids de un evento", function()
     end)
 end)
 
+describe("Calendario: banda completa y reserva (Jorge, 25/11: «cuando esté completo que ponga completo pero que aun así la gente pueda apuntarse como reserva»; «reserva, decide el líder»)", function()
+    local TICK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t "
+    -- (alguien de mi hermandad propone por GUILD, como lo manda su addon)
+    local function FromGuild(a, who, key, data)
+        a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. a.HU.StampNow() .. "~" .. data, "GUILD", who)
+    end
+    local function Data(a, key)
+        local e = a.HU.db.wuStore.UNO.EV["tester-reino," .. key]
+        return e and e.d
+    end
+    local function BenchRow(d, name)
+        for _, b in ipairs(d.bench) do if b:IsShown() and b.name == name then return b end end
+    end
+    -- (la cabecera de la reserva en el banquillo, si la hay: la fila que no es nadie)
+    local function Header(d)
+        for _, b in ipairs(d.bench) do if b:IsShown() and not b.name then return b.text:GetText() end end
+    end
+    -- (mi banda de 10, desde Raids, con 9 de mi hermandad que van, de daño: completa)
+    local function MyTen(a, ui)
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        Click(ui.newDlg.sizeBtns[1])
+        ui.newDlg.title:SetText("Diez")
+        Click(Child(a, ui.newDlg, "Crear"))
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        for k = 1, 9 do FromGuild(a, "Uno" .. string.char(96 + k) .. "-Reino", "s" .. id, "D") end
+        a.w:Advance(0.5)
+        return id
+    end
+
+    it("en el modo prueba, Zul'Gurub (mía, de 20): «20/20 · Completo» en la tarjeta y en la ficha; la reserva, aparte en el banquillo, bajo su cabecera; «Colocar en raids» no la coloca", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local c = Card(ui, "Zul'Gurub")
+        A.equal(TICK .. "20/20 · Completo", c.going:GetText())
+        A.matches("Apuntado", c.join:GetText(), "yo voy")
+        A.same({ TANK = 3, HEALER = 8, DAMAGER = 9 }, Roles(c.roles:GetText()), "los roles, de los 20 que van")
+        local d = Detail(ui, "Zul'Gurub")
+        A.matches("|cff40ff4020|r|cffe6e6ea/20 · Completo|r", d.sub:GetText())
+        A.same(Roles(c.roles:GetText()), Roles(d.roles:GetText()))
+        A.equal("Raid 1 (16)", d.raidTabs[1]:GetText())
+        A.equal("Sin raid  |cffa0a4ad(4)|r", d.benchHead:GetText(), "los 4 que van sin raid; la reserva, aparte")
+        A.same({ "Pim", "Quin", "Rhea", "Sol", "Bea", "Jandra", "Pepe", "Tamsin" }, Bench(d))
+        A.is_nil(d.bench[5].name, "tras los 4, la cabecera, que no es nadie")
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(4)|r", d.bench[5].text:GetText())
+        A.equal(0, d.bench[5].fill:GetAlpha(), "sin fondo de fila")
+        -- (la cabecera no se elige, no se arrastra ni abre menú)
+        local menus = Menus(a)
+        Click(d.bench[5], "RightButton")
+        A.equal(0, #menus)
+        Drag(d.bench[5], d.groups[4])
+        A.equal("Raid 1 (16)", d.raidTabs[1]:GetText())
+        A.equal("Colocar en raids (4)", d.place:GetText())
+        Click(d.place)
+        A.equal("Raid 1 (20)", d.raidTabs[1]:GetText())
+        A.same({ "Bea", "Jandra", "Pepe", "Tamsin" }, Bench(d), "la reserva, sin colocar")
+        A.falsy(d.place:IsShown())
+        -- (con el filtro por rol, también la reserva; la cabecera dice cuántos de cuántos, y sigue aunque no se vea nadie)
+        Click(d.roleBtns[3]) -- (sanador: Bea, Jandra y Tamsin)
+        A.same({ "Bea", "Jandra", "Tamsin" }, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(3/4)|r", Header(d))
+        Click(d.roleBtns[2]) -- (tanque: Pepe)
+        A.same({ "Pepe" }, Bench(d))
+        Click(d.roleBtns[4]) -- (daño: nadie)
+        A.same({}, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(0/4)|r", Header(d))
+        local en = Community({ locale = "enUS" })
+        local enUi = Open(en)
+        TestMode(en, enUi)
+        A.equal(TICK .. "20/20 · Full", Card(enUi, "Zul'Gurub").going:GetText())
+        A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("mi banda de 10, completa: quien se apunta después va de reserva, aparte; quien organiza la sube a la raid cuando hay hueco y se publica (u<id>), y al bajarla se quita; si se va uno que iba, nadie sube solo", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        local id = MyTen(a, ui)
+        local c = Card(ui, "Diez")
+        A.equal(TICK .. "10/10 · Completo", c.going:GetText())
+        -- (dos más, de reserva: así lo mandan sus addons con la banda completa)
+        FromGuild(a, "Reserva1-Reino", "s" .. id, "Hr")
+        FromGuild(a, "Reserva2-Reino", "s" .. id, "Dr")
+        a.w:Advance(0.5)
+        A.equal(TICK .. "10/10 · Completo", c.going:GetText(), "la reserva no cuenta")
+        local d = Detail(ui, "Diez")
+        A.matches("|cff40ff4010|r|cffe6e6ea/10 · Completo|r", d.sub:GetText())
+        A.equal("Sin raid  |cffa0a4ad(9)|r", d.benchHead:GetText())
+        A.same({ "Unoa", "Unob", "Unoc", "Unod", "Unoe", "Unof", "Unog", "Unoh", "Unoi", "Reserva1", "Reserva2" }, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(2)|r", Header(d))
+        A.is_nil(d.bench[10].name, "tras los 9")
+        Click(d.place)
+        A.truthy(Said(a, "Colocados 9 en raids; 0 se quedan sin raid."))
+        A.equal("Raid 1 (10)", d.raidTabs[1]:GetText())
+        A.same({ "Reserva1", "Reserva2" }, Bench(d), "la reserva, sin colocar")
+        A.is_nil(Data(a, "u" .. id .. "_1"), "nadie ha subido")
+        -- (saco a uno de la raid y subo a Reserva1: deja de ser reserva y se publica)
+        Click((SlotOf(d, "Unoa-Reino")), "RightButton")
+        Item(menus[#menus], "Sacar de la raid").fn()
+        Drag(BenchRow(d, "Reserva1-Reino"), d.groups[1])
+        A.truthy(SlotOf(d, "Reserva1-Reino"))
+        A.equal("Reserva1-Reino", Data(a, "u" .. id .. "_1"), "a la red")
+        A.same({ "Unoa", "Reserva2" }, Bench(d))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(1)|r", Header(d))
+        a.w:Advance(1)
+        A.matches("|cff40ff4011|r|cffe6e6ea/10 · Completo|r", d.sub:GetText(), "ahora va")
+        -- (la bajo al banquillo: vuelve a la reserva, y se quita de la red)
+        Drag((SlotOf(d, "Reserva1-Reino")), d.benchF)
+        A.equal("", Data(a, "u" .. id .. "_1"))
+        A.same({ "Unoa", "Reserva1", "Reserva2" }, Bench(d))
+        -- (se va uno de los que van: 9 de 10, sin «Completo»; nadie de la reserva sube solo)
+        a.w:Advance(1)
+        FromGuild(a, "Unob-Reino", "s" .. id, "")
+        a.w:Advance(0.5)
+        A.matches("|cff40ff409|r|cffe6e6ea/10 van|r", d.sub:GetText())
+        A.equal(TICK .. "9/10 van", c.going:GetText())
+        A.same({ "Unoa", "Reserva1", "Reserva2" }, Bench(d), "la reserva, donde estaba")
+        A.falsy(SlotOf(d, "Unob-Reino"), "fuera de la raid")
+        A.same({}, a:Errors())
+    end)
+
+    it("en la banda de otro, completa: el botón dice «Ir de reserva» y me apunto de reserva («Dr»); cuando quien la organiza me sube (su lista u<id>), voy; la lista de otro no cuenta", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        local t36 = a.HU.B36(MONDAY + 86400)
+        FromGuild(a, "Compi-Reino", "ex1", t36 .. ",raid,10,0,,Banda de Compi,")
+        for k = 1, 10 do FromGuild(a, "Uno" .. string.char(96 + k) .. "-Reino", "sx1", "T") end
+        a.w:Advance(0.5)
+        local c = Card(ui, "Banda de Compi")
+        A.equal("10/10 · Completo", c.going:GetText())
+        A.equal("Ir de reserva", c.join:GetText())
+        a.env.UnitClass = function() return "Mago", "MAGE" end
+        Click(c.join)
+        Item(menus[#menus], "Daño").fn()
+        A.equal("Dr", Data(a, "sx1"), "de reserva, a la red")
+        A.equal(TICK .. "|cffffb040Reserva|r", c.join:GetText())
+        A.equal(TICK .. "10/10 · Completo", c.going:GetText(), "la reserva no cuenta")
+        local d = Detail(ui, "Banda de Compi")
+        A.equal(TICK .. "|cffffb040Reserva|r", d.join:GetText())
+        A.truthy(OnBench(d, "Tester-Reino"))
+        A.equal("|cffffb040Reserva|r  |cffa0a4ad(1)|r", d.bench[11].text:GetText(), "aparte, tras los 10")
+        A.equal("Tester-Reino", d.bench[12].name)
+        -- (la lista de otro que no la creó: nada)
+        FromGuild(a, "Unoa-Reino", "ux1_1", "Tester-Reino")
+        a.w:Advance(0.5)
+        A.equal(TICK .. "|cffffb040Reserva|r", c.join:GetText())
+        -- (Compi me sube)
+        a.w:Advance(1)
+        FromGuild(a, "Compi-Reino", "ux1_1", "Tester-Reino")
+        a.w:Advance(0.5)
+        A.equal(TICK .. "|cff40ff40Apuntado|r", c.join:GetText())
+        A.equal(TICK .. "11/10 · Completo", c.going:GetText())
+        A.is_nil(Header(d), "sin reserva")
+        -- (salgo y vuelvo a apuntarme: completa, otra vez de reserva)
+        Click(c.join)
+        Click(Child(a, a.env.GuildUnionCalendarConfirm, "Sí"))
+        A.equal("", Data(a, "sx1"))
+        a.w:Advance(1)
+        Click(c.join)
+        Item(menus[#menus], "Daño").fn()
+        A.equal("Dr", Data(a, "sx1"))
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que no es banda no tiene reserva: un apuntado con la marca, en un JcJ, va como cualquiera", function()
+        local a = Community()
+        local ui = Open(a)
+        local t36 = a.HU.B36(MONDAY + 86400)
+        FromGuild(a, "Compi-Reino", "ex1", t36 .. ",pvp,,0,,Garganta,")
+        FromGuild(a, "Compi-Reino", "sx1", "T")
+        FromGuild(a, "Unoa-Reino", "sx1", "Dr")
+        a.w:Advance(0.5)
+        local c = Card(ui, "Garganta")
+        A.equal("2 van", c.going:GetText())
+        A.equal("Apuntarme", c.join:GetText(), "sin «Ir de reserva»")
+        local d = Detail(ui, "Garganta")
+        A.same({ "Compi", "Unoa" }, Bench(d))
+        A.is_nil(Header(d))
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Calendario: bandas por invitación (Jorge, 25/11: «en la parte de raid que tenga opción a hacer público para todos o por invite»)", function()
+    local function FromGuild(a, who, key, data)
+        a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. a.HU.StampNow() .. "~" .. data, "GUILD", who)
+    end
+    local function Data(a, key)
+        local e = a.HU.db.wuStore.UNO.EV["tester-reino," .. key]
+        return e and e.d
+    end
+    -- (lo que se escribe en la caja de los invitados, como el jugador: el texto y su aviso de cambio)
+    local function Type(box, text)
+        box:SetText(text)
+        box:GetScript("OnTextChanged")(box, true)
+    end
+    local function Invitees(nd)
+        local out = {}
+        for _, b in ipairs(nd.invRows) do if b:IsShown() then out[#out + 1] = b.name end end
+        return out
+    end
+
+    it("en la ventana: «Acceso: Pública · Por invitación» junto al tamaño; por invitación, a quién, con autorrelleno de los de la unión (también las listas completas), y debajo los invitados (clic en uno, lo quita); la ventana crece", function()
+        local a = Community()
+        local ui = Open(a)
+        F.Stub(a.HU, "PackedMembers", function(_, tag) return tag == "DOS" and { { name = "Lejana-Reino", level = 60 } } or {} end)
+        a.HU.remoteRoster.DOS = { members = { { name = "Lejos-Reino", class = "MAGE", level = 60 } } }
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        local nd = ui.newDlg
+        A.same({ 148, -58 }, nd.accessLabel._pts.TOPLEFT, "a la derecha del tamaño")
+        A.equal("Acceso:", nd.accessLabel:GetText())
+        A.same({ "Pública", "Por invitación" }, { nd.accessBtns[1]:GetText(), nd.accessBtns[2]:GetText() })
+        A.same({ 146, -74 }, nd.accessBtns[1]._pts.TOPLEFT)
+        A.same({ 228, -74 }, nd.accessBtns[2]._pts.TOPLEFT)
+        A.truthy(228 + nd.accessBtns[2]._w <= 344, "cabe en la ventana (344 de panel)")
+        A.truthy(10 + 2 * 42 + 40 < 146, "sin pisar el tamaño")
+        A.truthy(nd.accessBtns[1].picked, "de entrada, pública")
+        A.falsy(nd.invBox:IsShown())
+        A.equal(420, nd._h)
+        Click(nd.accessBtns[2])
+        A.truthy(nd.accessBtns[2].picked)
+        A.truthy(nd.invBox:IsShown())
+        A.truthy(nd.invAdd:IsShown())
+        A.equal(420 + 130, nd._h, "crece con los invitados")
+        A.equal("Invitados (0/40):", nd.invLabel:GetText())
+        A.same({ 12, -318 }, nd.invLabel._pts.TOPLEFT, "bajo la descripción")
+        -- (autorrelleno: de mi hermandad, de las listas de las otras y de sus listas completas; a mí no)
+        local sug = nd.invSug
+        Type(nd.invBox, "Co")
+        A.truthy(sug:IsShown())
+        A.equal("Compi-Reino", sug.rows[1].value, "de mi hermandad")
+        Click(sug.rows[1])
+        A.same({ "Compi-Reino" }, Invitees(nd))
+        A.equal("", nd.invBox:GetText(), "la caja, vacía")
+        A.falsy(sug:IsShown())
+        Type(nd.invBox, "Lej")
+        A.same({ "Lejana-Reino", "Lejos-Reino" }, { sug.rows[1].value, sug.rows[2].value }, "también las listas completas")
+        A.matches("<DOS>", sug.rows[1].text:GetText())
+        nd.invBox:GetScript("OnEnterPressed")(nd.invBox) -- (Intro: la primera)
+        A.same({ "Compi-Reino", "Lejana-Reino" }, Invitees(nd))
+        Type(nd.invBox, "Tes")
+        A.falsy(sug:IsShown(), "a mí no: ya la veo")
+        Type(nd.invBox, "x")
+        A.falsy(sug:IsShown(), "con una letra, nada")
+        -- (a mano, con «Añadir»: con espacio, como «Nombre Reino», es el mismo nombre; repetido o yo, nada; con coma, no vale)
+        nd.invBox:SetText("Alguien Lejano")
+        Click(nd.invAdd)
+        A.same({ "Alguien-Lejano", "Compi-Reino", "Lejana-Reino" }, Invitees(nd), "por orden")
+        nd.invBox:SetText("compi-reino"); Click(nd.invAdd)
+        nd.invBox:SetText("Tester-Reino"); Click(nd.invAdd)
+        nd.invBox:SetText("Mal,Nombre"); Click(nd.invAdd)
+        A.truthy(Said(a, "Ese nombre no vale."))
+        A.equal(3, #Invitees(nd))
+        A.equal("Invitados (3/40):", nd.invLabel:GetText())
+        -- (clic en uno: fuera)
+        Click(nd.invRows[1])
+        A.same({ "Compi-Reino", "Lejana-Reino" }, Invitees(nd))
+        -- (con 40, no caben más; se ven 5 y la barra llega al resto)
+        for k = 1, 38 do nd.invBox:SetText(string.format("Otro%02d-Reino", k)); Click(nd.invAdd) end
+        A.equal("Invitados (40/40):", nd.invLabel:GetText())
+        nd.invBox:SetText("Uno-Mas"); Click(nd.invAdd)
+        A.truthy(Said(a, "Como mucho 40 invitados."))
+        A.equal(5, #Invitees(nd), "se ven 5")
+        local isf = a.env.GuildUnionCalendarInviteScroll
+        a.env.FauxScrollFrame_SetOffset(isf, 35)
+        isf:GetScript("OnVerticalScroll")(isf, 35 * 16)
+        A.same({ "Otro36-Reino", "Otro37-Reino", "Otro38-Reino" }, { Invitees(nd)[3], Invitees(nd)[4], Invitees(nd)[5] })
+        -- (con «Pública», sin invitados en la ventana; la ventana vuelve a su alto)
+        Click(nd.accessBtns[1])
+        A.falsy(nd.invBox:IsShown())
+        for _, b in ipairs(nd.invRows) do A.falsy(b:IsShown()) end
+        A.equal(420, nd._h)
+        A.same({}, a:Errors())
+    end)
+
+    it("al crearla: «40i» y su lista (i<id>) a la red, y en la tarjeta y la ficha, «Por invitación»; al editarla, con sus invitados; a pública, la lista se vacía", function()
+        local a = Community()
+        local menus = Menus(a)
+        local ui = Open(a)
+        Click(ui.viewBtns.raids)
+        Click(ui.new)
+        local nd = ui.newDlg
+        Click(nd.accessBtns[2])
+        for _, n in ipairs({ "Bea-Reino", "Ana-Reino" }) do nd.invBox:SetText(n); Click(nd.invAdd) end
+        nd.title:SetText("Privada")
+        Click(Child(a, nd, "Crear"))
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        A.matches("^e%w+=%w+,raid,40i,0,", Stored(a)[1])
+        A.equal("Ana-Reino,Bea-Reino", Data(a, "i" .. id .. "_1"))
+        A.equal("T", Data(a, "s" .. id))
+        local c = Card(ui, "Privada")
+        A.equal("|cffff8040Banda de 40|r  |cffa0a4adPor invitación|r  |cffe6e6ea20:00|r", c.kind:GetText())
+        local d = Detail(ui, "Privada")
+        A.matches("Por invitación", d.sub:GetText())
+        -- (editarla: con sus invitados; quito uno y añado otro)
+        Click(c, "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        A.truthy(nd.accessBtns[2].picked)
+        A.same({ "Ana-Reino", "Bea-Reino" }, Invitees(nd))
+        Click(nd.invRows[1])
+        nd.invBox:SetText("Cora-Reino"); Click(nd.invAdd)
+        Click(Child(a, nd, "Guardar"))
+        A.equal("Bea-Reino,Cora-Reino", Data(a, "i" .. id .. "_1"))
+        -- (a pública: el formato sin «i» y la lista, vacía)
+        Click(c, "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        Click(nd.accessBtns[1])
+        Click(Child(a, nd, "Guardar"))
+        A.matches("^e%w+=%w+,raid,40,0,", Stored(a)[1])
+        A.equal("", Data(a, "i" .. id .. "_1"))
+        A.equal("|cffff8040Banda de 40|r  |cffe6e6ea20:00|r", c.kind:GetText())
+        -- (en el modo prueba, Zul'Gurub es mía y por invitación: al editarla, sus 23 invitados)
+        TestMode(a, ui)
+        Click(Card(ui, "Zul'Gurub"), "RightButton")
+        Item(menus[#menus], "Editar evento").fn()
+        A.equal("Invitados (23/40):", nd.invLabel:GetText())
+        Click(Child(a, nd, "Cancelar"))
+        A.same({}, a:Errors())
+    end)
+
+    it("la banda por invitación de otro: si no me invita, no la veo (ni en Raids ni en el mes); si me invita, sí; quien se apunta sin estar invitado no cuenta", function()
+        local a = Community()
+        local ui = Open(a)
+        local t36 = a.HU.B36(MONDAY + 86400)
+        FromGuild(a, "Compi-Reino", "ex1", t36 .. ",raid,10i,0,,Secreta,")
+        FromGuild(a, "Compi-Reino", "ix1_1", "Otra-Reino,Uno-Reino")
+        FromGuild(a, "Compi-Reino", "sx1", "T")
+        FromGuild(a, "Uno-Reino", "sx1", "D")
+        FromGuild(a, "Colado-Reino", "sx1", "D")
+        a.w:Advance(0.5)
+        Click(ui.viewBtns.raids)
+        A.same({}, Titles(ui), "no me invita: no la veo")
+        Click(ui.viewBtns.month)
+        A.equal("", ui.grid.cells[23].ev:GetText(), "ni en el mes")
+        -- (me invita: en Raids y en el mes; van Compi y Uno, y el que se coló no)
+        a.w:Advance(1)
+        FromGuild(a, "Compi-Reino", "ix1_1", "Otra-Reino,Tester-Reino,Uno-Reino")
+        a.w:Advance(0.5)
+        A.equal("|cffffd100+1 evento|r", ui.grid.cells[23].ev:GetText())
+        Click(ui.viewBtns.raids)
+        local c = Card(ui, "Secreta")
+        A.truthy(c)
+        A.equal("2/10 van", c.going:GetText(), "Compi (la creó) y Uno; Colado, no")
+        A.matches("Por invitación", c.kind:GetText())
+        local d = Detail(ui, "Secreta")
+        A.same({ "Compi", "Uno" }, Bench(d))
+        -- (me quita: deja de verse, y su ficha se cierra)
+        a.w:Advance(1)
+        FromGuild(a, "Compi-Reino", "ix1_1", "Otra-Reino,Uno-Reino")
+        a.w:Advance(0.5)
+        A.same({}, Titles(ui))
+        A.falsy(d:IsShown())
+        A.same({}, a:Errors())
+    end)
+end)
+
 describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
     -- Magma en modo prueba con una raid 2 que lleva alguien del banquillo; se ve la raid 1 (la mía)
     local function TwoRaids(a)
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         local second = AddRaid(d)
         Click(d.raidTabs[1])
         return ui, d, second
@@ -1753,7 +2871,7 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         A.same({}, a:Errors())
     end)
 
-    it("el banquillo se filtra por rol (Todos, tanque, sanador, daño): solo los de ese rol, y arriba cuántos de cuántos; el elegido, negro", function()
+    it("el banquillo se filtra por rol (Todos, tanque, sanador, daño): solo los de ese rol, y arriba cuántos de cuántos; el elegido, gris", function()
         local a = Community()
         local ui = Open(a)
         TestMode(a, ui)
@@ -1765,7 +2883,7 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         -- (los botones, en una fila debajo de la raya del banquillo, y sus filas, debajo de ellos)
         A.same({ 7, -28 }, all._pts.TOPLEFT)
         A.same({ 7 + 44 + 4, -28 }, tank._pts.TOPLEFT)
-        A.same({ 7, -50 }, d.bench[1]._pts.TOPLEFT)
+        A.same({ 7, -54 }, d.bench[1]._pts.TOPLEFT)
         A.truthy(7 + 44 + 3 * (28 + 4) <= 156 - 3, "caben a lo ancho del banquillo")
         local count = { TANK = 0, HEALER = 0, DAMAGER = 0 }
         for _, b in ipairs(d.bench) do if b:IsShown() then local r = RoleIn(b.text:GetText()); count[r] = count[r] + 1 end end
@@ -1791,6 +2909,61 @@ describe("Calendario: mover a la gente (clic derecho y arrastrar)", function()
         Detail(ui, "Profundidades de Roca Negra")
         A.truthy(all.picked)
         A.same({ "Pepe" }, Bench(d))
+        A.same({}, a:Errors())
+    end)
+
+    it("los botones del filtro, de 22 de alto como los demás botones rojos, con el icono del rol de 14 en el centro, dentro del botón; las 12 filas siguen cabiendo debajo (Jorge, 25/11: «el icono sobresale del botón»)", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local all = d.roleBtns[1]
+        A.same({ 44, 22 }, { all._w, all._h })
+        A.equal("Todos", all:GetText())
+        A.is_nil(all.icon, "«Todos», sin icono")
+        local x = 7 + 44 + 4
+        for i, role in ipairs({ "TANK", "HEALER", "DAMAGER" }) do
+            local b = d.roleBtns[i + 1]
+            A.same({ 28, 22 }, { b._w, b._h }, role)
+            A.same({ x, -28 }, b._pts.TOPLEFT, role)
+            x = x + 28 + 4
+            A.equal("", b:GetText(), "el icono ya no va en el texto")
+            -- (una textura aparte, centrada: 4 de margen arriba y abajo y 7 a los lados)
+            A.equal("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES", b.icon:GetTexture())
+            A.same({ 14, 14 }, { b.icon._w, b.icon._h })
+            A.same({ 0, 0 }, b.icon._pts.CENTER)
+            A.truthy(b.icon._h + 8 <= b._h and b.icon._w + 14 <= b._w, "cabe dentro del botón: " .. role)
+            local tc = {}
+            for v in TC[role]:gmatch("%d+") do tc[#tc + 1] = tonumber(v) / 64 end
+            A.same(tc, b.icon._tc, "el icono de su rol")
+        end
+        A.truthy(x - 4 <= 156 - 3, "caben a lo ancho del banquillo")
+        -- (las filas, 4 por debajo de los botones, y su barra con ellas; las 12, encima de «Colocar en raids», que va a 8
+        -- del borde de abajo del banquillo: 480 de ventana, el panel de dentro a 52 y 44, y el banquillo a 64 y 10)
+        A.same({ 7, -54 }, d.bench[1]._pts.TOPLEFT)
+        A.same({ 7, -54 }, a.env.GuildUnionCalendarBenchScroll._pts.TOPLEFT)
+        A.truthy(-28 - 22 - 4 >= -54, "los botones no pisan la primera fila")
+        local benchH = (480 - 52 - 44) - 64 - 10
+        local last = d.bench[#d.bench]
+        A.truthy(-last._pts.TOPLEFT[2] + last._h <= benchH - 8 - d.place._h - 4, "la última fila, por encima de «Colocar en raids»")
+        A.same({}, a:Errors())
+    end)
+
+    it("la imagen de arriba a la izquierda no desaparece al filtrar por tanque, sanador o daño (Jorge, 25/11): nada de la ventana en su misma capa y subcapa la pisa (la franja del título la tapaba entera y el juego no fija cuál de las dos va encima: al repintar, a veces, la franja)", function()
+        local a = Community()
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01"
+        A.same({}, SameLayerOver(a, d, d.icon), "al abrir la ficha")
+        for _, b in ipairs({ d.roleBtns[2], d.roleBtns[3], d.roleBtns[4], d.roleBtns[1] }) do
+            Click(b)
+            A.equal(icon, d.icon:GetTexture())
+            A.truthy(d.icon:IsShown())
+            A.same({}, SameLayerOver(a, d, d.icon), "tras filtrar: " .. tostring(b.role))
+        end
+        -- (por debajo del aro, que sí va encima a propósito: OVERLAY)
+        A.equal("ARTWORK", d.icon._layer)
         A.same({}, a:Errors())
     end)
 end)
@@ -1872,7 +3045,7 @@ describe("Calendario: invitar a la raid", function()
         local p = Party(a)
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         local function Repaint() Click(d.raidTabs[1]) end
         A.truthy(d.convert:IsShown())
         A.falsy(d.convert:IsEnabled(), "sin grupo")
@@ -1894,6 +3067,455 @@ describe("Calendario: invitar a la raid", function()
         A.falsy(d.convert:IsShown(), "la raid nueva la lleva otro")
         A.same({}, a:Errors())
     end)
+
+    it("con el filtro del banquillo en un rol, el botón invita solo a los de ese rol de la raid y lo dice: «Invitar tanques (N)», «… sanadores», «… daño» (Jorge, 25/11)", function()
+        local a = Community({ api = API })
+        local p = Party(a)
+        p.group, p.raid = true, true
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        -- (los de la raid por su rol, en el orden de los grupos)
+        local byRole = { TANK = {}, HEALER = {}, DAMAGER = {} }
+        for _, grp in ipairs(d.groups) do
+            for _, s in ipairs(grp.slots) do if s.name then table.insert(byRole[RoleIn(s.text:GetText())], s.name) end end
+        end
+        A.truthy(#byRole.TANK > 0 and #byRole.HEALER > 0 and #byRole.DAMAGER > 0, "en la raid hay de los tres")
+        local LABEL = { TANK = "Invitar tanques (%d)", HEALER = "Invitar sanadores (%d)", DAMAGER = "Invitar daño (%d)" }
+        for i, role in ipairs({ "TANK", "HEALER", "DAMAGER" }) do
+            Click(d.roleBtns[i + 1])
+            A.equal(string.format(LABEL[role], #byRole[role]), d.invite:GetText(), role)
+            p.invited = {}
+            Click(d.invite)
+            local want = {}
+            for _, n in ipairs(byRole[role]) do if n ~= "Tester-Reino" then want[#want + 1] = n end end
+            A.same(want, p.invited, role .. ": solo los de su rol, sin mí")
+        end
+        Click(d.roleBtns[1])
+        A.equal("Invitar a todos (13)", d.invite:GetText(), "con «Todos», todos")
+        -- (en inglés)
+        local en = Community({ locale = "enUS" })
+        local enUi = Open(en)
+        A.equal("Test mode", enUi.testBtn:GetText())
+        Click(enUi.testBtn)
+        Click(Card(enUi, "Molten Core").info)
+        Click(enUi.detail.roleBtns[2])
+        A.matches("^Invite tanks %(%d+%)$", enUi.detail.invite:GetText())
+        Click(enUi.detail.roleBtns[3])
+        A.matches("^Invite healers %(%d+%)$", enUi.detail.invite:GetText())
+        Click(enUi.detail.roleBtns[4])
+        A.matches("^Invite damage %(%d+%)$", enUi.detail.invite:GetText())
+        A.same({}, a:Errors())
+        A.same({}, en:Errors())
+    end)
+
+    it("Ctrl+clic suma o quita a alguien (de la raid o del banquillo) y Mayús+clic elige el tramo desde el último; con elegidos, «Invitar seleccionados (N)» invita solo a esos; el clic derecho sigue con su menú y el clic solo vacía lo elegido (Jorge, 25/11)", function()
+        local a = Community({ api = API })
+        local p = Party(a)
+        p.group, p.raid = true, true
+        local menus = Menus(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        local g1, bench = d.groups[1].slots, d.bench
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        A.same({ "Ctrl+clic o Mayús+clic en los nombres: invitar solo a esos." }, Hover(a, d.invite), "al pasar el ratón, cómo")
+        d.invite:GetScript("OnLeave")(d.invite)
+        A.falsy(a.env.GameTooltip:IsShown())
+        -- (Ctrl: uno del banquillo; Mayús: el tramo hasta el quinto)
+        Pick(a, bench[2], "ctrl")
+        A.truthy(bench[2].pick:IsShown(), "elegido: con su fondo azul")
+        A.falsy(bench[1].pick:IsShown())
+        A.equal("Invitar seleccionados (1)", d.invite:GetText())
+        Pick(a, bench[5], "shift")
+        for i = 1, 6 do A.equal(i >= 2 and i <= 5, bench[i].pick:IsShown(), "banquillo " .. i) end
+        A.equal("Invitar seleccionados (4)", d.invite:GetText())
+        -- (en la raid: Ctrl en uno y Mayús hacia arriba en su grupo)
+        Pick(a, g1[4], "ctrl")
+        Pick(a, g1[2], "shift")
+        for i = 1, 5 do A.equal(i >= 2 and i <= 4, g1[i].pick:IsShown(), "grupo 1, hueco " .. i) end
+        A.equal("Invitar seleccionados (7)", d.invite:GetText())
+        -- (Ctrl en uno elegido: lo quita)
+        Pick(a, bench[3], "ctrl")
+        A.falsy(bench[3].pick:IsShown())
+        A.equal("Invitar seleccionados (6)", d.invite:GetText())
+        -- (invita solo a esos: los del banquillo y los de la raid, como se ven)
+        local want = { bench[2].name, bench[4].name, bench[5].name, g1[2].name, g1[3].name, g1[4].name }
+        Click(d.invite)
+        A.same(want, p.invited)
+        A.truthy(Said(a, "Invitados 6 a Raid 1."))
+        -- (el clic derecho, el menú de siempre, y no cambia lo elegido; un hueco vacío, nada)
+        Click(g1[3], "RightButton")
+        A.equal(g1[3].name, menus[#menus].title)
+        A.equal("Invitar seleccionados (6)", d.invite:GetText())
+        local n = #menus
+        Pick(a, d.groups[8].slots[1], "ctrl")
+        A.equal("Invitar seleccionados (6)", d.invite:GetText(), "un hueco vacío no se elige")
+        -- (el clic solo: lo elegido, fuera, y sin menú)
+        Pick(a, g1[3])
+        for _, s in ipairs(g1) do A.falsy(s.pick:IsShown()) end
+        A.falsy(bench[2].pick:IsShown())
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        A.equal(n, #menus, "el clic izquierdo no abre el menú")
+        A.same({}, a:Errors())
+    end)
+
+    it("lo elegido se vacía al cambiar de raid o de evento; lo que el filtro del banquillo esconde deja de estar elegido; Mayús sin nada antes elige solo ese; quien no lleva la raid no elige", function()
+        local a = Community({ api = API })
+        Party(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Valle de Alterac")
+        local g1 = d.groups[1].slots
+        Pick(a, g1[3], "shift")
+        A.truthy(g1[3].pick:IsShown(), "Mayús sin nada antes: solo ese")
+        A.equal("Invitar seleccionados (1)", d.invite:GetText())
+        -- (otra raid: se vacía)
+        local second = AddRaid(d)
+        Click(d.raidTabs[1])
+        A.falsy(g1[3].pick:IsShown())
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        -- (un sanador y otro que no lo es, del banquillo; con el filtro de sanador, el otro se esconde y sale de lo elegido)
+        local healer, other
+        for _, b in ipairs(d.bench) do
+            if b:IsShown() then
+                if RoleIn(b.text:GetText()) == "HEALER" then healer = healer or b else other = other or b end
+            end
+        end
+        A.truthy(healer and other, "en el banquillo hay sanadores y de los otros")
+        local otherName = other.name
+        Pick(a, healer, "ctrl")
+        Pick(a, other, "ctrl")
+        A.equal("Invitar seleccionados (2)", d.invite:GetText())
+        Click(d.roleBtns[3])
+        A.equal("Invitar seleccionados (1)", d.invite:GetText(), "escondido por el filtro: fuera")
+        Click(d.roleBtns[1])
+        A.equal("Invitar seleccionados (1)", d.invite:GetText(), "y no vuelve")
+        A.truthy(OnBench(d, otherName))
+        for _, b in ipairs(d.bench) do if b.name == otherName then A.falsy(b.pick:IsShown(), "sin su fondo azul") end end
+        -- (otro evento y vuelta: se vacía)
+        Detail(ui, "Profundidades de Roca Negra")
+        Detail(ui, "Valle de Alterac")
+        A.equal("Invitar a todos (13)", d.invite:GetText())
+        -- (la raid 2 la lleva otro: no hay botón y no se elige)
+        Click(d.raidTabs[2])
+        A.equal(second, d.groups[1].slots[1].name)
+        Pick(a, d.groups[1].slots[1], "ctrl")
+        A.falsy(d.groups[1].slots[1].pick:IsShown())
+        A.falsy(d.invite:IsShown())
+        A.same({}, a:Errors())
+    end)
+end)
+
+describe("Calendario: la banda de verdad, montada como la raid de la que invité", function()
+    -- (una banda de mentira: quién está y en qué grupo (al entrar, el primero con sitio desde el que se diga, como el
+    -- juego); lo que el addon pide mover lo hace el servidor un momento después y avisa con GROUP_ROSTER_UPDATE)
+    local function Band(a)
+        local b = { list = {}, lead = true, assist = false, sets = 0, swaps = 0, invited = {} }
+        local function Size(g)
+            local n = 0
+            for _, m in ipairs(b.list) do if m.g == g then n = n + 1 end end
+            return n
+        end
+        local function Changed() a.w:Fire("GROUP_ROSTER_UPDATE") end
+        local function Server(fn) a.env.C_Timer.After(0.2, function() fn(); Changed() end) end
+        local function Of(name) for i, m in ipairs(b.list) do if m.name == name then return m, i end end end
+        function b.Join(name, g)
+            g = g or 1
+            while Size(g) >= 5 do g = g + 1 end
+            b.list[#b.list + 1] = { name = name, g = g }
+            Changed()
+        end
+        function b.Leave(name) table.remove(b.list, select(2, Of(name))); Changed() end
+        function b.Move(name, g) Of(name).g = g; Changed() end
+        function b.Group(name) local m = Of(name); return m and m.g end
+        -- (el juego lo da sin apellido)
+        function b.Bare(name) Of(name).shown = name:match("^[^-]+") end
+        -- (los grupos de la banda, por orden alfabético, sin los de fuera del plan: «…-Otro»)
+        function b.Groups()
+            local out = {}
+            for g = 1, 8 do out[g] = {} end
+            for _, m in ipairs(b.list) do if not m.name:find("%-Otro$") then table.insert(out[m.g], m.name) end end
+            for g = 1, 8 do table.sort(out[g]) end
+            return out
+        end
+        a.env.C_PartyInfo = { InviteUnit = function(n) b.invited[#b.invited + 1] = n end, ConvertToRaid = function() end }
+        a.env.IsInGroup = function() return #b.list > 0 end
+        a.env.IsInRaid = function() return #b.list > 0 end
+        a.env.GetNumGroupMembers = function() return #b.list end
+        a.env.GetRaidRosterInfo = function(i)
+            local m = b.list[i]
+            if m then return m.shown or m.name, 0, m.g end
+        end
+        a.env.UnitIsGroupLeader = function() return b.lead end
+        a.env.UnitIsGroupAssistant = function() return b.assist end
+        a.env.UnitInRaid = function(n) return Of(n) and 1 or nil end
+        a.env.UnitInParty = a.env.UnitInRaid
+        a.env.SetRaidSubgroup = function(i, g)
+            local m = b.list[i]
+            b.sets = b.sets + 1
+            -- (b.blocked: el juego no lo deja hacer a un addon, y avisa en el momento)
+            if b.blocked then return a.w:Fire("ADDON_ACTION_BLOCKED", "GuildUnion", "SetRaidSubgroup()") end
+            Server(function() if Size(g) < 5 then m.g = g end end)
+        end
+        a.env.SwapRaidSubgroup = function(i, j)
+            local x, y = b.list[i], b.list[j]
+            b.swaps = b.swaps + 1
+            Server(function() x.g, y.g = y.g, x.g end)
+        end
+        return b
+    end
+    -- (el plan: los nombres de cada grupo de la raid que se ve, por orden alfabético)
+    local function Plan(d)
+        local out = {}
+        for gi, grp in ipairs(d.groups) do
+            local g = {}
+            for _, s in ipairs(grp.slots) do if s.name then g[#g + 1] = s.name end end
+            table.sort(g)
+            out[gi] = g
+        end
+        return out
+    end
+    -- (Magma en el modo prueba, con la raid 1, que llevo yo; en la banda, de momento, yo solo)
+    local function Magma(a)
+        local b = Band(a)
+        local ui = Open(a)
+        TestMode(a, ui)
+        local d = Detail(ui, "Núcleo de Magma")
+        b.Join("Tester-Reino")
+        return d, b, Plan(d)
+    end
+    -- (los de la raid ya en la banda, cada uno en su grupo de la pestaña; o en el que diga `at`)
+    local function JoinAll(b, plan, at)
+        for g = 1, #plan do
+            for _, n in ipairs(plan[g]) do if n ~= "Tester-Reino" then b.Join(n, at and at[g] or g) end end
+        end
+    end
+
+    it("al invitar, la raid de la pestaña es el plan: quien entra en la banda va a su grupo, también con el grupo lleno (se cambia con quien no va ahí); a quien no está en el plan no se le toca", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        Click(d.invite)
+        a.w:Advance(2)
+        A.equal(12, #b.invited, "invita a los de la raid")
+        A.equal(0, b.sets + b.swaps, "yo solo, ya en mi grupo: nada que mover")
+        -- (uno que no está en el plan, en el grupo 3; los demás entran al revés del plan, donde el juego les da sitio)
+        b.Join("Fuera-Otro", 3)
+        local names = {}
+        for g = 8, 1, -1 do for k = #plan[g], 1, -1 do if plan[g][k] ~= "Tester-Reino" then names[#names + 1] = plan[g][k] end end end
+        for _, n in ipairs(names) do b.Join(n) end
+        A.falsy(table.concat(plan[1], ",") == table.concat(b.Groups()[1], ","), "al entrar, revueltos")
+        a.w:Advance(30)
+        A.same(plan, b.Groups(), "cada uno, en su grupo de la pestaña")
+        A.equal(3, b.Group("Fuera-Otro"), "quien no está en el plan, donde estaba")
+        A.truthy(b.sets > 0 and b.swaps > 0, "a grupos con sitio y, si están llenos, cambiándose")
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que se cambia en la pestaña pasa a la banda; a un grupo lleno de gente que no está en el plan no se lleva a nadie hasta que hay sitio", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        JoinAll(b, plan)
+        Click(d.invite)
+        a.w:Advance(5)
+        A.equal(0, b.sets + b.swaps, "ya estaban como en la pestaña")
+        -- (en la pestaña, uno del grupo 2 al 4: en la banda también)
+        local x = d.groups[2].slots[1].name
+        Drag(d.groups[2].slots[1], d.groups[4])
+        a.w:Advance(5)
+        A.equal(4, b.Group(x))
+        -- (el grupo 5, lleno de gente de fuera del plan; en la pestaña, otro al 5: no cabe, y no se mueve a nadie)
+        for k = 1, 5 do b.Join("Fuera" .. k .. "-Otro", 5) end
+        local y = d.groups[2].slots[1].name
+        Drag(d.groups[2].slots[1], d.groups[5])
+        local before = b.sets + b.swaps
+        a.w:Advance(5)
+        A.equal(2, b.Group(y), "su grupo, lleno de gente de fuera: espera")
+        A.equal(before, b.sets + b.swaps)
+        for k = 1, 5 do A.equal(5, b.Group("Fuera" .. k .. "-Otro")) end
+        -- (sale uno de fuera: hay sitio y entra)
+        b.Leave("Fuera1-Otro")
+        a.w:Advance(5)
+        A.equal(5, b.Group(y))
+        A.same({}, a:Errors())
+    end)
+
+    it("solo siendo líder o ayudante de la banda, y fuera de combate: en combate espera a salir", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        Click(d.invite)
+        a.w:Advance(2)
+        b.lead = false
+        local x, y = plan[2][1], plan[2][2]
+        b.Join(x, 4)
+        a.w:Advance(5)
+        A.equal(4, b.Group(x), "sin ser líder ni ayudante, nada")
+        b.assist = true
+        a.w.inCombat = true
+        b.Join(y, 4)
+        a.w:Advance(5)
+        A.equal(0, b.sets + b.swaps, "ayudante, pero en combate: espera")
+        a.w.inCombat = false
+        a.w:Fire("PLAYER_REGEN_ENABLED")
+        a.w:Advance(5)
+        A.same({ 2, 2 }, { b.Group(x), b.Group(y) }, "al salir de combate, a su grupo")
+        A.same({}, a:Errors())
+    end)
+
+    it("una pasada por cambio de banda (lo que llega seguido, en una) y como mucho 4 movimientos en cada una", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        -- (todos lejos de su grupo, con sitio en el suyo)
+        JoinAll(b, plan, { 5, 6, 7 })
+        Click(d.invite)
+        a.w:Advance(1.1)
+        A.equal(4, b.sets, "la primera pasada, 4")
+        for _ = 1, 5 do a.w:Fire("GROUP_ROSTER_UPDATE") end
+        a.w:Advance(1)
+        A.equal(8, b.sets, "nueve avisos seguidos (estos cinco y los cuatro del servidor): una pasada más")
+        a.w:Advance(10)
+        A.equal(12, b.sets, "cada uno, una vez")
+        A.equal(0, b.swaps)
+        A.same(plan, b.Groups())
+        A.same({}, a:Errors())
+    end)
+
+    it("sin pelearse: a quien ya estuvo en su grupo y alguien movió luego no se le devuelve; quien sale y vuelve a entrar, sí", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        JoinAll(b, plan)
+        Click(d.invite)
+        a.w:Advance(5)
+        local x = plan[2][1]
+        b.Move(x, 6)
+        a.w:Advance(5)
+        A.equal(6, b.Group(x), "lo movió alguien: se queda")
+        A.equal(0, b.sets + b.swaps)
+        b.Leave(x)
+        a.w:Advance(5)
+        b.Join(x, 7)
+        a.w:Advance(5)
+        A.equal(2, b.Group(x), "al volver a entrar, a su grupo")
+        -- (alguien llena a mano el grupo 1 con uno del 2 mientras falta uno del 1: al entrar este, no se le hace sitio
+        -- sacando al que pusieron ahí)
+        local y, z = plan[1][1] ~= "Tester-Reino" and plan[1][1] or plan[1][2], plan[2][2]
+        b.Leave(y)
+        a.w:Advance(5)
+        b.Move(z, 1)
+        a.w:Advance(5)
+        local swaps = b.swaps
+        b.Join(y, 6)
+        a.w:Advance(5)
+        A.same({ 1, 6 }, { b.Group(z), b.Group(y) }, "el que pusieron a mano se queda, y el otro espera")
+        A.equal(swaps, b.swaps)
+        A.same({}, a:Errors())
+    end)
+
+    it("con el grupo lleno, se cambia con quien va justo al grupo de este, que así quedan bien los dos; y en una pasada no se pide meter a nadie en un grupo que esa misma pasada ya ha llenado", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        local A1, B, C = {}, plan[2], plan[3]
+        for _, n in ipairs(plan[1]) do if n ~= "Tester-Reino" then A1[#A1 + 1] = n end end
+        -- (los tres grupos llenos: al 1 le falta uno que está en el 2, y en el 1 hay uno que va al 3 y, después, otro que
+        -- va al 2; en el 3, el que falta en el 1 y dos de fuera)
+        b.Join(A1[3], 2)
+        b.Join(A1[1], 1); b.Join(A1[2], 1); b.Join(C[1], 1); b.Join(B[1], 1)
+        for k = 2, 5 do b.Join(B[k], 2) end
+        b.Join(C[2], 3); b.Join(C[3], 3); b.Join(A1[4], 3); b.Join("Fuera1-Otro", 3); b.Join("Fuera2-Otro", 3)
+        Click(d.invite)
+        a.w:Advance(10)
+        A.same(plan, b.Groups(), "cada uno, en su grupo")
+        A.same({ 0, 2 }, { b.sets, b.swaps }, "dos cambios bastan")
+        A.same({ 3, 3 }, { b.Group("Fuera1-Otro"), b.Group("Fuera2-Otro") })
+        -- (el grupo 2, con uno de fuera y sitio para uno más; entran dos que van ahí: se pide meter a uno, no a los dos)
+        b.Leave(B[4]); b.Leave(B[5])
+        a.w:Advance(5)
+        b.Join("Fuera3-Otro", 2)
+        b.Join(B[4], 6); b.Join(B[5], 6)
+        a.w:Advance(5)
+        A.equal(1, b.sets, "con sitio para uno, una petición")
+        A.same({ 2, 6 }, { b.Group(B[4]), b.Group(B[5]) })
+        A.same({}, a:Errors())
+    end)
+
+    it("si el juego no deja que el addon cambie a la gente de grupo, lo dice una vez y no lo intenta más (un bloqueo esperado, sin guardarlo como error)", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        b.blocked = true
+        Click(d.invite)
+        local x, y = plan[2][1], plan[2][2]
+        b.Join(x, 6)
+        b.Join(y, 6)
+        a.w:Advance(5)
+        A.same({ 6, 6 }, { b.Group(x), b.Group(y) })
+        A.equal(1, b.sets, "al primer bloqueo, deja de intentarlo")
+        local function Notices()
+            local n = 0
+            for _, l in ipairs(a.w.chat) do
+                if tostring(l.msg):find("El juego no deja que el addon cambie a la gente de grupo en la banda: colócala a mano.", 1, true) then n = n + 1 end
+            end
+            return n
+        end
+        A.equal(1, Notices())
+        b.Join(plan[3][1], 7)
+        Click(d.invite)
+        a.w:Advance(5)
+        A.equal(1, b.sets, "ni con otro que entra ni al invitar otra vez")
+        A.equal(1, Notices(), "el aviso, una vez")
+        A.is_nil(a.HU.expectBlock)
+        A.same({}, a:Errors(), "no es un error del addon")
+    end)
+
+    it("el plan vale 4 horas desde la última vez que invité (otra vez, vuelve a valer); a quien el juego da sin apellido se le reconoce por su nombre", function()
+        local a = Community()
+        local d, b, plan = Magma(a)
+        Click(d.invite)
+        a.w:Advance(2)
+        Later(a, 4 * 3600 - 10)
+        local x, y = plan[2][1], plan[2][2]
+        b.Join(x, 6)
+        b.Bare(x)
+        a.w:Advance(5)
+        A.equal(2, b.Group(x), "aún vale, y sin apellido también")
+        Later(a, 10)
+        b.Join(y, 6)
+        a.w:Advance(5)
+        A.equal(6, b.Group(y), "pasadas las 4 horas, ya no")
+        Click(d.invite)
+        a.w:Advance(5)
+        A.equal(2, b.Group(y), "al invitar otra vez, vuelve a valer")
+        A.same({}, a:Errors())
+    end)
+
+    it("en un evento de verdad el plan va guardado con sus raids: tras /reload la banda se sigue montando; caducado, al salir del juego se borra", function()
+        local a = Community()
+        local ui = Open(a)
+        a.env.C_PartyInfo = { InviteUnit = function() end }
+        NewEvent(a, ui, "Mía")
+        local d = Detail(ui, "Mía")
+        AddRaid(d)
+        Click(d.invite)
+        local id = next(a.HU.db.calRaids)
+        local saved = a.HU.db.calRaids[id]
+        A.same({ "Raid 1", "Tester-Reino" }, { saved.plan.name, saved.plan.who })
+        -- (invito desde otra raid: el plan pasa a ella; uno solo)
+        AddRaid(d)
+        Click(d.invite)
+        A.equal("Raid 2", saved.plan.name)
+        a.w:Fire("PLAYER_LOGOUT")
+        local a2 = Community({ db = a.env.GuildUnionDB, charDb = a.env.GuildUnionCharDB })
+        local b = Band(a2)
+        b.Join("Tester-Reino", 3)
+        a2.w:Advance(5)
+        A.equal(1, b.Group("Tester-Reino"), "tras /reload, a mi grupo de la raid 2")
+        -- (pasadas las 4 horas, al salir del juego el plan se borra; las raids siguen)
+        Later(a2, 4 * 3600)
+        a2.w:Fire("PLAYER_LOGOUT")
+        A.is_nil(a2.HU.db.calRaids[id].plan)
+        A.equal("Raid 2", a2.HU.db.calRaids[id][2].name)
+        A.same({}, a:Errors())
+        A.same({}, a2:Errors())
+    end)
 end)
 
 describe("Calendario: colores y niveles", function()
@@ -1906,7 +3528,7 @@ describe("Calendario: colores y niveles", function()
             { name = "Bea-Prueba", class = "MAGE", level = 44 } } }
         local ui = Open(a)
         TestMode(a, ui)
-        local d = Detail(ui, "Núcleo de Magma")
+        local d = Detail(ui, "Valle de Alterac")
         Click(d.delRaid) -- (sin raids: los 24 al banquillo, por nombre)
         A.same({ "Arwen", "Bea", "Borin", "Celes", "Dax", "Elian", "Fyra", "Gorm", "Hela", "Ivo", "Jandra", "Jun" }, Bench(d))
         A.matches("^|cffa0a4ad33|r .-|cff00ffffArwen%-Prueba|r$", d.bench[1].text:GetText(), "de mi hermandad: mago, nivel 33")
@@ -1922,7 +3544,7 @@ describe("Calendario: colores y niveles", function()
 end)
 
 describe("Calendario: lo guardado", function()
-    it("tras /reload siguen los eventos y quién va; los de prueba no; a la semana de su hora, se quitan (Jorge, 24/11: «al hacer /reload se borra todo»)", function()
+    it("tras /reload siguen los eventos y quién va; los de prueba no; a los 30 días de su hora salen del mes y de la red, y sus raids al salir del juego (Jorge, 24/11: «al hacer /reload se borra todo»)", function()
         local a = Community()
         local ui = Open(a)
         NewEvent(a, ui, "Noche de Onyxia")
@@ -1935,12 +3557,321 @@ describe("Calendario: lo guardado", function()
         A.truthy(c, "el mío sigue")
         A.matches("Apuntado", c.join:GetText(), "y sigo apuntado")
         A.is_nil(Card(ui2, "Núcleo de Magma"), "los de prueba no se guardan")
-        -- (una semana y un día después de su hora, al salir se quita)
+        -- (una semana y un día después ya no sale en Eventos, pero sí en el mes, y sus raids siguen al salir del juego,
+        -- también tras limpiar lo caducado de la red)
         Later(b, 8 * 86400)
+        Section(b, 1); Section(b, 3)
+        A.is_nil(Card(ui2, "Noche de Onyxia"), "fuera de Eventos")
+        Click(ui2.viewBtns.month)
+        A.equal("|cffffd100+1 evento|r", ui2.grid.cells[22].ev:GetText(), "en el mes, sí")
+        b.HU.PackCleanStores()
+        A.matches("^e%w+=%w+,pvp,", Stored(b)[1], "y en la red")
         b.w:Fire("PLAYER_LOGOUT")
+        A.truthy(next(b.HU.db.calRaids), "sus raids, todavía")
+        -- (a los 30 días de su hora (las 20:00 del 18) sale también del mes; del almacén de propuestas, al entrar y cada
+        -- hora, y sus raids, al salir)
+        Later(b, 22 * 86400 + 10 * 3600 - 60)
+        Section(b, 1); Section(b, 3)
+        A.equal("|cffffd100+1 evento|r", ui2.grid.cells[22].ev:GetText(), "un minuto antes, sigue")
+        Later(b, 120)
+        Section(b, 1); Section(b, 3)
+        A.equal("", ui2.grid.cells[22].ev:GetText(), "ni en el mes")
+        A.truthy(next(b.HU.db.calRaids), "sus raids, hasta salir")
+        b.HU.PackCleanStores()
+        for _, s in ipairs(Stored(b)) do A.falsy(s:match("^e"), "el evento sigue en el almacén: " .. s) end
+        b.w:Fire("PLAYER_LOGOUT")
+        A.same({}, b.HU.db.calRaids, "sus raids, fuera")
         local d = Community({ db = b.env.GuildUnionDB, charDb = b.env.GuildUnionCharDB })
+        A.is_nil(Card(Open(d), "Noche de Onyxia"), "no vuelve")
         A.equal(0, #d.HU.db.calEvents)
         A.same({}, a:Errors())
         A.same({}, b:Errors())
+        A.same({}, d:Errors())
+    end)
+end)
+
+describe("Calendario: la red (propuestas EV, Packs/Events.lua)", function()
+    it("crear, apuntarse y salir pasan por propuestas, salen por GUILD y siguen tras /reload", function()
+        local a = Community()
+        local ui = Open(a)
+        NewEvent(a, ui, "Noche, de Onyxia", { minLv = "58", desc = "Traed pociones; y agua|fría." })
+        local st = Stored(a)
+        A.equal(2, #st, "el evento y yo apuntado")
+        local id = st[1]:match("^e(%w+)=")
+        A.truthy(id, st[1])
+        -- (hora en base 36, tipo, formato (vacío: no es una banda), nivel, imagen, título sin comas y descripción sin ; ni |)
+        A.matches("^e" .. id .. "=%w+,pvp,,58,INV_BannerPVP_02,Noche de Onyxia,Traed pociones y agua fría%.$", st[1])
+        A.equal("s" .. id .. "=T", st[2], "guerrero: de tanque")
+        A.equal("Noche de Onyxia", Titles(ui)[1])
+        a.w:Advance(10)
+        local sent = {}
+        for _, m in ipairs(a.w.sent) do
+            local k = m.text:match("^WU~UNO~EV~(%w+)~")
+            if k and m.dist == "GUILD" then sent[#sent + 1] = k end
+        end
+        table.sort(sent)
+        A.same({ "e" .. id, "s" .. id }, sent, "por GUILD")
+        -- (salgo: mi línea, vacía)
+        Click(Card(ui, "Noche de Onyxia").join)
+        Click(Child(a, a.env.GuildUnionCalendarConfirm, "Sí"))
+        A.equal("s" .. id .. "=", Stored(a)[2])
+        a.w:Fire("PLAYER_LOGOUT")
+        local b = Community({ db = a.env.GuildUnionDB, charDb = a.env.GuildUnionCharDB })
+        local c = Card(Open(b), "Noche de Onyxia")
+        A.equal("Apuntarme", c.join:GetText(), "tras /reload, sigo fuera")
+        A.equal(0, Going(c))
+        -- (vuelvo, de sanador: también se queda)
+        local menus = Menus(b)
+        b.env.UnitClass = function() return "Sacerdote", "PRIEST" end
+        Click(c.join)
+        Item(menus[#menus], "Sanador").fn()
+        A.equal("s" .. id .. "=H", Stored(b)[2])
+        b.w:Fire("PLAYER_LOGOUT")
+        local c3 = Card(Open(Community({ db = b.env.GuildUnionDB, charDb = b.env.GuildUnionCharDB })), "Noche de Onyxia")
+        A.matches("Apuntado", c3.join:GetText())
+        A.same({ TANK = 0, HEALER = 1, DAMAGER = 0 }, Roles(c3.roles:GetText()))
+        A.same({}, a:Errors())
+        A.same({}, b:Errors())
+    end)
+
+    it("lo de la copia 324 (calEvents) pasa a la red al entrar, una vez: los míos con mi apuntado y sus raids; los de otro personaje se quedan", function()
+        local raid = { name = "Raid 1", leader = "Tester-Reino", groups = { { "Tester-Reino" }, {}, {}, {}, {}, {}, {}, {} } }
+        local db = { calEvents = {
+            { id = "a1b2", title = "De la 324", kind = "social", t = MONDAY + 86400, who = "Tester-Reino", tag = "UNO", desc = "Viene de antes",
+                signups = { ["Tester-Reino"] = "yes" }, roles = { ["Tester-Reino"] = "HEALER" }, raids = { raid }, minLevel = 50,
+                icon = "Interface\\Icons\\Spell_Fire_Incinerate" },
+            { id = "c3d4", title = "Sin apuntarme", kind = "raid", t = MONDAY + 2 * 86400, who = "Tester-Reino", signups = {}, raids = {} },
+            { id = "e5f6", title = "De otro personaje", kind = "raid", t = MONDAY + 86400, who = "Otro-Reino", signups = { ["Otro-Reino"] = "yes" },
+                raids = {} },
+            -- (más de 30 días: ya no se vería ni en el mes)
+            { id = "a7b8", title = "Muy viejo", kind = "pvp", t = MONDAY - 40 * 86400, who = "Tester-Reino", signups = {}, raids = {} },
+        } }
+        local a = Community({ db = db })
+        local st = Stored(a)
+        A.equal(3, #st, table.concat(st, " | "))
+        A.matches("^ea1b2=%w+,social,,50,Spell_Fire_Incinerate,De la 324,Viene de antes$", st[1])
+        A.matches("^ec3d4=%w+,raid,40,0,,Sin apuntarme,$", st[2], "una banda, de 40")
+        A.equal("sa1b2=H", st[3], "con su rol")
+        A.equal(1, #a.HU.db.calEvents, "el de otro personaje se queda; el viejo, fuera")
+        A.equal("De otro personaje", a.HU.db.calEvents[1].title)
+        A.equal(raid, a.HU.db.calRaids.a1b2[1], "sus raids, aquí")
+        -- (se ve como antes: apuntado, su imagen y su raid; la banda, en Raids)
+        local ui = Open(a)
+        A.same({ "De la 324" }, Titles(ui))
+        A.truthy(Card(ui, "Sin apuntarme"))
+        A.truthy(ui.viewBtns.raids.picked, "en Raids")
+        local c = Card(ui, "De la 324")
+        A.matches("Apuntado", c.join:GetText())
+        A.equal("Interface\\Icons\\Spell_Fire_Incinerate", c.icon:GetTexture())
+        A.matches("Nv%. 50%+", c.kind:GetText())
+        local d = Detail(ui, "De la 324")
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        A.matches("Tester%-Reino", d.leaderBar.text:GetText())
+        -- (una sola vez: al volver a leer la comunidad no se repite)
+        a.HU:RefreshConfig(true)
+        A.equal(3, #Stored(a))
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que llega de mi hermandad se pinta solo con la ventana abierta; quien se va sale de mis raids (con el paquete de otra hermandad a medias, todavía no)", function()
+        local a = Community()
+        local ui = Open(a)
+        NewEvent(a, ui, "Mío")
+        local id = Stored(a)[1]:match("^e(%w+)=")
+        local d = Detail(ui, "Mío")
+        AddRaid(d)
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        -- (Compi, de UNO, se apunta de sanador: llega por GUILD y se ve enseguida, sin tocar nada)
+        local now = a.HU.StampNow()
+        a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. now .. "~H", "GUILD", "Compi-Reino")
+        a.w:Advance(0.5)
+        A.same({ "Compi" }, Bench(d))
+        A.equal("HEALER", RoleIn(d.bench[1].text:GetText()))
+        A.equal(2, Going(d))
+        Click(d.place)
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText())
+        -- (se va, pero el paquete de DOS está a medias: puede estar en un trozo que se pide, y no se le quita)
+        local half = {}
+        for i = 1, 16 do half[i] = "000000000000" end
+        a.HU.db.packs = { DOS = { EV = { h = half, t = {}, ok = {} } } }
+        a.w:Receive("HU20B", "WU~UNO~EV~s" .. id .. "~" .. (now + 1) .. "~", "GUILD", "Compi-Reino")
+        a.w:Advance(0.5)
+        A.equal(1, Going(d), "ya no va")
+        A.equal("Raid 1 (2)", d.raidTabs[1]:GetText(), "pero sigue en la raid")
+        -- (con todo, fuera de la raid; y no vuelve al banquillo)
+        a.HU.db.packs = nil
+        a.HU:Changed("calendar")
+        a.w:Advance(0.5)
+        A.equal("Raid 1 (1)", d.raidTabs[1]:GetText())
+        A.same({}, Bench(d))
+        A.falsy(SlotOf(d, "Compi-Reino"))
+        A.same({}, a:Errors())
+    end)
+
+    it("lo que no cabe en la línea del paquete (200) se corta: la descripción y el título; lo que no tiene forma no entra", function()
+        local a = Community()
+        local HU = a.HU
+        local t = MONDAY + 86400
+        -- (con un icono largo, la descripción no cabe entera: se corta para que la línea quepa justa)
+        A.truthy(HU:ProposeEvent("abc", { t = t, kind = "raid", icon = "Interface\\Icons\\" .. string.rep("a", 40),
+            title = string.rep("T", 50), desc = string.rep("d", 120) }))
+        local line = HU:PackLines("UNO", "EV")[1]
+        A.equal(200, #line, line)
+        local ev = HU:PackedEvents()[1]
+        A.equal(string.rep("T", 40), ev.title)
+        A.equal(string.rep("d", 76), ev.desc, "lo que deja «40,», el tamaño de la banda")
+        A.same({ 40, nil }, { ev.size, ev.invite }, "una banda sin tamaño, de 40")
+        -- (tipo que no existe: «other»; nivel de más: 60; imagen de fuera de Interface\Icons: la del tipo)
+        A.truthy(HU:ProposeEvent("def", { t = t, kind = "fiesta", icon = "Interface\\Otra\\Cosa", title = "Raro", minLevel = 99 }))
+        local def
+        for _, e in ipairs(HU:PackedEvents()) do if e.id == "def" then def = e end end
+        A.same({ "other", 60 }, { def.kind, def.minLevel })
+        A.is_nil(def.icon)
+        -- (claves que no valen)
+        A.falsy(HU:ProposeEvent("con-guion", { t = t, title = "X" }))
+        A.falsy(HU:ProposeEvent(string.rep("x", 21), { t = t, title = "X" }))
+        A.falsy(HU:ProposeEvent("sintitulo", { t = t, title = " , " }), "sin título")
+        -- (de mi hermandad, por GUILD: lo que no tiene la forma de EV no entra. Una cada 7 s: como mucho van 5 seguidas. Una
+        -- banda lleva su tamaño, 10, 20 o 40, y quizá «i»; lo demás, el formato vacío)
+        local t36 = HU.B36(t)
+        for _, m in ipairs({ "ex1~no es un evento", "sx1~Q", "zx1~T", "e" .. string.rep("x", 21) .. "~" .. t36 .. ",raid,40,0,,Largo,",
+            "ex2~" .. t36 .. ",raid,40,61,,Nivel,", "ex3~" .. t36 .. ",fiesta,,0,,Tipo,", "ex4~" .. t36 .. ",raid,40,0,,Bien,",
+            "ex5~" .. t36 .. ",raid,30,0,,Treinta,", "ex6~" .. t36 .. ",pvp,40,0,,JcJ con tamaño,", "ex7~" .. t36 .. ",raid,,0,,Sin tamaño,",
+            "ex8~" .. t36 .. ",social,i,0,,Social por invitación,", "ex9~" .. t36 .. ",raid,0,,Como antes,",
+            "ey1~" .. t36 .. ",social,,0,,Social,", "ey2~" .. t36 .. ",raid,10i,0,,Diez por invitación,", "sx4~H" }) do
+            local key, data = m:match("^([^~]+)~(.*)$")
+            a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. HU.StampNow() .. "~" .. data, "GUILD", "Compi-Reino")
+            a.w:Advance(7)
+        end
+        local got = {}
+        for _, s in ipairs(Stored(a)) do if not s:match("^e[ad]") then got[#got + 1] = s end end
+        A.same({ "ex4=" .. t36 .. ",raid,40,0,,Bien,", "ey1=" .. t36 .. ",social,,0,,Social,",
+            "ey2=" .. t36 .. ",raid,10i,0,,Diez por invitación,", "sx4=H" }, got, "solo las buenas")
+        for _, e in ipairs(HU:PackedEvents()) do
+            if e.id == "y2" then A.same({ 10, true }, { e.size, e.invite }) end
+            if e.id == "y1" then A.same({ nil, nil }, { e.size, e.invite }) end
+        end
+        -- (dos creadores con la misma clave: vale la que se propuso antes, la de Compi; su apuntado, con ella)
+        A.truthy(HU:ProposeEvent("x4", { t = t, kind = "raid", title = "Repetido" }))
+        local ui = Open(a)
+        A.is_nil(Card(ui, "Repetido"))
+        A.equal(1, Going(Card(ui, "Bien")))
+        A.matches("Compi%-Reino", Card(ui, "Bien").who:GetText())
+        A.same({}, a:Errors())
+    end)
+
+    it("las listas de nombres de una banda (u<id>_<n>, quién sube de la reserva): limpias, sin repetir y por orden, en las líneas que hagan falta; solo lo que cambia; 3 ya y el resto cada 7 s (quien las recibe no pasa de 5 seguidas); si cambia otra vez, lo que esperaba ya no sale", function()
+        local a = Community()
+        local HU = a.HU
+        local function Parts()
+            local out = {}
+            for k = 1, 8 do
+                local e = HU.db.wuStore.UNO.EV["tester-reino,uabc_" .. k]
+                out[k] = e and e.d or false
+            end
+            return out
+        end
+        local function Count(p) local n = 0 for _, d in ipairs(p) do if d and d ~= "" then n = n + 1 end end return n end
+        local function Promoted()
+            for _, e in ipairs(HU:PackedEvents()) do if e.id == "abc" then return e.promoted end end
+        end
+        A.truthy(HU:ProposeEvent("abc", { t = MONDAY + 86400, kind = "raid", title = "Banda" }))
+        -- (40 nombres de 20 letras: caben 8 por línea (con «Tester-Reino,uabc_1,hora,» quedan 173); y uno repetido con otras
+        -- mayúsculas, uno con espacio y otro con coma, que no son nombres)
+        local names = {}
+        for k = 40, 1, -1 do names[#names + 1] = string.format("Jugador%02d-Apellidoxx", k) end
+        names[#names + 1] = "jugador07-apellidoxx"
+        names[#names + 1] = "Con espacio"
+        names[#names + 1] = "Con,coma"
+        A.truthy(HU:ProposeEventPromoted("abc", names))
+        A.equal(3, Count(Parts()), "3 ya")
+        local p = Parts()
+        A.equal("Jugador01-Apellidoxx,Jugador02-Apellidoxx,Jugador03-Apellidoxx,Jugador04-Apellidoxx,Jugador05-Apellidoxx,"
+            .. "Jugador06-Apellidoxx,Jugador07-Apellidoxx,Jugador08-Apellidoxx", p[1], "por orden, 8 en la primera")
+        local line = "Tester-Reino,uabc_1," .. HU.B36(HU.StampNow()) .. "," .. p[1]
+        A.truthy(#line <= 200 and #line + 21 > 200, "la línea cabe en 200, y con uno más no cabría: " .. #line)
+        a.w:Advance(7)
+        A.equal(4, Count(Parts()), "y una cada 7 s")
+        a.w:Advance(7)
+        A.equal(5, Count(Parts()), "40 nombres, 5 líneas")
+        a.w:Advance(30)
+        A.equal(5, Count(Parts()))
+        local got = Promoted()
+        A.equal(40, #got)
+        A.same({ "Jugador01-Apellidoxx", "Jugador40-Apellidoxx" }, { got[1], got[40] })
+        -- (otra vez lo mismo: nada sale)
+        local function Sent()
+            local n = 0
+            for _, m in ipairs(a.w.sent) do if m.text:find("^WU~UNO~EV~uabc_") then n = n + 1 end end
+            return n
+        end
+        A.equal(5, Sent(), "por GUILD, las 5")
+        A.truthy(HU:ProposeEventPromoted("abc", names))
+        a.w:Advance(30)
+        A.equal(5, Sent(), "lo que no cambia no se manda")
+        -- (dos: la primera línea cambia y las otras 4 se vacían, 3 ya (la 1, la 2 y la 3) y 2 después; antes de que salgan,
+        -- otra lista de 22 (de 21 letras: 7 por línea): sus 4 líneas salen y las que esperaban de la de antes, no)
+        A.truthy(HU:ProposeEventPromoted("abc", { "Zeta-Reino", "Alfa-Reino" }))
+        p = Parts()
+        A.same({ "Alfa-Reino,Zeta-Reino", "", "" }, { p[1], p[2], p[3] })
+        A.matches("^Jugador25", p[4], "la 4, todavía la de antes")
+        local more = {}
+        for k = 1, 22 do more[k] = string.format("Otro%02d-Apellidoxxxxxx", k) end
+        A.truthy(HU:ProposeEventPromoted("abc", more))
+        a.w:Advance(60)
+        p = Parts()
+        A.equal(4, Count(p), "22 nombres, 4 líneas")
+        A.equal("Otro22-Apellidoxxxxxx", p[4], "la 4, de la nueva: la que esperaba de la de antes no ha salido")
+        A.same({ "", false }, { p[5], p[6] })
+        A.equal(22, #Promoted())
+        -- (vacía: todas sus líneas, vacías)
+        A.truthy(HU:ProposeEventPromoted("abc", {}))
+        a.w:Advance(60)
+        A.equal(0, Count(Parts()))
+        A.same({}, Promoted())
+        -- (lo que no se puede: un id que no vale, sin comunidad o más de 8 líneas de nombres)
+        A.falsy(HU:ProposeEventPromoted("con-guion", { "Uno-Reino" }))
+        A.falsy(HU:ProposeEventPromoted(string.rep("x", 21), { "Uno-Reino" }))
+        local many = {}
+        for k = 1, 70 do many[k] = string.format("Jugador%02d-Apellidoxx", k) end
+        A.falsy(HU:ProposeEventPromoted("abc", many), "70 no caben en 8 líneas (64 sí)")
+        HU.myTag = nil
+        A.falsy(HU:ProposeEventPromoted("abc", { "Uno-Reino" }))
+        HU.myTag = "UNO"
+        -- (de mi hermandad, por GUILD: una lista vale de líneas 1 a 8, con nombres sin espacios ni huecos y de 48 como mucho)
+        local t36 = HU.B36(MONDAY + 86400)
+        for _, m in ipairs({ "ex1~" .. t36 .. ",raid,10,0,,Suya,", "ux1_1~Bien-Reino,Otro-Reino", "ux1_9~Nueve-Reino",
+            "ux1_0~Cero-Reino", "ux1_2~Con espacio", "ux1_3~Uno-Reino,,Dos-Reino", "ux1_4~" .. string.rep("n", 49),
+            "u" .. string.rep("x", 21) .. "_1~Largo-Reino", "ix1_1~Invitado-Reino", "sx1~Tr", "sy1~Tx", "sy2~Trr" }) do
+            local key, data = m:match("^([^~]+)~(.*)$")
+            a.w:Receive("HU20B", "WU~UNO~EV~" .. key .. "~" .. HU.StampNow() .. "~" .. data, "GUILD", "Compi-Reino")
+            a.w:Advance(7)
+        end
+        local stored = {}
+        for _, e in pairs(HU.db.wuStore.UNO.EV) do if e.n == "Compi-Reino" then stored[#stored + 1] = e.k end end
+        table.sort(stored)
+        A.same({ "ex1", "ix1_1", "sx1", "ux1_1" }, stored, "solo las buenas")
+        for _, e in ipairs(HU:PackedEvents()) do
+            if e.id == "x1" then A.same({ { "Bien-Reino", "Otro-Reino" }, { "Invitado-Reino" } }, { e.promoted, e.invites }) end
+        end
+        local _, signs = HU:PackedEvents()
+        for _, s in ipairs(signs) do if s.id == "x1" then A.same({ "TANK", true }, { s.role, s.reserve }) end end
+        A.same({}, a:Errors())
+    end)
+
+    it("al abrir pide lo que falta de mi hermandad y de las otras, y cada minuto mientras se ve", function()
+        local a = Community()
+        local asked = {}
+        F.Stub(a.HU, "PackNeed", function(_, tag, id) asked[#asked + 1] = tag .. ":" .. id end)
+        Open(a)
+        A.same({ "UNO:EV", "DOS:EV" }, asked, "al abrir")
+        asked = {}
+        a.w:Advance(61)
+        A.same({ "UNO:EV", "DOS:EV" }, asked, "al minuto")
+        asked = {}
+        Section(a, 1) -- (a Miembros: ya no se ve)
+        a.w:Advance(61)
+        A.same({}, asked, "sin verse, nada")
+        A.same({}, a:Errors())
     end)
 end)

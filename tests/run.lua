@@ -41,6 +41,14 @@ local SPECS = {
     "spec/calendario_spec",
     "spec/ordenes_spec",
     "spec/zonas_spec",
+    "spec/paquetes_spec",
+    "spec/propuestas_spec",
+    "spec/eventos_spec",
+    "spec/encargos_spec",
+    "spec/oficios_spec",
+    "spec/medidas_spec",
+    "spec/estadisticas_spec",
+    "spec/sola_spec",
     "spec/protocolo_spec",
     "spec/strict_spec", -- (la última: mira lo que han leído todas las demás)
 }

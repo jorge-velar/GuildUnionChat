@@ -609,6 +609,7 @@ local CMD_TTL = { V = TTL_SYNC, v = TTL_SYNC, w = TTL_SYNC, S = TTL_SYNC, D = TT
 local CLOSER = { w = true, F = true, E = true, Z = true }
 -- lo que el juego contesta cuando va saturado (como en Net/Transport.lua): el mensaje se vuelve a probar
 local THROTTLED = {}
+local OFFLINE = Enum and Enum.SendAddonMessageResult and Enum.SendAddonMessageResult.TargetOffline or 12
 if Enum and Enum.SendAddonMessageResult then
     for _, k in ipairs({ "AddonMessageThrottle", "ChannelThrottle", "GeneralError" }) do
         if Enum.SendAddonMessageResult[k] then THROTTLED[Enum.SendAddonMessageResult[k]] = true end
@@ -621,7 +622,7 @@ local function Stats()
     HU.qStats = HU.qStats or {}
     local s = HU.qStats.hist
     if not s then
-        s = { sent = 0, dropped = 0, expired = 0, throttled = 0, refused = 0, short = 0 }
+        s = { sent = 0, dropped = 0, expired = 0, throttled = 0, refused = 0, short = 0, offline = 0 }
         HU.qStats.hist = s
     end
     return s
@@ -662,6 +663,9 @@ local function HFlush()
         local m = table.remove(hq, 1)
         if Expired(m, now) then
             Stats().expired = Stats().expired + 1
+        elseif HU:KnownOffline(m[2]) then
+            -- (quien lo pidió ya no está: no se le manda el resto, y no salta el aviso del juego; Net/Transport.lua)
+            Stats().offline = Stats().offline + 1
         else
             -- (en pausa por la versión mínima: no sale nada del addon)
             if HU.paused then htokens = htokens - 1 break end
@@ -674,7 +678,10 @@ local function HFlush()
                 table.insert(hq, 1, m)
                 break
             end
-            if ok then Stats().sent = Stats().sent + 1 else Stats().dropped = Stats().dropped + 1 end
+            if ok and r == OFFLINE then
+                Stats().offline = Stats().offline + 1
+                HU:MarkOffline(m[2])
+            elseif ok then Stats().sent = Stats().sent + 1 else Stats().dropped = Stats().dropped + 1 end
         end
     end
 end
@@ -1382,7 +1389,7 @@ end
 -- Una línea de la lista: { texto, bytes antes del mensaje, mensaje } (lo buscado se marca en Show)
 local function Line(e, focus, before)
     local when = HU.SafeDate("%d/%m %H:%M", e.t)
-    local tag = e.tag and ("<" .. e.tag .. "> " .. AddonMark(e)) or ""
+    local tag = e.tag and ("<" .. HU:TagLabel(e.tag) .. "> " .. AddonMark(e)) or ""
     local where = (e.k == "off" and L("[Oficiales] ")) or (e.k == "lfg" and L("[Buscar grupo] ")) or ""
     local head = (before or "") .. (focus and "|cffffffff" or "|cff999999") .. when .. "|r " .. where .. tag .. NameColored(e.a) .. ": "
     return { head .. e.m, #head, e.m }
@@ -1626,7 +1633,7 @@ function HU:HistWindow(show)
         gBtn:SetSize(160, 20)
         gBtn:SetPoint("TOPRIGHT", -34, -6)
         local function GuildLabel()
-            gBtn:SetText(L("Hermandad: ") .. (W.tagFilter and ("<" .. W.tagFilter .. ">") or L("Todas")))
+            gBtn:SetText(L("Hermandad: ") .. (W.tagFilter and ("<" .. HU:TagLabel(W.tagFilter) .. ">") or L("Todas")))
         end
         gBtn:SetScript("OnClick", function()
             local tags = {}
@@ -1707,5 +1714,7 @@ HU:OnStart(function()
     HU.After(25 + math.random() * 20, function() Guarded("rellenar", HU.HistStartSync, HU) end)
     HU:Every(SYNC_EVERY, "historial-rellenar", function() Guarded("rellenar", HU.HistStartSync, HU) end)
 end)
+
+HU.HistoryForTests = { send = HSend } -- (para las pruebas: lo que se manda por la cola del historial)
 
 HU:Module("History", { "BlizzTab", "Channel", "Combat", "Config", "Core", "Lists", "Net/Transport", "Pinned" })

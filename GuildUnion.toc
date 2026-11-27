@@ -1,13 +1,13 @@
 ## Interface: 16001
 ## Title: |cff33ff99Guild Union|r
-## Notes: Joins several guilds into one community (up to 20 guilds): shared guild chat, protected channel and member panel.
-## Notes-esES: Une varias hermandades en una comunidad: chat de hermandad compartido, canal protegido con lista blanca y panel con todos los miembros.
-## Notes-esMX: Une varias hermandades en una comunidad: chat de hermandad compartido, canal protegido con lista blanca y panel con todos los miembros.
+## Notes: Guild tools: events and raids, trade and crafting orders, officer tools and stats. Optional shared guild chat to join several guilds into one community.
+## Notes-esES: Herramientas de hermandad: eventos y raids, comercio y encargos, herramientas de oficiales y estadísticas. Chat de hermandad compartido opcional para juntar varias hermandades en una comunidad.
+## Notes-esMX: Herramientas de hermandad: eventos y raids, comercio y encargos, herramientas de oficiales y estadísticas. Chat de hermandad compartido opcional para juntar varias hermandades en una comunidad.
 ## Author: Sadance
 ## X-Copyright: Copyright (c) 2026 Sadance
 ## X-License: MIT
 ## IconTexture: Interface\Icons\INV_Shirt_GuildTabard_01
-## Version: 5.4.43
+## Version: 5.4.46
 ## X-Reduce-Version: 1.1.0
 ## SavedVariables: GuildUnionDB
 ## SavedVariablesPerCharacter: GuildUnionCharDB
@@ -35,6 +35,7 @@ Domain\Trust.lua
 Net\Relay.lua
 Net\RosterSync.lua
 Net\Security.lua
+Net\Packs.lua
 Lists.lua
 Presence.lua
 ChanPresence.lua
@@ -46,6 +47,10 @@ Guard.lua
 GuardKeeper.lua
 Social.lua
 UnionMembers.lua
+Packs\Members.lua
+Packs\Events.lua
+Packs\Trade.lua
+Packs\Professions.lua
 History.lua
 Channels.lua
 Community.lua
@@ -64,11 +69,16 @@ UnionRoster.lua
 CraftItems.lua
 DJStyle.lua
 Trade.lua
+TradeCraft.lua
+TradeOrder.lua
+TradeView.lua
+TradeFind.lua
 UnionCalendar.lua
 UnionConfig.lua
 ListWindow.lua
 Blacklist.lua
 InviteLog.lua
+GuildStats.lua
 Mention.lua
 Wizard.lua
 Report.lua

@@ -1,4 +1,4 @@
--- Guild Union - secciones de la lista de miembros del juego: Miembros (todos los de la unión), Comercio y Calendario (pestañas de la derecha) [+ARCHITECTURE.md]
+-- Guild Union - secciones de la lista de miembros del juego: Miembros (todos los de la unión), Comercio y Eventos (pestañas de la derecha) [+ARCHITECTURE.md]
 local ADDON_NAME, HU = ...
 local L = HU.L
 local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\Media\\"
@@ -17,13 +17,14 @@ local ROW_UP, DROP = 31, 0
 -- lista empiezan justo debajo, y sus bordes empiezan 7 y 3 por encima de ellos) [+ARCHITECTURE.md]
 local INSET_EDGE = 3
 local CHAT_EDGE, LIST_EDGE = 7, 3
--- (Comercio y Calendario, pestañas de la derecha como las del juego (RightSideTabTemplate): de su tamaño y a su distancia)
+-- (Comercio y Eventos, pestañas de la derecha como las del juego (RightSideTabTemplate): de su tamaño y a su distancia)
 local SIDE_TAB, SIDE_TAB_GAP = 32, 20
 -- (la barra de la columna de comunidades: el juego la pone 45 por debajo de la columna; con lo nuestro, arriba del todo)
 local LIST_BAR_Y, LIST_BAR_Y_GAME = -3, -45
 -- (la franja de esa barra, entre la columna y lo nuestro: toda oscura, de arriba abajo, con la barra por encima; mide
 -- STRIP_W, y en los 4 que quedan hasta lo nuestro empieza el borde del chat, que no se tapa) [+ARCHITECTURE.md]
 local STRIP, STRIP_W = 23, 19
+local ONLINE_FRESH = 120 -- la lista de conectados de otra hermandad (Miembros) vale para saber quién no está
 -- (columnas como las del juego, más «Hermandad»; ancho 0 = hasta el borde)
 local COLS = {
     -- (game: el título del propio juego, en su idioma y corto, como en su lista; si no está, el nuestro)
@@ -34,19 +35,20 @@ local COLS = {
     { key = "rank", title = "Rango", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_RANK", w = 76 },
     { key = "guild", title = "Hermandad", game = "GUILD", w = 58 },
     -- (las dos profesiones, solo su icono, juntos (Jorge, 24/11: «júntalos y haz esa pestaña más pequeña»): título corto,
-    -- que «Profesiones» no cabe. Solo las de mi hermandad, que son las que da el juego)
-    { key = "prof", title = "Prof.", w = 40 },
+    -- que «Profesiones» no cabe; sin punto (Jorge, 25/11). Solo las de mi hermandad, que son las que da el juego)
+    { key = "prof", title = "Prof", w = 40 },
     { key = "note", title = "Nota", game = "COMMUNITIES_ROSTER_COLUMN_TITLE_NOTE", w = 0 },
 }
 -- (cada sección con su imagen: Miembros, la del icono de miembros del juego; Comercio, el martillo de herrería;
--- Calendario, la nuestra (Media))
+-- Eventos, la nuestra del calendario (Media))
 local TABS = {
     { title = "Miembros", icon = "Interface/Icons/achievement_guildperk_everybodysfriend" },
     -- (side: su nombre en la pestaña de la derecha, si no es el mismo. Jorge, 24/11: «se llama professions & trade»)
     { title = "Comercio", side = "Profesiones y comercio", trade = true, icon = "Interface/Icons/Trade_BlackSmithing" },
-    { title = "Calendario", calendar = true, icon = MEDIA .. "boton-calendario" },
+    -- (Jorge, 25/11: «cambiar el nombre de calendario a eventos»; dentro siguen las vistas Eventos y Calendario)
+    { title = "Eventos", calendar = true, icon = MEDIA .. "boton-calendario" },
 }
-local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Calendario y Banco
+local tab = 1          -- 0 = Chat (solo en la vista de chat); 1 = Miembros; 2-4 = Comercio, Eventos y Banco
 local mode             -- "roster" (vista de miembros del juego) o "chat" (vista de chat); nil = otra
 local wantTab          -- la sección pulsada desde la vista de chat: se abre al llegar a la de miembros
 local sortKey, sortDesc   -- nil: rango y luego nivel
@@ -187,6 +189,25 @@ local function Entries()
             end
         end
     end
+    -- Con la casilla de desconectados: la lista completa de las otras hermandades, de su paquete MB [+ARCHITECTURE.md]
+    -- (Packs/Members.lua), que se pide al mirarla. Si la lista de conectados de esa hermandad está al día,
+    -- quien no sale en ella está desconectado; si no, no se sabe y sale «?»
+    if ShowOffline() then
+        for _, tag in ipairs(HU:OtherTags()) do
+            HU:PackNeed(tag, "MB")
+            local st = HU.unionMembers[tag]
+            local known = st and st.members and st.t and GetTime() - st.t < ONLINE_FRESH
+            for _, m in ipairs(HU:PackedMembers(tag)) do
+                local k = m.name:lower()
+                if not byKey[k] then
+                    local e = { name = m.name, k = k, tag = tag, class = m.class, level = m.level, ri = m.rankIndex,
+                        rank = (m.rankIndex and HU:RankName(tag, m.rankIndex)) or "", online = false, unknown = not known }
+                    list[#list + 1] = e
+                    byKey[k] = e
+                end
+            end
+        end
+    end
     -- (los que llegan sin rango, del /who, van con el rango más bajo de mi hermandad: así se mezclan
     -- por nivel con los demás en vez de quedarse todos juntos al final)
     local low = 0
@@ -208,8 +229,10 @@ local function ListSig()
         math.floor(GetTime() / LIST_EVERY) }
     for _, t in ipairs(HU:OtherTags()) do
         local st, rr = HU.unionMembers[t], HU.remoteRoster and HU.remoteRoster[t]
+        -- (y lo que va llegando de su lista completa, el paquete MB)
+        local got, total = HU:PackProgress(t, "MB")
         parts[#parts + 1] = table.concat({ t, tostring(st and st.t), tostring(st and st.cur and st.cur.got),
-            tostring(st and st.who and st.who.t), tostring(rr) }, ":")
+            tostring(st and st.who and st.who.t), tostring(rr), tostring(got), tostring(total) }, ":")
     end
     return table.concat(parts, "|")
 end
@@ -265,11 +288,11 @@ local function Paint()
                 ri:Hide()
             end
             -- (desconectado: en vez de la zona, cuánto lleva desconectado)
-            if e.online == false then c.zone:SetText("|cff9d9d9d" .. Ago(e.offSecs) .. "|r")
+            if e.online == false then c.zone:SetText(e.unknown and "|cffb0b0b0?|r" or ("|cff9d9d9d" .. Ago(e.offSecs) .. "|r"))
             else c.zone:SetText((e.zone or "") .. (e.afk and (" |cff808080(" .. L("Ausente") .. ")|r") or "")) end
             c.rank:SetText(e.rank or "")
             -- (la etiqueta de la hermandad, corta; el nombre entero, en la barra de abajo y en el menú)
-            c.guild:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
+            c.guild:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(HU:TagLabel(e.tag) or "") .. "|r")
             c.note:SetText(e.note or "")
             -- (profesiones: solo el icono (Jorge, 24/11: «esta pestaña sin niveles»: de los demás, Forever no los da); los
             -- nombres y el nivel, en la ficha)
@@ -293,6 +316,11 @@ local function Paint()
     local parts = { string.format(L("%d conectados"), online) }
     for _, t in ipairs(HU:OtherTags()) do
         local s = HU:UnionMembersStatus(t)
+        -- (con desconectados: cuánto ha llegado de su lista completa, mientras llega)
+        local got, total = HU:PackProgress(t, "MB")
+        if ShowOffline() and got and got < total then
+            s = (s ~= "" and (s .. ", ") or "") .. string.format(L("lista completa %d/%d"), got, total)
+        end
         if s ~= "" then parts[#parts + 1] = "|cff" .. HU:GuildColorHex(t) .. t .. "|r " .. s end
     end
     cover.status:SetText(table.concat(parts, "  ·  "))
@@ -370,16 +398,23 @@ end
 -- (la casilla «Mostrar desconectados» del juego solo pinta algo en Miembros: en Comercio y Calendario, ni se ve ni se
 -- pulsa (Jorge, 24/11). Solo sus dibujos y su texto: de ella cuelgan nuestros botones seguros y los de abajo, que siguen)
 -- [+ARCHITECTURE.md]
-local offlineShown = true
+local offlineShown, offlineMouse = true, true
 local function OfflineBox(show)
-    if show == offlineShown then return end
     local f = Win()
     local b = f and f.MemberList and f.MemberList.ShowOfflineButton
     if type(b) ~= "table" then return end
-    offlineShown = show
-    for _, r in ipairs({ b:GetRegions() }) do r:SetAlpha(show and 1 or 0) end
-    b:EnableMouse(show)
+    if show ~= offlineShown then
+        offlineShown = show
+        for _, r in ipairs({ b:GetRegions() }) do r:SetAlpha(show and 1 or 0) end
+    end
+    -- (que se pulse o no, solo fuera de combate: como de ella cuelgan botones seguros, en combate el juego no deja
+    -- tocarla (ADDON_ACTION_BLOCKED con CheckButton:EnableMouse, Jorge, 25/11). Al salir, otra vez)
+    if show ~= offlineMouse and not InCombatLockdown() then
+        offlineMouse = show
+        b:EnableMouse(show)
+    end
 end
+HU:On("PLAYER_REGEN_ENABLED", function() OfflineBox(offlineShown) end)
 
 -- (marcada, la pestaña de la derecha de la sección abierta. En Comercio y Calendario, la de miembros del juego no: el
 -- juego la vuelve a marcar cada vez que pone al día sus pestañas, y se le quita otra vez (Build). Marcar no es mover ni
@@ -458,8 +493,8 @@ local function HasRecipes(id)
     return type(id) == "number" and ((HU.CRAFT_ITEMS and HU.CRAFT_ITEMS[id] ~= nil) or (HU.CRAFT_SPELLS and HU.CRAFT_SPELLS[id] ~= nil))
 end
 
--- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; de las otras
--- hermandades no llegan todavía)
+-- Profesiones de alguien de mi hermandad (las da el juego por su comunidad de hermandad; las de las otras
+-- hermandades, con su nivel, llegan con OF: CardProfessions)
 local function OwnProfessions(name)
     local cid = C_Club and C_Club.GetGuildClubId and C_Club.GetGuildClubId()
     if not cid or HU.Secret(cid) then return nil end
@@ -543,24 +578,25 @@ local function BuildCard(f)
         local lvl = rows:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lvl:SetPoint("LEFT", icon, "RIGHT", 4, 0)
         lvl:SetWidth(24); lvl:SetJustifyH("LEFT")
-        -- («Ver recetas»: oscuro, con borde fino y letra dorada que se aclara al pasar el ratón, como los paneles de Comercio
-        -- y Calendario (DJStyle.lua). Jorge, 24/11: «más bonito»; antes era el botón rojo del juego) [+ARCHITECTURE.md]
-        local DJ = HU.DJ
-        local b = CreateFrame("Button", "GuildUnionMemberCardRecipes" .. k, rows, "BackdropTemplate")
-        b:SetSize(92, 18)
+        -- («Ver recetas»: el botón rojo del juego, con letra pequeña. Jorge, 25/11: «pasarlo a rojo de nuevo»; del 24/11
+        -- al 25/11 fue oscuro, como los paneles de Comercio y Calendario) [+ARCHITECTURE.md]
+        local b = CreateFrame("Button", "GuildUnionMemberCardRecipes" .. k, rows, "UIPanelButtonTemplate")
+        b:SetSize(92, 20)
         b:SetPoint("LEFT", lvl, "RIGHT", 2, 0)
-        DJ.Panel(b, DJ.T.row, { DJ.T.line[1], DJ.T.line[2], DJ.T.line[3], 0.55 }, 10, 2)
-        local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("CENTER")
-        b:SetFontString(fs)
         b:SetNormalFontObject("GameFontNormalSmall")
         b:SetHighlightFontObject("GameFontHighlightSmall")
         b:SetDisabledFontObject("GameFontDisableSmall")
-        local hl = b:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetPoint("TOPLEFT", 2, -2); hl:SetPoint("BOTTOMRIGHT", -2, 2)
-        hl:SetColorTexture(1, 0.82, 0, 0.15)
         b:SetText(L("Ver recetas"))
         b:SetScript("OnClick", function(s) OpenRecipes(s.prof) end)
+        -- (apagado, al pasar el ratón dice por qué: RecipesWhy. El juego no lanza OnEnter en un botón apagado sin esto)
+        b:SetMotionScriptsWhileDisabled(true)
+        b:SetScript("OnEnter", function(s)
+            if not s.why then return end
+            GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+            GameTooltip:SetText(s.why, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
         icon:Hide(); lvl:Hide(); b:Hide()
         rows.btns[k], rows.icons[k], rows.levels[k] = b, icon, lvl
     end
@@ -598,6 +634,34 @@ local function BuildCard(f)
     end)
 end
 
+-- (las de la ficha: de mi hermandad, las del juego, con el nivel de su línea de oficios (Packs/Professions.lua) si el
+-- juego no lo da y si esa línea está y trae recetas (para «Ver recetas»); de otra, las de sus líneas de oficios. Las
+-- líneas se piden a su hermandad al abrirla (de la mía, lo que me perdí estando fuera). Cocina y Primeros auxilios no:
+-- las tiene cualquiera; sus líneas solo sirven para «Quién lo hace» (Jorge, 25/11))
+local function CardProfessions(e)
+    local union, main = HU:UnionProfessionsOf(e.name) or {}, {}
+    for _, p in ipairs(union) do if not p.secondary then main[#main + 1] = p end end
+    if e.tag then HU:NeedUnionProfessions(e.tag) end
+    if not e.own then return main end
+    local own = OwnProfessions(e.name)
+    if not own then return main end
+    for _, p in ipairs(own) do
+        for _, u in ipairs(union) do
+            if u.id == p.id then p.rank, p.line, p.recipes = p.rank or u.rank, true, u.recipes end
+        end
+    end
+    return own
+end
+-- (por qué no se pueden ver las recetas de otro: sin su línea de oficios de esa profesión, no tiene el addon o aún no ha
+-- llegado; con ella pero sin recetas, no ha abierto esa ventana con el addon. Las mías, siempre. Jorge, 25/11)
+-- [+ARCHITECTURE.md]
+local function RecipesWhy(p)
+    if p.mine then return nil end
+    if not p.line then return L("No tiene GuildUnion (o aún no ha llegado lo suyo)") end
+    if not p.recipes then return string.format(L("Aún no ha abierto su ventana de %s"), tostring(p.name)) end
+    return nil
+end
+
 -- force: siempre abrirla (desde la lista del juego); sin él, otro clic en la misma persona la cierra
 local function ShowCard(e, force)
     local f = Win()
@@ -609,24 +673,26 @@ local function ShowCard(e, force)
     local cls = e.class and LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[e.class] or e.class or ""
     card.sub:SetText(((e.level and e.level > 0) and (L("Nivel") .. " " .. e.level .. " ") or "") .. cls)
     local v = card.lines
-    v[1]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. "<" .. tostring(e.tag or "") .. ">  " .. HU:GuildName(e.tag) .. "|r")
+    v[1]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. "<" .. tostring(HU:TagLabel(e.tag) or "") .. ">  " .. HU:GuildName(e.tag) .. "|r")
     v[2]:SetText((e.zone and e.zone ~= "") and e.zone or "—")
     v[3]:SetText((not e.noRank and e.rank ~= "" and e.rank) or "—")
     v[4]:SetText(e.online and ("|cff40ff40" .. L("Conectado") .. "|r") or Ago(e.offSecs))
     -- (profesiones: una línea cada una, su icono con el nivel y «Ver recetas»)
-    local profs = e.own and OwnProfessions(e.name) or {}
+    local profs = CardProfessions(e)
     local rows = card.recipes
     for k = 1, 2 do
         local p = profs[k]
         rows.btns[k].prof = p
         rows.icons[k]:SetShown(p ~= nil); rows.levels[k]:SetShown(p ~= nil)
-        -- («Ver recetas», solo en las que fabrican; apagado si no se puede pedir: ni mía ni con GUID)
-        rows.btns[k]:SetShown(p ~= nil and HasRecipes(p.id))
+        -- («Ver recetas», solo en las que fabrican y de mi hermandad (el juego no da las de otra); apagado si no se puede
+        -- pedir (ni mía ni con GUID) o si aún no las tiene (RecipesWhy, que sale al pasar el ratón))
+        rows.btns[k]:SetShown(p ~= nil and e.own == true and HasRecipes(p.id))
+        rows.btns[k].why = p and RecipesWhy(p)
         if p then
             rows.icons[k]:SetTexture(p.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             rows.levels[k]:SetText(p.rank and tostring(p.rank) or "")
             rows.btns[k]:SetText(p.icon and L("Ver recetas") or (p.name .. ": " .. L("Ver recetas")))
-            rows.btns[k]:SetEnabled(p.mine == true or p.guid ~= nil)
+            rows.btns[k]:SetEnabled(p.mine == true or (p.guid ~= nil and rows.btns[k].why == nil))
         end
     end
     v[5]:SetText(#profs == 0 and "—" or "")
@@ -636,6 +702,16 @@ local function ShowCard(e, force)
     v[7]:SetText((e.offNote and e.offNote ~= "") and e.offNote or "")
     card:Show()
 end
+-- (lo de oficios que llega con la ficha abierta: se repinta un momento después, una vez)
+local cardQueued
+HU:Listen("CHANGED", function(what)
+    if what ~= "professions" or cardQueued or not (card and card:IsShown()) then return end
+    cardQueued = true
+    HU.After(2, function()
+        cardQueued = nil
+        if card:IsShown() and card.entry then ShowCard(card.entry, true) end
+    end)
+end)
 
 -- Varios a la vez: Ctrl suma o quita uno, Mayús elige del último al de ahora; un clic solo, uno y su
 -- ficha. Clic derecho: cambiar rango o echar a los de mi hermandad, por la ventana de órdenes (el juego
@@ -776,6 +852,41 @@ function HU.UnionRosterPick(e)
     return true
 end
 
+-- Sin leer en Comercio: el puntito de aviso del juego con el número de chats que tienen algo sin leer encima, en la
+-- pestaña de Comercio y en el botón de hermandad del menú del juego (Jorge, 25/11) [+ARCHITECTURE.md]
+local function UnreadBadge(owner, size, atlas)
+    local dot = owner:CreateTexture(nil, "OVERLAY", nil, 2)
+    dot:SetAtlas(atlas); dot:SetSize(size, size)
+    local num = owner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    num:SetDrawLayer("OVERLAY", 7)
+    num:SetPoint("CENTER", dot, "CENTER", 0, 0)
+    local badge = { dot = dot, num = num }
+    function badge.Sync()
+        local n = HU:TradeUnreadChats()
+        num:SetText(n > 99 and "99+" or tostring(n))
+        dot:SetShown(n > 0); num:SetShown(n > 0)
+    end
+    badge.Sync()
+    return badge
+end
+-- (en el botón «Hermandad y comunidades» del menú del juego, GuildMicroButton: en un marco nuestro colgado de él, encima
+-- de su aviso y donde lo pone el juego. De lo suyo no se toca nada. Se monta la primera vez que hace falta)
+local microBadge
+local function MicroBadge()
+    if not microBadge then
+        local mb = _G.GuildMicroButton
+        if type(mb) ~= "table" then return end
+        local holder = CreateFrame("Frame", "GuildUnionMicroUnread", mb)
+        holder:SetAllPoints(mb)
+        holder:SetFrameLevel(math.max(mb:GetFrameLevel() + 10, 110))
+        microBadge = UnreadBadge(holder, 21, "UI-HUD-MicroMenu-Communities-Icon-Notification")
+        microBadge.dot:SetPoint("TOP", holder, "TOP", 0, 6)
+    end
+    microBadge.Sync()
+end
+HU:Listen("CHANGED", function(what) if what == "tradeUnread" then MicroBadge() end end)
+HU:OnStart(MicroBadge)
+
 local function Build(f)
     local ml = f and f.MemberList
     local anchor = ml and ml.ShowOfflineButton
@@ -837,10 +948,10 @@ local function Build(f)
         band:Hide()
         cover.band = band
     end
-    -- Abajo, como en la vista del chat: Peticiones de oficiales · Registro · Invitar miembro, a la izquierda de
-    -- «Ajustes de hermandad» (Jorge, 23/11). El juego solo enseña su «Invitar miembro» en la vista del chat: aquí lo
-    -- pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación). Cuelgan de la casilla de
-    -- desconectados, como el «Chat» seguro: solo se ven en la vista de miembros [+ARCHITECTURE.md]
+    -- Abajo, como en la vista del chat: Oficiales (Peticiones de oficiales y Ver registro, en su desplegable) · Invitar
+    -- miembro, a la izquierda de «Ajustes de hermandad» (Jorge, 23/11 y 25/11). El juego solo enseña su «Invitar miembro»
+    -- en la vista del chat: aquí lo pulsa un botón seguro (si lo pulsara el addon, el juego bloquearía la invitación).
+    -- Cuelgan de la casilla de desconectados, como el «Chat» seguro: solo se ven en la vista de miembros [+ARCHITECTURE.md]
     local gcb = f.CommunitiesControlFrame and f.CommunitiesControlFrame.GuildControlButton
     if f.InviteButton and gcb then
         local inv = CreateFrame("Button", "GuildUnionRosterInvite", anchor, "SecureActionButtonTemplate,UIPanelButtonTemplate")
@@ -851,30 +962,14 @@ local function Build(f)
         inv:RegisterForClicks("AnyUp", "AnyDown")
         inv:SetAttribute("type", "click")
         inv:SetAttribute("clickbutton", f.InviteButton)
-        local log = CreateFrame("Button", nil, anchor, "UIPanelButtonTemplate")
-        log:SetSize(120, 20)
-        log:SetText(L("Ver registro"))
-        log:SetPoint("RIGHT", inv, "LEFT", -4, 0)
-        log:SetFrameStrata("HIGH")
-        log:SetScript("OnClick", function() HU:ShowInviteLog() end)
-        local rq = CreateFrame("Button", nil, anchor, "UIPanelButtonTemplate")
-        rq:SetSize(140, 20)
-        rq:SetPoint("RIGHT", log, "LEFT", -4, 0)
-        rq:SetFrameStrata("HIGH")
-        rq:SetScript("OnClick", function() HU:ShowRequests() end)
-        local function SyncRequests()
-            local n = HU:KickRequestCount()
-            rq:SetText(n > 0 and (L("Peticiones de oficiales") .. " (" .. n .. ")") or L("Peticiones de oficiales"))
-            if n > 0 then rq:LockHighlight() else rq:UnlockHighlight() end
-        end
-        HU:Listen("CHANGED", function(what) if what == "requests" then SyncRequests() end end)
-        rq:HookScript("OnShow", SyncRequests)
-        SyncRequests()
+        local off = HU:OfficersButton(anchor, "GuildUnionRosterOfficers")
+        off:SetPoint("RIGHT", inv, "LEFT", -4, 0)
+        off:SetFrameStrata("HIGH")
     end
     cover.tabs = tabs
     tabs:SetFrameLevel(cover:GetFrameLevel() + 6)
 
-    -- Comercio y Calendario, pestañas de la derecha como las del juego (Jorge, 24/11: «intentamos con botones
+    -- Comercio y Eventos, pestañas de la derecha como las del juego (Jorge, 24/11: «intentamos con botones
     -- laterales»; antes fueron una fila de botones redondos arriba y luego entradas de la columna de comunidades): justo
     -- debajo de la de miembros del juego («justo después de raid») y las demás del juego, debajo; luego irán Wanted y LFG.
     -- Botones seguros que pulsan la pestaña de miembros del juego (PreClick apunta la sección; si ya se ve esa vista,
@@ -920,13 +1015,11 @@ local function Build(f)
                 if SyncNow then SyncNow() end
             end)
             if t.trade then
-                -- (con mensajes sin leer en Comercio, la pestaña lleva el puntito de aviso de las comunidades del juego; al
-                -- leerlos se va: HU:TradeUnread, Trade.lua. Solo el puntito: Jorge, 24/11, lo prefirió al brillo)
-                -- [+ARCHITECTURE.md]
-                local badge = b:CreateTexture(nil, "OVERLAY", nil, 2)
-                badge:SetAtlas("communities-icon-notification"); badge:SetSize(16, 16); badge:SetPoint("TOPRIGHT", 3, 3)
-                badge:Hide()
-                b.badge = badge
+                -- (con mensajes sin leer en Comercio, la pestaña lleva el puntito de aviso de las comunidades del juego con
+                -- el número de chats que los tienen; al leerlos se va: HU:TradeUnreadChats, Trade.lua. Jorge, 24/11: el
+                -- puntito, sin brillo; 25/11: «con el número de chats sin leer») [+ARCHITECTURE.md]
+                b.badge = UnreadBadge(b, 16, "communities-icon-notification")
+                b.badge.dot:SetPoint("TOPRIGHT", b, "TOPRIGHT", 3, 3)
                 side.trade = b
             end
             b:Hide()
@@ -996,7 +1089,7 @@ local function Build(f)
     cover.trade:SetFrameLevel(cover:GetFrameLevel() + 5)
     cover.trade:Hide()
     HU:BuildTrade(cover.trade)
-    -- (la sección Calendario, UnionCalendar.lua: igual)
+    -- (la sección Eventos, UnionCalendar.lua: igual)
     cover.calendar = CreateFrame("Frame", nil, cover)
     cover.calendar:SetPoint("TOPLEFT", cover, "TOPLEFT", 0, -2)
     cover.calendar:SetPoint("BOTTOMRIGHT", cover, "BOTTOMRIGHT", 0, 4)
@@ -1240,9 +1333,9 @@ local function Build(f)
     if f.UpdateCommunitiesTabs then
         hooksecurefunc(f, "UpdateCommunitiesTabs", function() PlaceTabs(); MoveGameTabs(); CheckTabs() end)
     end
-    -- (el puntito de Comercio, con mensajes sin leer)
+    -- (el puntito de Comercio, con mensajes sin leer, y cuántos chats los tienen)
     local function TradeBadge()
-        if side.trade then side.trade.badge:SetShown(HU:TradeUnread() > 0) end
+        if side.trade then side.trade.badge.Sync() end
     end
     HU:Listen("CHANGED", function(what) if what == "tradeUnread" then TradeBadge() end end)
     TradeBadge()
@@ -1303,7 +1396,7 @@ local function Build(f)
         end
         if HU.myTag then
             sumOn, sumTot = online, total
-            perGuild[#perGuild + 1] = "|cff" .. HU:GuildColorHex(HU.myTag) .. HU.myTag .. "|r  " .. online .. " / " .. total
+            perGuild[#perGuild + 1] = "|cff" .. HU:GuildColorHex(HU.myTag) .. HU:TagLabel(HU.myTag) .. "|r  " .. online .. " / " .. total
         end
         for _, t in ipairs(HU:OtherTags()) do
             local r = HU.remoteRoster and HU.remoteRoster[t]
@@ -1408,4 +1501,4 @@ HU:OnStart(function()
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_Communities") then Setup() end
 end)
 
-HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })
+HU:Module("UnionRoster", { "BlizzTab", "Config", "Core", "InviteLog", "Net/Packs", "Packs/Members", "Packs/Professions", "Ranks", "Roster", "Social", "Trade", "UnionCalendar", "UnionMembers" })

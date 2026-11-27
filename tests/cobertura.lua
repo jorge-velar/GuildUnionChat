@@ -27,6 +27,7 @@ local MARGEN = LUA51 and 1.0 or 2.0
 local SOLO_INTERFAZ = {
     ["BlizzTab.lua"] = true, ["WMPanel.lua"] = true, ["ListWindow.lua"] = true,
     ["UIWindows.lua"] = true, ["Wizard.lua"] = true, ["UnionRoster.lua"] = true, ["Trade.lua"] = true,
+    ["TradeOrder.lua"] = true, ["TradeView.lua"] = true, ["TradeFind.lua"] = true,
 }
 local MINIMOS = here .. "/cobertura-minima.txt"
 

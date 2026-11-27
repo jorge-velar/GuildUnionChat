@@ -33,6 +33,24 @@ local NEW = {
     ML = { tagField = 1, remoteData = true, open = true, queue = "bmid", ttl = 120, combat = "data" },
     -- (pedir cambio de rango a otra hermandad, Ranks.lua; como GK)
     GP = { queue = "chat", ttl = 600 },
+    -- (paquetes con huella, Net/Packs.lua: lo pesado y lo que no corre prisa, en la cola más baja de HU20B)
+    WM = { tagField = 1, bootstrap = true, remoteData = true, queue = "blow", ttl = 300, combat = "last" },
+    WD = { tagField = 1, bootstrap = true, remoteData = true, queue = "blow", ttl = 300, combat = "data" },
+    WP = { tagField = 1, bootstrap = true, queue = "blow", ttl = 60, combat = "req" },
+    WT = { tagField = 1, bootstrap = true, queue = "blow", ttl = 120, combat = "data" },
+    -- (propuestas: mi línea de un conjunto, por GUILD; Net/Packs.lua)
+    WU = { tagField = 1, queue = "blow", ttl = 300, combat = "data" },
+    -- (el chat de un encargo de Comercio, por susurro a la otra persona; el manejador mira que haya una solicitud entre
+    -- los dos, Trade.lua)
+    TC = { open = true, queue = "chat", ttl = 60 },
+    -- (la carga de los enlaces, /gu carga, Report.lua: abiertas, el manejador mira que sea de la unión y a quien se
+    -- preguntó; la pregunta, en combate, como las demás peticiones)
+    UQ = { open = true, ttl = 15, combat = "req" },
+    UR = { open = true, ttl = 15 },
+    -- (las estadísticas de la unión, «Pedir a la unión» en /gu stats, GuildStats.lua: como UQ y UR; el manejador mira que
+    -- sea de oficial a oficial y de a quien se preguntó)
+    SQ = { open = true, ttl = 15, combat = "req" },
+    SR = { open = true, ttl = 15 },
 }
 for cmd, marks in pairs(NEW) do
     for key, v in pairs(marks) do

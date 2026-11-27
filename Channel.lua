@@ -106,7 +106,8 @@ function HU:ApplyChannels()
     end
     HU.applyPending = nil
     local want = {}
-    if self.cfg and self.cfg.ok and self.myTag then
+    -- (una hermandad sola no tiene canal: Config.lua)
+    if self.cfg and self.cfg.ok and self.myTag and not self.cfg.solo then
         want.main = { name = self:LaneName(self.cfg.channel), pass = self.cfg.password }
         if self.offCfg and self:CanOfficer() then
             want.off = { name = self.offCfg.channel, pass = self.offCfg.password }
@@ -1968,7 +1969,8 @@ function HU:TagText(tag, hex, addon)
     hex = hex or self:GuildColorHex(tag)
     if tag:find("[|:]") then return "|cff" .. hex .. "<" .. tag .. ">|r " end
     local flag = (addon == true and "1") or (addon == false and "0") or ""
-    return "|cff" .. hex .. "|Haddon:GuildUnion:tag:" .. tag .. ":" .. flag .. "|h<" .. tag .. ">|h|r "
+    -- (lo que se lee, TagLabel: la de una hermandad sola, con sus iniciales; el enlace, con la etiqueta de verdad)
+    return "|cff" .. hex .. "|Haddon:GuildUnion:tag:" .. tag .. ":" .. flag .. "|h<" .. self:TagLabel(tag) .. ">|h|r "
 end
 
 do
@@ -2453,7 +2455,7 @@ end)
 local noChanT, outSince = -999, nil
 HU:OnStart(function()
     HU:Every(60, "canal-fuera-aviso", function()
-        if not HU.ready or not IsInGuild() or HU.paused
+        if not HU.ready or not IsInGuild() or HU.paused or HU:IsSolo()
             or GetTime() - (HU.loginT or 0) < 90 or not HU:CanJoinNow() or HU:IsJoined("main") then
             outSince = nil
             return

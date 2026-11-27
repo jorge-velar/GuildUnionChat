@@ -383,6 +383,7 @@ end
 HU.MAYBE_NIL = {
     -- quién soy y en qué estado está el addon
     me = true, myTag = true, cfg = true, paused = true, mustUpdate = true, guildMin = true,
+    guildName = true, -- (el nombre de mi hermandad, al leer la configuración: Config.lua)
     replaying = true, weakMsg = true, diagRecv = true, oldAddon = true, badEvents = true,
     presenceWrapped = true, staleCheck = true,
     newerWarned = true, -- (ya se ha dicho que hay una versión más nueva: Net/Relay.lua)
@@ -964,7 +965,7 @@ HU:RegisterSlash("carril", { aliases = { "lane" },
         if act or arg == "confirmar" or arg == "confirm" then
             if HU:LaneLock() then
                 HU:Print(string.format(L("La sala está fijada en la %d por la Información de hermandad (línea GU:l). Mientras esté esa línea no se puede cambiar."), HU:LaneLock()))
-            elseif not officer or not HU.cfg then
+            elseif not officer or not HU:HasCommunity() then
                 HU:Print(L("Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril."))
             elseif act then
                 HU:ProposeLane(act)
@@ -1265,6 +1266,10 @@ HU:RegisterSlash("ids", { fn = function() HU:PrintChannelIds() end })
 -- (copia 147: todo lo que sabe el addon, en una ventana para copiar)
 HU:RegisterSlash("todo", { aliases = { "informe", "all", "report" },
     fn = function() HU:FullReport() end })
+-- (quién de los conectados no tiene el addon, por hermandad: Report.lua)
+HU:RegisterSlash("sinaddon", { aliases = { "noaddon" }, fn = function() HU:ShowWithoutAddon() end })
+-- (oficiales: la carga del enlace de cada hermandad, con CPU, FPS, cola y mensajes: Report.lua)
+HU:RegisterSlash("carga", { aliases = { "load" }, fn = function() HU:AskRelayLoad() end })
 -- ¿tiene el juego bloqueados /ginvite, /gpromote…? (los bloquea si un addon toca la caja del chat)
 HU:RegisterSlash("ordenes", { aliases = { "órdenes" }, fn = function() HU:OrdersDiag() end })
 HU:RegisterSlash("nota", { fn = function(_, rawArg, cmd) HU:TestLogCommand(cmd, rawArg) end })

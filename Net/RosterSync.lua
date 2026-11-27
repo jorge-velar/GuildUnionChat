@@ -1212,10 +1212,22 @@ HU.comm.RC = function(self, sender, f, dist, raw)
     local kind = sk and (self.acceptKind[tag] or {})[sk]
     local st = self.bootState[tag]
     if sk and not (kind == "peer" or kind == "vouched" or kind == "member" or (st and st.origins[sk])) then return end
+    -- (el «me voy» de quien sale del juego (Presence.lua, Leaving) lleva la huella de base a 0 y su nombre detrás: no es
+    -- un contacto que acabe de hablar sino uno que se va. Ni se le da por visto ni se le pide nada: ya no está; y mi
+    -- hermandad, que lo recibe de mí, tampoco le susurra) [+ARCHITECTURE.md]
+    local bye = base == "0" and f[9] and f[9] ~= "" and self:FullName(f[9])
+    if bye and (dist ~= "WHISPER" or self:Key(bye) == sk) then
+        self:MarkOffline(bye)
+        self:ForgetOffline(bye)
+    else
+        bye = nil
+    end
     if dist == "WHISPER" then
-        self:SeenPeer(sender, tag)
-        local p = self.remote[sender:lower()]
-        if p then p.last = GetTime() end
+        if not bye then
+            self:SeenPeer(sender, tag)
+            local p = self.remote[sender:lower()]
+            if p then p.last = GetTime() end
+        end
         -- (a mi hermandad, con el estado de mi copia al final: la toman igual que yo)
         local fl = HU.RosterStateOf(self.remoteRoster[tag]) or "b"
         local withState = raw .. "~" .. fl
@@ -1291,7 +1303,7 @@ HU.comm.RC = function(self, sender, f, dist, raw)
         local h = HashNoKept(r.members)
         r.deltaMiss = (h ~= want) and ((r.deltaMiss or 0) + 1) or 0
         -- (no cuadra: mi copia vino de otro, por ejemplo de quien fue enlace un momento. Se pide la [+ARCHITECTURE.md]
-        if h ~= want and dist == "WHISPER" and (not fullAsked[tag] or GetTime() - fullAsked[tag] > 60) then
+        if h ~= want and dist == "WHISPER" and not bye and (not fullAsked[tag] or GetTime() - fullAsked[tag] > 60) then
             fullAsked[tag] = GetTime()
             local to = pt.origin or sender
             HU.After(1 + math.random() * 2, function() HU:Whisper(to, "RF~" .. (HU.myTag or "") .. "~1", true) end)

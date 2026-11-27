@@ -73,7 +73,8 @@ local function AgeMutes(msg, waited)
     return "MZ~" .. table.concat(out, ";")
 end
 
--- Saca el siguiente de q que no haya caducado (los caducados se tiran y se cuentan)
+-- Saca el siguiente de q que no haya caducado (los caducados se tiran y se cuentan; y los susurros a quien sé que ya
+-- no está, también: HU:KnownOffline)
 local function Pop(q)
     local now = GetTime()
     while q[1] do
@@ -84,6 +85,8 @@ local function Pop(q)
             Count(HU.qStats.expired, m.cmd)
             -- (una línea del chat por el respaldo que no ha salido: que lo sepa quien la escribió)
             if (m.cmd == "CW" or m.cmd == "CF") and HU.OnChatLost then HU:OnChatLost(m[1]) end
+        elseif m[2] == "WHISPER" and HU:KnownOffline(m[3]) then
+            HU.qStats.offline = HU.qStats.offline + 1
         else
             -- (siempre desde el texto de cuando entró: si vuelve a la cola, no se resta dos veces)
             if m.cmd == "MU" or m.cmd == "MZ" then m.orig = m.orig or m[1]; m[1] = AgeMutes(m.orig, now - (m.t or now)) end
@@ -98,6 +101,9 @@ local function SendOne(prefix, q, m)
     -- (en pausa por la versión mínima de mi hermandad: no sale nada del addon; ver Popup.lua SetGuildMin)
     if HU.paused then return false end
     if prefix == HU.PREFIX and m[2] == "GUILD" and m[1]:sub(1, 3) == "HI~" then perf.hiSent = GetTime() end
+    -- (el aviso «no hay ningún jugador llamado...» llega ahora, no cuando el susurro entró en la cola: desde aquí lo mira
+    -- el filtro, aunque haya esperado en la cola más de lo que mira)
+    if m[2] == "WHISPER" then HU:MarkPinged(m[3]) end
     local ok, r = pcall(C_ChatInfo.SendAddonMessage, prefix, m[1], m[2], m[3])
     if not ok then Count(HU.qStats.dropped, m.cmd) return false end
     if m[2] == "CHANNEL" and HU.ChannelSendResult then HU:ChannelSendResult(m[3], r) end
@@ -109,10 +115,14 @@ local function SendOne(prefix, q, m)
         table.insert(q, 1, m)
         return true
     end
+    perf.sentN = perf.sentN + 1
+    -- (quien lo mandó quiere saber cuándo sale de verdad: /gu sinaddon, Report.lua)
+    if m.onSent then local fn = m.onSent; m.onSent = nil; HU.After(0, fn) end
     -- (el destinatario se ha ido: lo mismo que con el aviso «no hay ningún jugador llamado...»)
     if r == OFFLINE and m[2] == "WHISPER" and type(m[3]) == "string" then
         HU.qStats.offline = HU.qStats.offline + 1
         local who = m[3]
+        HU:MarkOffline(who)
         HU.After(0, function() HU:ForgetOffline(who) end)
     end
     return false
@@ -156,8 +166,9 @@ local function FlushBulk()
     end
 end
 
--- urgent = true pone el mensaje delante de su cola. Devuelve false si no ha entrado en la cola. [+ARCHITECTURE.md]
-function HU:Send(msg, dist, target, urgent, slow, fast)
+-- urgent = true pone el mensaje delante de su cola; onSent, si lo hay, se llama cuando sale de verdad (no si caduca
+-- o se tira). Devuelve false si no ha entrado en la cola. [+ARCHITECTURE.md]
+function HU:Send(msg, dist, target, urgent, slow, fast, onSent)
     if #msg > 255 then msg = HU.Utf8Cut(msg, 255) end
     local cmd = msg:sub(1, 2)
     local spec = HU.msgs[cmd] or NO_SPEC
@@ -188,7 +199,7 @@ function HU:Send(msg, dist, target, urgent, slow, fast)
             if d.key and pending[d.key] == d then pending[d.key] = nil end
             Count(self.qStats.dropped, d.cmd)
         end
-        local m = { msg, dist, target, t = GetTime(), cmd = cmd, key = key, gtag = HU.sendGroup and HU.sendGroup.tag, gdest = HU.sendGroup and HU.sendGroup.dest }
+        local m = { msg, dist, target, t = GetTime(), cmd = cmd, key = key, gtag = HU.sendGroup and HU.sendGroup.tag, gdest = HU.sendGroup and HU.sendGroup.dest, onSent = onSent }
         if key then pending[key] = m end
         if urgent and (cmd == "CW" or cmd == "CG" or cmd == "CF") then
             -- (copia 150) El chat del respaldo se ponía SIEMPRE el primero: con varios esperando, el
@@ -268,8 +279,35 @@ local notFoundPattern
 -- para otros prefijos (el mapa): que también se oculte el aviso si está desconectado
 function HU:MarkPinged(target) pinged[self:Short(target):lower()] = GetTime() end
 
+-- Quién sé que ya no está: se ha despedido (PV, o su cambio de lista «me voy»), el juego ha dicho que no está o un susurro
+-- no le ha llegado. No se le susurra hasta oírle otra vez (cualquier mensaje suyo) o pasados GONE_FOR s. Jorge, 27/11:
+-- «cuando desconecta, la otra persona le envía mensajes pero está desconectado: no revisa si está conectado» [+ARCHITECTURE.md]
+local GONE_FOR = 600
+local gone, goneN = {}, 0
+function HU:MarkOffline(who)
+    if type(who) ~= "string" then return end
+    local k, now = self:Short(who):lower(), GetTime()
+    if not gone[k] then goneN = goneN + 1 end
+    gone[k] = now
+    if goneN > 500 then
+        for key, t in pairs(gone) do if now - t >= GONE_FOR then gone[key] = nil; goneN = goneN - 1 end end
+    end
+end
+function HU:MarkOnline(who)
+    if goneN == 0 or type(who) ~= "string" then return end
+    local k = self:Short(who):lower()
+    if gone[k] then gone[k], goneN = nil, goneN - 1 end
+end
+function HU:KnownOffline(who)
+    if goneN == 0 or type(who) ~= "string" then return false end
+    local t = gone[self:Short(who):lower()]
+    return t ~= nil and GetTime() - t < GONE_FOR
+end
+
 local lastSent = {} -- [contacto] = lo que se le ha susurrado en los últimos 30 s (como mucho 20)
 function HU:Whisper(target, msg, urgent, slow, fast)
+    -- (a quien sé que ya no está, nada: ni entra en la cola)
+    if self:KnownOffline(target) then self.qStats.offline = self.qStats.offline + 1 return false end
     local k, now = self:Short(target):lower(), GetTime()
     pinged[k] = now
     local l = lastSent[k]
@@ -309,11 +347,13 @@ local function SystemFilter(_, _, text)
     local who = text:match(notFoundPattern)
     if who then
         HU:PresenceNotFound(who)
+        -- (el juego dice que no está: ya no se le susurra ni es contacto, sea mío el susurro o no. Antes solo se hacía al
+        -- ocultarlo, y si no se ocultaba (más de 30 s en la cola) se le seguía susurrando: el aviso, una y otra vez)
+        HU:MarkOffline(who)
+        HU:ForgetOffline(who)
+        -- (se oculta si se lo acabo de mandar yo; si no, es de quien juega, que quiere verlo)
         local k = HU:Short(who):lower()
-        if pinged[k] and GetTime() - pinged[k] < 30 then
-            HU:ForgetOffline(who)
-            return true
-        end
+        return pinged[k] ~= nil and GetTime() - pinged[k] < 30
     end
     return false
 end
@@ -338,5 +378,6 @@ function HU:ForgetOffline(who)
 end
 
 HU.AddChatFilter("CHAT_MSG_SYSTEM", SystemFilter)
+HU.SystemFilterForTests = SystemFilter -- (el WoW de mentira no tiene filtros del chat: las pruebas lo llaman a mano)
 
 HU:Module("Net/Transport", { "Channel", "Core", "Domain/Trust", "Presence" })

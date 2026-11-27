@@ -1,17 +1,22 @@
--- Guild Union - Calendario de la unión (la sección Calendar de la lista de miembros) [+ARCHITECTURE.md]
--- Fase 1: solo la ventana, sin red. Con el estilo compartido (DJStyle.lua): fondos lisos casi negros con borde de
--- tooltip gris, títulos y rayas doradas, tarjetas con sombra arriba y brillo dorado.
--- Pestañas Eventos (tarjetas) y Calendario (el mes); la ficha de cada evento son sus raids.
+-- Guild Union - Eventos de la unión (la sección Eventos de la lista de miembros; hasta el 25/11, Calendario) [+ARCHITECTURE.md]
+-- Los eventos y quién va viajan como propuestas (Packs/Events.lua, conjunto EV); las raids se quedan en el PC de quien
+-- organiza. Con el estilo compartido (DJStyle.lua): fondos lisos casi negros con borde de tooltip gris, títulos y rayas
+-- doradas, tarjetas con sombra arriba y brillo dorado.
+-- Pestañas Eventos (tarjetas), Raids (las bandas, en tarjetas) y Calendario (el mes, todo junto); la ficha de cada evento
+-- son sus raids (una banda es una sola raid de su tamaño). Clic derecho en uno mío: editarlo o eliminarlo.
 local _, HU = ...
 local L = HU.L
 
--- (los eventos, para que /reload no los borre: ver Tidy)
-HU:Saved({ account = { calEvents = {} } })
+-- (las raids de los eventos que organizo, en este PC: calRaids[id] = { raid, …, t = hora del evento }. calEvents: los
+-- eventos de la copia 324, que pasan a la red al entrar: ver Migrate)
+HU:Saved({ account = { calEvents = {}, calRaids = {} } })
 
 -- (Eventos: una tarjeta por línea, a todo lo ancho, y 4 a la vista; la rueda baja de una en una. Jorge, 24/11)
 local CARD_H, CARD_GAP, CARD_N = 62, 6, 4
 local GROUPS, PER_GROUP = 8, 5
 local MAX_RAIDS = 20
+-- (los tamaños de banda de Forever: 10, 20 y 40, Packs/Events.lua)
+local SIZES = { 10, 20, 40 }
 -- (las pestañas de raid de la ficha: botones rojos de 92 x 24 con la letra de siempre, 7 por fila; con 20, tres filas)
 local RAID_ROW, TAB_W, TAB_H, TAB_ROW_H = 7, 92, 24, 28
 local DETAIL_H = 480        -- alto de la ventana del evento con una fila de pestañas
@@ -41,12 +46,13 @@ local KINDS = {
 -- (los roles, con el icono redondo del buscador de grupo del juego)
 local ROLES = { "TANK", "HEALER", "DAMAGER" }
 local ROLE_NAME = { TANK = "Tanque", HEALER = "Sanador", DAMAGER = "Daño" }
+local ROLE_TEX = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local ROLE_TC = { TANK = { 0, 19, 22, 41 }, HEALER = { 20, 39, 1, 20 }, DAMAGER = { 20, 39, 22, 41 } }
 local function RoleIcon(role, size)
     local c = ROLE_TC[role]
     if not c then return "" end
     size = size or 14
-    return string.format("|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:%d:%d:0:0:64:64:%d:%d:%d:%d|t", size, size, c[1], c[2], c[3], c[4])
+    return string.format("|T%s:%d:%d:0:0:64:64:%d:%d:%d:%d|t", ROLE_TEX, size, size, c[1], c[2], c[3], c[4])
 end
 local KIND = {}
 for _, k in ipairs(KINDS) do KIND[k[1]] = k end
@@ -56,10 +62,14 @@ local DAYS_ABBR = { "lun", "mar", "mié", "jue", "vie", "sáb", "dom" }
 local MONTHS = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
     "noviembre", "diciembre" }
 
--- (en la sesión: fase 1, sin red)
+-- (lo que se ve: los eventos de la red, que rehace Rebuild, y los del modo prueba, aparte y solo en este PC)
 local events = {}           -- { id, title, kind, t, who, tag, desc, minLevel, icon, signups = { [nombre] = "yes" }, roles = { [nombre] = rol }, raids, test }
+local testEvents = {}
+local dirty = true          -- ha llegado algo de la red: se rehace antes de pintar
+local paintSoon             -- (lo que llega seguido se pinta una sola vez)
+local open                  -- la sección se ve (entre su OnShow y su OnHide: también se esconde al cerrar la ventana)
 local lastRole              -- el último rol con el que me apunté (sin el menú del juego, y al crear un evento, voy con él)
-local view = "list"         -- "list" (Eventos) o "month" (Calendario)
+local view = "list"         -- "list" (Eventos), "raids" (Raids) o "month" (Calendario)
 local selected              -- el evento cuya ficha está abierta (id)
 local month, year           -- el mes que se ve en Calendario
 local pickedDay             -- el día elegido en Calendario ("aaaa-mm-dd")
@@ -67,6 +77,8 @@ local raidPick = 1          -- la raid que se ve
 local benchRole             -- el banquillo, solo de ese rol ("TANK", "HEALER", "DAMAGER"); nil, todos
 local testClass = {}        -- [nombre] = clase (modo prueba)
 local invites = {}          -- [nombre] = { s = "wait"|"ok"|"no", t } (lo que pasó al invitarlos)
+local picks = {}            -- [nombre] = true: los elegidos con Ctrl / Mayús en la ficha, para invitar solo a esos
+local lastPick              -- el último elegido (Mayús elige desde él)
 local dragName
 local ui
 
@@ -75,9 +87,20 @@ local function NewId() return string.format("%x%x", math.random(0, 0xffff), time
 local function DayKey(t) return date("%Y-%m-%d", t) end
 -- (día de la semana, con el lunes primero: 1 = lunes … 7 = domingo)
 local function WeekDay(t) return (tonumber(date("%w", t)) + 6) % 7 + 1 end
-local function KindText(k)
-    local d = KIND[k] or KIND.other
-    return "|cff" .. d[3] .. L(d[2]) .. "|r"
+-- (una banda: lo que se crea en Raids, tipo raid; es una sola raid de su tamaño: 10, 20 o 40) [+ARCHITECTURE.md]
+local function Band(e) return e.kind == "raid" end
+-- (el tipo de un evento, a color; una banda, con su tamaño: «Banda de 40», y si es por invitación)
+local function KindText(e)
+    local d = KIND[e.kind] or KIND.other
+    return "|cff" .. d[3] .. (Band(e) and string.format(L("Banda de %d"), e.size or 40) or L(d[2])) .. "|r"
+        .. ((Band(e) and e.invite) and ("  |cffa0a4ad" .. L("Por invitación") .. "|r") or "")
+end
+-- (¿la ve, y se puede apuntar? Una banda por invitación, solo quien la creó y sus invitados (i<id>, Packs/Events.lua);
+-- Jorge, 25/11: quien no está invitado no la ve, ni en Raids ni en Calendario) [+ARCHITECTURE.md]
+local function Invited(e, name)
+    if not e.invite or e.who == name then return true end
+    for _, n in ipairs(e.invites or {}) do if HU:SameName(n, name) then return true end end
+    return false
 end
 local function KindIcon(k) return (KIND[k] or KIND.other)[4] end
 -- (las imágenes para elegir al crear un evento: iconos de vanilla)
@@ -109,20 +132,23 @@ local function LongDay(t)
     return string.format(L("%s %d de %s"), L(DAYS[WeekDay(t)]), d.day, L(MONTHS[d.month]))
 end
 local function Find(id) for _, e in ipairs(events) do if e.id == id then return e end end end
-local function Count(e)
-    local n = 0
-    for _, v in pairs(e.signups) do if v == "yes" then n = n + 1 end end
-    return n
-end
 local function WhoText(e)
-    local tag = e.tag and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. e.tag .. ">|r") or ""
+    local tag = e.tag and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. HU:TagLabel(e.tag) .. ">|r") or ""
     return (e.who == Me() and MINE or OTHERS) .. HU:Short(e.who) .. "|r" .. tag
 end
--- (próximos primero; los ya pasados, fuera de la lista: siguen en el calendario)
-local function Upcoming()
-    local out, now = {}, time() - 3 * 3600
-    for _, e in ipairs(events) do if e.t >= now then out[#out + 1] = e end end
-    table.sort(out, function(a, b) return a.t < b.t end)
+-- (un evento no tiene hora de fin: acaba LASTS (3 h) después de su hora. En Eventos, por fecha, hasta CARDS_AFTER (2 días)
+-- después de acabar; luego solo en el mes, hasta que caduca su línea en la red (Packs/Events.lua)) [+ARCHITECTURE.md]
+local LASTS, CARDS_AFTER = 3 * 3600, 2 * 86400
+-- (por fecha, y arriba los que su creador fijó para todos (Jorge, 25/11: «por orden de fecha, pudiendo fijar si se
+-- quiere», «para todos»: `pinned`, Packs/Events.lua). bands: las bandas (Raids) o lo demás (Eventos)) [+ARCHITECTURE.md]
+local function Upcoming(bands)
+    local out, now = {}, time()
+    for _, e in ipairs(events) do if now < e.t + LASTS + CARDS_AFTER and Band(e) == bands then out[#out + 1] = e end end
+    table.sort(out, function(a, b)
+        if (a.pinned == true) ~= (b.pinned == true) then return a.pinned == true end
+        if a.t ~= b.t then return a.t < b.t end
+        return tostring(a.id) < tostring(b.id)
+    end)
     return out
 end
 local function OnDay(key)
@@ -201,6 +227,8 @@ local Paint
 ---------------------------------------------------------------------------
 -- Raids: { name, leader, groups = { {nombres} x8 } }. El líder va siempre el primero del grupo 1 [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
+-- (los grupos que se usan: en una banda, su tamaño entre 5 (2, 4 u 8); en lo demás, los 8)
+local function GroupsOf(e) return Band(e) and math.floor((e.size or 40) / PER_GROUP) or GROUPS end
 local function Members(r)
     local out = {}
     for g = 1, GROUPS do for _, n in ipairs(r.groups[g]) do out[#out + 1] = n end end
@@ -212,11 +240,62 @@ end
 local function InAnyRaid(e, name)
     for _, r in ipairs(e.raids or {}) do if FindPos(r, name) then return r end end
 end
-local function Unassigned(e)
+-- De la reserva: se apuntó a una banda completa y quien la organiza no lo ha subido a la raid (Jorge, 25/11: «reserva,
+-- decide el líder»). Donde están sus raids (el PC de quien la creó, o uno de prueba), lo dice la raid; en los demás, la
+-- lista que publica (u<id>, Packs/Events.lua) [+ARCHITECTURE.md]
+local function Reserve(e, n)
+    if not (Band(e) and e.reserve and e.reserve[n]) then return false end
+    if e.test or e.who == Me() then return not InAnyRaid(e, n) end
+    return not (e.up and e.up[n:lower()])
+end
+-- (quiénes van y cuántos, sin la reserva; una banda está completa con tantos como su tamaño)
+local function Going(e)
     local out = {}
-    for n, v in pairs(e.signups) do if v == "yes" and not InAnyRaid(e, n) then out[#out + 1] = n end end
+    for n, v in pairs(e.signups) do if v == "yes" and not Reserve(e, n) then out[#out + 1] = n end end
+    return out
+end
+local function Count(e) return #Going(e) end
+local function Full(e) return Band(e) and Count(e) >= (e.size or 40) end
+-- (lo que va tras cuántos van: « van» o, en una banda, de cuántos: «/40 van» o, llena, «/40 · Completo». Jorge, 25/11:
+-- «cuando esté completo que ponga "completo"»)
+local function Tail(e)
+    if not Band(e) then return " " .. L("van") end
+    return "/" .. (e.size or 40) .. (Full(e) and (" · " .. L("Completo")) or (" " .. L("van")))
+end
+-- (los que van sin raid; con reserves, los de la reserva sin raid)
+local function Unassigned(e, reserves)
+    local out = {}
+    for n, v in pairs(e.signups) do
+        if v == "yes" and not InAnyRaid(e, n) and Reserve(e, n) == (reserves == true) then out[#out + 1] = n end
+    end
     table.sort(out)
     return out
+end
+-- (el banquillo que se ve: los que van sin raid y, al final, la reserva; con un rol elegido arriba, solo los de ese rol.
+-- Da eso, los que van sin raid (todos), cuántos de lo que se ve son de la reserva y cuántos hay en ella)
+local function BenchShown(e)
+    local shown, free, res, nres = {}, Unassigned(e), Unassigned(e, true), 0
+    for _, n in ipairs(free) do if not benchRole or RoleOf(e, n) == benchRole then shown[#shown + 1] = n end end
+    for _, n in ipairs(res) do
+        if not benchRole or RoleOf(e, n) == benchRole then shown[#shown + 1] = n; nres = nres + 1 end
+    end
+    return shown, free, nres, #res
+end
+-- (lo que se ve en la ficha, en orden: el banquillo de arriba abajo y luego la raid, grupo a grupo. Mayús elige un tramo)
+local function PickOrder(shown, r)
+    local out = {}
+    for _, n in ipairs(shown) do out[#out + 1] = n end
+    for _, n in ipairs(Members(r)) do out[#out + 1] = n end
+    return out
+end
+-- A quién invita el botón de la raid: los elegidos con Ctrl / Mayús; sin elegidos, los de la raid, o solo los del rol del
+-- filtro del banquillo (Jorge, 25/11: «invitará solo a los tankes o healers o lo que tengas filtrado») [+ARCHITECTURE.md]
+local function InviteTargets(e, r)
+    local out = {}
+    for _, n in ipairs(PickOrder((BenchShown(e)), r)) do if picks[n] then out[#out + 1] = n end end
+    if #out > 0 then return out, "picked" end
+    for _, n in ipairs(Members(r)) do if not benchRole or RoleOf(e, n) == benchRole then out[#out + 1] = n end end
+    return out, benchRole
 end
 local function TakeOut(r, name)
     local g, i = FindPos(r, name)
@@ -247,10 +326,10 @@ local function Place(e, r, name, tg, ti)
     table.insert(r.groups[tg], name)
 end
 local function AddToRaid(e, r, name)
-    for g = 1, GROUPS do
+    for g = 1, GroupsOf(e) do
         if #r.groups[g] < PER_GROUP then Place(e, r, name, g, #r.groups[g] + 1); return end
     end
-    HU:Print(L("La raid está llena (40)."))
+    HU:Print(string.format(L("La raid está llena (%d)."), GroupsOf(e) * PER_GROUP))
 end
 -- (el líder, el primero del grupo 1: si no cabe, el último del grupo 1 baja a otro grupo)
 local function SetLeader(e, r, name)
@@ -272,7 +351,7 @@ local function BestRaid(e, name)
     local role, best, bestKey = RoleOf(e, name), nil, nil
     for _, r in ipairs(e.raids or {}) do
         local m = Members(r)
-        if #m < GROUPS * PER_GROUP then
+        if #m < GroupsOf(e) * PER_GROUP then
             local same = 0
             for _, n in ipairs(m) do if RoleOf(e, n) == role then same = same + 1 end end
             local key = same * 100 + #m
@@ -290,7 +369,7 @@ end
 -- (la primera raid con sitio, en su orden)
 local function FirstRaid(e)
     for _, r in ipairs(e.raids or {}) do
-        if #Members(r) < GROUPS * PER_GROUP then return r end
+        if #Members(r) < GroupsOf(e) * PER_GROUP then return r end
     end
 end
 -- «Colocar en raids»: los del banquillo, primero tanques, luego sanadores y luego daño, llenando las raids en orden: la 1
@@ -321,6 +400,76 @@ local function NewRaid(e, leader)
     table.insert(e.raids, r)
     if leader then SetLeader(e, r, leader) end
     return r
+end
+
+---------------------------------------------------------------------------
+-- Lo que se ve: lo de la red (HU:PackedEvents) y los de prueba. Se rehace al llegar algo o al abrir [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (¿tengo enteros los paquetes de las otras hermandades? Un trozo que se está pidiendo no quiere decir que se hayan ido)
+local function Whole()
+    for _, tag in ipairs(HU:OtherTags()) do
+        local got, total = HU:PackProgress(tag, "EV")
+        if got and got < total then return false end
+    end
+    return true
+end
+-- (quien ya no va sale de las raids de ese evento)
+local function Prune(e)
+    for _, r in ipairs(e.raids) do
+        for _, n in ipairs(Members(r)) do if e.signups[n] ~= "yes" then TakeOut(r, n) end end
+    end
+end
+-- (mi banda de verdad: quién de la reserva está en su raid, a la red (u<id>), para que en los demás PC se vea subido)
+local function SyncUp(e)
+    if e.test or e.who ~= Me() or not Band(e) then return end
+    local want, have = {}, e.promoted or {}
+    for n in pairs(e.reserve) do if e.signups[n] == "yes" and InAnyRaid(e, n) then want[#want + 1] = n end end
+    table.sort(want, function(a, b) return a:lower() < b:lower() end)
+    local same = #want == #have
+    for i = 1, #want do if same and want[i]:lower() ~= have[i]:lower() then same = false end end
+    -- (lo mandado ya es lo que hay, aunque Rebuild aún no lo haya leído: si se cambia otra vez enseguida, se compara con esto)
+    if not same and HU:ProposeEventPromoted(e.id, want) then e.promoted = want end
+end
+local function Rebuild()
+    dirty = false
+    local list, byId = {}, {}
+    local evs, signs = HU:PackedEvents()
+    -- (si dos creadores usan la misma clave, vale el primero que la propuso)
+    table.sort(evs, function(a, b)
+        if a.pt ~= b.pt then return a.pt < b.pt end
+        if a.who ~= b.who then return a.who < b.who end
+        return a.id < b.id
+    end)
+    -- (una banda por invitación, solo si me invita; quien se apunta sin estar invitado, no cuenta)
+    local saved, me = HU.db.calRaids, Me()
+    for _, e in ipairs(evs) do
+        if not byId[e.id] then byId[e.id] = e; if Invited(e, me) then list[#list + 1] = e end end
+    end
+    -- (las raids, con su tabla guardada: lo que se mueve se guarda solo. Las de los míos, guardadas desde el principio)
+    for _, e in ipairs(list) do
+        e.signups, e.roles, e.reserve, e.up = {}, {}, {}, {}
+        for _, n in ipairs(e.promoted) do e.up[n:lower()] = true end
+        local raids = saved[e.id]
+        if not raids and e.who == me then raids = {}; saved[e.id] = raids end
+        if raids then raids.t = e.t end
+        e.raids = raids or {}
+    end
+    for _, s in ipairs(signs) do
+        local e = byId[s.id]
+        if e and e.signups and Invited(e, s.who) then e.signups[s.who], e.roles[s.who], e.reserve[s.who] = "yes", s.role, s.reserve end
+    end
+    -- (una banda mía es una sola raid: si aún no la tiene, se crea, y la lleva quien la creó si va)
+    for _, e in ipairs(list) do
+        if Band(e) and e.who == me and #e.raids == 0 then NewRaid(e, e.signups[me] == "yes" and me or nil) end
+    end
+    -- (quien ya no va sale de mis raids; y quién de la reserva está en ellas, a la red)
+    if Whole() then for _, e in ipairs(list) do Prune(e); SyncUp(e) end end
+    for _, e in ipairs(testEvents) do list[#list + 1] = e end
+    -- (en una banda que ha bajado de tamaño, quien se queda en un grupo de más vuelve al banquillo)
+    for _, e in ipairs(list) do
+        for _, r in ipairs(Band(e) and e.raids or {}) do for g = GroupsOf(e) + 1, GROUPS do wipe(r.groups[g]) end end
+    end
+    events = list
 end
 
 ---------------------------------------------------------------------------
@@ -361,18 +510,130 @@ HU:On("CHAT_MSG_SYSTEM", function(msg)
         end
     end
 end)
+
+---------------------------------------------------------------------------
+-- La banda de verdad, montada como la raid de la que invité: quien entra va a su grupo de la pestaña (Jorge, 25/11:
+-- «lo va cambiando en el juego para que quede montado igual según vayan entrando»). Solo líder o ayudante, fuera de
+-- combate, una pasada por cambio de banda y sin pelearse con nadie [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+local PLAN_TTL, ARRANGE_GAP, ARRANGE_MAX = 4 * 3600, 1, 4
+-- (plan: { id, name, who, untilT, placed = { [nombre] = grupo } }, la raid de la que invité; en un evento de verdad va
+-- guardado con sus raids, calRaids[id].plan, y sigue tras /reload. soon: hay una pasada en camino; later: espera a
+-- salir de combate; off: el juego no deja que el addon mueva a la gente, y no se intenta más hasta /reload)
+local arrange = {}
+-- (mover de grupo; el bloqueo del juego se espera, como en Channel.lua: no se guarda como error)
+local function Move(fn, x, y)
+    HU.expectBlock = "raid"
+    pcall(fn, x, y)
+    HU.expectBlock = nil
+end
+for _, ev in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
+    HU:On(ev, function() if HU.expectBlock == "raid" then arrange.off = true end end)
+end
+local function PlanRaid()
+    local p = arrange.plan
+    if not p then return nil end
+    if time() >= p.untilT then arrange.plan = nil; return nil end
+    local e = Find(p.id)
+    for _, r in ipairs((e and e.raids) or HU.db.calRaids[p.id] or {}) do if r.name == p.name then return r end end
+end
+-- (lleva a m a su grupo del plan: si cabe, allí (SetRaidSubgroup); si está lleno, se cambia (SwapRaidSubgroup) con
+-- alguien del plan que tampoco va ahí y no se ha colocado, mejor si va justo al grupo de m. 1 si lo ha movido)
+local function Bring(m, list, count, placed)
+    if count[m.w] < PER_GROUP then
+        Move(SetRaidSubgroup, m.i, m.w)
+        count[m.g] = count[m.g] - 1
+        count[m.w] = count[m.w] + 1
+        m.g = m.w
+        return 1
+    end
+    local o
+    for _, x in ipairs(list) do
+        if x.g == m.w and x.w ~= m.w and placed[x.k] ~= x.w and (not o or x.w == m.g) then o = x end
+    end
+    if not o then return 0 end
+    Move(SwapRaidSubgroup, m.i, o.i)
+    o.g, m.g = m.g, m.w
+    return 1
+end
+-- Una pasada: quien está en el plan y no en su grupo va a él (Bring). A quien no está en el plan no se le toca, y quien
+-- ya estuvo en su sitio y alguien movió luego se queda donde lo pusieron [+ARCHITECTURE.md]
+local function Arrange()
+    local r = PlanRaid()
+    if not (r and IsInRaid() and (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player"))) then return end
+    if InCombatLockdown() then arrange.later = true; return end
+    local info = GetRaidRosterInfo
+    if not (info and SetRaidSubgroup and SwapRaidSubgroup) then return end
+    -- (el plan, por nombre; a quien el juego da sin apellido, por su nombre si en el plan no se repite)
+    local want, first = {}, {}
+    for g = 1, GROUPS do
+        for _, n in ipairs(r.groups[g]) do
+            local k = n:lower()
+            local f = k:match("^[^%-]+")
+            want[k], first[f] = g, first[f] == nil and k or false
+        end
+    end
+    local placed, list, count, here = arrange.plan.placed, {}, {}, {}
+    for g = 1, GROUPS do count[g] = 0 end
+    for i = 1, GetNumGroupMembers() do
+        local name, _, g = info(i)
+        if count[g] then
+            count[g] = count[g] + 1
+            local k = type(name) == "string" and not HU.Secret(name) and name:lower()
+            if k and not k:find("-", 1, true) then k = first[k] or k end
+            if k then here[k] = true end
+            if k and want[k] then
+                if want[k] == g then placed[k] = g end
+                list[#list + 1] = { i = i, k = k, g = g, w = want[k] }
+            end
+        end
+    end
+    -- (quien ha salido de la banda, al volver se coloca otra vez)
+    for k in pairs(placed) do if not here[k] then placed[k] = nil end end
+    -- (como mucho ARRANGE_MAX por pasada; ya en su sitio o colocado antes, no se mueve)
+    local moves = 0
+    for _, m in ipairs(list) do
+        if moves < ARRANGE_MAX and not arrange.off and m.g ~= m.w and placed[m.k] ~= m.w then moves = moves + Bring(m, list, count, placed) end
+    end
+    -- (bloqueado: un aviso, una vez; luego ya no se pide ninguna pasada)
+    if arrange.off then HU:Print(L("El juego no deja que el addon cambie a la gente de grupo en la banda: colócala a mano.")) end
+end
+-- (lo que llega seguido, una pasada: la primera señal la pide para dentro de ARRANGE_GAP s y las demás esperan a esa)
+local function ArrangeSoon()
+    if arrange.soon or arrange.off or not arrange.plan then return end
+    arrange.soon = true
+    HU.After(ARRANGE_GAP, function() arrange.soon = nil; Arrange() end)
+end
+-- (la raid de la que invito pasa a ser el plan durante PLAN_TTL; si ya lo era, solo se alarga)
+local function SetPlan(e, r)
+    local me, p = Me(), arrange.plan
+    if not (p and p.id == e.id and p.name == r.name) then
+        p = { id = e.id, name = r.name, who = me, placed = {} }
+        for _, raids in pairs(HU.db.calRaids) do
+            if type(raids) == "table" and type(raids.plan) == "table" and raids.plan.who == me then raids.plan = nil end
+        end
+        if not e.test and HU.db.calRaids[e.id] then HU.db.calRaids[e.id].plan = p end
+        arrange.plan = p
+    end
+    p.untilT = time() + PLAN_TTL
+    ArrangeSoon()
+end
+HU:On("PLAYER_REGEN_ENABLED", function() if arrange.later then arrange.later = nil; ArrangeSoon() end end)
+
 HU:On("GROUP_ROSTER_UPDATE", function()
     for n, st in pairs(invites) do if st.s ~= "ok" and InGroup(n) then Mark(n, "ok") end end
     if ui and ui:IsShown() and selected then Paint() end
+    ArrangeSoon()
 end)
 
-local function InviteRaid(r)
+-- (invita a `names`, los de la raid r que dice el botón, y r pasa a ser el plan de la banda)
+local function InviteRaid(e, r, names)
     local inv = C_PartyInfo and C_PartyInfo.InviteUnit
     if not inv then return end
     if IsInGroup() and not IsInRaid() and C_PartyInfo.ConvertToRaid then pcall(C_PartyInfo.ConvertToRaid) end
     local n, left = 0, 0
     local room = IsInRaid() and 40 or 4
-    for _, name in ipairs(Members(r)) do
+    for _, name in ipairs(names) do
         if name ~= Me() then
             if InGroup(name) then
                 invites[name] = { s = "ok", t = time() }
@@ -391,6 +652,7 @@ local function InviteRaid(r)
             if st.s == "wait" and time() - st.t >= 85 and not InGroup(name) then Mark(name, "no") end
         end
     end)
+    SetPlan(e, r)
     if left > 0 then
         HU:Print(string.format(L("Invitados %d. Cuando acepten, pulsa otra vez para invitar a los %d que faltan."), n, left))
     else
@@ -404,18 +666,33 @@ local function Status(name)
     return st.s == "ok" and ST_OK or st.s == "no" and ST_NO or ST_WAIT
 end
 
--- Apuntarse (con un rol) o desapuntarse; al apuntarse se entra en una raid con sitio
-local function SetSignup(e, name, role)
-    e.roles = e.roles or {}
+-- Apuntarse (con un rol; de reserva, si reserve) o desapuntarse; al apuntarse se entra en una raid con sitio, salvo de
+-- reserva: de ahí solo sube quien organiza. Yo, en uno de verdad: primero a la red (s<id>) y luego lo de mis raids
+local function SetSignup(e, name, role, reserve)
+    if not e.test and name == Me() then
+        if not HU:ProposeSignup(e.id, role, reserve) then return end
+        Rebuild()
+        e = Find(e.id) or e
+    end
+    e.roles, e.reserve = e.roles or {}, e.reserve or {}
     if role then
-        e.signups[name], e.roles[name] = "yes", role
-        AutoPlace(e, name)
+        e.signups[name], e.roles[name], e.reserve[name] = "yes", role, reserve or nil
+        if not reserve then AutoPlace(e, name) end
     else
-        e.signups[name], e.roles[name] = nil, nil
+        e.signups[name], e.roles[name], e.reserve[name] = nil, nil, nil
         for _, r in ipairs(e.raids or {}) do TakeOut(r, name) end
     end
 end
--- (el botón: si ya voy, me quita; si no, pregunta el rol)
+-- (lo que dice el botón: «Apuntarme» o, con la banda completa, «Ir de reserva»; apuntado, con el tic, «Apuntado» o, de la
+-- reserva, «Reserva»)
+local function JoinLabel(e)
+    local me = Me()
+    if e.signups[me] ~= "yes" then return Full(e) and L("Ir de reserva") or L("Apuntarme") end
+    return "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " .. (Reserve(e, me) and ("|cffffb040" .. L("Reserva"))
+        or ("|cff40ff40" .. L("Apuntado"))) .. "|r"
+end
+-- (el botón: si ya voy, me quita; si no, pregunta el rol. Con la banda completa, se va de reserva: Jorge, 25/11, «que aun
+-- así la gente pueda apuntarse como reserva»)
 local function SignUp(e, owner)
     if e.signups[Me()] == "yes" then
         ui.confirm(L("¿Seguro que quieres salir del evento?"), function() SetSignup(e, Me(), nil); Paint() end)
@@ -425,7 +702,8 @@ local function SignUp(e, owner)
     if e.minLevel and type(myLv) == "number" and myLv < e.minLevel then
         return HU:Print(string.format(L("Este evento pide nivel %d o más."), e.minLevel))
     end
-    if not (MenuUtil and MenuUtil.CreateContextMenu) then SetSignup(e, Me(), lastRole or "DAMAGER"); Paint(); return end
+    local reserve = Full(e)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then SetSignup(e, Me(), lastRole or "DAMAGER", reserve); Paint(); return end
     MenuUtil.CreateContextMenu(owner, function(_, root)
         root:CreateTitle(L("¿Con qué rol vas?"))
         local _, myClass = UnitClass("player")
@@ -433,7 +711,7 @@ local function SignUp(e, owner)
             if CanRole(myClass, role) then
                 root:CreateButton(RoleIcon(role, 16) .. "  " .. L(ROLE_NAME[role]), function()
                     lastRole = role
-                    SetSignup(e, Me(), role)
+                    SetSignup(e, Me(), role, reserve)
                     Paint()
                 end)
             end
@@ -447,11 +725,58 @@ local function ScrollTop(sf)
     local bar = sf.ScrollBar or _G[sf:GetName() .. "ScrollBar"]
     if bar then bar:SetValue(0) end
 end
+-- (la raid que se ve en la ficha; lo elegido con Ctrl / Mayús se vacía)
+local function PickRaid(i) raidPick, picks, lastPick = i, {}, nil end
 local function OpenDetail(id)
     local other = selected ~= id
     selected = id
-    if other then raidPick, benchRole = 1, nil; ScrollTop(ui.detail.benchScroll) end
+    if other then PickRaid(1); benchRole = nil; ScrollTop(ui.detail.benchScroll) end
     Paint()
+end
+
+---------------------------------------------------------------------------
+-- Clic derecho en un evento mío, en su tarjeta o en su fila del día: editarlo o eliminarlo. En los de otros, nada [+ARCHITECTURE.md]
+---------------------------------------------------------------------------
+-- (eliminar: uno de verdad, su línea vacía a la red (Packs/Events.lua); uno de prueba, solo aquí. Fuera sus raids y su ficha)
+local function DeleteEvent(id)
+    local e = Find(id)
+    if not (e and e.who == Me()) then return end
+    if e.test then
+        for k = #testEvents, 1, -1 do if testEvents[k].id == id then table.remove(testEvents, k) end end
+    elseif not HU:ProposeEventDelete(id) then
+        return HU:Print(L("No se ha podido eliminar el evento."))
+    elseif e.pinned then
+        -- (fuera también su fijado, para que no quede en la red)
+        HU:ProposeEventPin(id, false)
+    end
+    HU.db.calRaids[id] = nil
+    if selected == id then selected = nil end
+    Rebuild()
+    Paint()
+end
+-- (clic derecho en un evento mío: fijarlo arriba de Eventos para todos (o quitarlo), editarlo o eliminarlo. Uno de
+-- prueba se fija solo aquí)
+local function EventMenu(owner, id)
+    local e = id and Find(id)
+    if not (e and e.who == Me() and MenuUtil and MenuUtil.CreateContextMenu) then return end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        root:CreateTitle(e.title)
+        root:CreateButton(e.pinned and L("Quitar de arriba") or L("Fijar arriba para todos"), function()
+            local x = Find(id)
+            if not x then return end
+            if x.test then
+                x.pinned = (not x.pinned) or nil
+                Paint()
+            elseif not HU:ProposeEventPin(id, not x.pinned) then
+                HU:Print(L("No se ha podido guardar el evento."))
+            end
+        end)
+        root:CreateButton(L("Editar evento"), function() local x = Find(id); if x then ui.newDlg.Open(nil, x) end end)
+        root:CreateButton(L("Eliminar"), function()
+            ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
+        end)
+        root:CreateButton(L("Cancelar"), function() end)
+    end)
 end
 
 ---------------------------------------------------------------------------
@@ -464,10 +789,10 @@ local function PaintDetail()
     e.raids = e.raids or {}
     d.titleText:SetText(e.title)
     d.icon:SetTexture(EventIcon(e))
-    d.sub:SetText(KindText(e.kind) .. "   |cffe6e6ea" .. LongDay(e.t) .. ", " .. date("%H:%M", e.t) .. "|r   |cffa0a4ad"
-        .. L("por") .. "|r " .. WhoText(e) .. "   |cff40ff40" .. Count(e) .. "|r |cffe6e6ea" .. L("van") .. "|r"
+    d.sub:SetText(KindText(e) .. "   |cffe6e6ea" .. LongDay(e.t) .. ", " .. date("%H:%M", e.t) .. "|r   |cffa0a4ad"
+        .. L("por") .. "|r " .. WhoText(e) .. "   |cff40ff40" .. Count(e) .. "|r|cffe6e6ea" .. Tail(e) .. "|r"
         .. (e.minLevel and ("   |cffa0a4ad" .. string.format(L("Nv. %d+"), e.minLevel) .. "|r") or ""))
-    d.roles:SetText(RoleCounts(e, (function() local t = {} for n, v in pairs(e.signups) do if v == "yes" then t[#t + 1] = n end end return t end)()))
+    d.roles:SetText(RoleCounts(e, Going(e)))
     -- (la descripción, debajo de esa línea: lo que ocupa baja la raya y todo lo de debajo; sin descripción, nada)
     local desc = e.desc or ""
     d.desc:SetText(desc)
@@ -478,15 +803,15 @@ local function PaintDetail()
     local classes = ClassMap()
     local manage = CanManage(e)
     local mine = e.signups[Me()] == "yes"
-    d.join:Label(mine and ("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff40" .. L("Apuntado") .. "|r") or L("Apuntarme"))
+    d.join:Label(JoinLabel(e))
     d.join:Pick(mine)
 
     if raidPick > #e.raids then raidPick = #e.raids end
     if raidPick < 1 and #e.raids > 0 then raidPick = 1 end
     -- (pestañas de raid en filas de 7, bajo la descripción; «+ Añadir» va en el hueco siguiente. Con cada fila de más,
     -- la ventana crece 28 y todo lo de debajo baja 28, y lo mismo con lo que ocupa la descripción: así no se sale
-    -- ni se monta)
-    local canAdd = manage and #e.raids < MAX_RAIDS
+    -- ni se monta. Una banda es una sola raid: sin «+ Añadir»)
+    local canAdd = manage and not Band(e) and #e.raids < MAX_RAIDS
     local used = #e.raids + (canAdd and 1 or 0)
     local shift = d.descH + (math.max(1, math.ceil(used / RAID_ROW)) - 1) * TAB_ROW_H
     d:SetHeight(DETAIL_H + shift)
@@ -509,44 +834,63 @@ local function PaintDetail()
     d.addRaid:SetShown(canAdd)
     local cur = e.raids[raidPick]
     d.noRaid:SetShown(cur == nil)
+    d.noRaid:SetText(Band(e) and L("La raid la monta quien la organiza.") or L("Todavía no hay raids. Quien organiza las crea con «+ Añadir raid»."))
     d.groupsF:SetShown(cur ~= nil)
     d.leaderBar:SetShown(cur ~= nil)
-    -- (Invitar a todos: solo el líder de esa raid; Quitar raid: quien creó el evento o el líder de esa raid)
+    -- (Invitar a todos: solo el líder de esa raid; Quitar raid: quien creó el evento o el líder de esa raid. En una banda,
+    -- quitar la raid es eliminarla entera: solo quien la creó)
     d.invite:SetShown(cur ~= nil and cur.leader == Me())
-    d.delRaid:SetShown(cur ~= nil and (e.who == Me() or cur.leader == Me()))
+    if Band(e) then d.delRaid:SetShown(e.who == Me()) else d.delRaid:SetShown(cur ~= nil and (e.who == Me() or cur.leader == Me())) end
     -- (convertir mi grupo en banda: solo el líder de esta raid, si está en grupo, no en banda, y lo lleva él)
     local amLeader = cur ~= nil and cur.leader == Me()
     local inRaid, inGroup = IsInRaid(), IsInGroup()
     d.convert:SetShown(amLeader)
     d.convert:SetEnabled(inGroup and not inRaid and UnitIsGroupLeader("player") and true or false)
+    -- (con un rol elegido arriba del banquillo, solo los de ese rol; en la cabecera, cuántos de cuántos)
+    local shown, free, nres, allRes = BenchShown(e)
+    -- (lo elegido con Ctrl / Mayús, solo de lo que se ve; quien no lleva esta raid no invita, y no elige)
+    if amLeader then
+        local seen = {}
+        for _, n in ipairs(PickOrder(shown, cur)) do seen[n] = true end
+        for n in pairs(picks) do if not seen[n] then picks[n] = nil end end
+    else
+        wipe(picks); lastPick = nil
+    end
     if cur then
-        d.invite:Label(string.format(L("Invitar a todos (%d)"), #Members(cur)))
+        local names, how = InviteTargets(e, cur)
+        d.invite:Label(string.format((how == "picked" and L("Invitar seleccionados (%d)")) or (how == "TANK" and L("Invitar tanques (%d)"))
+            or (how == "HEALER" and L("Invitar sanadores (%d)")) or (how == "DAMAGER" and L("Invitar daño (%d)"))
+            or L("Invitar a todos (%d)"), #names))
         d.leaderBar.roles:SetText(RoleCounts(e, Members(cur)))
         d.leaderBar.text:SetText(L("Líder de la raid") .. ":  " .. (cur.leader and (CROWN .. ColorName(cur.leader, classes, RoleOf(e, cur.leader)) .. " " .. Status(cur.leader))
             or ("|cffa0a4ad" .. L("nadie (clic derecho en alguien: «Hacer líder»)") .. "|r")))
     end
-    local free = Unassigned(e)
     local levels = LevelMap()
-    -- (con un rol elegido arriba del banquillo, solo los de ese rol; en la cabecera, cuántos de cuántos)
-    local shown = free
-    if benchRole then
-        shown = {}
-        for _, n in ipairs(free) do if RoleOf(e, n) == benchRole then shown[#shown + 1] = n end end
-    end
     for _, b in ipairs(d.roleBtns) do b:Pick(b.role == benchRole) end
-    d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. (benchRole and (#shown .. "/") or "") .. #free .. ")|r")
-    -- (con más de los que caben, la barra: las filas se estrechan para dejarle sitio)
-    FauxScrollFrame_Update(d.benchScroll, #shown, BENCH_N, 18)
+    d.benchHead:SetText(L("Sin raid") .. "  |cffa0a4ad(" .. (benchRole and ((#shown - nres) .. "/") or "") .. #free .. ")|r")
+    -- (las filas: los que van sin raid y, si hay reserva, su cabecera y ella, aparte (Jorge, 25/11: «la reserva aparte en
+    -- el banquillo»); con más de los que caben, la barra: las filas se estrechan para dejarle sitio)
+    local rows = {}
+    for i, n in ipairs(shown) do
+        if i == #shown - nres + 1 then rows[#rows + 1] = false end
+        rows[#rows + 1] = n
+    end
+    if allRes > 0 and nres == 0 then rows[#rows + 1] = false end
+    FauxScrollFrame_Update(d.benchScroll, #rows, BENCH_N, 18)
     local off = FauxScrollFrame_GetOffset(d.benchScroll)
-    local w = #shown > BENCH_N and 122 or 142
+    local w = #rows > BENCH_N and 122 or 142
     for i, b in ipairs(d.bench) do
-        local n = shown[off + i]
-        b.name = n
+        local n = rows[off + i]
+        b.name = n or nil
         b:SetWidth(w)
-        b.fill:SetAlpha(1)
+        b.fill:SetAlpha(n == false and 0 or 1)
+        b.pick:SetShown(n and picks[n] == true or false)
         if n then
             local lv = levels[(HU:FullName(n) or n):lower()] or levels[n:lower()]
             b.text:SetText((lv and ("|cffa0a4ad" .. lv .. "|r ") or "") .. ColorName(n, classes, RoleOf(e, n)))
+            b:Show()
+        elseif n == false then
+            b.text:SetText("|cffffb040" .. L("Reserva") .. "|r  |cffa0a4ad(" .. (benchRole and (nres .. "/") or "") .. allRes .. ")|r")
             b:Show()
         else
             b:Hide()
@@ -554,13 +898,18 @@ local function PaintDetail()
     end
     d.place:SetShown(manage and #free > 0 and #e.raids > 0)
     d.place:Label(string.format(L("Colocar en raids (%d)"), #free))
+    -- (en una banda, solo sus grupos (2, 4 u 8), y el botón de invitar, justo debajo de ellos)
+    local ng = GroupsOf(e)
+    d.invite:SetPoint("TOPLEFT", d.groups[ng > 4 and 5 or 1], "BOTTOMLEFT", 0, -10)
     for gi, grp in ipairs(d.groups) do
+        grp:SetShown(gi <= ng)
         local list = cur and cur.groups[gi] or {}
         grp.label:SetText(string.format(L("Grupo %d"), gi) .. "  |cffa0a4ad" .. #list .. "/" .. PER_GROUP .. "|r")
         for si, slot in ipairs(grp.slots) do
             local n = list[si]
             slot.name = n
             slot.fill:SetShown(n ~= nil); slot.fill:SetAlpha(1)
+            slot.pick:SetShown(n ~= nil and picks[n] == true)
             if n then
                 slot.text:SetText((cur.leader == n and CROWN or "") .. ColorName(n, classes, RoleOf(e, n)))
                 slot.status:SetText(Status(n))
@@ -578,6 +927,9 @@ local function PaintDetail()
         d.hint:SetText(manage and L("Arrastra los nombres a otro grupo, a otra raid (su pestaña) o al banquillo. Clic derecho: más opciones.") or "")
     end
     d:Show()
+    -- (lo que se cambia aquí, con la banda montándose, también se lleva a la banda; y quién de la reserva ha subido, a la red)
+    ArrangeSoon()
+    if Whole() then SyncUp(e) end
 end
 
 -- Clic derecho en un nombre: hacer líder, pasar a otra raid, sacar (al líder, nada de eso: no se mueve), susurrar
@@ -617,6 +969,30 @@ local function NameMenu(owner, name)
     end)
 end
 
+-- Clic izquierdo en un nombre, quien lleva la raid: con Ctrl suma o quita a esa persona de lo elegido; con Mayús, el
+-- tramo desde el último elegido (como «Mis encargos» de Comercio); solo, vacía lo elegido (sin elegidos, nada: lo de
+-- siempre). Con elegidos, el botón de la raid invita solo a esos [+ARCHITECTURE.md]
+local function PickName(name)
+    local e = selected and Find(selected)
+    local cur = e and e.raids[raidPick]
+    if not (cur and cur.leader == Me()) then return end
+    if IsControlKeyDown() then
+        picks[name] = (not picks[name]) or nil
+        lastPick = name
+    elseif IsShiftKeyDown() then
+        local order, a, b = PickOrder((BenchShown(e)), cur), nil, nil
+        for k, n in ipairs(order) do
+            if n == lastPick then a = k end
+            if n == name then b = k end
+        end
+        if b then for k = math.min(a or b, b), math.max(a or b, b) do picks[order[k]] = true end end
+        lastPick = name
+    else
+        picks, lastPick = {}, nil
+    end
+    PaintDetail()
+end
+
 -- «+ Añadir raid»: primero, quién la lleva (los que van), en la ventanita con buscador
 local function AskLeader(owner)
     local e = selected and Find(selected)
@@ -637,7 +1013,7 @@ local function AskLeader(owner)
     end
     ui.detail.picker.Open(owner, L("¿Quién lleva la nueva raid?"), entries, function(n)
         NewRaid(e, n)
-        raidPick = #e.raids
+        PickRaid(#e.raids)
         Paint()
     end)
 end
@@ -645,8 +1021,10 @@ end
 local function BuildDetail(host)
     local d = DJWindow("GuildUnionCalendarDetail", host, 740, DETAIL_H, function() selected = nil; Paint() end)
     local cf = d.content
-    -- (arriba a la izquierda, la imagen del evento, redonda)
+    -- (arriba a la izquierda, la imagen del evento, redonda; en la subcapa 1, por encima de la franja del título, que la
+    -- tapa entera: en la misma subcapa el juego no fija cuál va encima y a veces desaparecía. Jorge, 25/11) [+ARCHITECTURE.md]
     d.icon = RoundIcon(d, 30)
+    d.icon:SetDrawLayer("ARTWORK", 1)
     d.icon:SetPoint("TOPLEFT", d, "TOPLEFT", 22, -12)
     d.sub = cf:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     d.sub:SetPoint("TOPLEFT", 12, -10); d.sub:SetPoint("RIGHT", cf, "RIGHT", -12, 0)
@@ -661,7 +1039,7 @@ local function BuildDetail(host)
     d.descH = 0
     d.rule = Line(cf, 0.45); d.rule:SetPoint("TOPLEFT", 10, -28); d.rule:SetPoint("TOPRIGHT", -10, -28)
     -- (las raids: una pestaña por raid y «+ Añadir raid». Botones rojos del juego con su letra de siempre, que se lea
-    -- «Raid 20 (40)» (Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…»); la elegida, negra (DJ.PickRed). 7 por fila
+    -- «Raid 20 (40)» (Jorge, 24/11: «mejorar los botones de Raid 1, Raid 2…»); la elegida, gris (DJ.PickRed). 7 por fila
     -- de 92 + 4: 668 de ancho, cabe en los 704 del panel)
     d.raidTabs = {}
     function d.TabPoint(b, i)
@@ -673,12 +1051,13 @@ local function BuildDetail(host)
         local b = DJButton(cf, "", TAB_W, TAB_H)
         d.TabPoint(b, i)
         b.idx = i
-        b:SetScript("OnClick", function() raidPick = i; Paint() end)
+        b:SetScript("OnClick", function() PickRaid(i); Paint() end)
         b:Hide()
         d.raidTabs[i] = b
     end
+    -- (abre «¿Quién lleva la nueva raid?»; abierta, otro clic la cierra. Jorge, 25/11)
     d.addRaid = DJButton(cf, "+ " .. L("Añadir"), TAB_W, TAB_H)
-    d.addRaid:SetScript("OnClick", function(s) AskLeader(s) end)
+    d.addRaid:SetScript("OnClick", function(s) if d.picker:IsShown() then d.picker:Hide() else AskLeader(s) end end)
     -- (el líder, siempre arriba de los grupos: franja de cabecera)
     local lb = CreateFrame("Frame", nil, cf, "BackdropTemplate")
     lb:SetPoint("TOPLEFT", 176, -64); lb:SetPoint("RIGHT", cf, "RIGHT", -12, 0); lb:SetHeight(28)
@@ -692,7 +1071,6 @@ local function BuildDetail(host)
     d.leaderBar = lb
     d.noRaid = C(cf:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), T.muted)
     d.noRaid:SetPoint("TOPLEFT", 186, -110)
-    d.noRaid:SetText(L("Todavía no hay raids. Quien organiza las crea con «+ Añadir raid»."))
 
     -- (arrastrar: un rótulo sigue al ratón y, al soltar, va al hueco, al grupo, a la pestaña de otra raid, a la barra
     -- del líder o al banquillo de debajo. Al líder no se le arrastra: se cambia con «Hacer líder de la raid»)
@@ -715,7 +1093,7 @@ local function BuildDetail(host)
         end
         dragName = btn.name
         ghost.text:SetText(btn.text:GetText()); ghost:Show()
-        btn.text:SetText(""); if btn.fill then btn.fill:SetAlpha(0) end; if btn.status then btn.status:SetText("") end
+        btn.text:SetText(""); btn.fill:SetAlpha(0); btn.pick:Hide(); btn.status:SetText("")
     end
     local function DragStop()
         ghost:Hide()
@@ -732,7 +1110,9 @@ local function BuildDetail(host)
                 Paint(); return
             end
         end
-        for gi, grp in ipairs(d.groups) do
+        -- (en una banda, solo sus grupos: los demás no se ven)
+        for gi = 1, GroupsOf(e) do
+            local grp = d.groups[gi]
             for si, slot in ipairs(grp.slots) do
                 if slot:IsMouseOver() then Place(e, r, name, gi, si); Paint(); return end
             end
@@ -746,14 +1126,21 @@ local function BuildDetail(host)
         b:SetSize(w, 17)
         b.fill = b:CreateTexture(nil, "BACKGROUND")
         b.fill:SetAllPoints(); b.fill:SetColorTexture(T.rowSel[1], T.rowSel[2], T.rowSel[3], 0.55)
+        -- (elegido con Ctrl / Mayús: un fondo azul por encima, como las filas elegidas de Comercio)
+        b.pick = b:CreateTexture(nil, "BORDER")
+        b.pick:SetAllPoints(); b.pick:SetColorTexture(0.25, 0.55, 1, 0.35); b.pick:Hide()
         b:SetHighlightTexture(ROW_HL, "ADD")
         b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         b.text:SetPoint("LEFT", 5, 0); b.text:SetPoint("RIGHT", -18, 0); b.text:SetJustifyH("LEFT"); b.text:SetWordWrap(false)
         b.status = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         b.status:SetPoint("RIGHT", -3, 0)
-        b:RegisterForClicks("RightButtonUp")
+        -- (clic derecho, el menú; el izquierdo, elegir con Ctrl / Mayús; arrastrar con el izquierdo, como siempre)
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         b:RegisterForDrag("LeftButton")
-        b:SetScript("OnClick", function(s) if s.name then NameMenu(s, s.name) end end)
+        b:SetScript("OnClick", function(s, button)
+            if not s.name then return end
+            if button == "LeftButton" then PickName(s.name) else NameMenu(s, s.name) end
+        end)
         b:SetScript("OnDragStart", DragStart)
         b:SetScript("OnDragStop", DragStop)
         return b
@@ -767,17 +1154,22 @@ local function BuildDetail(host)
     d.benchHead = C(bench:CreateFontString(nil, "OVERLAY", "GameFontNormal"), T.title)
     d.benchHead:SetPoint("TOPLEFT", 9, -8)
     local bl = Line(bench, 0.45); bl:SetPoint("TOPLEFT", 6, -24); bl:SetPoint("TOPRIGHT", -6, -24)
-    -- (debajo de la raya, el filtro por rol: Todos, tanque, sanador y daño; el elegido, negro. Jorge, 24/11)
+    -- (debajo de la raya, el filtro por rol: Todos, tanque, sanador y daño; el elegido, gris. Jorge, 24/11. De 22 de alto,
+    -- como los demás botones rojos, y el icono de 14 aparte, centrado: en el texto de uno de 18 se salía del botón. Jorge,
+    -- 25/11: «el icono sobresale del botón») [+ARCHITECTURE.md]
     d.roleBtns = {}
     local x = 7
-    for _, it in ipairs({ { false, L("Todos"), 44 }, { "TANK", RoleIcon("TANK"), 28 }, { "HEALER", RoleIcon("HEALER"), 28 },
-        { "DAMAGER", RoleIcon("DAMAGER"), 28 } }) do
-        local b = DJButton(bench, it[2], it[3], 18)
+    for _, it in ipairs({ { false, 44 }, { "TANK", 28 }, { "HEALER", 28 }, { "DAMAGER", 28 } }) do
+        local b = DJButton(bench, it[1] and "" or L("Todos"), it[2], 22)
         b:SetPoint("TOPLEFT", x, -28)
-        x = x + it[3] + 4
+        x = x + it[2] + 4
         b.role = it[1] or nil
         b:SetScript("OnClick", function(s) benchRole = s.role; ScrollTop(d.benchScroll); PaintDetail() end)
         if b.role then
+            local c = ROLE_TC[b.role]
+            b.icon = b:CreateTexture(nil, "ARTWORK")
+            b.icon:SetSize(14, 14); b.icon:SetPoint("CENTER", 0, 0)
+            b.icon:SetTexture(ROLE_TEX); b.icon:SetTexCoord(c[1] / 64, c[2] / 64, c[3] / 64, c[4] / 64)
             b:SetScript("OnEnter", function(s)
                 GameTooltip:SetOwner(s, "ANCHOR_TOP"); GameTooltip:SetText(L(ROLE_NAME[s.role])); GameTooltip:Show()
             end)
@@ -785,14 +1177,15 @@ local function BuildDetail(host)
         end
         d.roleBtns[#d.roleBtns + 1] = b
     end
+    -- (las filas, 4 por debajo de los botones: las 12 siguen cabiendo encima de «Colocar en raids»)
     local bsf = CreateFrame("ScrollFrame", "GuildUnionCalendarBenchScroll", bench, "FauxScrollFrameTemplate")
-    bsf:SetPoint("TOPLEFT", 7, -50); bsf:SetSize(122, BENCH_N * 18)
+    bsf:SetPoint("TOPLEFT", 7, -54); bsf:SetSize(122, BENCH_N * 18)
     bsf:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, 18, PaintDetail) end)
     d.benchScroll = bsf
     d.bench = {}
     for i = 1, BENCH_N do
         local b = Slot(bench, 142)
-        b:SetPoint("TOPLEFT", 7, -50 - (i - 1) * 18)
+        b:SetPoint("TOPLEFT", 7, -54 - (i - 1) * 18)
         b.fill:SetColorTexture(T.row[1], T.row[2], T.row[3], 0.7)
         b.text:SetPoint("RIGHT", -3, 0) -- (en el banquillo no hay marca de invitación: el nombre, a todo lo ancho)
         d.bench[i] = b
@@ -825,24 +1218,38 @@ local function BuildDetail(host)
     end
     d.hint = C(cf:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), T.muted)
     d.hint:SetPoint("BOTTOMLEFT", 178, 8)
-    -- (debajo de los grupos: Invitar a todos, Quitar raid y Convertir en banda; Apuntarme, abajo a la derecha)
-    d.invite = DJButton(cf, "", 170, 24)
+    -- (debajo de los grupos: Invitar a todos (o a los de un rol, o a los elegidos: 190 de ancho, que quepa «Invitar
+    -- seleccionados (40)») y Convertir en banda; Apuntarme, abajo a la derecha, y Quitar raid, arriba a la derecha)
+    d.invite = DJButton(cf, "", 190, 24)
     d.invite:SetPoint("TOPLEFT", d.groups[5], "BOTTOMLEFT", 0, -10)
     d.invite:SetScript("OnClick", function()
         local e = selected and Find(selected)
         local r = e and e.raids[raidPick]
-        if r then InviteRaid(r) end
+        if r then InviteRaid(e, r, (InviteTargets(e, r))) end
     end)
-    d.delRaid = DJButton(cf, L("Quitar raid"), 110, 24)
-    d.delRaid:SetPoint("LEFT", d.invite, "RIGHT", 6, 0)
+    d.invite:SetScript("OnEnter", function(s)
+        GameTooltip:SetOwner(s, "ANCHOR_TOP")
+        GameTooltip:SetText(L("Ctrl+clic o Mayús+clic en los nombres: invitar solo a esos."), nil, nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    d.invite:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- («Quitar raid», arriba a la derecha, en la franja del título y a la izquierda de la X (Jorge, 25/11: «el delete raid
+    -- ponerlo arriba a la derecha»). En una banda, su raid es la banda: la elimina entera, como «Eliminar») [+ARCHITECTURE.md]
+    d.delRaid = DJButton(d, L("Quitar raid"), 110, 24)
+    d.delRaid:SetPoint("TOPRIGHT", d, "TOPRIGHT", -40, -15)
     d.convert = DJButton(cf, L("Convertir en banda"), 150, 24)
-    d.convert:SetPoint("LEFT", d.delRaid, "RIGHT", 6, 0)
+    d.convert:SetPoint("LEFT", d.invite, "RIGHT", 6, 0)
     d.convert:SetScript("OnClick", function()
         if C_PartyInfo and C_PartyInfo.ConvertToRaid then pcall(C_PartyInfo.ConvertToRaid) end
     end)
     d.delRaid:SetScript("OnClick", function()
         local e = selected and Find(selected)
-        if e and e.raids[raidPick] then table.remove(e.raids, raidPick); raidPick = math.max(1, raidPick - 1); Paint() end
+        if not e then return end
+        if Band(e) then
+            local id = e.id
+            return ui.confirm(L("¿Seguro que quieres eliminar el evento?"), function() DeleteEvent(id) end)
+        end
+        if e.raids[raidPick] then table.remove(e.raids, raidPick); PickRaid(math.max(1, raidPick - 1)); Paint() end
     end)
     -- Ventanita para elegir a alguien de una lista larga: título, buscador, filas con barra y Cancelar
     local pk = CreateFrame("Frame", "GuildUnionCalendarPicker", d, "BackdropTemplate")
@@ -894,6 +1301,16 @@ local function BuildDetail(host)
         pk.search:SetText(""); FauxScrollFrame_SetOffset(sf, 0)
         pk:Show(); pk.Refresh(); pk.search:SetFocus()
     end
+    -- (pinchar fuera la cierra: una capa invisible de toda la pantalla, por debajo de ella, como en la ventana de nuevo
+    -- evento. Otro clic en «+ Añadir» cae en la capa y también la cierra. Jorge, 25/11)
+    local catcher = CreateFrame("Button", nil, d)
+    catcher:SetAllPoints(UIParent); catcher:SetFrameStrata("FULLSCREEN_DIALOG"); catcher:SetFrameLevel(1)
+    catcher:RegisterForClicks("AnyDown"); catcher:Hide()
+    catcher:SetScript("OnClick", function() pk:Hide() end)
+    pk:SetFrameLevel(20)
+    pk:HookScript("OnShow", function() catcher:Show() end)
+    pk:HookScript("OnHide", function() catcher:Hide() end)
+    pk.catcher = catcher
     d:HookScript("OnHide", function() pk:Hide() end)
     d.picker = pk
 
@@ -907,7 +1324,7 @@ end
 -- Eventos: una tarjeta por línea, a todo lo ancho, como las de las mazmorras del Dungeon Journal [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local function PaintCards()
-    local list = Upcoming()
+    local list = Upcoming(view == "raids")
     FauxScrollFrame_Update(ui.scroll, #list, CARD_N, CARD_H + CARD_GAP)
     -- (con barra, la zona de las tarjetas deja su hueco a la derecha dentro del panel: el panel sigue centrado)
     local inset = #list > CARD_N and 30 or 8
@@ -923,25 +1340,29 @@ local function PaintCards()
             local r, g, b = KindRGB(e.kind)
             card.wash:SetColorTexture(r, g, b, 0.10)
             card.icon:SetTexture(EventIcon(e))
-            card.title:SetText(e.title)
-            card.kind:SetText(KindText(e.kind) .. "  |cffe6e6ea" .. date("%H:%M", e.t) .. "|r"
+            -- (fijado: con la estrella delante)
+            card.title:SetText((e.pinned and "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:14:14|t " or "") .. e.title)
+            card.kind:SetText(KindText(e) .. "  |cffe6e6ea" .. date("%H:%M", e.t) .. "|r"
                 .. (e.minLevel and ("  |cffa0a4ad" .. string.format(L("Nv. %d+"), e.minLevel) .. "|r") or ""))
             card.num:SetText(tonumber(date("%d", e.t)))
             card.date:SetText(L(DAYS[WeekDay(e.t)]) .. "\n" .. L(MONTHS[tonumber(date("%m", e.t))]))
             card.who:SetText("|cffa0a4ad" .. L("por") .. "|r " .. WhoText(e))
             card.going:SetText((e.signups[Me()] == "yes" and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " or "")
-                .. Count(e) .. " " .. L("van"))
-            local goingNames = {}
-            for n, v in pairs(e.signups) do if v == "yes" then goingNames[#goingNames + 1] = n end end
-            card.roles:SetText(RoleCounts(e, goingNames))
-            local mine = e.signups[Me()] == "yes"
-            card.join:Label(mine and ("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff40ff40" .. L("Apuntado") .. "|r") or L("Apuntarme"))
-            card.join:Pick(mine)
+                .. Count(e) .. Tail(e))
+            card.roles:SetText(RoleCounts(e, Going(e)))
+            -- (el título acaba antes de los roles, que van en su franja; quién y tipo · hora, antes de cuántos van)
+            local rw, gw = tonumber(card.roles:GetStringWidth()) or 0, tonumber(card.going:GetStringWidth()) or 0
+            card.title:SetPoint("TOPRIGHT", -132 - rw - 8, -8)
+            card.who:SetPoint("TOPRIGHT", -132 - gw - 8, -29)
+            card.kind:SetPoint("TOPRIGHT", -132 - gw - 8, -43)
+            card.join:Label(JoinLabel(e))
+            card.join:Pick(e.signups[Me()] == "yes")
             card:Show()
         else
             card:Hide()
         end
     end
+    ui.empty:SetText(view == "raids" and L("No hay raids próximas.") or L("No hay eventos próximos."))
     ui.empty:SetShown(#list == 0)
 end
 
@@ -1025,7 +1446,7 @@ local function PaintDay()
             b.id = ev.id
             b.icon:SetTexture(EventIcon(ev))
             b.text:SetText(ev.title)
-            b.sub:SetText(date("%H:%M", ev.t) .. "  " .. KindText(ev.kind) .. "  |cff40ff40" .. Count(ev) .. "|r " .. L("van"))
+            b.sub:SetText(date("%H:%M", ev.t) .. "  " .. KindText(ev) .. "  |cff40ff40" .. Count(ev) .. "|r" .. Tail(ev))
             b:Show()
         end
     end
@@ -1033,47 +1454,105 @@ end
 
 function Paint()
     if not (ui and ui:IsShown()) then return end
+    if dirty then Rebuild() end
     for k, b in pairs(ui.viewBtns) do b:Pick(k == view) end
-    ui.list:SetShown(view == "list")
+    ui.list:SetShown(view ~= "month")
     ui.month:SetShown(view == "month")
     ui.side:SetShown(view == "month")
-    if view == "list" then PaintCards() else PaintMonth(); PaintDay() end
+    if view ~= "month" then PaintCards() else PaintMonth(); PaintDay() end
     ui.new:SetEnabled(HU:CanMakeEvents() or ui.testOn == true)
     PaintDetail()
 end
 
 ---------------------------------------------------------------------------
--- Nuevo evento: título, tipo, imagen, día, hora, nivel mínimo y descripción
+-- Nuevo evento: título, tipo, imagen, día, hora, nivel mínimo y descripción. La misma ventana edita uno mío
+-- (d.Open(nil, evento)): «Editar evento», todo puesto y «Guardar» [+ARCHITECTURE.md]
 ---------------------------------------------------------------------------
 local function BuildNewDialog(host)
     local d = DJWindow("GuildUnionCalendarNew", host, 380, 420)
     d.titleText:SetText(L("Nuevo evento"))
     local cf = d.content
-    local function Label(text, x, y)
+    -- (lo que va debajo del tipo, con su sitio: baja con la fila del tamaño cuando va debajo de la de tipos, d.Relayout)
+    d.lower = {}
+    local function Low(w, x, y) w:SetPoint("TOPLEFT", x, y); d.lower[#d.lower + 1] = { w, x, y }; return w end
+    local function Label(text, x, y, low)
         local l = C(cf:CreateFontString(nil, "OVERLAY", "GameFontNormal"), T.title)
-        l:SetPoint("TOPLEFT", x, y); l:SetText(text)
+        l:SetText(text)
+        if low then return Low(l, x, y) end
+        l:SetPoint("TOPLEFT", x, y)
         return l
     end
     Label(L("Título:"), 12, -12)
     d.title = HU.NewEditBox(cf, 310); d.title:SetPoint("TOPLEFT", 18, -28); d.title:SetMaxLetters(40)
-    Label(L("Tipo:"), 12, -58)
+    -- El tipo o, en una banda, su tamaño (10, 20 o 40): en Eventos, JcJ y Social; en Calendario, también Banda, y con ella
+    -- su tamaño debajo; en Raids, solo el tamaño. Al editar, lo que ya es (Jorge, 25/11) [+ARCHITECTURE.md]
+    d.kindLabel = Label(L("Tipo:"), 12, -58)
     d.kindBtns = {}
-    local prev
     for _, k in ipairs({ KIND.raid, KIND.pvp, KIND.social }) do
         local b = DJButton(cf, L(k[2]), 100, 22)
-        if prev then b:SetPoint("LEFT", prev, "RIGHT", 2, 0) else b:SetPoint("TOPLEFT", 10, -74) end
         b:SetScript("OnClick", function()
-            d.kind = k[1]; d.PaintKinds()
+            d.kind = k[1]; d.Relayout()
             if not d.iconCustom then d.icon = KindIcon(d.kind); d.PaintIcons() end
         end)
         d.kindBtns[k[1]] = b
-        prev = b
     end
-    function d.PaintKinds() for key, b in pairs(d.kindBtns) do b:Pick(d.kind == key) end end
-    Label(L("Imagen:"), 12, -104)
+    d.sizeLabel = Label(L("Tamaño:"), 12, -58)
+    d.sizeBtns = {}
+    for i, n in ipairs(SIZES) do
+        local b = DJButton(cf, tostring(n), 40, 22)
+        b.size = n
+        b:SetScript("OnClick", function() d.size = n; d.Relayout() end)
+        d.sizeBtns[i] = b
+    end
+    -- (y, a su derecha, quién la ve: «Pública» o «Por invitación»; Jorge, 25/11: «en la parte de raid que tenga opción a
+    -- hacer público para todos o por invite»)
+    d.accessLabel = Label(L("Acceso:"), 148, -58)
+    d.accessBtns = {}
+    for i, it in ipairs({ { "public", L("Pública"), 80 }, { "invite", L("Por invitación"), 112 } }) do
+        local b = DJButton(cf, it[2], it[3], 22)
+        b.access = it[1]
+        b:SetScript("OnClick", function() d.access = it[1]; d.Relayout() end)
+        d.accessBtns[i] = b
+    end
+    -- (coloca la fila de tipos (sin «Banda» en Eventos), la del tamaño y el acceso (en una banda), lo de debajo y, por
+    -- invitación, los invitados, bajo la descripción: con ellos la ventana crece)
+    function d.Relayout()
+        local band, kinds = d.kind == "raid", d.mode ~= "band"
+        local dy = (kinds and band) and 46 or 0
+        local inv = band and d.access == "invite"
+        d.kindLabel:SetShown(kinds)
+        local x = 10
+        for _, k in ipairs({ "raid", "pvp", "social" }) do
+            local b, on = d.kindBtns[k], kinds and (k ~= "raid" or d.mode == "all")
+            b:SetShown(on)
+            if on then b:ClearAllPoints(); b:SetPoint("TOPLEFT", x, -74); x = x + 102 end
+            b:Pick(d.kind == k)
+        end
+        local y = kinds and -104 or -58
+        d.sizeLabel:SetShown(band); d.sizeLabel:SetPoint("TOPLEFT", 12, y)
+        for i, b in ipairs(d.sizeBtns) do
+            b:SetShown(band); b:ClearAllPoints(); b:SetPoint("TOPLEFT", 10 + (i - 1) * 42, y - 16)
+            b:Pick(b.size == d.size)
+        end
+        d.accessLabel:SetShown(band); d.accessLabel:SetPoint("TOPLEFT", 148, y)
+        for i, b in ipairs(d.accessBtns) do
+            b:SetShown(band); b:ClearAllPoints(); b:SetPoint("TOPLEFT", i == 1 and 146 or 228, y - 16)
+            b:Pick(b.access == d.access)
+        end
+        for _, w in ipairs(d.lower) do w[1]:SetPoint("TOPLEFT", w[2], w[3] - dy) end
+        for _, w in ipairs({ d.invLabel, d.invBox, d.invAdd, d.invScroll }) do w:SetShown(inv) end
+        d.invLabel:SetPoint("TOPLEFT", 12, -318 - dy)
+        d.invBox:SetPoint("TOPLEFT", 18, -334 - dy)
+        d.invAdd:SetPoint("TOPLEFT", 226, -333 - dy)
+        d.invScroll:SetPoint("TOPLEFT", 12, -358 - dy)
+        for i, b in ipairs(d.invRows) do b:SetPoint("TOPLEFT", 12, -358 - dy - (i - 1) * 16); if not inv then b:Hide() end end
+        if inv then d.PaintInvites() else d.invSug:Hide() end
+        d:SetHeight(420 + dy + (inv and 130 or 0))
+    end
+    Label(L("Imagen:"), 12, -104, true)
     -- (la elegida, en grande; al lado, el botón que abre la rejilla. Siempre hay una: la del tipo, si no se elige)
     local pv = CreateFrame("Button", nil, cf)
-    pv:SetSize(36, 36); pv:SetPoint("TOPLEFT", 12, -120)
+    pv:SetSize(36, 36); Low(pv, 12, -120)
     pv:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     pv.tex = pv:CreateTexture(nil, "ARTWORK"); pv.tex:SetAllPoints()
     d.iconPrev = pv
@@ -1142,10 +1621,10 @@ local function BuildNewDialog(host)
         pv.tex:SetTexture(d.icon)
         if grid:IsShown() then grid.Paint() end
     end
-    Label(L("Día:"), 12, -166)
-    d.dayBtn = DJButton(cf, "", 104, 22); d.dayBtn:SetPoint("TOPLEFT", 12, -182)
-    Label(L("Hora:"), 126, -166)
-    d.hourBtn = DJButton(cf, "", 80, 22); d.hourBtn:SetPoint("TOPLEFT", 126, -182)
+    Label(L("Día:"), 12, -166, true)
+    d.dayBtn = Low(DJButton(cf, "", 104, 22), 12, -182)
+    Label(L("Hora:"), 126, -166, true)
+    d.hourBtn = Low(DJButton(cf, "", 80, 22), 126, -182)
     -- (lo elegido: año, mes, día, hora y minuto)
     function d.PaintWhen()
         local t = time({ year = d.y, month = d.m, day = d.dd, hour = 12 })
@@ -1259,46 +1738,201 @@ local function BuildNewDialog(host)
         tp:Show(); tp.Paint()
     end)
     d:HookScript("OnHide", function() d.ClosePopups() end)
-    Label(L("Nivel mínimo:"), 216, -166)
-    d.minLv = HU.NewEditBox(cf, 50); d.minLv:SetPoint("TOPLEFT", 222, -182); d.minLv:SetMaxLetters(2); d.minLv:SetNumeric(true)
+    Label(L("Nivel mínimo:"), 216, -166, true)
+    d.minLv = Low(HU.NewEditBox(cf, 50), 222, -182); d.minLv:SetMaxLetters(2); d.minLv:SetNumeric(true)
     d.minLv:SetJustifyH("CENTER")
-    Label(L("Descripción:"), 12, -212)
+    Label(L("Descripción:"), 12, -212, true)
     -- (la descripción, en una caja de varias líneas)
     local box = CreateFrame("Frame", nil, cf, "BackdropTemplate")
-    box:SetPoint("TOPLEFT", 12, -228); box:SetSize(326, 84)
+    Low(box, 12, -228); box:SetSize(326, 84)
     Panel(box, T.row, T.border, 10, 2)
     d.desc = CreateFrame("EditBox", nil, box)
-    d.desc:SetMultiLine(true); d.desc:SetAutoFocus(false); d.desc:SetMaxLetters(240)
+    d.desc:SetMultiLine(true); d.desc:SetAutoFocus(false); d.desc:SetMaxLetters(90)
     d.desc:SetFontObject(ChatFontNormal); d.desc:SetTextInsets(6, 6, 6, 6)
     d.desc:SetPoint("TOPLEFT", 2, -2); d.desc:SetPoint("BOTTOMRIGHT", -2, 2)
     d.desc:SetScript("OnEscapePressed", d.desc.ClearFocus)
     box:EnableMouse(true)
     box:SetScript("OnMouseDown", function() d.desc:SetFocus() end)
 
+    -- Por invitación: a quién, por su nombre, con autorrelleno de los de la unión (como «Encargo personal» de Comercio:
+    -- mi hermandad, las listas de las otras, también las completas, y quien tiene el addon); debajo, los invitados (hasta
+    -- 40, 5 a la vista y barra) y clic en uno lo quita (Jorge, 25/11) [+ARCHITECTURE.md]
+    local INV_MAX, INV_ROWS, SUG_N = 40, 5, 6
+    d.invites = {}
+    d.invLabel = Label("", 12, -318)
+    d.invBox = HU.NewEditBox(cf, 200); d.invBox:SetMaxLetters(48)
+    d.invAdd = DJButton(cf, L("Añadir"), 80, 22)
+    d.invScroll = CreateFrame("ScrollFrame", "GuildUnionCalendarInviteScroll", cf, "FauxScrollFrameTemplate")
+    d.invScroll:SetSize(300, INV_ROWS * 16)
+    d.invScroll:SetScript("OnVerticalScroll", function(s, offset) FauxScrollFrame_OnVerticalScroll(s, offset, 16, d.PaintInvites) end)
+    d.invRows = {}
+    for i = 1, INV_ROWS do
+        local b = CreateFrame("Button", nil, cf)
+        b:SetSize(300, 16)
+        b:SetHighlightTexture(ROW_HL, "ADD")
+        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.text:SetPoint("LEFT", 6, 0); b.text:SetPoint("RIGHT", -20, 0); b.text:SetJustifyH("LEFT"); b.text:SetWordWrap(false)
+        b.x = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.x:SetPoint("RIGHT", -6, 0); b.x:SetText("|cffff5050x|r")
+        b:SetScript("OnClick", function(s) if s.name then d.RemoveInvite(s.name) end end)
+        d.invRows[i] = b
+    end
+    function d.PaintInvites()
+        d.invLabel:SetText(string.format(L("Invitados (%d/%d):"), #d.invites, INV_MAX))
+        FauxScrollFrame_Update(d.invScroll, #d.invites, INV_ROWS, 16)
+        local off = FauxScrollFrame_GetOffset(d.invScroll)
+        for i, b in ipairs(d.invRows) do
+            local n = d.invites[off + i]
+            b.name = n
+            if n then b.text:SetText(HU:Short(n)); b:Show() else b:Hide() end
+        end
+    end
+    -- (los de la unión que encajan con lo escrito, sin mí, de mejor a peor (HU.TextRank))
+    local function UnionNames(text)
+        local out, seen = {}, { [Me():lower()] = true }
+        local function add(full, tag)
+            if type(full) ~= "string" or HU.Secret(full) then return end
+            local rank = not seen[full:lower()] and HU.TextRank(HU:Short(full), text)
+            if not rank then return end
+            seen[full:lower()] = true
+            out[#out + 1] = { name = full, tag = tag, rank = rank }
+        end
+        for _, m in ipairs(HU.rosterList or {}) do add(m.name, HU.myTag) end
+        for tag, rr in pairs(HU.remoteRoster or {}) do for _, m in ipairs(rr.members or {}) do add(m.name, tag) end end
+        for _, pr in pairs(HU.remote or {}) do add(pr.name, pr.tag) end
+        for _, tag in ipairs(HU:OtherTags()) do for _, m in ipairs(HU:PackedMembers(tag)) do add(m.name, tag) end end
+        table.sort(out, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.name:lower() < b.name:lower()
+        end)
+        return out
+    end
+    -- (las sugerencias, bajo la caja: clic en una, o Intro, la primera, la añade)
+    local sug = CreateFrame("Frame", nil, d, "BackdropTemplate")
+    sug:SetPoint("TOPLEFT", d.invBox, "BOTTOMLEFT", -6, -1); sug:SetSize(240, 4)
+    Panel(sug, T.frame, T.border, 10, 2)
+    sug:SetFrameStrata("FULLSCREEN_DIALOG"); sug:SetFrameLevel(30); sug:Hide()
+    sug.rows = {}
+    for i = 1, SUG_N do
+        local b = CreateFrame("Button", nil, sug)
+        b:SetHeight(16); b:SetPoint("TOPLEFT", 4, -2 - (i - 1) * 16); b:SetPoint("RIGHT", sug, "RIGHT", -4, 0)
+        b:SetHighlightTexture(ROW_HL, "ADD")
+        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.text:SetPoint("LEFT", 2, 0); b.text:SetPoint("RIGHT", -2, 0); b.text:SetJustifyH("LEFT"); b.text:SetWordWrap(false)
+        b:SetScript("OnClick", function(s) if s.value then d.AddInvite(s.value) end end)
+        sug.rows[i] = b
+    end
+    d.invSug = sug
+    d.invBox:HookScript("OnTextChanged", function(s, user)
+        if not user then sug:Hide(); return end
+        local q = HU.Trim(s:GetText() or "")
+        local found = #q >= 2 and UnionNames(q) or {}
+        for i, b in ipairs(sug.rows) do
+            local f = found[i]
+            b.value = f and f.name
+            b.text:SetText(f and (HU:Short(f.name) .. (f.tag and (" |cff" .. HU:GuildColorHex(f.tag) .. "<" .. HU:TagLabel(f.tag) .. ">|r") or "")) or "")
+            b:SetShown(f ~= nil)
+        end
+        sug:SetHeight(4 + math.min(#found, SUG_N) * 16)
+        sug:SetShown(#found > 0)
+    end)
+    d.invBox:SetScript("OnEnterPressed", function(s) d.AddInvite(sug:IsShown() and sug.rows[1].value or s:GetText()) end)
+    d.invBox:HookScript("OnEscapePressed", function() sug:Hide() end)
+    d.invBox:HookScript("OnHide", function() sug:Hide() end)
+    d.invAdd:SetScript("OnClick", function() d.AddInvite(d.invBox:GetText()) end)
+    -- (añadir: el nombre entero, «Nombre-Reino», sin repetir; yo no hace falta, ya la veo)
+    function d.AddInvite(text)
+        local n = HU.Trim(text or "")
+        sug:Hide()
+        if n == "" then return end
+        n = HU:FullName(n) or n
+        d.invBox:SetText("")
+        if HU:SameName(n, Me()) then return end
+        for _, x in ipairs(d.invites) do if HU:SameName(x, n) then return end end
+        if n:find("[%s,|]") or #n > 48 then return HU:Print(L("Ese nombre no vale.")) end
+        if #d.invites >= INV_MAX then return HU:Print(string.format(L("Como mucho %d invitados."), INV_MAX)) end
+        d.invites[#d.invites + 1] = n
+        table.sort(d.invites, function(a, b) return a:lower() < b:lower() end)
+        d.PaintInvites()
+    end
+    function d.RemoveInvite(n)
+        for k = #d.invites, 1, -1 do if d.invites[k] == n then table.remove(d.invites, k) end end
+        d.PaintInvites()
+    end
+
     local ok = DJButton(d, L("Crear"), 120, 24); ok:SetPoint("BOTTOMLEFT", d, "BOTTOMLEFT", 18, 14)
+    d.ok = ok
     local no = DJButton(d, L("Cancelar"), 120, 24); no:SetPoint("BOTTOMRIGHT", d, "BOTTOMRIGHT", -18, 14)
     no:SetScript("OnClick", function() d:Hide() end)
     ok:SetScript("OnClick", function()
         local t = HU.Trim(d.title:GetText() or "")
         if t == "" then return HU:Print(L("Pon un título al evento.")) end
+        -- (al editar, el de antes, con lo último que ha llegado; si ya no está, no hay nada que guardar)
+        if dirty then Rebuild() end
+        local old = d.editing and Find(d.editing)
+        if d.editing and not old then return HU:Print(L("No se ha podido guardar el evento.")) end
         local when = time({ year = d.y, month = d.m, day = d.dd, hour = d.hh, min = d.mi })
-        if when < time() then return HU:Print(L("Elige un día y una hora que no hayan pasado.")) end
+        -- (al editar, el día y la hora de antes valen aunque ya hayan pasado)
+        local same = old and date("%Y%m%d%H%M", when) == date("%Y%m%d%H%M", old.t)
+        if same then when = old.t end
+        if when < time() and not same then return HU:Print(L("Elige un día y una hora que no hayan pasado.")) end
         local minLv = tonumber(d.minLv:GetText() or "")
-        -- (quien lo crea va, con su rol: como al apuntarse)
-        events[#events + 1] = { id = NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
-            desc = HU.Trim(d.desc:GetText() or ""), signups = { [Me()] = "yes" }, roles = { [Me()] = MyRole() }, raids = {},
-            minLevel = (minLv and minLv > 1) and minLv or nil, icon = d.icon }
+        local band = d.kind == "raid"
+        local e = { id = old and old.id or NewId(), title = t, kind = d.kind or "other", t = when, who = Me(), tag = HU.myTag,
+            desc = HU.Trim(d.desc:GetText() or ""), minLevel = (minLv and minLv > 1) and minLv or nil, icon = d.icon,
+            size = band and d.size or nil, invite = (band and d.access == "invite") or nil }
+        -- (los invitados, por invitación; si no, ninguno: una banda que pasa a pública vacía su lista en la red)
+        local invited = {}
+        for _, n in ipairs(e.invite and d.invites or {}) do invited[#invited + 1] = n end
+        -- (a la red, y quien lo crea va, con su rol: como al apuntarse. En el modo prueba sin permiso para crear, solo en este
+        -- PC, como los de prueba. Editar uno de prueba, aquí; uno de verdad, el mismo id otra vez a la red: lo apuntado va
+        -- aparte (s<id>) y sigue, y la lista de invitados (i<id>), también aparte)
+        if old and old.test then
+            old.title, old.kind, old.t, old.desc, old.minLevel, old.icon = e.title, e.kind, e.t, e.desc, e.minLevel, e.icon
+            old.size, old.invite, old.invites, dirty = e.size, e.invite, invited, true
+        elseif old then
+            if not HU:ProposeEvent(old.id, e) then return HU:Print(L("No se ha podido guardar el evento.")) end
+            if band then HU:ProposeEventInvites(old.id, invited) end
+            Rebuild()
+        elseif ui.testOn and not HU:CanMakeEvents() then
+            e.test, e.signups, e.roles, e.raids, e.reserve, e.invites = true, { [Me()] = "yes" }, { [Me()] = MyRole() }, {}, {}, invited
+            if band then NewRaid(e, Me()) end
+            testEvents[#testEvents + 1] = e
+            dirty = true
+        elseif HU:ProposeEvent(e.id, e) then
+            if e.invite then HU:ProposeEventInvites(e.id, invited) end
+            HU:ProposeSignup(e.id, MyRole())
+            Rebuild()
+        else
+            return HU:Print(L("No se ha podido crear el evento."))
+        end
         d:Hide()
         Paint()
     end)
-    function d.Open(dayT)
-        local t = dayT or time()
-        d.title:SetText(""); d.desc:SetText(""); d.minLv:SetText("")
-        local td = date("*t", t)
-        d.y, d.m, d.dd, d.hh, d.mi = td.year, td.month, td.day, 20, 0
+    -- (sin evento, uno nuevo para ese día (o para hoy) a las 20:00; con uno mío, para editarlo: todo como está. El modo, lo
+    -- que es el que se edita o, si no, la vista: en Raids, una banda; en Calendario, todo; en Eventos, lo demás)
+    function d.Open(dayT, e)
+        d.editing = e and e.id or nil
+        d.mode = e and (Band(e) and "band" or "event") or (view == "raids" and "band") or (view == "month" and "all") or "event"
+        d.titleText:SetText(e and L("Editar evento") or L("Nuevo evento"))
+        d.ok:Label(e and L("Guardar") or L("Crear"))
+        d.title:SetText(e and e.title or ""); d.desc:SetText(e and e.desc or "")
+        d.minLv:SetText(e and e.minLevel and tostring(e.minLevel) or "")
+        local td = date("*t", e and e.t or dayT or time())
+        d.y, d.m, d.dd = td.year, td.month, td.day
+        d.hh, d.mi = e and td.hour or 20, e and td.min or 0
         d.PaintWhen()
-        d.kind = "raid"; d.PaintKinds()
-        d.icon, d.iconCustom = KindIcon(d.kind), false; d.PaintIcons()
+        d.kind = e and e.kind or (d.mode == "event" and "pvp" or "raid")
+        d.size = e and e.size or 40
+        -- (por invitación, con los que ya invita; si no, pública y sin nadie)
+        d.access = (e and e.invite) and "invite" or "public"
+        d.invites = {}
+        for _, n in ipairs(e and e.invites or {}) do d.invites[#d.invites + 1] = n end
+        d.invBox:SetText("")
+        FauxScrollFrame_SetOffset(d.invScroll, 0)
+        d.Relayout()
+        d.icon = e and EventIcon(e) or KindIcon(d.kind)
+        d.iconCustom = d.icon ~= KindIcon(d.kind); d.PaintIcons()
         d:Show(); d.title:SetFocus()
     end
     return d
@@ -1309,7 +1943,8 @@ end
 ---------------------------------------------------------------------------
 -- (quitar lo de prueba: sus eventos, invitaciones, clases y niveles; la ficha abierta, solo si era de prueba)
 local function ClearTest()
-    for k = #events, 1, -1 do if events[k].test then table.remove(events, k) end end
+    testEvents = {}
+    Rebuild()
     if selected and not Find(selected) then selected = nil end
     for n in pairs(invites) do if n:find("%-Prueba$") then invites[n] = nil end end
     for n in pairs(testClass) do testClass[n] = nil end
@@ -1324,9 +1959,9 @@ local function AddTest()
         return time({ year = base.year, month = base.month, day = base.day + days, hour = h, min = m or 0 })
     end
     local function E(title, kind, t, who, tag, desc, su)
-        events[#events + 1] = { id = NewId() .. #events, title = title, kind = kind, t = t, who = who, tag = tag, desc = desc,
-            signups = su or {}, raids = {}, test = true }
-        return events[#events]
+        testEvents[#testEvents + 1] = { id = NewId() .. #testEvents, title = title, kind = kind, t = t, who = who, tag = tag,
+            desc = desc, signups = su or {}, raids = {}, reserve = {}, test = true }
+        return testEvents[#testEvents]
     end
     local CLASSES = { "WARRIOR", "PRIEST", "MAGE", "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN" }
     local mc = { ["Jandra-Prueba"] = "yes", ["Pepe-Prueba"] = "yes", ["Bea-Prueba"] = "yes", [Me()] = "yes" }
@@ -1340,22 +1975,24 @@ local function AddTest()
     end
     testClass["Jandra-Prueba"], testClass["Pepe-Prueba"], testClass["Bea-Prueba"] = "PRIEST", "WARRIOR", "DRUID"
     local ROLE_BY = { WARRIOR = "TANK", PRIEST = "HEALER", DRUID = "HEALER", PALADIN = "HEALER", SHAMAN = "HEALER" }
-    local first = E(L("Núcleo de Magma"), "raid", At(0, 21), "Jandra-Prueba", HU.myTag, L("Raid de la unión. Traed resistencias al fuego."), {})
-    first.roles = {}
-    first.minLevel = 55
-    local r1 = NewRaid(first, Me())
-    first.signups[Me()], first.roles[Me()] = "yes", "DAMAGER"
-    -- (los primeros 12 entran solos en la raid 1; el resto, al banquillo: la raid 1 es de 12 para que se vea)
-    local i = 0
-    for n in pairs(mc) do
-        if n ~= Me() then
-            i = i + 1
-            first.signups[n] = "yes"
-            first.roles[n] = ROLE_BY[testClass[n] or ""] or "DAMAGER"
-            if i <= 12 then AutoPlace(first, n) end
+    -- (los 24 apuntados, con una raid que llevo yo: los primeros 12 entran solos en ella y el resto, al banquillo, para que
+    -- se vea. En Núcleo de Magma, la banda de 40; en Valle de Alterac, un JcJ de Eventos, que puede tener varias raids)
+    local function Crowd(ev)
+        ev.roles, ev.minLevel = {}, 55
+        NewRaid(ev, Me())
+        ev.signups[Me()], ev.roles[Me()] = "yes", "DAMAGER"
+        local others = {}
+        for n in pairs(mc) do if n ~= Me() then others[#others + 1] = n end end
+        for i, n in ipairs(others) do
+            ev.signups[n], ev.roles[n] = "yes", ROLE_BY[testClass[n] or ""] or "DAMAGER"
+            if i <= 12 then AutoPlace(ev, n) end
         end
+        return ev
     end
-    r1.name = L("Raid") .. " 1"
+    local magma = E(L("Núcleo de Magma"), "raid", At(0, 21), "Jandra-Prueba", HU.myTag, L("Raid de la unión. Traed resistencias al fuego."), {})
+    magma.size = 40
+    Crowd(magma)
+    Crowd(E(L("Valle de Alterac"), "pvp", At(6, 21), "Jandra-Prueba", HU.myTag, L("Premade de la unión: cuantas raids hagan falta."), {}))
     -- (cómo se ven las marcas al invitar: uno dentro, uno esperando, uno que no aceptó)
     invites["Jandra-Prueba"] = { s = "ok", t = time() }
     invites["Arwen-Prueba"] = { s = "wait", t = time() }
@@ -1365,24 +2002,76 @@ local function AddTest()
     E(L("Garganta Grito de Guerra"), "pvp", At(2, 22), "Lyra-Prueba", other, "", { ["Lyra-Prueba"] = "yes" })
     E(L("Pesca en Tuercespina"), "social", At(5, 18), Me(), HU.myTag, L("Concurso de pesca, premio para el primero."),
         { [Me()] = "yes" })
-    E(L("Guarida de Onyxia"), "raid", At(8, 21), "Bea-Prueba", other, L("Para los que tengáis la misión."), { ["Bea-Prueba"] = "yes" }).minLevel = 60
+    local ony = E(L("Guarida de Onyxia"), "raid", At(8, 21), "Bea-Prueba", other, L("Para los que tengáis la misión."), { ["Bea-Prueba"] = "yes" })
+    ony.minLevel, ony.size = 60, 40
+    -- (Zul'Gurub, una banda de 20 mía, por invitación (a los 23 de prueba) y completa: 20 que van, 16 ya en la raid, y 4 de
+    -- la reserva)
+    local zg = E(L("Zul'Gurub"), "raid", At(4, 20), Me(), HU.myTag, L("Los de la reserva entran si alguien falla."), {})
+    zg.size, zg.roles, zg.minLevel = 20, {}, 58
+    NewRaid(zg, Me())
+    zg.signups[Me()], zg.roles[Me()] = "yes", "DAMAGER"
+    for k, n in ipairs(NAMES) do
+        local full = n .. "-Prueba"
+        zg.signups[full], zg.roles[full] = "yes", ROLE_BY[testClass[full]] or "DAMAGER"
+        if k > 19 then zg.reserve[full] = true elseif k <= 15 then AutoPlace(zg, full) end
+    end
+    for _, n in ipairs({ "Jandra-Prueba", "Pepe-Prueba", "Bea-Prueba" }) do
+        zg.signups[n], zg.roles[n], zg.reserve[n] = "yes", ROLE_BY[testClass[n]] or "DAMAGER", true
+    end
+    zg.invite, zg.invites = true, {}
+    for n in pairs(zg.signups) do if n ~= Me() then zg.invites[#zg.invites + 1] = n end end
+    table.sort(zg.invites, function(a, b) return a:lower() < b:lower() end)
     ui.testOn = true
+    dirty = true
     Paint()
 end
 
--- Lo guardado, en la cuenta: los eventos, con quién va y sus raids (Jorge, 24/11: «al hacer /reload se borra todo»). Lo de
--- prueba no se guarda, y un evento se quita KEEP_DAYS días después de su hora [+ARCHITECTURE.md]
-local KEEP_DAYS = 7
+-- Lo guardado, en la cuenta: los eventos y quién va, en la red (Packs/Events.lua, tras /reload siguen); aquí, las raids de
+-- los míos (calRaids) y lo que queda de la copia 324 (calEvents), lo que vive un evento en la red (HU.EVENT_LIVES, 30 días
+-- desde su hora): mientras se ve en el mes, su ficha sigue con sus raids. Lo de prueba no se guarda [+ARCHITECTURE.md]
 local function Tidy()
-    local old = time() - KEEP_DAYS * 86400
-    for k = #events, 1, -1 do
-        local e = events[k]
-        if type(e) ~= "table" or e.test or type(e.t) ~= "number" or e.t < old or type(e.signups) ~= "table" then table.remove(events, k) end
+    local old = time() - HU.EVENT_LIVES
+    local kept = HU.db.calEvents
+    for k = #kept, 1, -1 do
+        local e = kept[k]
+        if type(e) ~= "table" or e.test or type(e.t) ~= "number" or e.t < old or type(e.signups) ~= "table" then table.remove(kept, k) end
+    end
+    -- (las raids de eventos viejos o sin hora, fuera; y el plan de la banda, solo mientras vale)
+    for id, raids in pairs(HU.db.calRaids) do
+        local p = type(raids) == "table" and raids.plan
+        if type(raids) ~= "table" or type(raids.t) ~= "number" or raids.t < old then HU.db.calRaids[id] = nil
+        elseif p and not (type(p) == "table" and type(p.placed) == "table" and type(p.untilT) == "number" and p.untilT > time()) then raids.plan = nil end
     end
 end
+-- (copia 324: los eventos solo se guardaban aquí. Con la comunidad leída, los míos pasan a la red, con mi apuntado y sus
+-- raids, y salen de calEvents; los de otro personaje de la cuenta se quedan para cuando entre él) [+ARCHITECTURE.md]
+local function Migrate()
+    local kept, me = HU.db.calEvents, HU:Me()
+    if not (HU.myTag and me and #kept > 0) then return end
+    for k = #kept, 1, -1 do
+        local e = kept[k]
+        if type(e) == "table" and e.who == me and not e.test and type(e.t) == "number" and type(e.signups) == "table" then
+            table.remove(kept, k)
+            if e.t >= time() - HU.EVENT_LIVES and HU:ProposeEvent(e.id, e) then
+                if e.signups[me] == "yes" then HU:ProposeSignup(e.id, type(e.roles) == "table" and e.roles[me] or MyRole()) end
+                if type(e.raids) == "table" and #e.raids > 0 then e.raids.t = e.t; HU.db.calRaids[e.id] = e.raids end
+            end
+        end
+    end
+end
+-- (lo que falta de la red: lo de mi hermandad que me perdí estando fuera y lo de las otras. Al abrir y cada minuto mientras
+-- se ve)
+local function Need()
+    HU:PackNeed(HU.myTag, "EV")
+    for _, tag in ipairs(HU:OtherTags()) do HU:PackNeed(tag, "EV") end
+end
 HU:OnStart(function()
-    events = HU.db.calEvents
     Tidy()
+    -- (el plan de la banda que dejé guardado, si es mío y aún vale: tras /reload, la banda se sigue montando)
+    for id, raids in pairs(HU.db.calRaids) do
+        if raids.plan and raids.plan.who == Me() then raids.plan.id, arrange.plan = id, raids.plan end
+    end
+    HU:Every(60, "calendario-pedir", function() if open then Need() end end)
 end)
 HU:On("PLAYER_LOGOUT", Tidy)
 
@@ -1397,36 +2086,41 @@ local function NoMakeTip(s)
 end
 
 ---------------------------------------------------------------------------
--- Montar la sección (UnionRoster.lua la pone en la pestaña Calendar)
+-- Montar la sección (UnionRoster.lua la pone en la pestaña Eventos)
 ---------------------------------------------------------------------------
 function HU:BuildCalendar(host)
     ui = host
     local now = date("*t")
     month, year = now.month, now.year
 
-    -- Arriba, en el centro, los botones rojos Eventos · Calendario, como los de Comercio (DJ.Switch; Jorge, 24/11), y a su
-    -- derecha el modo prueba; abajo, en el centro, «+ Nuevo evento» (ver más abajo) [+ARCHITECTURE.md]
-    local sw = DJ.Switch(host, { { "list", L("Eventos") }, { "month", L("Calendario") } })
+    -- Arriba, en el centro, los botones rojos Eventos · Raids · Calendario, los de Comercio en el mismo sitio (DJ.Switch;
+    -- Jorge, 24/11 y 25/11); abajo, en el centro, «+ Nuevo evento» y, a su derecha, el modo prueba (ver más abajo) [+ARCHITECTURE.md]
+    local sw = DJ.Switch(host, { { "list", L("Eventos") }, { "raids", L("Raids") }, { "month", L("Calendario") } })
     sw:SetPoint("TOP", host, "TOP", 0, -4)
     ui.switch = sw
     ui.viewBtns = sw.btns
+    -- (otra vista de tarjetas, otra lista: desde arriba)
     for k, b in pairs(sw.btns) do
-        b:SetScript("OnClick", function() view = k; PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); Paint() end)
+        b:SetScript("OnClick", function()
+            if view ~= k then ScrollTop(ui.scroll) end
+            view = k; PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB); Paint()
+        end)
     end
-    -- (el modo prueba, a la altura del interruptor, en el hueco de su derecha; se enciende y se apaga: apagado, se quita
-    -- lo de prueba)
-    local test = DJButton(host, L("Modo prueba"), 104, 24)
-    test:SetPoint("TOPRIGHT", host, "TOPRIGHT", -8, -4 - (DJ.SWITCH.h - 24) / 2)
-    test:SetScript("OnClick", function(b)
-        if ui.testOn then ClearTest(); ui.testOn = nil else AddTest(); ui.testOn = true end
-        b:Pick(ui.testOn == true)
-        Paint()
-    end)
     -- (el panel de la sección, 6 por debajo del interruptor: color «content», borde y pergamino)
     local body = CreateFrame("Frame", nil, host, "BackdropTemplate")
     body:SetPoint("TOPLEFT", host, "TOPLEFT", 2, -4 - DJ.SWITCH.h - 6); body:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -2, 2)
     Panel(body, T.content, T.border, 14, 4)
     Parchment(body, 0.18)
+    -- (el modo prueba, abajo a la derecha, a la altura de «+ Nuevo evento»: arriba, con los tres botones en el centro, ya
+    -- no cabe. Se enciende y se apaga: apagado, se quita lo de prueba)
+    local test = DJButton(body, L("Modo prueba"), 104, 24)
+    test:SetPoint("BOTTOMRIGHT", body, "BOTTOMRIGHT", -8, 6)
+    test:SetScript("OnClick", function(b)
+        if ui.testOn then ClearTest(); ui.testOn = nil else AddTest(); ui.testOn = true end
+        b:Pick(ui.testOn == true)
+        Paint()
+    end)
+    ui.testBtn = test
 
     -- Eventos: una tarjeta por línea
     local list = CreateFrame("Frame", nil, body, "BackdropTemplate")
@@ -1465,41 +2159,53 @@ function HU:BuildCalendar(host)
         glow:SetColorTexture(1.0, 0.84, 0.25, 0.30)
         local hl = c:CreateTexture(nil, "HIGHLIGHT")
         hl:SetPoint("TOPLEFT", 4, -4); hl:SetPoint("BOTTOMRIGHT", -4, 4); hl:SetColorTexture(1, 0.82, 0.18, 0.08)
-        -- (a lo ancho, de izquierda a derecha: el día grande con el día de la semana y el mes; la imagen redonda; en tres
-        -- líneas, el título dorado, tipo · hora · nivel y quién lo pone, y a su derecha los roles y cuántos van; y a la
-        -- derecha del todo, Apuntarme encima de Más información)
+        -- (a lo ancho, de izquierda a derecha: el día grande con el día de la semana y el mes; una raya dorada que lo
+        -- separa del resto; la imagen redonda; en tres líneas, el título dorado, quién lo pone y tipo · hora · nivel, y a su
+        -- derecha los roles y cuántos van; y a la derecha del todo, Apuntarme encima de Más información. Jorge, 25/11:
+        -- «primero la fecha… luego una pequeña separación… el nombre, by… debajo del nombre y debajo la hora»)
         c.num = c:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
         C(c.num, T.title); Big(c.num, 26)
         c.num:SetPoint("LEFT", 12, 1)
         c.date = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), { 0.90, 0.90, 0.93 })
         c.date:SetPoint("LEFT", c.num, "RIGHT", 6, 0); c.date:SetJustifyH("LEFT"); c.date:SetSpacing(1)
+        c.sep = Line(c, 0.45)
+        c.sep:SetWidth(1); c.sep:SetHeight(CARD_H - 20)
+        c.sep:SetPoint("LEFT", c, "LEFT", 120, 0)
         c.icon = RoundIcon(c, 30)
-        c.icon:SetPoint("LEFT", c, "LEFT", 112, 0)
+        c.icon:SetPoint("LEFT", c, "LEFT", 130, 0)
         c.join = DJButton(c, L("Apuntarme"), 112, 22)
         c.join:SetPoint("TOPRIGHT", -8, -7)
         c.join:SetScript("OnClick", function(s) local e = c.id and Find(c.id); if e then SignUp(e, s) end end)
         c.info = DJButton(c, L("Más información"), 112, 22)
         c.info:SetPoint("BOTTOMRIGHT", -8, 7)
         c.info:SetScript("OnClick", function() if c.id then OpenDetail(c.id) end end)
+        -- (los roles, centrados en la franja oscura de arriba (topShade: 24 desde 4, centro en 16), y cuántos van, en la
+        -- parte clara de debajo (de 28 a 58, centro en 43); los dos con su borde derecho en 132. Jorge, 25/11) [+ARCHITECTURE.md]
         c.roles = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"), { 0.90, 0.90, 0.93 })
-        c.roles:SetPoint("TOPRIGHT", -132, -27)
+        c.roles:SetPoint("RIGHT", c, "TOPRIGHT", -132, -(4 + 24 / 2))
         c.going = C(c:CreateFontString(nil, "OVERLAY", "GameFontHighlight"), { 0.92, 0.92, 0.95 })
-        c.going:SetPoint("TOPRIGHT", -132, -43)
-        -- (el título, hasta los botones; tipo · hora · nivel, hasta los roles, y quién lo pone, hasta cuántos van)
+        c.going:SetPoint("RIGHT", c, "TOPRIGHT", -132, -((4 + 24) + (CARD_H - 4)) / 2)
+        -- (las tres líneas, desde 184: a la derecha del aro de la imagen, que llega a unos 175. Dónde acaban lo pone
+        -- PaintCards: el título, antes de los roles; quién y tipo · hora · nivel, antes de cuántos van)
         c.title = c:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         C(c.title, { 1.00, 0.88, 0.24 }); c.title:SetShadowColor(0, 0, 0, 1); c.title:SetShadowOffset(1, -1)
-        c.title:SetPoint("TOPLEFT", 150, -8); c.title:SetPoint("TOPRIGHT", -132, -8)
+        c.title:SetPoint("TOPLEFT", 184, -8); c.title:SetPoint("TOPRIGHT", -140, -8)
         c.title:SetJustifyH("LEFT"); c.title:SetWordWrap(false)
-        c.kind = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        c.kind:SetPoint("TOPLEFT", 150, -29); c.kind:SetPoint("TOPRIGHT", -250, -29)
-        c.kind:SetJustifyH("LEFT"); c.kind:SetWordWrap(false)
         c.who = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        c.who:SetPoint("TOPLEFT", 150, -43); c.who:SetPoint("TOPRIGHT", -210, -43)
+        c.who:SetPoint("TOPLEFT", 184, -29); c.who:SetPoint("TOPRIGHT", -140, -29)
         c.who:SetJustifyH("LEFT"); c.who:SetWordWrap(false)
+        c.kind = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        c.kind:SetPoint("TOPLEFT", 184, -43); c.kind:SetPoint("TOPRIGHT", -140, -43)
+        c.kind:SetJustifyH("LEFT"); c.kind:SetWordWrap(false)
         -- (al pasar el ratón, borde dorado)
         c:SetScript("OnEnter", function(s) s:SetBackdropBorderColor(T.hover[1], T.hover[2], T.hover[3], 1) end)
         c:SetScript("OnLeave", function(s) s:SetBackdropBorderColor(0.34, 0.34, 0.34, 1) end)
-        c:SetScript("OnClick", function(s) if s.id then OpenDetail(s.id) end end)
+        -- (clic: la ficha; clic derecho, en uno mío: editar o eliminar)
+        c:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        c:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then return EventMenu(s, s.id) end
+            if s.id then OpenDetail(s.id) end
+        end)
         ui.cards[i] = c
     end
     -- (la rueda del ratón mueve la barra de una tarjeta en una: poco a poco, y la barra con ella. Jorge, 24/11: antes
@@ -1544,7 +2250,11 @@ function HU:BuildCalendar(host)
         b.text:SetPoint("TOPLEFT", 42, -6); b.text:SetPoint("RIGHT", -4, 0); b.text:SetJustifyH("LEFT"); b.text:SetWordWrap(false)
         b.sub = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         b.sub:SetPoint("TOPLEFT", b.text, "BOTTOMLEFT", 0, -3); b.sub:SetPoint("RIGHT", -4, 0); b.sub:SetJustifyH("LEFT")
-        b:SetScript("OnClick", function(s) OpenDetail(s.id) end)
+        b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        b:SetScript("OnClick", function(s, button)
+            if button == "RightButton" then return EventMenu(s, s.id) end
+            OpenDetail(s.id)
+        end)
         b:Hide()
         side.dayBtns[i] = b
     end
@@ -1646,12 +2356,26 @@ function HU:BuildCalendar(host)
     new:SetMotionScriptsWhileDisabled(true)
     ui.new = new
 
-    host:HookScript("OnShow", Paint)
-    host:HookScript("OnHide", function() selected = nil; ui.detail:Hide() end)
+    -- (al abrir, se pide lo que falte y se rehace)
+    host:HookScript("OnShow", function() open = true; Need(); dirty = true; Paint() end)
+    host:HookScript("OnHide", function() open = false; selected = nil; ui.detail:Hide() end)
     Paint()
 end
 
--- (si cambia quién crea eventos, «+ Nuevo evento» se pone al día)
-HU:Listen("CHANGED", function(what) if what == "unionCfg" then Paint() end end)
+-- (si cambia quién crea eventos, «+ Nuevo evento» se pone al día; con la comunidad leída, lo de la copia 324 pasa a la red;
+-- y lo que llega de la red se rehace al pintar: si se ve, enseguida, y lo que llega seguido, de una vez)
+HU:Listen("CHANGED", function(what)
+    if what == "unionCfg" then
+        Paint()
+    elseif what == "config" then
+        Migrate()
+    elseif what == "calendar" then
+        dirty = true
+        if open and not paintSoon then
+            paintSoon = true
+            HU.After(0.3, function() paintSoon = false; if dirty then Paint() end end)
+        end
+    end
+end)
 
-HU:Module("UnionCalendar", { "BlizzTab", "Config", "Core", "ListWindow", "UnionConfig" })
+HU:Module("UnionCalendar", { "BlizzTab", "Config", "Core", "ListWindow", "Net/Packs", "Packs/Events", "Packs/Members", "UnionConfig" })
