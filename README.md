@@ -1,60 +1,71 @@
 # GuildUnion
 
-**Unite several guilds into one big community.** Everyone talks in a shared guild chat as if it were a single guild, while each guild keeps its own ranks, officers and rules.
+**Guild tools for WoW Forever: events and raids, trade and crafting orders, officer tools and guild stats. And, if you want, a shared guild chat that joins several guilds into one community.**
 
-Built for **WoW Forever**. Available in **English and Spanish** (it follows your game language).
+It works for a guild on its own right after installing. Joining other guilds is optional.
 
-> **Beta:** the addon is being tested with real guilds right now. If something breaks, type `/gu errors` and send the text.
+Available in **English and Spanish** (it follows your game language; `/gu language` changes it).
+
+> **Beta:** the addon is being tested with real guilds. If something breaks, type `/gu errors` and send the text.
 
 ## Install
 
-Copy the `GuildUnion` folder into `World of Warcraft\_forever_\Interface\AddOns\` so that you end up with `AddOns\GuildUnion\GuildUnion.toc`, then restart the game. Or install it from CurseForge.
+Install it from CurseForge, or copy the `GuildUnion` folder into `World of Warcraft\_forever_\Interface\AddOns\` (so you end up with `AddOns\GuildUnion\GuildUnion.toc`) and restart the game.
 
-## Features
+GuildUnion adds its sections (**Chat, Members, Trade and Events**) as tabs on the right of Blizzard's **Guild & Communities** window (**J**). `/gu` or the minimap button opens the GuildUnion panel, with the settings.
 
-- **Shared guild chat** – what you write in /g reaches every guild of the community, with the guild tag in front: `<TAG> [Name]: message`.
-- **Inside Blizzard's guild window** – messages from the other guilds appear in the Guild & Communities chat, and GuildUnion adds its own tab there.
-- **Officers online** – see the online guild masters and officers of every guild.
-- **Chat history (30 days)** – officers can search the chat by player or text and open the conversation around any message.
-- **Moderation** – officers can mute players across the whole community, with a reason and a duration.
-- **Pinned message** – officers can pin a message at the top of the guild chat.
-- **Chat tabs** – Guild, Group Finder and Officers tabs are created automatically, and each tab keeps writing to its own chat.
-- **Group finder across guilds** – `/buscargrupo message` posts to every guild at once.
-- **Protected channel** – the community uses a hidden, password-protected channel; outsiders are detected and removed. The password is never shown in chat.
+## For your guild (no setup needed)
 
-## Setup (guild masters, once)
+**Events, raids and calendar**
+- Create events (PvP, social) and raids of 10, 20 or 40, public or invite only, with a reserve list when they are full.
+- Sign up with your role. The organizer arranges the raid groups, and the in-game raid sorts itself the same way; you can invite by role.
+- A calendar with everything. Events can be pinned to the top.
+- By default the guild master and officers create events; the guild master can change it (everyone, or certain people for a while).
 
-A guild **on its own** needs no setup: events, trade, orders and the officer tools work inside the guild right after installing. The setup below is only to join several guilds into one community (the guild master can also use **Create community** in the GuildUnion tab, or `/gu create`).
+**Trade**
+- **Board**: post what you need or what you sell (BoE items too), with an expiry time.
+- **Orders**: ask for a craft with a tip or "negotiable", choose who brings the materials, or send a **personal order** to one player. Each order has its own private chat.
+- **Search**: look for an item and see **who can craft it**, including offline members. Everyone shares their professions and recipes just by opening their profession window.
 
-1. In the **Guild Information** of **every** guild, add one line per guild (the same lines in all guilds):
+**Officer tools** (the **Officers** button)
+- **Stats**: members, ranks, levels, classes, races, professions, activity, alts, joins and leaves, with bar charts. **Export** the text for Discord or a file.
+- **Remove several**: paste names and remove them in batches, with a confirmation, never touching anyone who has the addon.
+- `/gu noaddon`: who in your guild does not have the addon.
+- Kick, promote and demote with a confirmation, an invite and leave log, and a blacklist.
+- Pin a message at the top of the guild chat.
 
-       GU:t:Community Name
-       GU:g:Exact Guild Name One:TAG1
-       GU:g:Exact Guild Name Two:TAG2
+Officers are the guild master and the ranks with the **Officer** box ticked in Guild Control, whatever the rank is called.
 
-2. In the **officer note** of the guild master of **each** guild, add the channel and its password (letters and numbers only, up to 26 characters for the channel):
+## For several guilds (a community)
 
-       GU:c:Channel:password
+The guild master clicks **Create community** in the GuildUnion tab (or types `/gu create`) and follows the steps; then invites the other guilds from the same tab. Up to 20 guilds. Everything above keeps working and now reaches the whole community, plus:
 
-3. Done. Officers read the channel from the note; everyone else gets it automatically from a guildmate who already has it.
+- **Shared guild chat**: what you write in /g reaches every guild, with a coloured dot or the guild tag in front of the name. It shows up in Blizzard's Guild & Communities chat.
+- **Members of every guild** who are online, with their level and professions.
+- **Officer requests across guilds** (kick or rank changes are asked to that guild's officers), optional **officer chat** for the whole community.
+- **Moderation**: mute someone in every guild, a guard that removes impostors and outsiders from the protected channel, and a shared blacklist.
+- **Chat history (30 days)** for officers, with search.
+- **Union stats**: one line per guild and the total, from one officer of each guild.
+
+Manual setup (advanced): one line per guild in the **Guild Information** of every guild (`GU:t:Community Name` and `GU:g:Exact Guild Name:TAG`), and the channel with its password in the guild master's **officer note** (`GU:c:Channel:password`, letters and numbers only).
 
 ## Commands
 
-- `/gu` – open or close the GuildUnion tab (the guild window must be open)
-- `/gu status` – connection status (channel, links, other guilds)
-- `/gu sendchannel Name` – send the channel to someone who is waiting for it (the password is not shown)
-- `/gu confirm TAG` – officers: trust the member list received from another guild
-- `/gu pin text` – officers: pin a message (`/gu pin clear` to remove it)
+- `/gu` – open or close the GuildUnion panel
+- `/gu status` – how the addon is connected
+- `/gu stats` – guild stats (officers)
+- `/gu noaddon` – who in your guild does not have the addon (officers)
+- `/gu history` and `/gu search` – chat history (officers)
+- `/gu pin text` – pin a message (officers; `/gu pin clear` removes it)
+- `/gu create` – create a community (guild master)
+- `/gu perf` – the addon's CPU use and your FPS
 - `/gu language en` / `/gu language es` – change the language
 - `/gu errors` – show and copy the addon errors
-- `/buscargrupo message` – post in the Group Finder of every guild
-
-The minimap button opens the GuildUnion tab; **J** opens the guild window as usual.
 
 ## For developers
 
 - `ARCHITECTURE.md` explains how the addon works inside (in Spanish).
-- `LEEME.md` is the full user manual (in Spanish).
+- `LEEME.md` is the user manual in Spanish.
 
 ## License
 

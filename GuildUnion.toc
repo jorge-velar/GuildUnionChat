@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: |cff33ff99Guild Union|r
-## Notes: Joins several guilds into one community (up to 20 guilds): shared guild chat, protected channel and member panel.
-## Notes-esES: Une varias hermandades en una comunidad: chat de hermandad compartido, canal protegido con lista blanca y panel con todos los miembros.
-## Notes-esMX: Une varias hermandades en una comunidad: chat de hermandad compartido, canal protegido con lista blanca y panel con todos los miembros.
+## Notes: Guild tools: events and raids, trade and crafting orders, officer tools and stats. Optional shared guild chat to join several guilds into one community.
+## Notes-esES: Herramientas de hermandad: eventos y raids, comercio y encargos, herramientas de oficiales y estadísticas. Chat de hermandad compartido opcional para juntar varias hermandades en una comunidad.
+## Notes-esMX: Herramientas de hermandad: eventos y raids, comercio y encargos, herramientas de oficiales y estadísticas. Chat de hermandad compartido opcional para juntar varias hermandades en una comunidad.
 ## Author: Sadance
 ## X-Copyright: Copyright (c) 2026 Sadance
 ## X-License: MIT
