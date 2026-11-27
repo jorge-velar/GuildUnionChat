@@ -133,7 +133,7 @@ local function LongDay(t)
 end
 local function Find(id) for _, e in ipairs(events) do if e.id == id then return e end end end
 local function WhoText(e)
-    local tag = e.tag and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. e.tag .. ">|r") or ""
+    local tag = e.tag and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. HU:TagLabel(e.tag) .. ">|r") or ""
     return (e.who == Me() and MINE or OTHERS) .. HU:Short(e.who) .. "|r" .. tag
 end
 -- (un evento no tiene hora de fin: acaba LASTS (3 h) después de su hora. En Eventos, por fecha, hasta CARDS_AFTER (2 días)
@@ -1830,7 +1830,7 @@ local function BuildNewDialog(host)
         for i, b in ipairs(sug.rows) do
             local f = found[i]
             b.value = f and f.name
-            b.text:SetText(f and (HU:Short(f.name) .. (f.tag and (" |cff" .. HU:GuildColorHex(f.tag) .. "<" .. f.tag .. ">|r") or "")) or "")
+            b.text:SetText(f and (HU:Short(f.name) .. (f.tag and (" |cff" .. HU:GuildColorHex(f.tag) .. "<" .. HU:TagLabel(f.tag) .. ">|r") or "")) or "")
             b:SetShown(f ~= nil)
         end
         sug:SetHeight(4 + math.min(#found, SUG_N) * 16)

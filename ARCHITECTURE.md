@@ -526,6 +526,32 @@ lectura sigue igual; o a los `DOUBT_MAX` s, por si el servidor no contesta. Mien
 configuración anterior. Si el maestro quita de verdad la hermandad de la comunidad, se nota unos 25 s
 más tarde que antes.
 
+### Hermandad sola (`HU:IsSolo`, `HU:HasCommunity`; Jorge, 27/11)
+
+Una hermandad sin líneas `GU:` en la Información (ni en las notas de oficial ni en las copias) no tiene
+comunidad, y antes se quedaba sin etiqueta (`myTag` vacío): no podía crear eventos ni encargos («tu hermandad
+todavía no está en la unión») y nadie era oficial (`CanPin` mira la etiqueta). Lo vio una hermandad que usa
+el addon sola. Ahora:
+
+- **Configuración «sola»** (`UseSolo`): solo su hermandad, sin canal, `ok = true`, `solo = true`. Así todo lo que
+  pide `cfg` y `myTag` funciona dentro de la hermandad (Eventos, Comercio, encargos, personales, recetas,
+  Oficiales, estadísticas), y lo de otras hermandades no hace nada porque no hay otras (`OtherTags` vacío).
+- **Su etiqueta** (`HU.SoloTag`): «S» + 5 letras de una huella del nombre de la hermandad (en minúsculas). Cada
+  miembro la calcula igual sin hablar con nadie, y dos hermandades solas de la misma cuenta no se mezclan (el
+  almacén de propuestas es de la cuenta, por etiqueta: con las iniciales, «Los Lobos Grises» y «Los Løbos
+  Grises» darían las dos LLG). En pantalla sale con las iniciales del nombre (`HU:TagLabel`: «Los Valientes del Bosque» → LVDB).
+- **Sin canal**: `ApplyChannels` no quiere ninguno (y sale de los que quedaran de antes), no se pide (`CQ`,
+  Channels.lua) ni se avisa de que falta (Channel.lua). `Doubt` no salta: sin líneas es lo normal.
+- **Arranque rápido «sola»**: se guarda en `quickCfg` (`{ guild, solo = true }`); la siguiente entrada ya es sola
+  sin esperar los 45 s que se espera cuando la Información llega vacía.
+- **Pantallas**: la pestaña dice «Hermandad sola…» en vez de canal, enlace y hermandades unidas; el maestro ve
+  «Crear comunidad» (el asistente), nadie «Invitar» ni «Gestionar» (`CanInvite` pide comunidad); `/gu estado` y el
+  minimapa lo dicen; «Pedir a la unión» no sale.
+- **Mudanza** (`MoveMine` → `HU:MovePackTag`, Net/Packs.lua): al cambiar la etiqueta de la misma hermandad (crea la
+  comunidad, se une a una o la deja) lo de su almacén de propuestas pasa a la nueva, ganando lo más nuevo de cada
+  línea; y lo de su etiqueta de hermandad sola pasa siempre a la de la comunidad (por si se creó con otro
+  personaje de la cuenta). Quien cambia de hermandad no se lleva nada.
+
 ### `HU:QuickConfig`
 
 Arranque rápido: al entrar, el juego tarda unos segundos en dar la Información de hermandad y la
@@ -2364,6 +2390,9 @@ y la hora, por lo que caduca): el resto de la maquinaria es la de `MB`.
     salte a quien sí contesta.
 - **Lo mío otra vez** (`ResendAllMine`): cuando cambia el enlace (y al entrar), cada uno vuelve a mandar lo suyo vivo
   al rato (5–35 s al azar), como mucho una vez cada 10 min (`RESEND_GAP`). Solo lo propio: nadie manda lo de otro.
+- **Mudanza de etiqueta** (`HU:MovePackTag(de, a)`): lo del almacén de una etiqueta pasa a otra, gana lo más nuevo de
+  cada línea (`KeepEntry`) y avisa a cada conjunto. La usa Config.lua cuando mi hermandad cambia de etiqueta (hermandad
+  sola ↔ comunidad): antes de llamarla, `myTag` ya es la nueva.
 
 ### Mi hermandad al día (`SyncMine`)
 

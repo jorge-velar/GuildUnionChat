@@ -292,7 +292,7 @@ local function Paint()
             else c.zone:SetText((e.zone or "") .. (e.afk and (" |cff808080(" .. L("Ausente") .. ")|r") or "")) end
             c.rank:SetText(e.rank or "")
             -- (la etiqueta de la hermandad, corta; el nombre entero, en la barra de abajo y en el menú)
-            c.guild:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
+            c.guild:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(HU:TagLabel(e.tag) or "") .. "|r")
             c.note:SetText(e.note or "")
             -- (profesiones: solo el icono (Jorge, 24/11: «esta pestaña sin niveles»: de los demás, Forever no los da); los
             -- nombres y el nivel, en la ficha)
@@ -673,7 +673,7 @@ local function ShowCard(e, force)
     local cls = e.class and LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[e.class] or e.class or ""
     card.sub:SetText(((e.level and e.level > 0) and (L("Nivel") .. " " .. e.level .. " ") or "") .. cls)
     local v = card.lines
-    v[1]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. "<" .. tostring(e.tag or "") .. ">  " .. HU:GuildName(e.tag) .. "|r")
+    v[1]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. "<" .. tostring(HU:TagLabel(e.tag) or "") .. ">  " .. HU:GuildName(e.tag) .. "|r")
     v[2]:SetText((e.zone and e.zone ~= "") and e.zone or "—")
     v[3]:SetText((not e.noRank and e.rank ~= "" and e.rank) or "—")
     v[4]:SetText(e.online and ("|cff40ff40" .. L("Conectado") .. "|r") or Ago(e.offSecs))
@@ -1396,7 +1396,7 @@ local function Build(f)
         end
         if HU.myTag then
             sumOn, sumTot = online, total
-            perGuild[#perGuild + 1] = "|cff" .. HU:GuildColorHex(HU.myTag) .. HU.myTag .. "|r  " .. online .. " / " .. total
+            perGuild[#perGuild + 1] = "|cff" .. HU:GuildColorHex(HU.myTag) .. HU:TagLabel(HU.myTag) .. "|r  " .. online .. " / " .. total
         end
         for _, t in ipairs(HU:OtherTags()) do
             local r = HU.remoteRoster and HU.remoteRoster[t]

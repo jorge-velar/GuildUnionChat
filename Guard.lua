@@ -707,6 +707,16 @@ function HU:StatusLines(compact)
         Lines[#Lines + 1] = L("No hay configuración en la Información de hermandad. Escribe /gu config.")
         return Lines
     end
+    if self.cfg.solo then
+        -- (hermandad sola, Config.lua: sin canal ni otras hermandades)
+        local gp = 0
+        for _ in pairs(self.guildPeers) do gp = gp + 1 end
+        Lines[#Lines + 1] = L("Tu hermandad: ") .. (self.guildName or "?") .. " " .. L("(hermandad sola, sin comunidad)")
+        Lines[#Lines + 1] = L("Para juntaros con otras hermandades, el maestro pulsa «Crear comunidad».")
+        Lines[#Lines + 1] = L("Con el addon en tu hermandad: ") .. (gp + 1) .. L(".  Enlace de tu hermandad: ") .. self:Short(self:RelayName() or "?")
+        Lines[#Lines + 1] = self:QueueText()
+        return Lines
+    end
     if self.cfg.missingChannel and not self.cfg.chanFromNote and #self.cfg.errors == 1 then
         Lines[#Lines + 1] = L("Esperando el canal: lo pasa un oficial conectado (está en la nota de oficial del maestro).")
         return Lines

@@ -795,6 +795,20 @@ function HU:Propose(id, key, data)
     return true
 end
 
+-- Lo de mi hermandad pasa de una etiqueta a otra: al crear la comunidad o al dejarla (hermandad sola, Config.lua). Gana lo
+-- más nuevo de cada línea. Devuelve si había algo que pasar [+ARCHITECTURE.md]
+function HU:MovePackTag(from, to)
+    local all = self.db and self.db.wuStore
+    local src = all and from and to and from ~= to and all[from]
+    if not src then return false end
+    all[from] = nil
+    for id, st in pairs(src) do
+        for _, e in pairs(st) do KeepEntry(to, id, e.n, e.k, e.t, e.d) end
+        Changed(id, to)
+    end
+    return true
+end
+
 HU:RegisterMessage("WU", { tagField = 1, fields = { "tag", "id", "key", "t", "data*" }, queue = "blow", ttl = 300, combat = "data" })
 HU.comm.WU = function(self, sender, f, dist)
     local tag, id, key, data = f[1], f[2], f[3], f.data or ""

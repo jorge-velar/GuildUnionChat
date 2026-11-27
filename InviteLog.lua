@@ -273,7 +273,7 @@ local function KindOf(r) return r.kind or "kick" end
 
 local function PaintRequest(row, r)
     row.cells[1]:SetText("|cff9a8f78" .. HU.SafeDate("%d/%m %H:%M", r.t) .. "|r")
-    row.cells[2]:SetText(HU:Short(r.requester) .. " |cff" .. HU:GuildColorHex(r.reqTag) .. "<" .. tostring(r.reqTag or "?") .. ">|r")
+    row.cells[2]:SetText(HU:Short(r.requester) .. " |cff" .. HU:GuildColorHex(r.reqTag) .. "<" .. tostring(HU:TagLabel(r.reqTag) or "?") .. ">|r")
     row.cells[3]:SetText("|cffffd100" .. HU:Short(r.target) .. "|r")
     local what = KindOf(r) == "rank" and ("|cffffd100" .. L("Rango") .. ": " .. (HU:RankName(HU.myTag, r.rank) or "?") .. "|r")
         or ("|cffff4040" .. L("Echar") .. "|r")

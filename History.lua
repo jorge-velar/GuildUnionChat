@@ -1389,7 +1389,7 @@ end
 -- Una línea de la lista: { texto, bytes antes del mensaje, mensaje } (lo buscado se marca en Show)
 local function Line(e, focus, before)
     local when = HU.SafeDate("%d/%m %H:%M", e.t)
-    local tag = e.tag and ("<" .. e.tag .. "> " .. AddonMark(e)) or ""
+    local tag = e.tag and ("<" .. HU:TagLabel(e.tag) .. "> " .. AddonMark(e)) or ""
     local where = (e.k == "off" and L("[Oficiales] ")) or (e.k == "lfg" and L("[Buscar grupo] ")) or ""
     local head = (before or "") .. (focus and "|cffffffff" or "|cff999999") .. when .. "|r " .. where .. tag .. NameColored(e.a) .. ": "
     return { head .. e.m, #head, e.m }
@@ -1633,7 +1633,7 @@ function HU:HistWindow(show)
         gBtn:SetSize(160, 20)
         gBtn:SetPoint("TOPRIGHT", -34, -6)
         local function GuildLabel()
-            gBtn:SetText(L("Hermandad: ") .. (W.tagFilter and ("<" .. W.tagFilter .. ">") or L("Todas")))
+            gBtn:SetText(L("Hermandad: ") .. (W.tagFilter and ("<" .. HU:TagLabel(W.tagFilter) .. ">") or L("Todas")))
         end
         gBtn:SetScript("OnClick", function()
             local tags = {}

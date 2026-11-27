@@ -1344,4 +1344,11 @@ E["Ya estás pidiendo las estadísticas de la unión: el resultado sale en unos 
 E["Espera %d s para volver a pedirlas: cada hermandad contesta como mucho una vez cada %d s."] = "Wait %d s to ask again: each guild answers at most once every %d s."
 E["Pidiendo las estadísticas a la unión: preguntado a %d. El resultado, en %d s."] = "Asking the union for stats: asked %d. The result in %d s."
 
+-- Hermandad sola (Config.lua)
+E["Hermandad sola."] = "Guild on its own."
+E["Para juntaros con otras hermandades, el maestro pulsa «Crear comunidad»."] = "To join up with other guilds, the guild master clicks “Create community”."
+E["(hermandad sola, sin comunidad)"] = "(guild on its own, no community)"
+E["Hermandad sola (sin comunidad)"] = "Guild on its own (no community)"
+E["Tu hermandad ya no tiene las líneas de la comunidad (GU:g) en la Información de hermandad: sigues con el addon como hermandad sola, sin las otras hermandades. Si no es a propósito, avisa a tu maestro o a un oficial."] = "Your guild no longer has the community lines (GU:g) in its Guild Information: you keep using the addon as a guild on its own, without the other guilds. If this is not on purpose, tell your guild master or an officer."
+
 HU:Module("LocaleEN", { })

@@ -385,14 +385,14 @@ HU:OnStart(function()
     HU.StampFix(HU.db.netChan)
     for _, s in ipairs({ 11, 25 }) do
         HU.After(s, function()
-            if HU.myTag and IsInGuild() and not HU.db.netChan then HU.cqAskedT = GetTime(); HU:Send("CQ", "GUILD") end
+            if HU:HasCommunity() and IsInGuild() and not HU.db.netChan then HU.cqAskedT = GetTime(); HU:Send("CQ", "GUILD") end
         end)
     end
     -- (sin canal, o con uno provisional: se sigue pidiendo cada minuto, así llega en cuanto se conecte
-    -- alguien de la hermandad que lo tenga, sin /reload)
+    -- alguien de la hermandad que lo tenga, sin /reload. Una hermandad sola no tiene canal: Config.lua)
     HU:Every(60, "canal-pedir", function()
         local n = HU.db.netChan
-        if not (HU.myTag and IsInGuild()) or (n and not n.prov) then return end
+        if not (HU:HasCommunity() and IsInGuild()) or (n and not n.prov) then return end
         HU.cqAskedT = GetTime(); HU:Send("CQ", "GUILD")
     end)
     -- el enlace lo pasa a las otras hermandades de vez en cuando

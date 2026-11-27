@@ -24,6 +24,8 @@ Copy the `GuildUnion` folder into `World of Warcraft\_forever_\Interface\AddOns\
 
 ## Setup (guild masters, once)
 
+A guild **on its own** needs no setup: events, trade, orders and the officer tools work inside the guild right after installing. The setup below is only to join several guilds into one community (the guild master can also use **Create community** in the GuildUnion tab, or `/gu create`).
+
 1. In the **Guild Information** of **every** guild, add one line per guild (the same lines in all guilds):
 
        GU:t:Community Name

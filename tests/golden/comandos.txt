@@ -169,16 +169,16 @@ llama: Trim Me IsOfficerName LaneState Print LaneStatusText Print
 dice: |cff33ff99Comunidad de prueba|r: Carril del canal: 0 (generación 0)
 dice: |cff33ff99Comunidad de prueba|r: Subida automática: 0 s seguidos de rechazos (hacen falta 300) · confirmaciones 0 de 1 · rechazos sin contar por acabar de entrar: 0. Órdenes de sala de versiones viejas sin obedecer: 0. Nadie en otra sala, que yo sepa.
 == /gu carril reiniciar
-llama: Trim Me IsOfficerName LaneLock ProposeLane
+llama: Trim Me IsOfficerName LaneLock HasCommunity ProposeLane
 dice: |cff33ff99Comunidad de prueba|r: |cffff8800Esto devuelve a TODA la comunidad a la sala principal (la 0).|r Para confirmarlo, escribe lo mismo otra vez antes de 30 segundos.
 == /gu carril subir
-llama: Trim Me IsOfficerName LaneLock ProposeLane
+llama: Trim Me IsOfficerName LaneLock HasCommunity ProposeLane
 dice: |cff33ff99Comunidad de prueba|r: Propuesta enviada a los oficiales de tu hermandad. Solo se hará si otro oficial escribe /gu carril confirmar antes de 2 minutos.
 == /gu carril juntar
-llama: Trim Me IsOfficerName LaneLock ProposeLane
+llama: Trim Me IsOfficerName LaneLock HasCommunity ProposeLane
 dice: |cff33ff99Comunidad de prueba|r: |cffff8800Esto trae a TODA la comunidad a tu sala (la 0).|r Para confirmarlo, escribe lo mismo otra vez antes de 30 segundos.
 == /gu carril confirmar
-llama: Trim Me IsOfficerName LaneLock ConfirmLane
+llama: Trim Me IsOfficerName LaneLock HasCommunity ConfirmLane
 dice: |cff33ff99Comunidad de prueba|r: No hay ninguna propuesta de cambio de sala pendiente.
 == /gu fijar
 llama: Trim Print

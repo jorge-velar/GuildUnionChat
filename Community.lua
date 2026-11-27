@@ -122,7 +122,8 @@ function HU:IsPrincipalMaster()
 end
 -- ¿Puedo invitar hermandades? (el maestro de la principal, o un gestor que sea oficial de la suya)
 function HU:CanInvite()
-    if not self.myTag then return false end
+    -- (una hermandad sola, Config.lua, primero crea la comunidad: con el asistente)
+    if not self:HasCommunity() then return false end
     return self:IsPrincipalMaster() or (self:CanPin() and self:IsManager(self:Me()))
 end
 -- ¿Ese autor (de otra hermandad o de la mía) puede meter o sacar hermandades? Comprobado por rango.
@@ -260,7 +261,7 @@ end
 --   GA~id~1|0~nombre o motivo         respuesta
 ---------------------------------------------------------------------------
 function HU:InviteGuild(contact, tag)
-    if not self.myTag or not self.cfg then return false, L("tu hermandad no está configurada") end
+    if not self:HasCommunity() then return false, L("tu hermandad no está configurada") end
     if not self:CanInvite() then return false, L("solo el maestro de la hermandad principal y los gestores pueden invitar hermandades") end
     contact = HU.Trim(contact or "")
     tag = HU.Trim(tag or ""):upper()

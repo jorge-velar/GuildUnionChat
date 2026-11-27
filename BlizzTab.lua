@@ -345,10 +345,15 @@ local function RefreshStatus()
     local relay = (HU:IsRelay()) and L("tú") or (HU:RelayName()) or "?"
     -- (cuenta también la mía: con WLP, WLP2 y WLP3 son 3, no 2. Jorge, 12/11)
     local n = #HU:OtherTags() + (HU.myTag and 1 or 0)
-    panel.status:SetText(
-        L("Canal: ") .. (chan and "|cff44ff44" .. L("conectado") .. "|r" or "|cffff4444" .. L("sin conectar") .. "|r")
-        .. "    " .. L("Enlace: ") .. "|cffffffff" .. HU:Nice(relay) .. "|r"
-        .. "    " .. L("Hermandades unidas: ") .. "|cffffffff" .. n .. "|r")
+    if HU:IsSolo() then
+        -- (sin comunidad no hay canal ni otras hermandades: Config.lua)
+        panel.status:SetText("|cff33ff99" .. L("Hermandad sola.") .. "|r " .. L("Para juntaros con otras hermandades, el maestro pulsa «Crear comunidad»."))
+    else
+        panel.status:SetText(
+            L("Canal: ") .. (chan and "|cff44ff44" .. L("conectado") .. "|r" or "|cffff4444" .. L("sin conectar") .. "|r")
+            .. "    " .. L("Enlace: ") .. "|cffffffff" .. HU:Nice(relay) .. "|r"
+            .. "    " .. L("Hermandades unidas: ") .. "|cffffffff" .. n .. "|r")
+    end
     local officer = HU:CanPin()
     for _, f in ipairs(panel.officerOnly) do f:SetShown(officer) end
     -- (la lista negra, debajo de los buscadores de los oficiales; sin ellos, arriba, donde empiezan)
@@ -356,7 +361,7 @@ local function RefreshStatus()
     if officer then panel.blackHead:SetPoint("TOPLEFT", panel.blackAfter, "BOTTOMLEFT", -6, -12)
     else panel.blackHead:SetPoint("TOPLEFT", panel.status, "BOTTOMLEFT", 0, -16) end
     if panel.createBtn then
-        local has = HU.myTag ~= nil
+        local has = HU:HasCommunity()
         panel.createBtn:SetText(has and L("Invitar a la comunidad") or L("Crear comunidad"))
         panel.createBtn:SetShown(has and HU:CanInvite() or (not has and IsInGuild() and HU:IsMaster()))
         panel.manageBtn:SetShown(has and officer)
@@ -1420,7 +1425,7 @@ local function GuildsText()
     for _, g in ipairs((HU.cfg and HU.cfg.guilds) or {}) do
         local mark = (g.tag == principal) and ("  |cffffd100" .. L("(principal)") .. "|r") or ""
         local how = g.net and ("  |cff808080" .. L("(por invitación)") .. "|r") or ""
-        lines[#lines + 1] = "|cff" .. HU:GuildColorHex(g.tag) .. "<" .. g.tag .. ">|r  " .. g.name .. mark .. how
+        lines[#lines + 1] = "|cff" .. HU:GuildColorHex(g.tag) .. "<" .. HU:TagLabel(g.tag) .. ">|r  " .. g.name .. mark .. how
     end
     return #lines > 0 and table.concat(lines, "\n") or L("Sin configurar.")
 end

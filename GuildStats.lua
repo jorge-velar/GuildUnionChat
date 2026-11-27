@@ -289,6 +289,8 @@ function HU:ShowGuildStats()
     if not IsInGuild() then return self:Print(L("No estás en una hermandad.")) end
     if not win then Build(self) end
     Render(self)
+    -- (una hermandad sola, Config.lua, no tiene a quién pedir)
+    win.union:SetShown(self:HasCommunity())
     win:Show()
 end
 
@@ -454,7 +456,7 @@ local function UnionLine(d)
 end
 
 local function UnionRow(self, row)
-    local head = "<" .. tostring(row.tag) .. ">  "
+    local head = "<" .. tostring(HU:TagLabel(row.tag)) .. ">  "
     if row.mine then
         return head .. L("(la mía)") .. "  " .. (row.data and UnionLine(row.data) or L("aún no tengo la lista de mi hermandad"))
     end
@@ -560,7 +562,7 @@ end
 -- UNION_WAIT s enseña lo que ha llegado, con lo de la mía y la suma
 function HU:AskUnionStats()
     if not self:CanSeeStats() then return self:Print(L("Las estadísticas son solo para oficiales.")) end
-    if not (self.cfg and self.myTag) then return self:Print(L("Aún no hay comunidad: no sé qué hermandades mirar.")) end
+    if not self:HasCommunity() then return self:Print(L("Aún no hay comunidad: no sé qué hermandades mirar.")) end
     if unionRun then return self:Print(L("Ya estás pidiendo las estadísticas de la unión: el resultado sale en unos segundos.")) end
     local wait = math.ceil(UNION_GAP - (GetTime() - unionAskT))
     if wait > 0 then

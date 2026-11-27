@@ -770,14 +770,14 @@ function HU:WithoutAddonLine()
     if addonRun then return L("Sin addon: lo estoy mirando (/gu sinaddon).") end
     local r = addonLast
     if not r then return L("Sin addon: sin mirar (/gu sinaddon, unos 5 minutos).") end
-    return string.format(L("Sin addon en <%s> (mirado a las %s): %d de %d conectados · no se sabe %d"), r.tag,
+    return string.format(L("Sin addon en <%s> (mirado a las %s): %d de %d conectados · no se sabe %d"), HU:TagLabel(r.tag),
         date("%H:%M", r.t), #r.without, r.total, #r.unknown)
 end
 
 local function AddonCheckText(self, r)
     local lines = { HU.ADDON_TITLE .. " " .. tostring(HU.version) .. " - " .. L("quién no tiene el addon") .. " - " .. date("%d/%m/%Y %H:%M", r.t) }
     local function add(s) lines[#lines + 1] = s end
-    add(string.format(L("<%s>: %d conectados · con addon %d · sin addon %d · no se sabe %d"), r.tag, r.total, r.with, #r.without, #r.unknown))
+    add(string.format(L("<%s>: %d conectados · con addon %d · sin addon %d · no se sabe %d"), HU:TagLabel(r.tag), r.total, r.with, #r.without, #r.unknown))
     local since = self:AddonSeenSince()
     if since then
         add(string.format(L("«Con addon»: quien ha dado alguna señal desde el %s (me ha contestado o hablado su addon, o está en el canal; se olvida a los 7 días)."), date("%d/%m %H:%M", since)))
@@ -1014,7 +1014,7 @@ local ROLE = { e = "enlace", a = "ayudante" }
 local function LoadPct(x) if x == false then return L("sin medidor") end return string.format("%.1f %%", x / 10) end
 local function LoadNum(x) if x == false then return "?" end return tostring(x) end
 local function LoadRow(self, row)
-    local head = "<" .. tostring(row.tag) .. ">  "
+    local head = "<" .. tostring(HU:TagLabel(row.tag)) .. ">  "
     if not row.name then return head .. L("no sé quién es su enlace (aún no se ha presentado)") end
     local who, d = self:Nice(row.name), row.data
     if not d then

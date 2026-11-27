@@ -117,7 +117,7 @@ local win
 
 local function Paint(row, e)
     row.cells[1]:SetText((HU.roster[e.key] and "|cffff4444" or "|cffffffff") .. HU:Short(e.name) .. "|r")
-    row.cells[2]:SetText(e.by and (HU:Short(e.by) .. ((e.tag and e.tag ~= "") and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. e.tag .. ">|r") or "")) or "")
+    row.cells[2]:SetText(e.by and (HU:Short(e.by) .. ((e.tag and e.tag ~= "") and (" |cff" .. HU:GuildColorHex(e.tag) .. "<" .. HU:TagLabel(e.tag) .. ">|r") or "")) or "")
     row.cells[3]:SetText(e.why or "")
 end
 

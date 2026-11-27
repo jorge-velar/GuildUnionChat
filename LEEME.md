@@ -245,6 +245,8 @@ Es el mismo addon para todos; se adapta solo al rango de cada uno.
 
 ## Configuración (la hacen los maestros una sola vez)
 
+Una **hermandad sola** no tiene que configurar nada: Eventos, Comercio, encargos y las herramientas de oficiales funcionan dentro de la hermandad nada más instalar el addon. Lo de abajo es solo para juntar varias hermandades en una comunidad (el maestro también puede usar **Crear comunidad** en la pestaña de GuildUnion, o `/gu crear`).
+
 1. **Información de hermandad** de CADA hermandad (la lee cualquiera; aquí ya no va la contraseña):
 ```
 GU:g:Nombre Exacto Hermandad Uno:WLP1

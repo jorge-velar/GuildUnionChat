@@ -10,7 +10,10 @@ local registered = false
 
 local function ShowTooltip(tt)
     tt:AddLine(HU:Title(), 0.2, 1, 0.6)
-    if HU.cfg and HU.cfg.ok then
+    if HU:IsSolo() then
+        -- (hermandad sola, Config.lua: sin canal)
+        tt:AddLine(L("Hermandad sola (sin comunidad)"), 1, 1, 1)
+    elseif HU.cfg and HU.cfg.ok then
         tt:AddLine(L("Canal: ") .. (HU:IsJoined("main") and "|cff44ff44conectado|r" or L("|cffff4444sin conectar|r")), 1, 1, 1)
         if HU.intruders and #HU.intruders > 0 then
             tt:AddLine(L("Intrusos: ") .. #HU.intruders, 1, 0.3, 0.3)
@@ -20,11 +23,11 @@ local function ShowTooltip(tt)
     end
     tt:AddLine(" ")
     tt:AddLine(L("Clic izquierdo: abrir GuildUnion"), 0.8, 0.8, 0.8)
-    tt:AddLine(L("Clic derecho: Gestión de hermandades"), 0.8, 0.8, 0.8)
+    if HU:HasCommunity() then tt:AddLine(L("Clic derecho: Gestión de hermandades"), 0.8, 0.8, 0.8) end
 end
 
 local function OnClick(_, button)
-    if button == "RightButton" and HU.ShowGuildsWindow and HU:CanPin() then return HU:ShowGuildsWindow() end
+    if button == "RightButton" and HU.ShowGuildsWindow and HU:HasCommunity() and HU:CanPin() then return HU:ShowGuildsWindow() end
     HU:OpenMainWindow()
 end
 

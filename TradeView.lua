@@ -296,7 +296,7 @@ end
 local function FillWho(row, e)
     local c = row.cells
     c[1]:SetText((e.name == Me() and MINE or OTHERS) .. HU:Short(e.name) .. "|r " .. (e.online and DOT_ON or DOT_OFF))
-    c[2]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(e.tag or "") .. "|r")
+    c[2]:SetText("|cff" .. HU:GuildColorHex(e.tag) .. tostring(HU:TagLabel(e.tag) or "") .. "|r")
     c[3]:SetText((e.icon and ("|T" .. e.icon .. ":14:14|t ") or "") .. e.prof)
     c[4]:SetText((e.rank and tostring(e.rank) or "—") .. (e.knows and (" |T" .. TICK .. ":12:12|t") or ""))
 end

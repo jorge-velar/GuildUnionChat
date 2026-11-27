@@ -383,6 +383,7 @@ end
 HU.MAYBE_NIL = {
     -- quién soy y en qué estado está el addon
     me = true, myTag = true, cfg = true, paused = true, mustUpdate = true, guildMin = true,
+    guildName = true, -- (el nombre de mi hermandad, al leer la configuración: Config.lua)
     replaying = true, weakMsg = true, diagRecv = true, oldAddon = true, badEvents = true,
     presenceWrapped = true, staleCheck = true,
     newerWarned = true, -- (ya se ha dicho que hay una versión más nueva: Net/Relay.lua)
@@ -964,7 +965,7 @@ HU:RegisterSlash("carril", { aliases = { "lane" },
         if act or arg == "confirmar" or arg == "confirm" then
             if HU:LaneLock() then
                 HU:Print(string.format(L("La sala está fijada en la %d por la Información de hermandad (línea GU:l). Mientras esté esa línea no se puede cambiar."), HU:LaneLock()))
-            elseif not officer or not HU.cfg then
+            elseif not officer or not HU:HasCommunity() then
                 HU:Print(L("Solo los maestros y oficiales de una hermandad unida pueden cambiar el carril."))
             elseif act then
                 HU:ProposeLane(act)
